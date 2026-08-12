@@ -1,0 +1,47 @@
+[package]
+name = "git-workspace"
+version = "0.1.0"
+description = "High-performance multi-repository Git visual management platform"
+authors = ["wangyi", "GitWorkspace"]
+edition = "2021"
+
+[lib]
+name = "git_workspace_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+# Enables the tauri custom protocol to serve the embedded frontend in
+# release builds. Without this, release builds fall back to the devUrl.
+custom-protocol = ["tauri/custom-protocol"]
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+git2 = { version = "0.19", features = ["ssh", "https"] }
+tokio = { version = "1", features = ["full"] }
+notify = "7"
+notify-debouncer-full = "0.4"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rayon = "1.10"
+walkdir = "2.5"
+dashmap = "6"
+log = "0.4"
+env_logger = "0.11"
+thiserror = "1"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+uuid = { version = "1.10", features = ["v4"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

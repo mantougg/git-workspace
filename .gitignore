@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Rust build output
+src-tauri/target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Tauri generated
+src-tauri/gen/
+
+# Temporary icon generation
+gen-icon.ps1
+app-icon.png
+
+# Reasonix workspace metadata
+.reasonix/
+
+# Runtime artifacts
+GitWorkspace.exe
+GitWorkspace.exe.WebView2/
