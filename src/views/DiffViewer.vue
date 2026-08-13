@@ -12,6 +12,17 @@
           {{ files.length }} 个文件变更
         </el-tag>
       </div>
+      <div class="diff-options">
+        <el-checkbox v-model="diffOptions.ignoreWhitespace">
+          Ignore Whitespace
+        </el-checkbox>
+        <el-checkbox v-model="diffOptions.ignoreWhitespaceEol">
+          Ignore EOL
+        </el-checkbox>
+        <el-checkbox v-model="diffOptions.ignoreCase">
+          Ignore Case
+        </el-checkbox>
+      </div>
       <el-radio-group v-model="diffMode" size="small">
         <el-radio-button value="unified">Unified</el-radio-button>
         <el-radio-button value="side-by-side">Side by Side</el-radio-button>
@@ -103,11 +114,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, MagicStick } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { getDiff } from "@/api/git";
+import { getDiff, type DiffOptions } from "@/api/git";
 import { aiReview } from "@/api/ai";
 import type { ReviewResult } from "@/types/ai";
 import type { FileDiff } from "@/types/git";
@@ -123,6 +134,11 @@ const files = ref<FileDiff[]>([]);
 const selectedFile = ref<FileDiff | null>(null);
 const loading = ref(false);
 const diffMode = ref<"unified" | "side-by-side">("unified");
+const diffOptions = ref<DiffOptions>({
+  ignoreWhitespace: false,
+  ignoreWhitespaceEol: false,
+  ignoreCase: false,
+});
 const reviewLoading = ref(false);
 const showReview = ref(false);
 const reviewResult = ref<ReviewResult | null>(null);
@@ -138,19 +154,29 @@ onMounted(async () => {
   await loadDiff();
 });
 
+let loadSeq = 0;
+
 async function loadDiff() {
+  const seq = ++loadSeq;
   loading.value = true;
   try {
-    files.value = await getDiff(repoPath.value);
-    if (files.value.length > 0) {
-      selectedFile.value = files.value[0];
-    }
+    const next = await getDiff(repoPath.value, diffOptions.value);
+    if (seq !== loadSeq) return; // 已有更新的请求，丢弃过期结果
+    files.value = next;
+    // 保留当前选中文件，避免切换设置时跳回第一个文件
+    const currentPath = selectedFile.value?.newPath;
+    selectedFile.value =
+      next.find((f) => f.newPath === currentPath) ?? next[0] ?? null;
   } catch (e) {
+    if (seq !== loadSeq) return;
     ElMessage.error("获取 Diff 失败: " + errMsg(e));
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
+
+// 切换 Ignore 设置时即时重新计算 diff（Roadmap §9）
+watch(diffOptions, () => loadDiff(), { deep: true });
 
 function goBack() {
   router.push({ name: "repository-list" });
@@ -221,6 +247,13 @@ function statusIcon(status: string): string {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.diff-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
 }
 
 .repo-path {
