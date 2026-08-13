@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -18,6 +19,7 @@ use crate::task::worker;
 pub struct TaskManager {
     sender: tokio::sync::mpsc::Sender<TaskMessage>,
     active_tasks: Arc<DashMap<String, Task>>,
+    cancel_flags: Arc<DashMap<String, Arc<AtomicBool>>>,
 }
 
 impl TaskManager {
@@ -29,6 +31,7 @@ impl TaskManager {
     pub fn new(worker_count: usize, git_ops: Arc<GitOps>, app_handle: AppHandle) -> Self {
         let (sender, receiver) = queue::new_queue(128);
         let active_tasks = Arc::new(DashMap::<String, Task>::new());
+        let cancel_flags = Arc::new(DashMap::<String, Arc<AtomicBool>>::new());
 
         // Spawn the worker pool using the worker module
         worker::spawn_worker_pool(
@@ -36,6 +39,7 @@ impl TaskManager {
             receiver,
             Arc::clone(&git_ops),
             Arc::clone(&active_tasks),
+            Arc::clone(&cancel_flags),
             app_handle,
         );
 
@@ -44,6 +48,7 @@ impl TaskManager {
         TaskManager {
             sender,
             active_tasks,
+            cancel_flags,
         }
     }
 
@@ -65,8 +70,10 @@ impl TaskManager {
                 created_at: now,
             };
 
-            // Store in active tasks
+            // Store in active tasks + create cancel flag
             self.active_tasks.insert(id.clone(), task.clone());
+            self.cancel_flags
+                .insert(id.clone(), Arc::new(AtomicBool::new(false)));
 
             // Send to channel
             if let Err(e) = self.sender.try_send(TaskMessage { task }) {
@@ -97,14 +104,19 @@ impl TaskManager {
         if let Some(mut entry) = self.active_tasks.get_mut(task_id) {
             match &entry.status {
                 TaskStatus::Queued => {
-                    entry.status = TaskStatus::Failed {
-                        error: "Cancelled by user".to_string(),
-                    };
+                    entry.status = TaskStatus::Cancelled;
                     Ok(())
                 }
-                TaskStatus::Running { .. } => Err(AppError::Task(
-                    "Cannot cancel a running task".to_string(),
-                )),
+                TaskStatus::Running { .. } => {
+                    // Cooperative cancel: set the flag; the worker marks the
+                    // task Cancelled once the in-flight git op finishes.
+                    if let Some(flag) = self.cancel_flags.get(task_id) {
+                        flag.store(true, Ordering::Relaxed);
+                        Ok(())
+                    } else {
+                        Err(AppError::Task("cancel flag missing".to_string()))
+                    }
+                }
                 _ => Ok(()), // Already finished
             }
         } else {
@@ -126,7 +138,10 @@ impl TaskManager {
             .active_tasks
             .iter()
             .filter_map(|e| match &e.status {
-                TaskStatus::Success | TaskStatus::Failed { .. } => Some(e.key().clone()),
+                TaskStatus::Success
+                | TaskStatus::Failed { .. }
+                | TaskStatus::Cancelled
+                | TaskStatus::PartialSuccess { .. } => Some(e.key().clone()),
                 _ => None,
             })
             .collect();

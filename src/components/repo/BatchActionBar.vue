@@ -56,6 +56,7 @@ import { Download, Refresh, Upload, EditPen } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import * as gitOpsApi from "@/api/git_ops";
 import type { CommitRequest } from "@/types/task";
+import { errMsg } from "@/utils/error";
 
 const props = defineProps<{
   selectedPaths: string[];
@@ -90,7 +91,7 @@ async function handleAction(action: "fetch" | "pull" | "push") {
     ElMessage.success(`已提交 ${taskIds.length} 个${action}任务`);
     emit("action-completed");
   } catch (e) {
-    ElMessage.error(`操作失败: ${e}`);
+    ElMessage.error(`操作失败: ${errMsg(e)}`);
   } finally {
     loading.value = false;
   }
@@ -127,7 +128,7 @@ async function handleCommit() {
     commitForm.value.filesInput = "";
     emit("action-completed");
   } catch (e) {
-    ElMessage.error(`提交失败: ${e}`);
+    ElMessage.error(`提交失败: ${errMsg(e)}`);
   } finally {
     loading.value = false;
   }

@@ -6,6 +6,8 @@ mod models;
 mod state;
 mod task;
 
+pub mod benchmark;
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -28,13 +30,11 @@ fn init_database(app_data_dir: &std::path::Path) -> AppResult<rusqlite::Connecti
     }
 
     let db_path = app_data_dir.join("gitworkspace.db");
-    let conn = rusqlite::Connection::open(db_path)?;
+    let mut conn = rusqlite::Connection::open(db_path)?;
 
-    // Enable foreign keys for cascade deletes
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-
-    // Run schema migrations
-    db::init_db(&conn)?;
+    // Apply PRAGMAs (WAL / foreign_keys / busy_timeout / synchronous) and run
+    // versioned schema migrations.
+    db::init_db(&mut conn)?;
 
     log::info!("Database initialized at {:?}", app_data_dir);
     Ok(conn)
@@ -56,10 +56,10 @@ fn get_app_data_dir() -> PathBuf {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize logger
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .format_timestamp_secs()
-        .init();
+    // Initialize the module-segregating logger (app/git/task/ai/performance.log,
+    // secrets redacted) before anything else logs.
+    crate::core::logger::init_logger(&get_app_data_dir().join("logs"))
+        .expect("failed to initialize logger");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

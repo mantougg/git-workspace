@@ -113,6 +113,7 @@ import type { ReviewResult } from "@/types/ai";
 import type { FileDiff } from "@/types/git";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import SideBySideDiff from "@/components/diff/SideBySideDiff.vue";
+import { errMsg } from "@/utils/error";
 
 const route = useRoute();
 const router = useRouter();
@@ -145,7 +146,7 @@ async function loadDiff() {
       selectedFile.value = files.value[0];
     }
   } catch (e) {
-    ElMessage.error("获取 Diff 失败: " + e);
+    ElMessage.error("获取 Diff 失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -175,7 +176,7 @@ async function handleAiReview() {
     showReview.value = true;
   } catch (e) {
     if (e !== "cancel") {
-      ElMessage.error("AI Review 失败: " + e);
+      ElMessage.error("AI Review 失败: " + errMsg(e));
     }
   } finally {
     reviewLoading.value = false;

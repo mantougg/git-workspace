@@ -48,7 +48,7 @@ export const useTaskStore = defineStore("task", () => {
       if (idx >= 0) {
         tasks.value[idx] = {
           ...tasks.value[idx],
-          status: { type: "failed", error: "Cancelled by user" },
+          status: { type: "cancelled" },
         };
       }
     } catch (e) {

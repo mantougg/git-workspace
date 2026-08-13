@@ -1,7 +1,21 @@
-use serde::{Serialize, Serializer};
+use serde::Serialize;
+
+/// Structured error payload returned to the UI over IPC.
+/// Mirrors Roadmap §44: code / message / repository / operation / details / recoverable.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorResponse {
+    pub code: &'static str,
+    pub message: String,
+    pub repository: Option<String>,
+    pub operation: Option<String>,
+    pub details: Option<String>,
+    pub recoverable: bool,
+}
 
 /// Unified error type for all GitWorkspace operations.
-/// Implements Serialize so it can be returned directly from Tauri commands.
+/// Implements Serialize as a structured `ErrorResponse` (not a bare string)
+/// so the UI can render a readable message plus a recoverable hint.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("Database error: {0}")]
@@ -31,8 +45,51 @@ pub enum AppError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    #[error("Network error: {0}")]
+    Network(String),
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
+    #[error("Index error: {0}")]
+    Index(String),
+
+    #[error("AI error: {0}")]
+    Ai(String),
+
+    #[error("Permission error: {0}")]
+    Permission(String),
+
     #[error("{0}")]
     Other(String),
+}
+
+impl AppError {
+    /// Stable machine-readable error category (Roadmap §44).
+    pub fn code(&self) -> &'static str {
+        match self {
+            AppError::Db(_) => "DatabaseError",
+            AppError::Git(_) | AppError::Ssh(_) => "GitError",
+            AppError::Io(_) | AppError::Watcher(_) => "IOError",
+            AppError::Json(_) => "DataError",
+            AppError::Scanner(_) | AppError::NotFound(_) => "RepositoryError",
+            AppError::Task(_) => "TaskError",
+            AppError::Network(_) => "NetworkError",
+            AppError::Conflict(_) => "ConflictError",
+            AppError::Index(_) => "IndexError",
+            AppError::Ai(_) => "AIError",
+            AppError::Permission(_) => "PermissionError",
+            AppError::Other(_) => "Other",
+        }
+    }
+
+    /// Whether the error is recoverable by retry or user action.
+    pub fn recoverable(&self) -> bool {
+        !matches!(
+            self,
+            AppError::NotFound(_) | AppError::Permission(_) | AppError::Other(_)
+        )
+    }
 }
 
 impl From<String> for AppError {
@@ -50,9 +107,17 @@ impl From<&str> for AppError {
 impl Serialize for AppError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: Serializer,
+        S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        ErrorResponse {
+            code: self.code(),
+            message: self.to_string(),
+            repository: None,
+            operation: None,
+            details: None,
+            recoverable: self.recoverable(),
+        }
+        .serialize(serializer)
     }
 }
 

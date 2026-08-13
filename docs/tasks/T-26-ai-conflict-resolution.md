@@ -1,0 +1,55 @@
+# T-26 AI Conflict Resolution
+
+> **开发前必读**：先读 [00-全局开发约束.md](./00-全局开发约束.md)；直接依赖：[T-16 Conflict Resolver](./T-16-conflict-resolver.md)、[T-08 错误处理 + 日志 + Secret Protection](./T-08-errors-logging-secrets.md)。
+
+| 项 | 值 |
+|---|---|
+| 阶段 | Phase 3 · AI Git Assistant（P1） |
+| 优先级 | P1 |
+| 状态 | ⬜ 未开始 |
+| 依赖 | T-16, T-08 |
+| 对应 Roadmap | §24 AI Conflict Resolution |
+
+## 目标
+
+基于 Base/Ours/Theirs + 项目上下文生成冲突解决建议，经预览与用户确认后应用，嵌入 T-16 Conflict Resolver。
+
+## 需求范围
+
+- [ ] 输入：Base / Ours / Theirs / Project Context
+- [ ] 输出：Recommended Resolution
+- [ ] 流程闭环：AI Suggestion → Diff Preview → User Confirmation → Apply
+- [ ] 应用结果回写工作区并走 T-16 Mark Resolved
+- [ ] 发送前 Secret 检测 + Preview（T-08）
+
+## 架构 / 性能注意点
+
+- **硬约束（§24）**：AI 只给建议，必须经 Diff Preview + 用户确认后才 Apply，**禁止默认直接覆盖工作区**。
+- 大冲突文件按 hunk 分批请求，避免超 token 预算；Project Context 用仓库元数据 + 相关文件摘要，不全量发送。
+
+## 验收标准
+
+- [ ] 冲突文件可请求 AI 建议并预览解决前后 diff
+- [ ] 用户确认后 Apply 正确，未确认不修改工作区
+- [ ] 可回退（Abort / 手动重编辑）
+- [ ] 含敏感信息的冲突内容发送前被检测
+
+## 进度
+
+### 状态
+
+- 当前状态：未开始
+- 最近更新：—
+
+### 时间线
+
+| 日期 | 状态 | 说明 |
+|---|---|---|
+| — | — | — |
+
+### 子任务清单
+
+- [ ] 冲突上下文组装与 prompt
+- [ ] 建议生成与 Diff Preview
+- [ ] 确认 → Apply 流程
+- [ ] 与 T-16 集成

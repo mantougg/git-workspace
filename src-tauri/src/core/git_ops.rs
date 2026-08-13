@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::core::secret;
 use crate::core::ssh::SshCredentials;
 use crate::error::{AppError, AppResult};
 use crate::models::task::TaskType;
@@ -86,6 +87,10 @@ impl GitOps {
     /// If no files are specified, stages all changes (`git add -A`).
     pub fn commit(&self, repo_path: &Path, message: &str, files: &[String]) -> AppResult<()> {
         let repo = git2::Repository::open(repo_path)?;
+
+        // Pre-commit safety: refuse to commit forbidden files (.env, *.pem, ...).
+        check_commit_safety(&repo, files)?;
+
         let mut index = repo.index()?;
 
         // Stage files
@@ -146,6 +151,34 @@ impl GitOps {
             "No remotes configured for this repository",
         )))
     }
+}
+
+/// Pre-commit safety check: refuse to commit forbidden files
+/// (`.env`, `*.pem`, `*.key`, `credentials.json`, private keys).
+fn check_commit_safety(repo: &git2::Repository, files: &[String]) -> AppResult<()> {
+    let mut paths: Vec<String> = files.to_vec();
+    if paths.is_empty() {
+        // Stage-all: enumerate working tree + index changes.
+        let mut opts = git2::StatusOptions::new();
+        opts.include_untracked(true);
+        opts.include_ignored(false);
+        let statuses = repo.statuses(Some(&mut opts))?;
+        for entry in statuses.iter() {
+            if let Some(p) = entry.path() {
+                paths.push(p.to_string());
+            }
+        }
+    }
+
+    for p in &paths {
+        if secret::is_forbidden_file(p) {
+            return Err(AppError::Other(format!(
+                "安全拦截：禁止提交敏感文件 '{}'（.env / *.pem / *.key / 私钥 / credentials.json）。请确认后移除或显式排除。",
+                p
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Convenience function to create a default GitOps wrapped in Arc.

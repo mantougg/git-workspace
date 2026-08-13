@@ -362,6 +362,7 @@ import ChangeTree, {
 } from "@/components/repo/ChangeTree.vue";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import WorkspaceManager from "@/components/common/WorkspaceManager.vue";
+import { errMsg } from "@/utils/error";
 
 interface SelectedDiff {
   repoPath: string;
@@ -466,7 +467,7 @@ async function loadChanges() {
   try {
     changes.value = await getWorkspaceChanges(selectedWorkspaceId.value);
   } catch (e) {
-    ElMessage.error("加载变更失败: " + e);
+    ElMessage.error("加载变更失败: " + errMsg(e));
   } finally {
     changesLoading.value = false;
   }
@@ -507,7 +508,7 @@ async function onFileDblClick(node: ChangeNode) {
       ElMessage.info("该文件没有可展示的变更内容");
     }
   } catch (e) {
-    ElMessage.error("加载变更内容失败: " + e);
+    ElMessage.error("加载变更内容失败: " + errMsg(e));
   } finally {
     diffLoading.value = false;
   }
@@ -554,7 +555,7 @@ async function handleScan() {
     await loadChanges();
     await startFileWatcher();
   } catch (e) {
-    ElMessage.error("扫描失败: " + e);
+    ElMessage.error("扫描失败: " + errMsg(e));
   } finally {
     scanProgress.value = null;
   }
@@ -586,7 +587,7 @@ async function handleAdd() {
     ElMessage.success(`已暂存 ${requests.length} 个仓库的文件`);
     await loadChanges();
   } catch (e) {
-    ElMessage.error("暂存失败: " + e);
+    ElMessage.error("暂存失败: " + errMsg(e));
   } finally {
     actionLoading.value = false;
   }
@@ -621,7 +622,7 @@ async function handleRestore() {
     ElMessage.success(`已回退 ${requests.length} 个仓库的文件`);
     await loadChanges();
   } catch (e) {
-    ElMessage.error("回退失败: " + e);
+    ElMessage.error("回退失败: " + errMsg(e));
   } finally {
     actionLoading.value = false;
   }
@@ -652,7 +653,7 @@ async function handleCommit() {
     commitForm.value.message = "";
     await loadChanges();
   } catch (e) {
-    ElMessage.error("提交失败: " + e);
+    ElMessage.error("提交失败: " + errMsg(e));
   } finally {
     actionLoading.value = false;
   }
@@ -674,7 +675,7 @@ async function handleFetch() {
     ElMessage.success(`已提交 ${taskIds.length} 个 fetch 任务`);
     await loadChanges();
   } catch (e) {
-    ElMessage.error("fetch 失败: " + e);
+    ElMessage.error("fetch 失败: " + errMsg(e));
   } finally {
     actionLoading.value = false;
   }
@@ -696,7 +697,7 @@ async function handlePull() {
     ElMessage.success(`已提交 ${taskIds.length} 个 pull 任务`);
     await loadChanges();
   } catch (e) {
-    ElMessage.error("pull 失败: " + e);
+    ElMessage.error("pull 失败: " + errMsg(e));
   } finally {
     actionLoading.value = false;
   }
@@ -736,7 +737,7 @@ async function doPush() {
     showPushDialog.value = false;
     await loadChanges();
   } catch (e) {
-    ElMessage.error("push 失败: " + e);
+    ElMessage.error("push 失败: " + errMsg(e));
   } finally {
     actionLoading.value = false;
   }
@@ -768,7 +769,7 @@ async function toggleWatcher() {
       watcherActive.value = false;
       ElMessage.info("文件监听已停止");
     } catch (e) {
-      ElMessage.error("停止监听失败: " + e);
+      ElMessage.error("停止监听失败: " + errMsg(e));
     }
   } else {
     await startFileWatcher();

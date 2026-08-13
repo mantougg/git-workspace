@@ -87,6 +87,7 @@ import { ElMessage } from "element-plus";
 import { getCommitHistory, getBranches } from "@/api/graph";
 import type { CommitInfo, BranchInfo } from "@/types/graph";
 import CommitGraph from "@/components/graph/CommitGraph.vue";
+import { errMsg } from "@/utils/error";
 
 const route = useRoute();
 const router = useRouter();
@@ -119,7 +120,7 @@ async function loadHistory() {
     commits.value = await getCommitHistory(repoPath.value, PAGE_SIZE);
     hasMore.value = commits.value.length >= PAGE_SIZE;
   } catch (e) {
-    ElMessage.error("加载提交历史失败: " + e);
+    ElMessage.error("加载提交历史失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -147,7 +148,7 @@ async function loadMore() {
       hasMore.value = false;
     }
   } catch (e) {
-    ElMessage.error("加载更多失败: " + e);
+    ElMessage.error("加载更多失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }

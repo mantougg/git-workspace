@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
-use notify::{Config, PollWatcher, RecursiveMode, Watcher};
+use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter};
 
 use crate::core::git_status;
@@ -17,7 +17,7 @@ use crate::models::repository::{RepoStatus, RepoStatusUpdate};
 /// Uses the `notify` crate for cross-platform filesystem watching.
 /// Implements its own debouncing (500ms) to batch rapid changes.
 pub struct FileWatcher {
-    watcher: Option<PollWatcher>,
+    watcher: Option<RecommendedWatcher>,
 }
 
 impl FileWatcher {
@@ -42,14 +42,16 @@ impl FileWatcher {
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<PathBuf>>(256);
 
-        let mut watcher = PollWatcher::new(
+        // Use the OS-native watcher (ReadDirectoryChangesW / inotify / FSEvents);
+        // `RecommendedWatcher` picks the best backend for the current platform.
+        let mut watcher = RecommendedWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
                 if let Ok(event) = res {
                     let paths: Vec<PathBuf> = event.paths;
                     let _ = tx.blocking_send(paths);
                 }
             },
-            Config::default().with_poll_interval(Duration::from_secs(1)),
+            Config::default(),
         )?;
 
         // Watch each repository's working directory and .git directory

@@ -304,3 +304,61 @@ fn compute_ahead_behind(repo: &git2::Repository, branch_name: &str) -> (usize, u
         Err(_) => (0, 0),
     }
 }
+
+/// Given a list of changed file paths and candidate repository root paths,
+/// return the repository roots that contain at least one changed path.
+///
+/// Used by the file watcher to refresh only affected repositories instead of
+/// rescanning the whole workspace (incremental status, §37).
+#[allow(dead_code)] // 为 T-06 watcher 联调预留（增量定位）
+pub fn find_affected_repos<'a>(
+    changed_paths: &[String],
+    repo_roots: &'a [String],
+) -> Vec<&'a str> {
+    repo_roots
+        .iter()
+        .filter(|root| {
+            changed_paths
+                .iter()
+                .any(|cp| path_under_root(cp, root))
+        })
+        .map(|r| r.as_str())
+        .collect()
+}
+
+/// Whether `path` is `root` itself or a descendant of `root` (path-boundary
+/// aware, so `/ws/a` does not match `/ws/ab`).
+#[allow(dead_code)]
+fn path_under_root(path: &str, root: &str) -> bool {
+    if !path.starts_with(root) {
+        return false;
+    }
+    if path.len() == root.len() {
+        return true;
+    }
+    matches!(path.as_bytes().get(root.len()), Some(b'/') | Some(b'\\'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_affected_repos_matches_only_prefix_boundary() {
+        let repos = vec![
+            "D:/ws/a".to_string(),
+            "D:/ws/ab".to_string(),
+            "D:/ws/b".to_string(),
+        ];
+
+        let affected = find_affected_repos(&["D:/ws/a/src/main.rs".to_string()], &repos);
+        assert_eq!(affected, vec!["D:/ws/a"]);
+    }
+
+    #[test]
+    fn find_affected_repos_returns_empty_on_no_match() {
+        let repos = vec!["D:/ws/a".to_string()];
+        let affected = find_affected_repos(&["D:/other/x.txt".to_string()], &repos);
+        assert!(affected.is_empty());
+    }
+}

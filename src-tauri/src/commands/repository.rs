@@ -1,5 +1,7 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+use rayon::prelude::*;
 use tauri::{Emitter, State};
 
 use crate::core::git_status;
@@ -77,7 +79,7 @@ pub fn scan_repositories(
 ) -> AppResult<Vec<RepositoryWithStatus>> {
     // Scope DB operations so the MutexGuard is released before status_cache access
     let repos = {
-        let conn = state
+        let mut conn = state
             .db
             .lock()
             .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
@@ -105,46 +107,48 @@ pub fn scan_repositories(
         let found_paths: Vec<String> =
             scanned.iter().map(|s| s.path.clone()).collect();
         dao::cleanup_stale_repositories(&conn, workspace_id, &found_paths)?;
-        for repo in &scanned {
-            dao::upsert_repository(&conn, workspace_id, repo)?;
-        }
+        dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned)?;
 
         // 4. Read all repos from DB (now includes IDs and metadata)
         dao::list_repositories_by_workspace(&conn, workspace_id)?
     }; // conn guard dropped here
 
-    // 5. Get live Git status for each repo with progress reporting
+    // 5. Get live Git status for each repo in parallel with progress reporting.
+    // Concurrency is bounded by the rayon thread pool (Roadmap §45: status ~16).
     let total = repos.len();
-    let mut result = Vec::with_capacity(total);
+    let done = AtomicUsize::new(0);
+    let result: Vec<RepositoryWithStatus> = repos
+        .into_par_iter()
+        .map(|repo| {
+            let (status, error) =
+                match git_status::get_repo_status(Path::new(&repo.path)) {
+                    Ok(s) => {
+                        state
+                            .status_cache
+                            .insert(repo.path.clone(), s.clone());
+                        (Some(s), None)
+                    }
+                    Err(e) => (None, Some(e.to_string())),
+                };
 
-    for (i, repo) in repos.into_iter().enumerate() {
-        // Emit progress
-        let _ = app_handle.emit(
-            "scan_progress",
-            &ScanProgress {
-                workspace_id,
-                found: total,
-                current: i + 1,
-                total: Some(total),
-            },
-        );
+            let current = done.fetch_add(1, Ordering::Relaxed) + 1;
+            let _ = app_handle.emit(
+                "scan_progress",
+                &ScanProgress {
+                    workspace_id,
+                    found: total,
+                    current,
+                    total: Some(total),
+                },
+            );
 
-        let (status, error) =
-            match git_status::get_repo_status(Path::new(&repo.path)) {
-                Ok(s) => {
-                    state
-                        .status_cache
-                        .insert(repo.path.clone(), s.clone());
-                    (Some(s), None)
-                }
-                Err(e) => (None, Some(e.to_string())),
-            };
-        result.push(RepositoryWithStatus {
-            repository: repo,
-            status,
-            last_error: error,
-        });
-    }
+            RepositoryWithStatus {
+                repository: repo,
+                status,
+                last_error: error,
+            }
+        })
+        .collect();
 
     Ok(result)
 }
@@ -167,7 +171,7 @@ pub fn list_repositories(
     };
 
     let result: Vec<RepositoryWithStatus> = repos
-        .into_iter()
+        .into_par_iter()
         .map(|repo| {
             // Try cache first
             if let Some(cached) = state.status_cache.get(&repo.path) {

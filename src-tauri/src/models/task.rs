@@ -22,9 +22,15 @@ pub enum TaskStatus {
         progress: f32,
     },
     Success,
+    /// Batch task where some repositories succeeded and some failed.
+    PartialSuccess {
+        succeeded: usize,
+        failed: usize,
+    },
     Failed {
         error: String,
     },
+    Cancelled,
 }
 
 /// A unit of work submitted to the background task system.

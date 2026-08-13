@@ -41,6 +41,7 @@ import { reactive, ref } from "vue";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { errMsg } from "@/utils/error";
 
 defineProps<{
   modelValue: boolean;
@@ -95,7 +96,7 @@ async function handleSubmit() {
       form.path = "";
       form.scanDepth = 5;
     } catch (e) {
-      ElMessage.error("添加失败: " + e);
+      ElMessage.error("添加失败: " + errMsg(e));
     } finally {
       submitting.value = false;
     }

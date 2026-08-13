@@ -207,7 +207,11 @@ const activeCount = computed(
 const finishedCount = computed(
   () =>
     tasks.value.filter(
-      (t) => t.status.type === "success" || t.status.type === "failed",
+      (t) =>
+        t.status.type === "success" ||
+        t.status.type === "failed" ||
+        t.status.type === "cancelled" ||
+        t.status.type === "partialSuccess",
     ).length,
 );
 

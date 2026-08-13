@@ -48,6 +48,7 @@ import { Plus } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import * as groupApi from "@/api/group";
 import type { RepoGroup, CreateGroupRequest } from "@/types/group";
+import { errMsg } from "@/utils/error";
 
 const props = defineProps<{
   workspaceId: number | null;
@@ -157,7 +158,7 @@ async function handleCreate() {
     showCreateDialog.value = false;
     await loadGroups();
   } catch (e) {
-    ElMessage.error("创建分组失败: " + e);
+    ElMessage.error("创建分组失败: " + errMsg(e));
   }
 }
 

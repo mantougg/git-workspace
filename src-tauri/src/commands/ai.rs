@@ -75,6 +75,18 @@ pub async fn ai_review(
         diff_text.push_str("\n... (truncated)\n");
     }
 
+    // Refuse to send if the diff contains secrets (AWS keys, JWT, private keys, ...).
+    let findings = crate::core::secret::scan_secrets(&diff_text);
+    if !findings.is_empty() {
+        let mut labels: Vec<&str> = findings.iter().map(|f| f.kind.label()).collect();
+        labels.sort_unstable();
+        labels.dedup();
+        return Err(AppError::Ai(format!(
+            "检测到敏感信息（{}），已阻止发送给 AI。请先移除或排除相关文件。",
+            labels.join("、")
+        )));
+    }
+
     // Construct the prompt
     let prompt = format!(
         "Review the following git diff. Identify bug risks, security issues, \

@@ -116,28 +116,43 @@ pub fn update_workspace(
 // Repository DAO
 // ---------------------------------------------------------------------------
 
-/// Insert or update a repository (upsert by path).
-/// Returns the repository ID.
-pub fn upsert_repository(
-    conn: &Connection,
+/// Insert or update a batch of repositories (upsert by path) in a single
+/// transaction. Avoids the per-row implicit-transaction overhead of calling
+/// `upsert_repository` in a loop.
+pub fn upsert_repositories_batch(
+    conn: &mut Connection,
     workspace_id: i64,
-    repo: &ScannedRepo,
-) -> AppResult<i64> {
+    repos: &[ScannedRepo],
+) -> AppResult<()> {
+    if repos.is_empty() {
+        return Ok(());
+    }
     let now = Utc::now().to_rfc3339();
-
-    conn.execute(
-        r#"INSERT INTO repositories (workspace_id, path, name, relative_path, last_scanned, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
-           ON CONFLICT(path) DO UPDATE SET
-               workspace_id = ?1,
-               name = ?3,
-               relative_path = ?4,
-               last_scanned = ?5,
-               updated_at = ?6"#,
-        params![workspace_id, repo.path, repo.name, repo.relative_path, now, now],
-    )?;
-
-    Ok(conn.last_insert_rowid())
+    let tx = conn.transaction()?;
+    {
+        let mut stmt = tx.prepare(
+            r#"INSERT INTO repositories (workspace_id, path, name, relative_path, last_scanned, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+               ON CONFLICT(path) DO UPDATE SET
+                   workspace_id = ?1,
+                   name = ?3,
+                   relative_path = ?4,
+                   last_scanned = ?5,
+                   updated_at = ?6"#,
+        )?;
+        for repo in repos {
+            stmt.execute(params![
+                workspace_id,
+                repo.path,
+                repo.name,
+                repo.relative_path,
+                now,
+                now
+            ])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 /// List all repositories for a given workspace.

@@ -8,7 +8,9 @@ export type TaskStatus =
   | { type: "queued" }
   | { type: "running"; progress: number }
   | { type: "success" }
-  | { type: "failed"; error: string };
+  | { type: "partialSuccess"; succeeded: number; failed: number }
+  | { type: "failed"; error: string }
+  | { type: "cancelled" };
 
 export interface Task {
   id: string;

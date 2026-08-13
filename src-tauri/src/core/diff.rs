@@ -37,11 +37,32 @@ pub struct DiffLine {
     pub new_line: Option<u32>,
 }
 
+/// Diff rendering options (Roadmap §9 diff settings).
+#[derive(Debug, Clone, Default)]
+pub struct DiffConfig {
+    pub ignore_whitespace: bool,
+    pub ignore_whitespace_eol: bool,
+    pub ignore_case: bool,
+}
+
+/// Maximum lines rendered for a single "entire file added" hunk, to avoid
+/// transferring MB-sized files over IPC and freezing the UI.
+const MAX_FULL_FILE_LINES: usize = 2000;
+
 /// Compute the diff between the HEAD tree and the working directory (with index).
 ///
 /// For repositories with no commits (unborn HEAD), all files appear as "added".
 /// Binary files are included but with an empty hunk list.
-pub fn get_workdir_diff(repo_path: &Path) -> AppResult<Vec<FileDiff>> {    let repo = git2::Repository::open(repo_path)?;
+pub fn get_workdir_diff(repo_path: &Path) -> AppResult<Vec<FileDiff>> {
+    get_workdir_diff_with_config(repo_path, &DiffConfig::default())
+}
+
+/// Like [`get_workdir_diff`], but with explicit diff rendering options.
+pub fn get_workdir_diff_with_config(
+    repo_path: &Path,
+    config: &DiffConfig,
+) -> AppResult<Vec<FileDiff>> {
+    let repo = git2::Repository::open(repo_path)?;
 
     // Get HEAD tree (or None if no commits exist)
     let head_tree = match repo.head() {
@@ -52,6 +73,9 @@ pub fn get_workdir_diff(repo_path: &Path) -> AppResult<Vec<FileDiff>> {    let r
     let mut diff_opts = git2::DiffOptions::new();
     diff_opts.include_untracked(true);
     diff_opts.include_unmodified(false);
+    diff_opts.ignore_whitespace(config.ignore_whitespace);
+    diff_opts.ignore_whitespace_eol(config.ignore_whitespace_eol);
+    diff_opts.ignore_case(config.ignore_case);
 
     let diff =
         repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))?;
@@ -114,13 +138,25 @@ fn full_add_hunk_for_file(repo_path: &Path, new_path: &str) -> Option<Hunk> {
     let full = repo_path.join(new_path);
     let content = std::fs::read_to_string(&full).ok()?;
 
+    let total_lines = content.lines().count();
     let mut lines = Vec::new();
-    for (i, line) in content.lines().enumerate() {
+    for (i, line) in content.lines().take(MAX_FULL_FILE_LINES).enumerate() {
         lines.push(DiffLine {
             line_type: "add".to_string(),
             content: line.to_string(),
             old_line: None,
             new_line: Some(i as u32 + 1),
+        });
+    }
+    if total_lines > MAX_FULL_FILE_LINES {
+        lines.push(DiffLine {
+            line_type: "context".to_string(),
+            content: format!(
+                "... ({} more lines truncated)",
+                total_lines - MAX_FULL_FILE_LINES
+            ),
+            old_line: None,
+            new_line: None,
         });
     }
 
