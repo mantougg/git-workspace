@@ -1,5 +1,5 @@
 //! Standalone benchmark: generate synthetic repositories and measure scan /
-//! status timings. Run via `cargo run --release --bin benchmark -- <count>`.
+//! status timings. Run via `cargo run --release --example benchmark -- <count>`.
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
