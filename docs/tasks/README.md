@@ -19,9 +19,9 @@
 
 ## 总体进度
 
-- 任务总数：**32**
-- 已完成：**6** · 进行中：**2** · 未开始：**24**
-- 完成度：**6 / 32（19%）**
+- 任务总数：**35**
+- 已完成：**5** · 进行中：**3** · 未开始：**27**
+- 完成度：**5 / 35（14%）**
 
 ---
 
@@ -35,7 +35,7 @@
 |---|---|---|---|---|---|
 | T-01 | Scanner 硬化 | P0 | ✅ | — | [T-01-scanner.md](./T-01-scanner.md) |
 | T-02 | Status Engine（增量 + libgit2 线程安全 + 并发限流） | P0 | ✅ | T-01 | [T-02-status-engine.md](./T-02-status-engine.md) |
-| T-03 | SQLite 数据层硬化（WAL / 单写者 / 完整 schema） | P0 | ✅ | — | [T-03-sqlite-data-layer.md](./T-03-sqlite-data-layer.md) |
+| T-03 | SQLite 数据层硬化（WAL / 单写者 / 完整 schema） | P0 | 🟦 | — | [T-03-sqlite-data-layer.md](./T-03-sqlite-data-layer.md) |
 | T-04 | Diff & Graph 硬化 | P0 | 🟦 | T-03 | [T-04-diff-graph.md](./T-04-diff-graph.md) |
 | T-05 | Task Queue 硬化（Partial Success / 重试 / 超时） | P0 | 🟦 | T-03 | [T-05-task-queue.md](./T-05-task-queue.md) |
 | T-06 | File Watcher 升级 + 事件聚合 | P0 | ✅ | T-02 | [T-06-file-watcher.md](./T-06-file-watcher.md) |
@@ -56,7 +56,7 @@
 | T-16 | Conflict Resolver | P0 | ⬜ | T-15, T-04 | [T-16-conflict-resolver.md](./T-16-conflict-resolver.md) |
 | T-17 | Worktree | P1 | ⬜ | T-09 | [T-17-worktree.md](./T-17-worktree.md) |
 
-### Phase 2 · Multi-Repo Engine（P1，7 个）
+### Phase 2 · Multi-Repo Engine（P1，9 个）
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
@@ -67,6 +67,8 @@
 | T-22 | Workspace Change Set | P1 | ⬜ | T-09, T-20 | [T-22-change-set.md](./T-22-change-set.md) |
 | T-23 | Workspace Pipeline | P1 | ⬜ | T-05 | [T-23-pipeline.md](./T-23-pipeline.md) |
 | T-24 | Task DAG（依赖 / 并行 / 部分失败） | P1 | ⬜ | T-05 | [T-24-task-dag.md](./T-24-task-dag.md) |
+| T-33 | Workspace Manifest + 批量 Clone | P1 | ⬜ | T-01, T-05 | [T-33-workspace-manifest.md](./T-33-workspace-manifest.md) |
+| T-34 | 统一 Undo / 操作日志 | P1 | ⬜ | T-05 | [T-34-undo-operation-log.md](./T-34-undo-operation-log.md) |
 
 ### Phase 3 · AI Git Assistant（P1，3 个）
 
@@ -76,7 +78,7 @@
 | T-26 | AI Conflict Resolution | P1 | ⬜ | T-16, T-08 | [T-26-ai-conflict-resolution.md](./T-26-ai-conflict-resolution.md) |
 | T-27 | AI PR Description + Security Review / Bug Detection / Commit Explanation | P1 | ⬜ | T-04, T-08 | [T-27-ai-pr-description.md](./T-27-ai-pr-description.md) |
 
-### Phase 4/5/6 · Code Intelligence / Remote / Automation（P2，5 个）
+### Phase 4/5/6 · Code Intelligence / Remote / Automation（P2，6 个）
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
@@ -85,6 +87,7 @@
 | T-30 | Submodule / LFS / Hooks | P2 | ⬜ | T-02 | [T-30-submodule-lfs-hooks.md](./T-30-submodule-lfs-hooks.md) |
 | T-31 | Command Palette + 快捷键 + IDE/Terminal 集成 | P2 | ⬜ | — | [T-31-command-palette.md](./T-31-command-palette.md) |
 | T-32 | 插件系统 / Scheduled Tasks（Automation Platform） | P3 | ⬜ | T-23 | [T-32-plugin-system.md](./T-32-plugin-system.md) |
+| T-35 | 发布工程（Updater / 崩溃上报 / 日志闭环 / 遥测） | P2 | ⬜ | — | [T-35-release-engineering.md](./T-35-release-engineering.md) |
 
 ---
 
@@ -99,7 +102,7 @@ T-01 Scanner ──► T-02 Status Engine ──► T-06 File Watcher
                                             │
 T-04 Diff ──► T-11 Commit / T-12 Stage      └──► T-16 Conflict Resolver ──► T-26 AI Conflict
                                             │
-T-03 SQLite ──► T-05 Task Queue ──► T-20 Batch / T-23 Pipeline / T-24 DAG
+T-03 SQLite ──► T-05 Task Queue ──► T-20 Batch / T-23 Pipeline / T-24 DAG / T-33 Manifest / T-34 Undo
                                             │
 T-08 Secret Protection ──► T-25 / T-26 / T-27 AI 相关
                                             │

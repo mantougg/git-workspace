@@ -22,6 +22,7 @@
 - [ ] Commit & Push（提交后走网络 Push，进 T-05 任务队列）
 - [ ] Commit 前安全检查：Secret Scan + Large File Scan + Forbidden File Scan（T-08 提供）
 - [ ] Commit UI：变更树勾选 → hunk/line 勾选 → message → [Commit] / [Commit & Push]
+- [ ] Per-repo 提交身份：按仓库/分组配置 identity（name/email），Commit 自动选用（Roadmap 评审增量，§54）
 
 ## 架构 / 性能注意点
 
@@ -35,6 +36,7 @@
 - [ ] 只提交勾选的 hunk / line，未勾选部分保持未暂存
 - [ ] Commit & Push 失败时正确区分「提交成功但推送失败」的中间态
 - [ ] 含 `.env` / 大文件时被安全检查拦截并可放行
+- [ ] 不同仓库/分组使用各自提交身份，切换无感
 
 ## 进度
 
@@ -56,3 +58,4 @@
 - [ ] Hunk / Line 级提交（依赖 T-12）
 - [ ] Commit & Push 与中间态处理
 - [ ] 接入 Commit 前安全检查
+- [ ] Per-repo 提交身份配置与选用

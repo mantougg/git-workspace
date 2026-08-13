@@ -21,6 +21,8 @@
 - [ ] Commit Summary：多仓库变更的批量摘要
 - [ ] 用户确认后再提交（不自动 commit）
 - [ ] 发送前 Secret 检测 + Preview + Exclude File/Directory（T-08 提供）
+- [ ] AI 结果按 diff hash 缓存复用，重复 review 不重复调用
+- [ ] 批量 review 前成本预估（发送字符数 / 仓库数）（Roadmap 评审增量）
 - [ ] 复用现有 OpenAI-compatible 调用链（`commands/ai.rs`），API Key 不落盘
 
 ## 架构 / 性能注意点
@@ -35,6 +37,8 @@
 - [ ] Commit Summary 覆盖多仓库变更概览
 - [ ] 发送前可见 Preview 并可排除文件/目录
 - [ ] 含 Secret 的 diff 被拦截或掩码
+- [ ] 相同 diff 命中 AI 结果缓存，不重复请求
+- [ ] 批量 review 前可见成本预估
 
 ## 进度
 
@@ -55,3 +59,4 @@
 - [ ] Commit Summary 多仓库摘要
 - [ ] 确认后提交衔接（T-11）
 - [ ] Preview / 排除 / Secret 检测接入
+- [ ] AI 结果缓存与成本预估

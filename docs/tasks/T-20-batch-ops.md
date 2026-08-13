@@ -19,6 +19,7 @@
 - [ ] 选择器：Select Repositories / Groups / Tags / Status（如 `@group:frontend`、`@status:conflict`）
 - [ ] 快速筛选：Dirty / Conflict / Ahead / Behind / Favorite
 - [ ] 操作全集：Fetch All / Pull All / Push All / Commit All / Stash All（跳 T-21）/ Checkout All / Create Branch All / Delete Branch All
+- [ ] 批量 Dry-run：Pull/Push All 前预演（哪些 fast-forward / diverged / conflict），只计算不执行，输出影响报告（Roadmap 评审增量）
 - [ ] 全部走 T-05 任务队列，逐仓库子结果、Partial Success、进度事件
 - [ ] 危险批量操作（Delete Branch All）§46 分级确认，列出受影响仓库列表
 
@@ -34,6 +35,7 @@
 - [ ] 100 仓库 Fetch All 并发被限制在 8，进程数可控（T-07 记录 Git Process Count）
 - [ ] 部分失败正确标 Partial Success 且可定位失败仓库
 - [ ] Delete Branch All 有危险确认并列出受影响仓库
+- [ ] Dry-run 输出正确影响报告（fast-forward / diverged / conflict 分类），不产生任何仓库变更
 
 ## 进度
 
@@ -55,3 +57,4 @@
 - [ ] 批量操作全集接入任务队列
 - [ ] 批量结果聚合 UI
 - [ ] 危险批量确认流
+- [ ] 批量 Dry-run 预演与影响报告

@@ -21,6 +21,7 @@
 - [ ] 解决操作：Use Ours / Use Theirs / Use Both / Manual Edit / Mark Resolved / Abort
 - [ ] 冲突文件列表 + 逐文件解决状态
 - [ ] 全部解决后提示继续（merge --continue / rebase --continue）
+- [ ] 冲突队列：跨仓库集中列出所有冲突仓库、逐个解决、可整体 abort（Multi-Repo First 延伸）
 - [ ] 预留 AI 建议入口（T-26 实现）
 
 ## 架构 / 性能注意点
@@ -34,6 +35,7 @@
 - [ ] Use Ours/Theirs/Both/Mark Resolved 结果与 `git add` 后状态一致
 - [ ] Abort 完整恢复冲突前状态
 - [ ] 多文件冲突逐个解决、进度清晰
+- [ ] 批量操作后多个仓库同时冲突时，冲突队列集中展示与逐个解决
 
 ## 进度
 
@@ -55,3 +57,4 @@
 - [ ] 解决操作（Ours/Theirs/Both/Manual/Mark Resolved/Abort）
 - [ ] 继续/中止衔接 merge/rebase 状态机
 - [ ] 预留 AI 建议接口
+- [ ] 跨仓库冲突队列

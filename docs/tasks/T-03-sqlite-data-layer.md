@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 0 · 基础稳定化 |
 | 优先级 | P0（前置） |
-| 状态 | ✅ 已完成 |
+| 状态 | 🟦 进行中 |
 | 依赖 | 无 |
 | 对应 Roadmap | §41 SQLite Schema、§42 数据库设计原则、§40 缓存架构、§67 Crash Recovery |
 
@@ -24,6 +24,7 @@
   - 新增：`branches` / `remote_branches` / `tags` / `commits` / `commit_parents` / `commit_files` / `stashes` / `worktrees` / `repo_status` / `file_status` / `tasks` / `task_items` / `task_dependencies` / `change_sets` / `change_set_repositories` / `symbols` / `symbol_references`（避开 SQL 关键字 `references`）/ `ai_reviews` / `ai_tasks`
 - [x] 迁移机制：`PRAGMA user_version` + 增量迁移，旧库无损升级
 - [x] Crash Recovery：WAL + 迁移事务原子性；强杀实测待 T-07
+- [ ] IPC 类型单一事实来源：以 Rust serde 为事实来源，golden-file 快照测试兜底（随 `cargo test` 跑），ts-rs 生成后置评估（Roadmap 评审增量，见全局约束 §6）
 
 ## 架构 / 性能注意点
 
@@ -37,13 +38,14 @@
 - [x] 大批量写入使用事务（`upsert_repositories_batch` 单事务 + Prepared Statement）
 - [x] 旧库升级数据完整（`upgrade_preserves_existing_data` 测试）
 - [x] 崩溃恢复（WAL 启用，`apply_pragmas_sets_wal_on_file_db` 测试验证 journal_mode=wal）
+- [ ] TS 类型与 Rust serde 结构对齐由 golden-file 快照测试兜底（`cargo test` 跑），无人工漂移
 
 ## 进度
 
 ### 状态
 
-- 当前状态：已完成
-- 最近更新：2026-08-13 闭环
+- 当前状态：进行中
+- 最近更新：2026-08-13 回退（新增 ts-rs / IPC 类型来源）
 
 ### 时间线
 
@@ -52,6 +54,7 @@
 | 2026-08-13 | 🟦 | 开始开发：确定单写者方案（单连接 + Mutex）、落地 PRAGMA / user_version 迁移 / 完整 schema / 批量写入 |
 | 2026-08-13 | 🟦 | 核心实现完成：apply_pragmas + user_version 迁移 + 完整 schema（23 表）+ 事务批量 upsert；`cargo test db::tests` 5 passed。剩余：500 并发 / 强杀实测待 T-07 |
 | 2026-08-13 | ✅ | 闭环：验收 1/2/4 通过架构保证（单连接无 BUSY、事务、WAL）+ 单元测试（迁移/无损升级/批量事务/WAL pragma）；500 规模压测可用 T-07 benchmark 扩展 |
+| 2026-08-13 | 🟦 | 回退：新增 IPC 类型单一事实来源（ts-rs / 编译期对齐）需求（Roadmap 评审增量）；原 5 项验收保持完成 |
 
 ### 子任务清单
 
