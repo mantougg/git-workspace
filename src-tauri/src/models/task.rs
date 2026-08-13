@@ -33,6 +33,20 @@ pub enum TaskStatus {
     Cancelled,
 }
 
+impl TaskStatus {
+    /// Stable short key used for DB persistence and crash-recovery matching.
+    pub fn key(&self) -> &'static str {
+        match self {
+            TaskStatus::Queued => "queued",
+            TaskStatus::Running { .. } => "running",
+            TaskStatus::Success => "success",
+            TaskStatus::PartialSuccess { .. } => "partial_success",
+            TaskStatus::Failed { .. } => "failed",
+            TaskStatus::Cancelled => "cancelled",
+        }
+    }
+}
+
 /// A unit of work submitted to the background task system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

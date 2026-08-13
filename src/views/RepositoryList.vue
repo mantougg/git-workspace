@@ -45,6 +45,10 @@
           <el-icon><Bell /></el-icon>
           任务 ({{ taskStore.tasks.length }})
         </el-button>
+        <el-button @click="showLogManager = true">
+          <el-icon><FolderOpened /></el-icon>
+          日志
+        </el-button>
         <el-input
           v-model="searchQuery"
           placeholder="搜索文件或仓库..."
@@ -267,6 +271,7 @@
 
     <!-- Add workspace dialog -->
     <WorkspaceManager v-model="showAddWorkspace" @added="onWorkspaceAdded" />
+    <LogManager v-model="showLogManager" />
 
     <div class="app-footer">by mantougg · v0.1.0</div>
 
@@ -344,6 +349,7 @@ import {
   Fold,
   RefreshLeft,
   Download,
+  FolderOpened,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listen } from "@tauri-apps/api/event";
@@ -362,6 +368,7 @@ import ChangeTree, {
 } from "@/components/repo/ChangeTree.vue";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import WorkspaceManager from "@/components/common/WorkspaceManager.vue";
+import LogManager from "@/components/common/LogManager.vue";
 import { errMsg } from "@/utils/error";
 
 interface SelectedDiff {
@@ -377,6 +384,7 @@ const taskStore = useTaskStore();
 
 const selectedWorkspaceId = ref<number | null>(null);
 const showAddWorkspace = ref(false);
+const showLogManager = ref(false);
 const watcherActive = ref(false);
 const searchQuery = ref("");
 const changes = ref<RepoChanges[]>([]);

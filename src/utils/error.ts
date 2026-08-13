@@ -16,8 +16,16 @@ export function errMsg(e: unknown): string {
     return e;
   }
   if (e && typeof e === "object" && "message" in e) {
-    const msg = (e as ErrorResponse).message;
+    const err = e as ErrorResponse;
+    const msg = err.message;
     if (typeof msg === "string" && msg.length > 0) {
+      // 附加 recoverable 提示，让用户知道能否自行重试。
+      if (err.recoverable === true) {
+        return `${msg}（可重试）`;
+      }
+      if (err.recoverable === false) {
+        return `${msg}（需手动处理）`;
+      }
       return msg;
     }
   }

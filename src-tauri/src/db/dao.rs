@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use chrono::Utc;
 use rusqlite::{params, Connection};
 
 use crate::error::{AppError, AppResult};
 use crate::models::group::{CreateGroupRequest, RepoGroup};
-use crate::models::repository::{Repository, ScannedRepo};
+use crate::models::repository::{CommitRecord, Repository, ScannedRepo};
 use crate::models::workspace::{CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace};
 
 // ---------------------------------------------------------------------------
@@ -131,14 +133,16 @@ pub fn upsert_repositories_batch(
     let tx = conn.transaction()?;
     {
         let mut stmt = tx.prepare(
-            r#"INSERT INTO repositories (workspace_id, path, name, relative_path, last_scanned, created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+            r#"INSERT INTO repositories (workspace_id, path, name, relative_path, is_deleted, git_dir_mtime, last_scanned, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?7)
                ON CONFLICT(path) DO UPDATE SET
                    workspace_id = ?1,
                    name = ?3,
                    relative_path = ?4,
-                   last_scanned = ?5,
-                   updated_at = ?6"#,
+                   is_deleted = 0,
+                   git_dir_mtime = ?5,
+                   last_scanned = ?6,
+                   updated_at = ?7"#,
         )?;
         for repo in repos {
             stmt.execute(params![
@@ -146,6 +150,7 @@ pub fn upsert_repositories_batch(
                 repo.path,
                 repo.name,
                 repo.relative_path,
+                repo.git_dir_mtime,
                 now,
                 now
             ])?;
@@ -155,7 +160,30 @@ pub fn upsert_repositories_batch(
     Ok(())
 }
 
-/// List all repositories for a given workspace.
+/// Load the known repository paths (with their last recorded `.git` mtime) for
+/// a workspace. This is the incremental-scan cache: the scanner skips libgit2
+/// validation for a repo whose path is present and whose mtime is unchanged.
+/// Soft-deleted repositories are excluded.
+pub fn list_repository_paths(
+    conn: &Connection,
+    workspace_id: i64,
+) -> AppResult<HashMap<String, Option<i64>>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, git_dir_mtime FROM repositories WHERE workspace_id = ?1 AND is_deleted = 0",
+    )?;
+    let rows = stmt.query_map(params![workspace_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+    })?;
+
+    let mut map = HashMap::new();
+    for row in rows {
+        let (path, mtime) = row?;
+        map.insert(path, mtime);
+    }
+    Ok(map)
+}
+
+/// List all repositories for a given workspace (excluding soft-deleted ones).
 pub fn list_repositories_by_workspace(
     conn: &Connection,
     workspace_id: i64,
@@ -163,7 +191,7 @@ pub fn list_repositories_by_workspace(
     let mut stmt = conn.prepare(
         r#"SELECT id, workspace_id, path, name, relative_path, is_favorite, tags, group_id
            FROM repositories
-           WHERE workspace_id = ?1
+           WHERE workspace_id = ?1 AND is_deleted = 0
            ORDER BY name"#,
     )?;
 
@@ -188,29 +216,35 @@ pub fn list_repositories_by_workspace(
     Ok(repos)
 }
 
-/// Delete repositories that are no longer found in the workspace directory.
+/// Soft-delete repositories that are no longer found in the workspace directory.
+///
+/// Rows are marked `is_deleted = 1` instead of being hard-deleted, so tags,
+/// groups, favorites and cached metadata survive a temporary move/removal and
+/// are restored on the next successful scan (see `upsert_repositories_batch`).
 pub fn cleanup_stale_repositories(
     conn: &Connection,
     workspace_id: i64,
     existing_paths: &[String],
 ) -> AppResult<()> {
-    // Build placeholder string for IN clause
+    let now = Utc::now().to_rfc3339();
+    // Build placeholder string for the IN clause. The first two bound params
+    // are workspace_id and now, so the IN placeholders start at ?3.
     if existing_paths.is_empty() {
         conn.execute(
-            "DELETE FROM repositories WHERE workspace_id = ?1",
-            params![workspace_id],
+            "UPDATE repositories SET is_deleted = 1, updated_at = ?2 WHERE workspace_id = ?1 AND is_deleted = 0",
+            params![workspace_id, now],
         )?;
     } else {
         let placeholders: Vec<String> = (0..existing_paths.len())
-            .map(|i| format!("?{}", i + 2))
+            .map(|i| format!("?{}", i + 3))
             .collect();
         let sql = format!(
-            "DELETE FROM repositories WHERE workspace_id = ?1 AND path NOT IN ({})",
+            "UPDATE repositories SET is_deleted = 1, updated_at = ?2 WHERE workspace_id = ?1 AND is_deleted = 0 AND path NOT IN ({})",
             placeholders.join(", ")
         );
 
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
-            vec![Box::new(workspace_id)];
+            vec![Box::new(workspace_id), Box::new(now)];
         for path in existing_paths {
             params_vec.push(Box::new(path.clone()));
         }
@@ -220,6 +254,38 @@ pub fn cleanup_stale_repositories(
 
         conn.execute(&sql, params_ref.as_slice())?;
     }
+    Ok(())
+}
+
+/// Soft-delete a specific set of repositories (used by Scan Selected / subtree
+/// scans so repositories outside the scanned subtree are never touched).
+pub fn soft_delete_repositories(
+    conn: &Connection,
+    workspace_id: i64,
+    paths: &[String],
+) -> AppResult<()> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let now = Utc::now().to_rfc3339();
+    let placeholders: Vec<String> = (0..paths.len())
+        .map(|i| format!("?{}", i + 3))
+        .collect();
+    let sql = format!(
+        "UPDATE repositories SET is_deleted = 1, updated_at = ?2 WHERE workspace_id = ?1 AND is_deleted = 0 AND path IN ({})",
+        placeholders.join(", ")
+    );
+
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
+        vec![Box::new(workspace_id), Box::new(now)];
+    for path in paths {
+        params_vec.push(Box::new(path.clone()));
+    }
+
+    let params_ref: Vec<&dyn rusqlite::ToSql> =
+        params_vec.iter().map(|p| p.as_ref()).collect();
+
+    conn.execute(&sql, params_ref.as_slice())?;
     Ok(())
 }
 
@@ -328,8 +394,164 @@ pub fn assign_group_by_path(
 }
 
 // ---------------------------------------------------------------------------
+// Commit metadata DAO (Graph data cache, T-04)
+// ---------------------------------------------------------------------------
+
+/// Look up a repository's ID by its absolute path (excluding soft-deleted rows).
+pub fn get_repository_id_by_path(conn: &Connection, path: &str) -> AppResult<Option<i64>> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT id FROM repositories WHERE path = ?1 AND is_deleted = 0",
+        params![path],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+/// Upsert a batch of commit metadata plus parent edges in one transaction.
+/// Existing commits (by `repo_id` + `oid`) are refreshed in place.
+pub fn upsert_commits_batch(
+    conn: &mut Connection,
+    repo_id: i64,
+    commits: &[CommitRecord],
+) -> AppResult<()> {
+    if commits.is_empty() {
+        return Ok(());
+    }
+    let tx = conn.transaction()?;
+    {
+        let mut commit_stmt = tx.prepare(
+            r#"INSERT INTO commits (repo_id, oid, message, author, committer, authored_at, committed_at, author_offset)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+               ON CONFLICT(repo_id, oid) DO UPDATE SET
+                   message = ?3,
+                   author = ?4,
+                   committer = ?5,
+                   authored_at = ?6,
+                   committed_at = ?7,
+                   author_offset = ?8"#,
+        )?;
+        let mut parent_stmt = tx.prepare(
+            r#"INSERT OR IGNORE INTO commit_parents (commit_id, parent_oid)
+               SELECT id, ?1 FROM commits WHERE repo_id = ?2 AND oid = ?3"#,
+        )?;
+
+        for c in commits {
+            commit_stmt.execute(params![
+                repo_id,
+                c.oid,
+                c.message,
+                c.author,
+                c.committer,
+                c.authored_at.to_string(),
+                c.committed_at.to_string(),
+                c.offset_minutes
+            ])?;
+            for parent in &c.parents {
+                parent_stmt.execute(params![parent, repo_id, c.oid])?;
+            }
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Read a single cached commit record (metadata + parents) for a repository.
+pub fn get_commit_record(
+    conn: &Connection,
+    repo_id: i64,
+    oid: &str,
+) -> AppResult<Option<CommitRecord>> {
+    use rusqlite::OptionalExtension;
+
+    let meta = conn
+        .query_row(
+            "SELECT message, author, committer, authored_at, committed_at, author_offset FROM commits WHERE repo_id = ?1 AND oid = ?2",
+            params![repo_id, oid],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            },
+        )
+        .optional()?;
+
+    let Some((message, author, committer, authored_at, committed_at, offset)) = meta else {
+        return Ok(None);
+    };
+
+    let mut parent_stmt = conn.prepare(
+        r#"SELECT cp.parent_oid
+           FROM commit_parents cp
+           JOIN commits c ON cp.commit_id = c.id
+           WHERE c.repo_id = ?1 AND c.oid = ?2
+           ORDER BY cp.rowid"#,
+    )?;
+    let parents: Vec<String> = parent_stmt
+        .query_map(params![repo_id, oid], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+
+    Ok(Some(CommitRecord {
+        oid: oid.to_string(),
+        message,
+        author,
+        committer,
+        authored_at: authored_at.parse().unwrap_or(0),
+        committed_at: committed_at.parse().unwrap_or(0),
+        offset_minutes: offset as i32,
+        parents,
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // Task History DAO
 // ---------------------------------------------------------------------------
+
+/// Insert a task record into the `tasks` table and return its DB id.
+pub fn insert_task_record(
+    conn: &Connection,
+    task_uuid: &str,
+    task_type: &str,
+    status: &str,
+    params_json: &str,
+    created_at: &str,
+) -> AppResult<i64> {
+    conn.execute(
+        "INSERT INTO tasks (task_uuid, task_type, status, params_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![task_uuid, task_type, status, params_json, created_at],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Update a task's status (and optionally finished_at) by its UUID.
+pub fn update_task_status(
+    conn: &Connection,
+    task_uuid: &str,
+    status: &str,
+    finished_at: Option<&str>,
+) -> AppResult<()> {
+    conn.execute(
+        "UPDATE tasks SET status = ?1, finished_at = ?2 WHERE task_uuid = ?3",
+        params![status, finished_at, task_uuid],
+    )?;
+    Ok(())
+}
+
+/// Mark any unfinished (queued/running) tasks as interrupted after a restart.
+/// Returns the number of tasks marked.
+pub fn mark_interrupted_tasks(conn: &Connection, now: &str) -> AppResult<usize> {
+    let n = conn.execute(
+        "UPDATE tasks SET status = 'interrupted', finished_at = ?1 WHERE finished_at IS NULL AND status IN ('queued', 'running')",
+        params![now],
+    )?;
+    Ok(n)
+}
 
 /// Insert a task history record.
 #[allow(dead_code)]

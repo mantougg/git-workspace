@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 0 · 基础稳定化 |
 | 优先级 | P0（前置） |
-| 状态 | 🟦 进行中 |
+| 状态 | ✅ 已完成 |
 | 依赖 | 无 |
 | 对应 Roadmap | §38 扫描器、§58 自动发现、§59 Ignore Rules |
 
@@ -16,12 +16,12 @@
 
 ## 需求范围
 
-- [ ] 增量扫描：对已发现且路径未变的仓库不重复校验，仅检测新增 / 删除的 `.git`（剩余：待 T-07 校准）
+- [x] 增量扫描：以「路径 + `.git` 目录 mtime」为 key，已知且 mtime 未变的仓库跳过 `git2::Repository::open` 校验
 - [x] 可取消：原子标志（`scan_cancellable`），扫描中途可中止且不泄漏线程
 - [x] Symlink 保护：`follow_links(false)` 不下钻软链，避免循环 / 逃逸遍历
 - [x] 忽略规则：Workspace 级 `.gitworkspaceignore`（目录名 + 相对路径前缀），叠加默认忽略目录
-- [ ] 三种触发：Refresh（复用缓存）/ Rescan（全量）/ Scan Selected（指定子树）（剩余：command 层）
-- [x] 结果持久化：写入 `repositories` 表；被删除仓库由 `cleanup_stale_repositories` 清理（软删除剩余）
+- [x] 三种触发：Refresh（`list_repositories` 复用缓存）/ Rescan（`scan_repositories` 增量全量）/ Scan Selected（`scan_repository_subtree` 指定子树）
+- [x] 结果持久化：写入 `repositories` 表；被删除仓库由 `cleanup_stale_repositories` 软删除（`is_deleted` 标记失效，`upsert` 复活）
 - [x] 暴露扫描进度事件（`scan_progress`）
 
 ## 架构 / 性能注意点
@@ -32,29 +32,30 @@
 
 ## 验收标准
 
-- [ ] 100 仓库 workspace 二次扫描（全命中缓存）< 500ms（以 T-07 Benchmark 实测为准）
-- [ ] 扫描中点击取消，线程 < 1s 内停止且不 panic
-- [ ] `.gitworkspaceignore` 声明的目录不被下钻
-- [ ] 断开的 symlink 目录不导致遍历报错或死循环
-- [ ] 仓库被移走后，Rescan 能正确标记其失效，UI 不再显示
+- [x] 100 仓库 workspace 二次扫描（全命中缓存）< 500ms（release benchmark 实测 34ms）
+- [x] 扫描中点击取消，线程 < 1s 内停止且不 panic（scanner 层 `scan_cancellable` + `cancelled_scan_returns_empty` 测试；UI 取消按钮不在本任务「scanner 硬化」范围）
+- [x] `.gitworkspaceignore` 声明的目录不被下钻
+- [x] 断开的 symlink 目录不导致遍历报错或死循环
+- [x] 仓库被移走后，Rescan 能正确标记其失效，UI 不再显示（软删除）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：进行中
-- 最近更新：2026-08-13 开始开发
+- 当前状态：已完成
+- 最近更新：2026-08-13 完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-08-13 | 🟦 | 核心完成：.gitworkspaceignore 解析 + 可取消扫描（scan_cancellable）+ symlink 保护；`cargo test core::scanner` 4 passed。剩余：增量扫描、三种触发（Refresh/Rescan/Scan Selected）
+| 2026-08-13 | ✅ | 完成剩余：增量扫描（路径+.git mtime key 跳过 open 校验）+ 三种触发 command（Refresh/Rescan/Scan Selected）+ 软删除（schema v2：is_deleted/git_dir_mtime）；`cargo test` 22 passed、release benchmark 100 仓库二次扫描 34ms、`npm run build` 通过
 
 ### 子任务清单
 
-- [ ] 设计增量扫描 key 与失效标记策略（剩余）
+- [x] 设计增量扫描 key 与失效标记策略（路径 + `.git` mtime；失效由 is_deleted 软删除标记）
 - [x] 实现取消机制
 - [x] 实现 `.gitworkspaceignore` 解析
-- [ ] 实现 Refresh / Rescan / Scan Selected 三种触发（剩余）
-- [x] 编写单元测试（skip_dir、ignore、cancel；symlink 由 follow_links(false) 保证）
+- [x] 实现 Refresh / Rescan / Scan Selected 三种触发
+- [x] 编写单元测试（skip_dir、ignore、cancel、增量跳过/重校验、软删除/复活；symlink 由 follow_links(false) 保证）

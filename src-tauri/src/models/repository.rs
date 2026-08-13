@@ -57,6 +57,10 @@ pub struct ScannedRepo {
     pub path: String,
     pub name: String,
     pub relative_path: String,
+    /// `.git` directory mtime (unix milliseconds) recorded at scan time.
+    /// Used as the incremental-scan cache key: a known repository whose mtime
+    /// is unchanged skips the expensive `git2::Repository::open` validation.
+    pub git_dir_mtime: Option<i64>,
 }
 
 /// Payload for the `scan_progress` Tauri event.
@@ -69,7 +73,7 @@ pub struct ScanProgress {
     pub total: Option<usize>,
 }
 
-/// Payload for the `repo_status_changed` Tauri event (Phase 3 file watcher).
+/// Payload for the `repo_status_changed_batch` Tauri event (file watcher).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoStatusUpdate {
@@ -101,4 +105,23 @@ pub struct RepoChanges {
     pub behind: usize,
     /// Sorted list of changed files (empty means the repo is clean).
     pub changes: Vec<FileChange>,
+}
+
+/// Persistent commit-metadata cache entry, mirroring the `commits` /
+/// `commit_parents` tables. Used to avoid re-parsing commit objects on repeat
+/// Graph loads (T-04 Graph data cache).
+#[derive(Debug, Clone)]
+pub struct CommitRecord {
+    pub oid: String,
+    pub message: String,
+    /// Author in git's `Name <email>` form.
+    pub author: String,
+    /// Committer in git's `Name <email>` form.
+    pub committer: String,
+    /// Unix timestamp (seconds).
+    pub authored_at: i64,
+    pub committed_at: i64,
+    /// Author timezone offset in minutes.
+    pub offset_minutes: i32,
+    pub parents: Vec<String>,
 }

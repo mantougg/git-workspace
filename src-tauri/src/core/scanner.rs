@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::UNIX_EPOCH;
 
 use rayon::prelude::*;
 use walkdir::{DirEntry, WalkDir};
@@ -29,17 +31,47 @@ impl RepoScanner {
         }
     }
 
-    /// Scan the given root directory for Git repositories.
+    /// Scan the given root directory for Git repositories (full validation).
     pub fn scan(&self, root: &Path) -> Vec<ScannedRepo> {
-        self.scan_cancellable(root, None)
+        self.scan_internal(root, None, None)
     }
 
     /// Scan with an optional cancellation flag. When the flag is set,
     /// traversal stops early and returns the repositories found so far.
+    ///
+    /// Public API reserved for the UI cancel button (T-01 cancellation wiring);
+    /// exercised by unit tests today, hence the allow.
+    #[allow(dead_code)]
     pub fn scan_cancellable(
         &self,
         root: &Path,
         cancel: Option<&AtomicBool>,
+    ) -> Vec<ScannedRepo> {
+        self.scan_internal(root, cancel, None)
+    }
+
+    /// Incremental scan.
+    ///
+    /// `known` maps a previously discovered repository path to the `.git`
+    /// directory mtime (unix millis) recorded at the last successful scan. A
+    /// candidate whose path is known and whose mtime is unchanged skips the
+    /// `git2::Repository::open` validation — the dominant per-repo cost — so a
+    /// rescan that finds no new or removed repositories only walks the
+    /// filesystem instead of re-opening every repository.
+    pub fn scan_incremental(
+        &self,
+        root: &Path,
+        cancel: Option<&AtomicBool>,
+        known: &HashMap<String, Option<i64>>,
+    ) -> Vec<ScannedRepo> {
+        self.scan_internal(root, cancel, Some(known))
+    }
+
+    fn scan_internal(
+        &self,
+        root: &Path,
+        cancel: Option<&AtomicBool>,
+        known: Option<&HashMap<String, Option<i64>>>,
     ) -> Vec<ScannedRepo> {
         log::debug!("Scanning {:?} with depth {}", root, self.scan_depth);
 
@@ -111,11 +143,20 @@ impl RepoScanner {
 
                 let parent = path.parent()?;
                 let relative = parent.strip_prefix(root).ok()?;
+                let parent_str = parent.to_string_lossy().to_string();
+
+                // Record the `.git` directory mtime as the incremental-scan key.
+                let mtime = dir_mtime_millis(path);
+
+                // Incremental fast-path: a repository we have seen before whose
+                // `.git` mtime is unchanged skips libgit2 validation entirely.
+                let known_mtime = known.and_then(|k| k.get(&parent_str)).copied().flatten();
+                let skip_validation = known_mtime.is_some() && known_mtime == mtime;
 
                 // Validate: can we open this as a Git repository?
                 // (libgit2 Repository is opened and dropped per-thread; never
                 // shared across threads.)
-                if git2::Repository::open(parent).is_err() {
+                if !skip_validation && git2::Repository::open(parent).is_err() {
                     return None;
                 }
 
@@ -126,9 +167,10 @@ impl RepoScanner {
                     .to_string();
 
                 Some(ScannedRepo {
-                    path: parent.to_string_lossy().to_string(),
+                    path: parent_str,
                     name,
                     relative_path: relative.to_string_lossy().to_string(),
+                    git_dir_mtime: mtime,
                 })
             })
             .collect();
@@ -206,6 +248,20 @@ fn is_skip_dir(name: &OsStr) -> bool {
     )
 }
 
+/// Read the mtime of a `.git` directory as unix milliseconds.
+///
+/// Returns `None` when the entry cannot be stat'ed (e.g. a broken symlink is
+/// already excluded by `follow_links(false)`, but a race with an external
+/// delete could still make this fail — treat it as "unknown", which forces
+/// validation rather than trusting a stale cache).
+fn dir_mtime_millis(path: &Path) -> Option<i64> {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +317,69 @@ mod tests {
         let scanner = RepoScanner::new(3);
         let result = scanner.scan_cancellable(Path::new("."), Some(&flag));
         assert!(result.is_empty());
+    }
+
+    /// A known, unchanged repository must skip `git2::Repository::open`
+    /// validation on an incremental scan. We prove the skip by registering a
+    /// *fake* `.git` directory (not a real repository) as "known": a full scan
+    /// filters it out, while an incremental scan admits it because validation
+    /// is skipped on mtime match.
+    #[test]
+    fn incremental_scan_skips_validation_for_known_unchanged_repos() {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_incr_test_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+
+        // Real repo "a" + fake `.git` directory "b" (empty, not a repository).
+        let repo_a = dir.join("a");
+        git2::Repository::init(&repo_a).unwrap();
+        let fake = dir.join("b");
+        fs::create_dir_all(fake.join(".git")).unwrap();
+
+        let scanner = RepoScanner::new(3);
+
+        // Full scan validates every `.git` and drops the fake one.
+        let full = scanner.scan(&dir);
+        assert_eq!(full.len(), 1, "full scan must drop non-repo .git dirs");
+        assert_eq!(full[0].relative_path, "a");
+
+        // Incremental scan trusts the known path+mtime for "b" and skips open.
+        let b_path = fake.to_string_lossy().to_string();
+        let b_mtime = dir_mtime_millis(&fake.join(".git"));
+        let mut known = HashMap::new();
+        known.insert(b_path, b_mtime);
+
+        let inc = scanner.scan_incremental(&dir, None, &known);
+        let mut rels: Vec<&str> = inc.iter().map(|r| r.relative_path.as_str()).collect();
+        rels.sort_unstable();
+        assert_eq!(rels, vec!["a", "b"], "incremental scan must skip validation");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A known path whose mtime changed must be re-validated (not skipped).
+    #[test]
+    fn incremental_scan_revalidates_changed_mtime() {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_incr_chg_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+
+        // Fake `.git` dir; register a stale (wrong) mtime so validation runs.
+        let fake = dir.join("b");
+        fs::create_dir_all(fake.join(".git")).unwrap();
+        let stale_mtime = Some(0i64);
+
+        let mut known = HashMap::new();
+        known.insert(fake.to_string_lossy().to_string(), stale_mtime);
+
+        let scanner = RepoScanner::new(3);
+        let inc = scanner.scan_incremental(&dir, None, &known);
+        assert!(inc.is_empty(), "changed mtime must force re-validation");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

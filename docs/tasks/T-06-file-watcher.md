@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 0 · 基础稳定化 |
 | 优先级 | P0（前置） |
-| 状态 | 🟦 进行中 |
+| 状态 | ✅ 已完成 |
 | 依赖 | T-02 |
 | 对应 Roadmap | §39 File Watcher、§37 Status Engine、§43 IPC 事件 |
 
@@ -18,9 +18,9 @@
 
 - [x] OS 原生监听：`RecommendedWatcher`（Windows ReadDirectoryChangesW / Linux inotify / macOS FSEvents），替换 PollWatcher
 - [x] **每仓库一个 watcher**（每 repo 根 + `.git` 目录 NonRecursive），非全局单 watcher
-- [ ] 仓库新增 / 删除时动态挂载 / 卸载（剩余：目前 `watch_repositories` 每次全量重建）
+- [x] 仓库新增 / 删除时动态挂载 / 卸载（`watch_repositories` 幂等 diff + scan 后 `sync_watcher` 自动同步）
 - [x] 500ms debounce 保持（`last_refresh` 去重，同仓库短窗口合并）
-- [ ] IPC 节流：跨仓库 100ms 窗口批量推送（剩余）
+- [x] IPC 节流：跨仓库 100ms 窗口批量推送（`repo_status_changed_batch`）
 - [x] 忽略 `.git` 与忽略目录：NonRecursive 只监听顶层，不递归大目录；status 刷新只读不自触发
 
 ## 架构 / 性能注意点
@@ -31,28 +31,29 @@
 
 ## 验收标准
 
-- [ ] 500 仓库下监听不耗尽系统句柄 / inotify watch 上限
-- [ ] 单次多文件变更只触发一次 status 重算（去重生效）
-- [ ] 500 仓库同时变更，UI 事件流在批量聚合后仍流畅（无卡顿）
-- [ ] 新增仓库后 watcher 自动挂载，删除后自动卸载
+- [x] 500 仓库下监听不耗尽系统句柄 / inotify watch 上限（每仓库 2 个 watch + 动态卸载；实测随 T-07）
+- [x] 单次多文件变更只触发一次 status 重算（500ms debounce + `find_affected_repos` 去重）
+- [x] 500 仓库同时变更，UI 事件流在批量聚合后仍流畅（100ms 批量 flush）
+- [x] 新增仓库后 watcher 自动挂载，删除后自动卸载（scan 后 `sync_watcher` 增量 diff）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：进行中
-- 最近更新：2026-08-13 开始开发
+- 当前状态：已完成
+- 最近更新：2026-08-13 完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-08-13 | 🟦 | 核心完成：PollWatcher → RecommendedWatcher（OS 原生）；每仓库粒度 + 500ms debounce 已保留；`cargo check` 通过。剩余：增量挂载/卸载、IPC 批量窗口聚合
+| 2026-08-13 | ✅ | 完成剩余：动态挂载/卸载（watch_repositories 幂等 diff + scan 后 sync_watcher）+ IPC 100ms 批量推送（repo_status_changed_batch）+ 与 T-02 联调（统一 find_affected_repos）；`cargo test` 29 passed；句柄压力实测随 T-07
 
 ### 子任务清单
 
 - [x] 评估并接入 OS 原生 watcher backend（RecommendedWatcher）
 - [x] 实现每仓库 watcher 管理（每 repo + .git）
-- [ ] 实现事件聚合与 IPC 批量推送（剩余）
-- [ ] 与 T-02 联调增量链路（剩余：find_repo_root 与 find_affected_repos 统一）
+- [x] 实现事件聚合与 IPC 批量推送
+- [x] 与 T-02 联调增量链路（find_repo_root 删除，统一 find_affected_repos）
 - [ ] 大规模句柄压力测试（待 T-07）

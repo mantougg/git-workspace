@@ -298,6 +298,33 @@ CREATE TABLE IF NOT EXISTS ai_tasks (
 );
 "#;
 
+/// Version 2 — incremental scan support.
+///
+/// Adds two columns to `repositories`:
+/// - `is_deleted`    — soft-delete flag so a moved/removed repository is marked
+///   stale instead of being hard-deleted (preserves tags/group/favorites).
+/// - `git_dir_mtime` — `.git` directory mtime (unix millis) recorded at the last
+///   successful scan, used as the incremental-scan cache key.
+///
+/// `ALTER TABLE ADD COLUMN` is non-destructive and safe to apply over v1.
+pub const SCHEMA_V2: &str = r#"
+ALTER TABLE repositories ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE repositories ADD COLUMN git_dir_mtime INTEGER;
+"#;
+
+/// Version 3 — Graph data cache: store the author timezone offset so cached
+/// commit metadata renders the same time as a fresh libgit2 read.
+pub const SCHEMA_V3: &str = r#"
+ALTER TABLE commits ADD COLUMN author_offset INTEGER NOT NULL DEFAULT 0;
+"#;
+
+/// Version 4 — task history / crash recovery: persist a stable task UUID so
+/// tasks can be located across restarts.
+pub const SCHEMA_V4: &str = r#"
+ALTER TABLE tasks ADD COLUMN task_uuid TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_uuid ON tasks(task_uuid);
+"#;
+
 /// Ordered schema migrations. Index 0 = version 1, index 1 = version 2, ...
 /// Append new entries at the END only.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];

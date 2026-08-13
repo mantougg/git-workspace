@@ -310,7 +310,6 @@ fn compute_ahead_behind(repo: &git2::Repository, branch_name: &str) -> (usize, u
 ///
 /// Used by the file watcher to refresh only affected repositories instead of
 /// rescanning the whole workspace (incremental status, §37).
-#[allow(dead_code)] // 为 T-06 watcher 联调预留（增量定位）
 pub fn find_affected_repos<'a>(
     changed_paths: &[String],
     repo_roots: &'a [String],
@@ -328,7 +327,6 @@ pub fn find_affected_repos<'a>(
 
 /// Whether `path` is `root` itself or a descendant of `root` (path-boundary
 /// aware, so `/ws/a` does not match `/ws/ab`).
-#[allow(dead_code)]
 fn path_under_root(path: &str, root: &str) -> bool {
     if !path.starts_with(root) {
         return false;

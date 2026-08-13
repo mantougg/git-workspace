@@ -8,13 +8,14 @@ export function useRepositories() {
   let unlistenFn: (() => void) | null = null;
 
   onMounted(async () => {
-    unlistenFn = await listen<{
-      repo_path: string;
-      status: RepoStatus;
-    }>("repo_status_changed", (event) => {
-      const { repo_path, status } = event.payload;
-      repoStore.updateStatus(repo_path, status);
-    });
+    unlistenFn = await listen<Array<{ repoPath: string; status: RepoStatus }>>(
+      "repo_status_changed_batch",
+      (event) => {
+        for (const { repoPath, status } of event.payload) {
+          repoStore.updateStatus(repoPath, status);
+        }
+      },
+    );
   });
 
   onUnmounted(() => {

@@ -4,6 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::error::AppResult;
+use crate::models::repository::CommitRecord;
 
 /// Commit information for the Git Graph view.
 #[derive(Debug, Clone, Serialize)]
@@ -28,7 +29,7 @@ pub fn get_commit_history(repo_path: &Path, max_count: usize) -> AppResult<Vec<C
     let repo = git2::Repository::open(repo_path)?;
 
     // Build a map of OID -> refs for quick lookup
-    let ref_map = build_ref_map(&repo);
+    let ref_map = ref_map(&repo);
 
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
@@ -51,23 +52,7 @@ pub fn get_commit_history(repo_path: &Path, max_count: usize) -> AppResult<Vec<C
 
             let author = commit.author();
             let time = commit.time();
-            let timestamp = time.seconds();
-            let offset = time.offset_minutes();
-
-            // Format time as ISO 8601 with timezone offset
-            let dt = chrono::DateTime::from_timestamp(timestamp, 0)
-                .unwrap_or_default()
-                .naive_utc();
-            let tz_sign = if offset >= 0 { '+' } else { '-' };
-            let tz_hours = (offset / 60).abs();
-            let tz_mins = (offset % 60).abs();
-            let time_str = format!(
-                "{} {}{:02}:{:02}",
-                dt.format("%Y-%m-%d %H:%M:%S"),
-                tz_sign,
-                tz_hours,
-                tz_mins
-            );
+            let time_str = format_commit_time(time.seconds(), time.offset_minutes());
 
             let parents: Vec<String> = commit.parent_ids().map(|p| p.to_string()).collect();
 
@@ -89,8 +74,98 @@ pub fn get_commit_history(repo_path: &Path, max_count: usize) -> AppResult<Vec<C
     Ok(commits)
 }
 
+/// Walk HEAD and return up to `max_count` commit OIDs in topological order.
+/// Separated from commit parsing so the command layer can consult the DB cache
+/// per OID and only parse commits that are not yet cached.
+pub fn revwalk_oids(repo_path: &Path, max_count: usize) -> AppResult<Vec<String>> {
+    let repo = git2::Repository::open(repo_path)?;
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push_head()?;
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+
+    Ok(revwalk
+        .take(max_count)
+        .filter_map(|r| r.ok())
+        .map(|oid| oid.to_string())
+        .collect())
+}
+
+/// Build a persistable `CommitRecord` from a commit object (for the DB cache).
+pub fn commit_record_from_oid(repo: &git2::Repository, oid: &git2::Oid) -> Option<CommitRecord> {
+    let commit = repo.find_commit(*oid).ok()?;
+    let author = commit.author();
+    let committer = commit.committer();
+    let committed_at = committer.when().seconds();
+    Some(CommitRecord {
+        oid: oid.to_string(),
+        message: commit.message().unwrap_or("").trim_end().to_string(),
+        author: format!(
+            "{} <{}>",
+            author.name().unwrap_or(""),
+            author.email().unwrap_or("")
+        ),
+        committer: format!(
+            "{} <{}>",
+            committer.name().unwrap_or(""),
+            committer.email().unwrap_or("")
+        ),
+        authored_at: commit.time().seconds(),
+        committed_at,
+        offset_minutes: commit.time().offset_minutes(),
+        parents: commit.parent_ids().map(|p| p.to_string()).collect(),
+    })
+}
+
+/// Format a unix timestamp (+ optional tz offset in minutes) as a readable string.
+fn format_commit_time(seconds: i64, offset_minutes: i32) -> String {
+    let dt = chrono::DateTime::from_timestamp(seconds, 0)
+        .unwrap_or_default()
+        .naive_utc();
+    let tz_sign = if offset_minutes >= 0 { '+' } else { '-' };
+    let tz_hours = (offset_minutes / 60).abs();
+    let tz_mins = (offset_minutes % 60).abs();
+    format!(
+        "{} {}{:02}:{:02}",
+        dt.format("%Y-%m-%d %H:%M:%S"),
+        tz_sign,
+        tz_hours,
+        tz_mins
+    )
+}
+
+/// Split a git `Name <email>` author string into its two parts.
+fn parse_author(author: &str) -> (String, String) {
+    if let Some(lt) = author.rfind('<') {
+        let name = author[..lt].trim().to_string();
+        let email = author[lt + 1..].trim_end_matches('>').trim().to_string();
+        (name, email)
+    } else {
+        (author.to_string(), String::new())
+    }
+}
+
+/// Convert a cached `CommitRecord` back into a `CommitInfo` (refs supplied by
+/// the caller, since branch/tag refs are dynamic and not cached).
+pub fn commit_info_from_record(record: &CommitRecord, refs: Vec<String>) -> CommitInfo {
+    let (author, email) = parse_author(&record.author);
+    CommitInfo {
+        oid: record.oid.clone(),
+        short_oid: if record.oid.len() >= 7 {
+            record.oid[..7].to_string()
+        } else {
+            record.oid.clone()
+        },
+        message: record.message.clone(),
+        author,
+        email,
+        time: format_commit_time(record.authored_at, record.offset_minutes),
+        parents: record.parents.clone(),
+        refs,
+    }
+}
+
 /// Build a map from commit OID to list of ref names (branches, tags).
-fn build_ref_map(repo: &git2::Repository) -> HashMap<String, Vec<String>> {
+pub fn ref_map(repo: &git2::Repository) -> HashMap<String, Vec<String>> {
     let mut map: HashMap<String, Vec<String>> = HashMap::new();
 
     // Local branches
@@ -223,4 +298,56 @@ pub fn get_branches(repo_path: &Path) -> AppResult<Vec<BranchInfo>> {
     }
 
     Ok(branches)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_repo(dir: &Path) -> git2::Repository {
+        let repo = git2::Repository::init(dir).unwrap();
+        for c in 0..2 {
+            let rel = format!("f{}.txt", c);
+            std::fs::write(dir.join(&rel), format!("content {}", c)).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new(&rel)).unwrap();
+            index.write().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let sig = git2::Signature::now("tester", "t@example.com").unwrap();
+            let head = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+            let parents: Vec<git2::Commit> = head.into_iter().collect();
+            let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+            repo.commit(Some("HEAD"), &sig, &sig, &format!("msg {}", c), &tree, &parent_refs)
+                .unwrap();
+        }
+        repo
+    }
+
+    #[test]
+    fn commit_record_roundtrip_preserves_metadata() {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_graph_test_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let repo = init_repo(&dir);
+
+        let oids = revwalk_oids(&dir, 10).unwrap();
+        assert_eq!(oids.len(), 2);
+
+        // Newest commit first.
+        let oid = git2::Oid::from_str(&oids[0]).unwrap();
+        let record = commit_record_from_oid(&repo, &oid).unwrap();
+        let info = commit_info_from_record(&record, vec!["main".to_string()]);
+
+        assert_eq!(info.oid, record.oid);
+        assert_eq!(info.message, "msg 1");
+        assert_eq!(info.author, "tester");
+        assert_eq!(info.email, "t@example.com");
+        assert_eq!(info.refs, vec!["main".to_string()]);
+        assert_eq!(info.parents.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

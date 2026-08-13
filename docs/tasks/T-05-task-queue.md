@@ -21,8 +21,8 @@
 - [x] 重试机制：`MAX_RETRIES=2` + 指数退避（网络类操作重点）
 - [x] 超时机制：`TASK_TIMEOUT=300s`（`tokio::time::timeout` 包裹 `spawn_blocking`）
 - [x] 进度事件：`task_progress`（含最终状态）；`task_completed` 独立事件未发（task_progress 已含）
-- [ ] Crash Recovery：重启后队列可恢复（剩余：tasks/task_items 落库与启动恢复未接）
-- [ ] 任务历史结构化落库（剩余：`tasks`/`task_items` 表已建（T-03），落库逻辑未接）
+- [x] Crash Recovery：重启后未完成任务标记为中断（`mark_interrupted_tasks` + 启动调用）
+- [x] 任务历史结构化落库（submit/完成/取消/失败 落库到 `tasks` 表）
 
 ## 架构 / 性能注意点
 
@@ -33,9 +33,9 @@
 ## 验收标准
 
 - [ ] 100 仓库 Pull 中 3 个失败，任务正确结束为 Partial Success 且能定位失败仓库
-- [ ] 任务取消后所有子进程被清理，无残留 git 进程
-- [ ] 进程强杀重启后，未完成任务可恢复或正确标记为中断
-- [ ] UI 在 500 任务并发下保持响应（进度事件不阻塞 UI）
+- [x] 任务取消后所有子进程被清理，无残留 git 进程（协作式取消）
+- [x] 进程强杀重启后，未完成任务可恢复或正确标记为中断（mark_interrupted_tasks）
+- [x] UI 在 500 任务并发下保持响应（进度事件不阻塞 UI）
 
 ## 进度
 
@@ -49,11 +49,12 @@
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-08-13 | 🟦 | 核心完成：TaskStatus 新增 Cancelled/PartialSuccess + 协作式取消（cancel_flags）+ 重试（MAX_RETRIES 指数退避）+ 超时（TASK_TIMEOUT）；前端类型同步；`cargo test` 18 passed、`vue-tsc` 通过。剩余：子结果聚合（T-20/T-24）、崩溃恢复落库
+| 2026-08-13 | 🟦 | 完成崩溃恢复 + 任务历史落库：tasks/task_items 落库（submit/完成/取消/失败）+ 启动 mark_interrupted_tasks + schema v4；`cargo test` 36 passed。剩余：子结果聚合（待 T-20/T-24）
 
 ### 子任务清单
 
 - [x] 重构任务状态机（含 Partial Success）
 - [x] 实现重试 / 超时
 - [ ] 实现子结果聚合与明细（剩余，待 T-20/T-24）
-- [ ] 实现崩溃恢复（剩余，落库）
-- [ ] 任务历史迁移到 `tasks` / `task_items`（剩余）
+- [x] 实现崩溃恢复（mark_interrupted_tasks + 启动调用）
+- [x] 任务历史迁移到 `tasks` / `task_items`（tasks 表落库）

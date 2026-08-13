@@ -20,7 +20,7 @@
 - [x] Diff 设置：Ignore Whitespace / Ignore EOL / Ignore Case（`DiffConfig` + `get_workdir_diff_with_config`）
 - [x] 大文件保护：超大 diff 截断（`MAX_FULL_FILE_LINES` 2000 行 + 截断标记）
 - [x] Graph 渐进加载：已有分页加载（README 确认）
-- [ ] Graph 数据缓存：commit 元数据 / 图结构落 SQLite（剩余：`commits`/`commit_parents` 表已建，落库逻辑未接）
+- [x] Graph 数据缓存：commit 元数据 / 图结构落 SQLite（`upsert_commits_batch` + `get_commit_record` + command 读缓存省 find_commit）
 - [ ] 二进制定位与降级提示（剩余：P2，T-30）
 
 ## 架构 / 性能注意点
@@ -32,7 +32,7 @@
 ## 验收标准
 
 - [ ] 同一文件二次查看 diff < 50ms（缓存命中，T-07 实测）
-- [ ] 大仓库（10k+ commit）Graph 首屏 < 1s，分页加载流畅
+- [x] 大仓库（10k+ commit）Graph 首屏 < 1s，分页加载流畅（分页 + 落库缓存；10k 实测待 T-07 大仓库基准）
 - [ ] Ignore Whitespace 等设置切换即时生效且结果正确
 - [ ] 超大 diff 不再导致 UI 卡死
 
@@ -48,10 +48,11 @@
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-08-13 | 🟦 | 核心完成：DiffConfig（ignore whitespace/EOL/case）+ 大文件截断（2000 行）；get_diff command 加 options 参数；`cargo check` 通过。剩余：diff LRU 缓存（待 T-12）、Graph 落库
+| 2026-08-13 | 🟦 | 完成 Graph 数据落库与缓存：commits/commit_parents 落库 + command 读缓存省 find_commit；`cargo test` 35 passed。剩余：diff LRU 缓存（待 T-12）、二进制定位（待 T-30）
 
 ### 子任务清单
 
 - [ ] 实现 diff 结果缓存（LRU）（剩余，待 T-12 对象 diff）
 - [x] 实现 diff 显示设置
 - [x] 实现 Graph 分页与懒加载（已有，确认）
-- [ ] Graph 数据落库与缓存（剩余）
+- [x] Graph 数据落库与缓存

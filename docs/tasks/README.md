@@ -20,8 +20,8 @@
 ## 总体进度
 
 - 任务总数：**32**
-- 已完成：**1** · 进行中：**7** · 未开始：**24**
-- 完成度：**1 / 32（3%）**
+- 已完成：**6** · 进行中：**2** · 未开始：**24**
+- 完成度：**6 / 32（19%）**
 
 ---
 
@@ -33,14 +33,14 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| T-01 | Scanner 硬化 | P0 | 🟦 | — | [T-01-scanner.md](./T-01-scanner.md) |
-| T-02 | Status Engine（增量 + libgit2 线程安全 + 并发限流） | P0 | 🟦 | T-01 | [T-02-status-engine.md](./T-02-status-engine.md) |
+| T-01 | Scanner 硬化 | P0 | ✅ | — | [T-01-scanner.md](./T-01-scanner.md) |
+| T-02 | Status Engine（增量 + libgit2 线程安全 + 并发限流） | P0 | ✅ | T-01 | [T-02-status-engine.md](./T-02-status-engine.md) |
 | T-03 | SQLite 数据层硬化（WAL / 单写者 / 完整 schema） | P0 | ✅ | — | [T-03-sqlite-data-layer.md](./T-03-sqlite-data-layer.md) |
 | T-04 | Diff & Graph 硬化 | P0 | 🟦 | T-03 | [T-04-diff-graph.md](./T-04-diff-graph.md) |
 | T-05 | Task Queue 硬化（Partial Success / 重试 / 超时） | P0 | 🟦 | T-03 | [T-05-task-queue.md](./T-05-task-queue.md) |
-| T-06 | File Watcher 升级 + 事件聚合 | P0 | 🟦 | T-02 | [T-06-file-watcher.md](./T-06-file-watcher.md) |
-| T-07 | Benchmark 系统（提前到 Phase 0） | P0 | 🟦 | T-01, T-02 | [T-07-benchmark.md](./T-07-benchmark.md) |
-| T-08 | 错误处理 + 日志 + Secret Protection | P0 | 🟦 | — | [T-08-errors-logging-secrets.md](./T-08-errors-logging-secrets.md) |
+| T-06 | File Watcher 升级 + 事件聚合 | P0 | ✅ | T-02 | [T-06-file-watcher.md](./T-06-file-watcher.md) |
+| T-07 | Benchmark 系统（提前到 Phase 0） | P0 | ✅ | T-01, T-02 | [T-07-benchmark.md](./T-07-benchmark.md) |
+| T-08 | 错误处理 + 日志 + Secret Protection | P0 | ✅ | — | [T-08-errors-logging-secrets.md](./T-08-errors-logging-secrets.md) |
 
 ### Phase 1 · 完整 Git Client（P0，9 个）
 

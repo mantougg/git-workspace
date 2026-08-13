@@ -3,10 +3,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use dashmap::DashMap;
+use rusqlite::Connection;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::core::git_ops::GitOps;
+use crate::db::dao;
 use crate::models::task::{GitCommandResult, Task, TaskProgress, TaskStatus, TaskType};
 
 /// Maximum retries for a failed task (network operations benefit most).
@@ -26,6 +28,7 @@ pub fn spawn_worker_pool(
     active_tasks: Arc<DashMap<String, Task>>,
     cancel_flags: Arc<DashMap<String, Arc<AtomicBool>>>,
     app_handle: AppHandle,
+    db: Arc<std::sync::Mutex<Connection>>,
 ) {
     let receiver = Arc::new(Mutex::new(receiver));
 
@@ -38,6 +41,7 @@ pub fn spawn_worker_pool(
             let tasks = Arc::clone(&active_tasks);
             let flags = Arc::clone(&cancel_flags);
             let app = app_handle.clone();
+            let db = Arc::clone(&db);
 
             workers.push(tauri::async_runtime::spawn(async move {
                 log::debug!("Task worker {} started", worker_id);
@@ -50,7 +54,7 @@ pub fn spawn_worker_pool(
 
                     match msg {
                         Some(msg) => {
-                            execute_task(&ops, &tasks, &flags, &app, msg.task).await;
+                            execute_task(&ops, &tasks, &flags, &app, &db, msg.task).await;
                         }
                         None => {
                             log::debug!("Task worker {} shutting down", worker_id);
@@ -83,6 +87,7 @@ async fn execute_task(
     tasks: &Arc<DashMap<String, Task>>,
     cancel_flags: &Arc<DashMap<String, Arc<AtomicBool>>>,
     app: &AppHandle,
+    db: &Arc<std::sync::Mutex<Connection>>,
     mut task: Task,
 ) {
     // Update status to Running
@@ -189,6 +194,9 @@ async fn execute_task(
     }
     task.status = final_status;
 
+    // Persist the final status for crash recovery / history.
+    persist_final_status(db, &task);
+
     // Emit final status
     emit_progress(app, &task);
 
@@ -201,6 +209,17 @@ async fn execute_task(
         tasks.remove(&task_id);
         flags.remove(&task_id);
     });
+}
+
+/// Persist a task's final status (and finished_at) to the `tasks` table.
+fn persist_final_status(db: &Arc<std::sync::Mutex<Connection>>, task: &Task) {
+    let Ok(conn) = db.lock() else {
+        return;
+    };
+    let now = chrono::Utc::now().to_rfc3339();
+    if let Err(e) = dao::update_task_status(&conn, &task.id, task.status.key(), Some(&now)) {
+        log::warn!("Failed to persist task {} status: {}", task.id, e);
+    }
 }
 
 /// Emit a task_progress event to the frontend.

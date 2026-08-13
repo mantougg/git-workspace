@@ -58,7 +58,7 @@ fn get_app_data_dir() -> PathBuf {
 pub fn run() {
     // Initialize the module-segregating logger (app/git/task/ai/performance.log,
     // secrets redacted) before anything else logs.
-    crate::core::logger::init_logger(&get_app_data_dir().join("logs"))
+    crate::core::logger::init_logger(&crate::core::logger::logs_dir())
         .expect("failed to initialize logger");
 
     tauri::Builder::default()
@@ -68,15 +68,31 @@ pub fn run() {
             // Initialize database
             let app_data_dir = get_app_data_dir();
             let conn = init_database(&app_data_dir)?;
+            let db = Arc::new(std::sync::Mutex::new(conn));
+
+            // Crash recovery: mark any tasks left queued/running from a previous
+            // process as interrupted so they don't appear stuck forever.
+            if let Ok(c) = db.lock() {
+                let now = chrono::Utc::now().to_rfc3339();
+                match db::dao::mark_interrupted_tasks(&c, &now) {
+                    Ok(0) => {}
+                    Ok(n) => log::warn!(
+                        "Marked {} unfinished tasks as interrupted after restart",
+                        n
+                    ),
+                    Err(e) => log::warn!("Failed to mark interrupted tasks: {}", e),
+                }
+            }
 
             // Create GitOps with default SSH credentials
             let git_ops = Arc::new(GitOps::with_default_ssh());
 
             // Create TaskManager with 8 workers
-            let task_manager = TaskManager::new(8, git_ops, app.handle().clone());
+            let task_manager =
+                TaskManager::new(8, git_ops, app.handle().clone(), Arc::clone(&db));
 
             // Create and manage app state
-            let state = AppState::new(conn, task_manager);
+            let state = AppState::new(db, task_manager);
             app.manage(state);
 
             log::info!("GitWorkspace application started successfully");
@@ -90,6 +106,7 @@ pub fn run() {
             workspace::update_workspace,
             // Repository commands
             repository::scan_repositories,
+            repository::scan_repository_subtree,
             repository::list_repositories,
             repository::refresh_repository_status,
             repository::get_workspace_changes,
@@ -125,6 +142,11 @@ pub fn run() {
             commands::ai::build_code_index,
             commands::ai::ai_search,
             commands::ai::clear_code_index,
+            // Log commands
+            commands::logs::list_log_files,
+            commands::logs::open_logs,
+            commands::logs::export_logs,
+            commands::logs::clear_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

@@ -12,6 +12,16 @@ export function scanRepositories(
   });
 }
 
+export function scanRepositoriesSelected(
+  workspaceId: number,
+  subPath: string,
+): Promise<RepositoryWithStatus[]> {
+  return invoke<RepositoryWithStatus[]>("scan_repository_subtree", {
+    workspaceId,
+    subPath,
+  });
+}
+
 export function listRepositories(
   workspaceId: number,
 ): Promise<RepositoryWithStatus[]> {

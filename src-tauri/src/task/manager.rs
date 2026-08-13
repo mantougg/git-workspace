@@ -1,12 +1,14 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use dashmap::DashMap;
+use rusqlite::Connection;
 use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::core::git_ops::GitOps;
+use crate::db::dao;
 use crate::error::{AppError, AppResult};
 use crate::models::task::{Task, TaskRequest, TaskStatus};
 use crate::task::queue::{self, TaskMessage};
@@ -20,6 +22,8 @@ pub struct TaskManager {
     sender: tokio::sync::mpsc::Sender<TaskMessage>,
     active_tasks: Arc<DashMap<String, Task>>,
     cancel_flags: Arc<DashMap<String, Arc<AtomicBool>>>,
+    /// Shared DB connection for task persistence (history + crash recovery).
+    db: Arc<Mutex<Connection>>,
 }
 
 impl TaskManager {
@@ -28,7 +32,12 @@ impl TaskManager {
     /// The worker pool runs `worker_count` async tasks, each pulling
     /// from a shared mpsc receiver. Git operations (blocking) are
     /// executed via `tokio::task::spawn_blocking`.
-    pub fn new(worker_count: usize, git_ops: Arc<GitOps>, app_handle: AppHandle) -> Self {
+    pub fn new(
+        worker_count: usize,
+        git_ops: Arc<GitOps>,
+        app_handle: AppHandle,
+        db: Arc<Mutex<Connection>>,
+    ) -> Self {
         let (sender, receiver) = queue::new_queue(128);
         let active_tasks = Arc::new(DashMap::<String, Task>::new());
         let cancel_flags = Arc::new(DashMap::<String, Arc<AtomicBool>>::new());
@@ -41,6 +50,7 @@ impl TaskManager {
             Arc::clone(&active_tasks),
             Arc::clone(&cancel_flags),
             app_handle,
+            Arc::clone(&db),
         );
 
         log::info!("TaskManager started with {} workers", worker_count);
@@ -49,6 +59,7 @@ impl TaskManager {
             sender,
             active_tasks,
             cancel_flags,
+            db,
         }
     }
 
@@ -70,6 +81,9 @@ impl TaskManager {
                 created_at: now,
             };
 
+            // Persist to the `tasks` table (history + crash recovery).
+            self.persist_new_task(&task);
+
             // Store in active tasks + create cancel flag
             self.active_tasks.insert(id.clone(), task.clone());
             self.cancel_flags
@@ -77,8 +91,14 @@ impl TaskManager {
 
             // Send to channel
             if let Err(e) = self.sender.try_send(TaskMessage { task }) {
-                // Remove from active tasks if sending failed
+                // Remove from active tasks if sending failed and mark the
+                // persisted record failed so crash recovery won't resurrect it.
                 self.active_tasks.remove(&id);
+                self.cancel_flags.remove(&id);
+                self.persist_task_status(
+                    &id,
+                    TaskStatus::Failed { error: e.to_string() }.key(),
+                );
                 return Err(AppError::Task(format!(
                     "Failed to queue task: {}",
                     e
@@ -89,6 +109,37 @@ impl TaskManager {
         }
 
         Ok(ids)
+    }
+
+    /// Persist a newly submitted task to the `tasks` table. Failure is logged,
+    /// not fatal — the in-memory queue still works without persistence.
+    fn persist_new_task(&self, task: &Task) {
+        let Ok(conn) = self.db.lock() else {
+            return;
+        };
+        let task_type_json = serde_json::to_string(&task.task_type).unwrap_or_default();
+        let params_json = serde_json::to_string(task).unwrap_or_default();
+        if let Err(e) = dao::insert_task_record(
+            &conn,
+            &task.id,
+            &task_type_json,
+            task.status.key(),
+            &params_json,
+            &task.created_at,
+        ) {
+            log::warn!("Failed to persist task {}: {}", task.id, e);
+        }
+    }
+
+    /// Persist a status transition (e.g. cancellation) to the `tasks` table.
+    fn persist_task_status(&self, task_id: &str, status: &str) {
+        let Ok(conn) = self.db.lock() else {
+            return;
+        };
+        let now = chrono::Utc::now().to_rfc3339();
+        if let Err(e) = dao::update_task_status(&conn, task_id, status, Some(&now)) {
+            log::warn!("Failed to persist task {} status: {}", task_id, e);
+        }
     }
 
     /// Get the current status of multiple tasks.
@@ -105,6 +156,7 @@ impl TaskManager {
             match &entry.status {
                 TaskStatus::Queued => {
                     entry.status = TaskStatus::Cancelled;
+                    self.persist_task_status(task_id, TaskStatus::Cancelled.key());
                     Ok(())
                 }
                 TaskStatus::Running { .. } => {

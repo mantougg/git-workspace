@@ -1,6 +1,6 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use log::{Log, Metadata, Record};
@@ -112,4 +112,39 @@ pub fn init_logger(dir: &Path) -> std::io::Result<()> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
     log::set_max_level(log::LevelFilter::Info);
     Ok(())
+}
+
+/// The five per-module log file names, in a stable order.
+pub const LOG_FILES: [&str; 5] = ["app.log", "git.log", "task.log", "ai.log", "performance.log"];
+
+/// Directory where log files live (matches the app data dir used at startup).
+pub fn logs_dir() -> PathBuf {
+    let base = if let Some(dir) = dirs::config_dir() {
+        dir.join("com.gitworkspace.app")
+    } else if let Some(dir) = dirs::home_dir() {
+        dir.join(".gitworkspace")
+    } else {
+        PathBuf::from(".gitworkspace")
+    };
+    base.join("logs")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_files_cover_five_module_buckets() {
+        assert_eq!(LOG_FILES.len(), 5);
+        assert_eq!(LOG_FILES[0], "app.log");
+        assert_eq!(LOG_FILES[1], "git.log");
+        assert_eq!(LOG_FILES[2], "task.log");
+        assert_eq!(LOG_FILES[3], "ai.log");
+        assert_eq!(LOG_FILES[4], "performance.log");
+    }
+
+    #[test]
+    fn logs_dir_ends_with_logs() {
+        assert!(logs_dir().ends_with("logs"));
+    }
 }

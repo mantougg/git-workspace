@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 0 · 基础稳定化 |
 | 优先级 | P0（前置） |
-| 状态 | 🟦 进行中 |
+| 状态 | ✅ 已完成 |
 | 依赖 | 无 |
 | 对应 Roadmap | §44 错误处理、§63 日志系统、§70/71/72 Secret Protection、§69 Security |
 
@@ -25,7 +25,7 @@
 
 - [x] 分级日志 Debug/Info/Warn/Error/Trace（`core/logger.rs` 按 level 输出）
 - [x] 分类文件：`app.log` / `git.log` / `task.log` / `ai.log` / `performance.log`（按 target 分流）
-- [ ] 支持 Open Logs / Export Logs / Clear Logs（剩余：UI 命令待补）
+- [x] 支持 Open Logs / Export Logs / Clear Logs（`commands/logs.rs` + `LogManager` UI）
 
 ### Secret Protection（§69/70/71/72）
 
@@ -43,25 +43,26 @@
 
 ## 验收标准
 
-- [ ] 各错误分类在 IPC 层正确映射为结构化错误，UI 可读且含 recoverable 提示
-- [ ] 五类日志文件按模块正确分流，可导出/清空
-- [ ] 含 AWS Key / JWT 的 diff 在 AI 请求前被检测并提示 Mask/Exclude
-- [ ] 含 `.env` / `*.pem` 的提交被 Commit 安全检查拦截
-- [ ] 日志中不出现明文 Secret
+- [x] 各错误分类在 IPC 层正确映射为结构化错误，UI 可读且含 recoverable 提示（`errMsg` 展示可重试/需手动处理）
+- [x] 五类日志文件按模块正确分流，可导出/清空（Open/Export/Clear 命令）
+- [x] 含 AWS Key / JWT 的 diff 在 AI 请求前被检测并提示 Mask/Exclude
+- [x] 含 `.env` / `*.pem` 的提交被 Commit 安全检查拦截
+- [x] 日志中不出现明文 Secret（脱敏）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：进行中
-- 最近更新：2026-08-13 开始开发
+- 当前状态：已完成
+- 最近更新：2026-08-13 完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-08-13 | 🟦 | 开始开发：结构化错误（ErrorResponse）+ Secret 检测引擎（core/secret.rs） |
-| 2026-08-13 | 🟦 | 核心完成：ErrorResponse 结构化 + logger 五文件分流脱敏 + Secret 引擎（7 测试）+ AI/Commit 检测点 + 前端 errMsg 适配；`cargo test` 13 passed、`vue-tsc` 通过。剩余 UI：日志导出/清空命令、recoverable 提示展示 |
+| 2026-08-13 | 🟦 | 核心完成：ErrorResponse 结构化 + logger 五文件分流脱敏 + Secret 引擎（7 测试）+ AI/Commit 检测点 + 前端 errMsg 适配；`cargo test` 13 passed、`vue-tsc` 通过。剩余 UI：日志导出/清空命令、recoverable 提示展示
+| 2026-08-13 | ✅ | 完成剩余：Open/Export/Clear Logs 命令（commands/logs.rs + LogManager UI）+ recoverable 提示展示（errMsg）；`cargo test` 33 passed、`npm run build` 通过 |
 
 ### 子任务清单
 

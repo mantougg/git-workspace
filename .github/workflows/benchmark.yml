@@ -1,0 +1,39 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev libssh2-1-dev \
+            libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmark (100 repositories)
+        run: cargo run --release --example benchmark -- 100 --json | tee /tmp/bench.json
+
+      - name: Enforce Roadmap §65 thresholds
+        run: |
+          python3 - <<'EOF'
+          import json
+          with open('/tmp/bench.json') as f:
+              r = json.load(f)
+          initial_scan = r['initial_scan_ms']
+          assert initial_scan < 2000, f"initial scan too slow: {initial_scan}ms (target < 2000)"
+          per_repo_status = r['status_refresh_ms'] / max(r['repository_count'], 1)
+          assert per_repo_status < 100, f"per-repo status too slow: {per_repo_status:.2f}ms (target < 100)"
+          print(f"thresholds OK: initial_scan={initial_scan}ms, per_repo_status={per_repo_status:.2f}ms")
+          EOF

@@ -135,7 +135,7 @@ pub fn sync_push(repo_path: String) -> AppResult<()> {
 }
 
 /// Start watching repositories for file changes.
-/// When files change, statuses are refreshed and `repo_status_changed` events are emitted.
+/// When files change, statuses are refreshed and `repo_status_changed_batch` events are emitted.
 #[tauri::command]
 pub fn start_watcher(
     repo_paths: Vec<String>,

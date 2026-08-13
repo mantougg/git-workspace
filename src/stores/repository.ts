@@ -48,6 +48,24 @@ export const useRepositoryStore = defineStore("repository", () => {
     }
   }
 
+  async function scanRepositoriesSelected(
+    workspaceId: number,
+    subPath: string,
+  ) {
+    scanning.value = true;
+    try {
+      repositories.value = await repoApi.scanRepositoriesSelected(
+        workspaceId,
+        subPath,
+      );
+    } catch (e) {
+      console.error("Failed to scan repository subtree:", e);
+      throw e;
+    } finally {
+      scanning.value = false;
+    }
+  }
+
   async function refreshStatus(repoPath: string) {
     try {
       const status = await repoApi.refreshRepositoryStatus(repoPath);
@@ -75,6 +93,7 @@ export const useRepositoryStore = defineStore("repository", () => {
     totalCount,
     cleanCount,
     scanRepositories,
+    scanRepositoriesSelected,
     loadRepositories,
     refreshStatus,
     updateStatus,
