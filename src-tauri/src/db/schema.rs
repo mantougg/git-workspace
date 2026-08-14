@@ -325,6 +325,13 @@ ALTER TABLE tasks ADD COLUMN task_uuid TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_uuid ON tasks(task_uuid);
 "#;
 
+/// Version 5 — T-10 Stash: reserve a workspace-level stash association
+/// column (T-21 Workspace Stash will group per-repo stashes under a
+/// workspace stash ref). Nullable; single-repo stashes leave it NULL.
+pub const SCHEMA_V5: &str = r#"
+ALTER TABLE stashes ADD COLUMN workspace_ref TEXT;
+"#;
+
 /// Ordered schema migrations. Index 0 = version 1, index 1 = version 2, ...
 /// Append new entries at the END only.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];

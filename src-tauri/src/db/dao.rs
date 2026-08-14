@@ -669,3 +669,31 @@ pub fn replace_tags(
     tx.commit()?;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Stash DAO (T-10): persistent snapshot of the stash stack
+// ---------------------------------------------------------------------------
+
+/// Replace the stash snapshot of a repository.
+///
+/// `stashes` items are `(stash_ref, message, created_at)` where `stash_ref`
+/// is the selector like `stash@{0}`. Replace (delete + batch insert in one
+/// transaction) so dropped stashes do not linger as stale rows.
+pub fn replace_stashes(
+    conn: &mut Connection,
+    repo_id: i64,
+    stashes: &[(String, Option<String>, String)],
+) -> AppResult<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM stashes WHERE repo_id = ?1", params![repo_id])?;
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO stashes (repo_id, stash_ref, message, created_at) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (stash_ref, message, created_at) in stashes {
+            stmt.execute(params![repo_id, stash_ref, message, created_at])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}

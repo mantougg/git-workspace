@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use serde_json::{json, Map, Value};
 
 use crate::commands::{ai, diff as diff_cmd, git_ops, logs};
-use crate::core::{branch as branch_core, diff, graph, history as history_core, reflog as reflog_core};
+use crate::core::{branch as branch_core, conflict as conflict_core, diff, graph, history as history_core, merge as merge_core, rebase as rebase_core, reflog as reflog_core, stash as stash_core};
 use crate::error::AppError;
 use crate::models::{group, repository, task, workspace};
 
@@ -410,6 +410,96 @@ fn samples() -> Map<String, Value> {
         }),
     );
 
+    // core/stash.rs (T-10)
+    m.insert(
+        "StashEntry".into(),
+        json!(stash_core::StashEntry {
+            index: 0,
+            oid: "abc123".into(),
+            message: "On master: work".into(),
+            time: "2026-01-01 00:00:00 +0000".into(),
+        }),
+    );
+
+    // core/merge.rs + core/rebase.rs (T-15)
+    m.insert(
+        "MergeOutcome".into(),
+        json!([
+            merge_core::MergeOutcome::UpToDate,
+            merge_core::MergeOutcome::FastForward {
+                to: "abc123".into(),
+            },
+            merge_core::MergeOutcome::Merged {
+                commit_oid: "abc123".into(),
+            },
+            merge_core::MergeOutcome::Squashed,
+            merge_core::MergeOutcome::Conflict {
+                files: vec!["a.rs".into()],
+                base_oid: Some("def456".into()),
+            },
+        ]),
+    );
+    m.insert(
+        "RebaseOp".into(),
+        json!(rebase_core::RebaseOp {
+            action: "pick".into(),
+            oid: "abc123".into(),
+            message: Some("msg".into()),
+            subject: "subject".into(),
+        }),
+    );
+    m.insert(
+        "RebaseState".into(),
+        json!(rebase_core::RebaseState {
+            original_head: "abc123".into(),
+            onto: "main".into(),
+            ops: vec![],
+            position: 0,
+            prev_commit: "def456".into(),
+        }),
+    );
+    m.insert(
+        "RebaseOutcome".into(),
+        json!([
+            rebase_core::RebaseOutcome::Success { rewritten: 3 },
+            rebase_core::RebaseOutcome::Conflict {
+                files: vec!["a.rs".into()],
+                position: 1,
+                total: 3,
+                current: "abc123".into(),
+            },
+        ]),
+    );
+
+    // core/conflict.rs (T-16)
+    m.insert(
+        "ConflictFile".into(),
+        json!(conflict_core::ConflictFile {
+            path: "a.rs".into(),
+            conflict_type: "both-modified".into(),
+        }),
+    );
+    m.insert(
+        "OperationState".into(),
+        json!(conflict_core::OperationState {
+            merge: true,
+            cherry_pick: false,
+            revert: false,
+            rebase: None,
+            conflicts: vec![],
+        }),
+    );
+    m.insert(
+        "ConflictContent".into(),
+        json!(conflict_core::ConflictContent {
+            base: Some("base".into()),
+            ours: Some("ours".into()),
+            theirs: Some("theirs".into()),
+            worktree: Some("<<<<<<< x".into()),
+            truncated: false,
+        }),
+    );
+
     // core/reflog.rs (T-14)
     m.insert(
         "ReflogEntry".into(),
@@ -517,6 +607,14 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("PickOutcome", "types/history.ts", "PickOutcome"),
     ("ResetResult", "types/history.ts", "ResetResult"),
     ("ReflogEntry", "types/reflog.ts", "ReflogEntry"),
+    ("StashEntry", "types/stash.ts", "StashEntry"),
+    ("MergeOutcome", "types/merge.ts", "MergeOutcome"),
+    ("RebaseOp", "types/rebase.ts", "RebaseOp"),
+    ("RebaseState", "types/rebase.ts", "RebaseState"),
+    ("RebaseOutcome", "types/rebase.ts", "RebaseOutcome"),
+    ("ConflictFile", "types/conflict.ts", "ConflictFile"),
+    ("OperationState", "types/conflict.ts", "OperationState"),
+    ("ConflictContent", "types/conflict.ts", "ConflictContent"),
     ("ReviewResult", "types/ai.ts", "ReviewResult"),
     ("ReviewIssue", "types/ai.ts", "ReviewIssue"),
     ("SearchResult", "types/ai.ts", "SearchResult"),

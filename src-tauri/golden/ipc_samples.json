@@ -57,6 +57,17 @@
     "files": [],
     "other": "feature"
   },
+  "ConflictContent": {
+    "base": "base",
+    "ours": "ours",
+    "theirs": "theirs",
+    "truncated": false,
+    "worktree": "<<<<<<< x"
+  },
+  "ConflictFile": {
+    "conflictType": "both-modified",
+    "path": "a.rs"
+  },
   "CreateGroupRequest": {
     "name": "g",
     "parentId": null,
@@ -115,6 +126,36 @@
     "path": "/logs/app.log",
     "sizeBytes": 42
   },
+  "MergeOutcome": [
+    {
+      "status": "upToDate"
+    },
+    {
+      "status": "fastForward",
+      "to": "abc123"
+    },
+    {
+      "commitOid": "abc123",
+      "status": "merged"
+    },
+    {
+      "status": "squashed"
+    },
+    {
+      "baseOid": "def456",
+      "files": [
+        "a.rs"
+      ],
+      "status": "conflict"
+    }
+  ],
+  "OperationState": {
+    "cherryPick": false,
+    "conflicts": [],
+    "merge": true,
+    "rebase": null,
+    "revert": false
+  },
   "PickOutcome": [
     {
       "picked": 2,
@@ -131,6 +172,34 @@
       "total": 2
     }
   ],
+  "RebaseOp": {
+    "action": "pick",
+    "message": "msg",
+    "oid": "abc123",
+    "subject": "subject"
+  },
+  "RebaseOutcome": [
+    {
+      "rewritten": 3,
+      "status": "success"
+    },
+    {
+      "current": "abc123",
+      "files": [
+        "a.rs"
+      ],
+      "position": 1,
+      "status": "conflict",
+      "total": 3
+    }
+  ],
+  "RebaseState": {
+    "onto": "main",
+    "ops": [],
+    "originalHead": "abc123",
+    "position": 0,
+    "prevCommit": "def456"
+  },
   "ReflogEntry": {
     "commitMessage": "msg",
     "index": 0,
@@ -248,6 +317,12 @@
     "rank": 0.5,
     "repoPath": "/ws/repo",
     "snippet": "let x"
+  },
+  "StashEntry": {
+    "index": 0,
+    "message": "On master: work",
+    "oid": "abc123",
+    "time": "2026-01-01 00:00:00 +0000"
   },
   "TagEntry": {
     "message": "release",

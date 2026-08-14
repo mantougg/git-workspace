@@ -187,6 +187,40 @@ pub fn conflict_files(repo_path: &Path) -> AppResult<Vec<String>> {
     conflict_paths(&index)
 }
 
+/// Continue an in-progress cherry-pick / revert after the user resolved the
+/// conflicts (T-16): commits the staged resolution (message from MERGE_MSG)
+/// and clears CHERRY_PICK_HEAD / REVERT_HEAD. Returns the new commit oid.
+pub fn pick_continue(repo_path: &Path) -> AppResult<String> {
+    let repo = git2::Repository::open(repo_path)?;
+    let in_pick = repo.path().join("CHERRY_PICK_HEAD").exists();
+    let in_revert = repo.path().join("REVERT_HEAD").exists();
+    if !in_pick && !in_revert {
+        return Err(AppError::Conflict(
+            "no cherry-pick / revert in progress".into(),
+        ));
+    }
+
+    let mut index = repo.index()?;
+    if index.has_conflicts() {
+        return Err(AppError::Conflict(
+            "仍有未解决的冲突，请先解决后再继续".into(),
+        ));
+    }
+
+    let tree_oid = index.write_tree()?;
+    let tree = repo.find_tree(tree_oid)?;
+    let sig = repo.signature()?;
+    let parent = repo.head()?.peel_to_commit()?;
+    let default_msg = std::fs::read_to_string(repo.path().join("MERGE_MSG"))
+        .ok()
+        .and_then(|m| m.lines().next().map(String::from))
+        .unwrap_or_else(|| if in_pick { "cherry-pick" } else { "revert" }.to_string());
+
+    let oid = repo.commit(Some("HEAD"), &sig, &sig, &default_msg, &tree, &[&parent])?;
+    repo.cleanup_state()?;
+    Ok(oid.to_string())
+}
+
 fn head_oid(repo: &git2::Repository) -> Option<String> {
     repo.head()
         .ok()
@@ -195,7 +229,7 @@ fn head_oid(repo: &git2::Repository) -> Option<String> {
 }
 
 /// Collect unique conflicted paths from the index.
-fn conflict_paths(index: &git2::Index) -> AppResult<Vec<String>> {
+pub(crate) fn conflict_paths(index: &git2::Index) -> AppResult<Vec<String>> {
     let mut paths: Vec<String> = Vec::new();
     for conflict in index.conflicts()? {
         let conflict = conflict?;
@@ -421,6 +455,54 @@ mod tests {
                 .replace("\r\n", "\n"),
             "master line\n"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Cherry-pick conflict -> resolve -> pick_continue creates the pick
+    /// commit and clears the state (T-16 resolver Continue path).
+    #[test]
+    fn cherry_pick_conflict_then_continue_commits() {
+        let dir = tmpdir("pick_continue");
+        let side_oid;
+        {
+            let repo = git2::Repository::init(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "base\n", "init");
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.branch("side", &head, false).unwrap();
+            drop(head);
+            commit_file(&repo, &dir, "a.txt", "master\n", "master change");
+            drop(repo);
+        }
+        crate::core::branch::checkout_branch(&dir, "side").unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            side_oid = commit_file(&repo, &dir, "a.txt", "side\n", "side change");
+            drop(repo);
+        }
+        crate::core::branch::checkout_branch(&dir, "master").unwrap();
+
+        let outcome = cherry_pick(&dir, &[side_oid]).unwrap();
+        assert!(matches!(outcome, PickOutcome::Conflict { .. }));
+        // Continue while unresolved -> structured error.
+        assert!(pick_continue(&dir).is_err());
+
+        // Resolve + stage, then continue.
+        std::fs::write(dir.join("a.txt"), "resolved\n").unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("a.txt")).unwrap();
+            index.write().unwrap();
+            drop(repo);
+        }
+        let oid = pick_continue(&dir).unwrap();
+        assert!(!oid.is_empty());
+        assert_eq!(head_short(&dir), "side change");
+        assert_eq!(conflict_files(&dir).unwrap().len(), 0);
+        // CHERRY_PICK_HEAD cleared.
+        let repo = git2::Repository::open(&dir).unwrap();
+        assert!(!repo.path().join("CHERRY_PICK_HEAD").exists());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

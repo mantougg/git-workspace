@@ -70,7 +70,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, schema::MIGRATIONS.len() as i64);
 
         for table in [
             "workspaces",
@@ -118,7 +118,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, schema::MIGRATIONS.len() as i64);
     }
 
     /// A pre-existing (v0) DB with the original tables must be upgraded
@@ -150,7 +150,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, schema::MIGRATIONS.len() as i64);
 
         let has_branches: i64 = conn
             .query_row(

@@ -1,8 +1,11 @@
 pub mod ai;
 pub mod branch;
+pub mod conflict;
 pub mod diff;
 pub mod history;
+pub mod merge_rebase;
 pub mod reflog;
+pub mod stash;
 pub mod git_ops;
 pub mod graph;
 pub mod logs;

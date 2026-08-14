@@ -243,6 +243,22 @@
             <el-icon><Grid /></el-icon>
             分支
           </el-button>
+          <el-button
+            size="small"
+            :disabled="!selectedRepoPath"
+            @click="viewStash(selectedRepoPath)"
+          >
+            <el-icon><Box /></el-icon>
+            Stash
+          </el-button>
+          <el-button
+            size="small"
+            :disabled="!selectedWorkspaceId"
+            @click="viewConflicts"
+          >
+            <el-icon><Warning /></el-icon>
+            冲突
+          </el-button>
         </div>
         <div class="commit-row">
           <div class="commit-input">
@@ -359,6 +375,8 @@ import {
   Download,
   FolderOpened,
   Grid,
+  Box,
+  Warning,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listen } from "@tauri-apps/api/event";
@@ -802,6 +820,19 @@ function viewGraph(repoPath: string) {
 
 function viewBranches(repoPath: string) {
   router.push({ name: "branch-manager", query: { repo: repoPath } });
+}
+
+function viewStash(repoPath: string) {
+  router.push({ name: "stash-manager", query: { repo: repoPath } });
+}
+
+function viewConflicts() {
+  const ws = workspaceStore.currentWorkspace;
+  if (!ws) return;
+  router.push({
+    name: "conflict-resolver",
+    query: { workspace: String(ws.id), name: ws.name },
+  });
 }
 </script>
 

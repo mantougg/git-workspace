@@ -28,6 +28,16 @@ const router = createRouter({
       name: "reflog-view",
       component: () => import("@/views/Reflog.vue"),
     },
+    {
+      path: "/stash",
+      name: "stash-manager",
+      component: () => import("@/views/StashManager.vue"),
+    },
+    {
+      path: "/conflicts",
+      name: "conflict-resolver",
+      component: () => import("@/views/ConflictResolver.vue"),
+    },
   ],
 });
 

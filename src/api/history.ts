@@ -29,6 +29,11 @@ export function abortPick(repoPath: string, baseOid?: string): Promise<void> {
   return invoke<void>("abort_pick", { repoPath, baseOid: baseOid ?? null });
 }
 
+/** Continue an in-progress cherry-pick / revert after resolving (T-16). */
+export function pickContinue(repoPath: string): Promise<string> {
+  return invoke<string>("pick_continue", { repoPath });
+}
+
 /** Currently conflicted files (empty when no conflict is in progress). */
 export function getConflictFiles(repoPath: string): Promise<string[]> {
   return invoke<string[]>("get_conflict_files", { repoPath });

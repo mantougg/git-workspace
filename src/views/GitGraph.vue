@@ -38,6 +38,9 @@
       <span class="conflict-text">
         存在未解决的冲突（{{ conflictFiles.length }} 个文件）：{{ conflictFiles.join("、") }}
       </span>
+      <el-button size="small" type="primary" plain @click="openResolver">
+        进入解决器
+      </el-button>
       <el-button size="small" type="danger" plain @click="abortInProgress()">
         中止并恢复（Abort）
       </el-button>
@@ -404,6 +407,10 @@ async function abortFromDialog() {
 
 function viewReflog() {
   router.push({ name: "reflog-view", query: { repo: repoPath.value } });
+}
+
+function openResolver() {
+  router.push({ name: "conflict-resolver", query: { repo: repoPath.value } });
 }
 
 function goBack() {

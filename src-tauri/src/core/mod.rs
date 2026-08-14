@@ -1,7 +1,11 @@
 pub mod branch;
+pub mod conflict;
 pub mod diff;
 pub mod history;
+pub mod merge;
+pub mod rebase;
 pub mod reflog;
+pub mod stash;
 pub mod git_ops;
 pub mod git_status;
 pub mod graph;

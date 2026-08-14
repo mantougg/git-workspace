@@ -134,6 +134,32 @@ pub fn run() {
             commands::history::get_conflict_files,
             // Reflog command (T-14)
             commands::reflog::get_reflog,
+            // Stash commands (T-10)
+            commands::stash::list_stashes,
+            commands::stash::stash_changes,
+            commands::stash::apply_stash,
+            commands::stash::pop_stash,
+            commands::stash::drop_stash,
+            commands::stash::clear_stashes,
+            commands::stash::get_stash_diff,
+            commands::stash::branch_from_stash,
+            // Merge / Rebase commands (T-15)
+            commands::merge_rebase::merge_branch,
+            commands::merge_rebase::merge_continue,
+            commands::merge_rebase::merge_abort,
+            commands::merge_rebase::get_merge_in_progress,
+            commands::merge_rebase::list_rebase_commits,
+            commands::merge_rebase::start_rebase,
+            commands::merge_rebase::rebase_continue,
+            commands::merge_rebase::rebase_skip,
+            commands::merge_rebase::rebase_abort,
+            commands::merge_rebase::get_rebase_state,
+            // Conflict Resolver commands (T-16)
+            commands::conflict::get_operation_state,
+            commands::conflict::get_conflict_content,
+            commands::conflict::resolve_conflict,
+            commands::conflict::resolve_conflict_with_content,
+            commands::history::pick_continue,
             // Git ops commands (batch operations)
             git_ops::batch_add,
             git_ops::batch_restore,

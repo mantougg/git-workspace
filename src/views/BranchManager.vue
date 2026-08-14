@@ -25,6 +25,43 @@
         <el-icon><Switch /></el-icon>
         Compare
       </el-button>
+      <el-button size="small" @click="rebaseDialogVisible = true">
+        Rebase
+      </el-button>
+    </div>
+
+    <!-- Operation state banners (T-15): resume an interrupted merge/rebase
+         after reload or restart -->
+    <div v-if="mergeInProgress" class="state-banner merge">
+      <span class="banner-text">Merge 进行中：存在冲突待解决（MERGE_HEAD 已置）。</span>
+      <el-button size="small" type="primary" plain @click="handleMergeContinue">
+        已解决，继续（Continue）
+      </el-button>
+      <el-button size="small" type="primary" plain @click="openResolver">
+        打开解决器
+      </el-button>
+      <el-button size="small" type="danger" plain @click="handleMergeAbort">
+        中止（Abort）
+      </el-button>
+      <span class="banner-hint">请先在变更视图解决冲突并暂存（三方解决器随 T-16 提供）</span>
+    </div>
+    <div v-if="rebaseState" class="state-banner rebase">
+      <span class="banner-text">
+        Rebase 进行中：第 {{ rebaseState.position + 1 }}/{{ rebaseState.ops.length }} 步
+        （onto {{ rebaseState.onto }}，当前 {{ currentOpLabel }}）。
+      </span>
+      <el-button size="small" type="primary" plain @click="handleRebaseContinue">
+        已解决，继续（Continue）
+      </el-button>
+      <el-button size="small" type="warning" plain @click="handleRebaseSkip">
+        跳过（Skip）
+      </el-button>
+      <el-button size="small" type="primary" plain @click="openResolver">
+        打开解决器
+      </el-button>
+      <el-button size="small" type="danger" plain @click="handleRebaseAbort">
+        中止（Abort）
+      </el-button>
     </div>
 
     <div class="branch-body" v-loading="loading">
@@ -64,8 +101,7 @@
                   <el-dropdown-item v-if="b.isCurrent" command="pull">Pull（--ff-only）</el-dropdown-item>
                   <el-dropdown-item command="push">Push</el-dropdown-item>
                   <el-dropdown-item command="compare">Compare</el-dropdown-item>
-                  <el-dropdown-item disabled title="Merge 将在 T-15 提供">Merge（T-15）</el-dropdown-item>
-                  <el-dropdown-item disabled title="Rebase 将在 T-15 提供">Rebase（T-15）</el-dropdown-item>
+                  <el-dropdown-item command="merge">Merge 到当前分支…</el-dropdown-item>
                   <el-dropdown-item v-if="!b.isCurrent" command="delete" divided>
                     <span class="danger-item">Delete</span>
                   </el-dropdown-item>
@@ -113,6 +149,35 @@
         </div>
       </template>
     </div>
+
+    <!-- Merge dialog (T-15) -->
+    <el-dialog v-model="mergeDialog.show" title="Merge 到当前分支" width="520px">
+      <div class="merge-form">
+        <div class="merge-line">
+          源分支：<strong>{{ mergeDialog.branch }}</strong> → 当前分支：<strong>{{ overview?.current }}</strong>
+        </div>
+        <el-radio-group v-model="mergeDialog.mode" class="merge-modes">
+          <el-radio value="normal">普通（可快进则快进）</el-radio>
+          <el-radio value="no-ff">--no-ff（始终生成合并提交）</el-radio>
+          <el-radio value="squash">--squash（压成暂存更改，不产生合并提交）</el-radio>
+        </el-radio-group>
+      </div>
+      <template #footer>
+        <el-button @click="mergeDialog.show = false">取消</el-button>
+        <el-button type="primary" :loading="mergeDialog.loading" @click="runMerge">
+          执行 Merge
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Interactive Rebase dialog (T-15) -->
+    <RebaseDialog
+      v-model="rebaseDialogVisible"
+      :repo-path="repoPath"
+      :revisions="rebaseRevisions"
+      :default-onto="defaultOnto"
+      @finished="onRebaseFinished"
+    />
 
     <!-- Compare dialog -->
     <el-dialog v-model="compare.show" title="Branch Compare" width="80%" top="5vh">
@@ -204,6 +269,11 @@ import type { BranchEntry, BranchOverview, CompareResult, RemoteBranchEntry } fr
 import type { FileDiff } from "@/types/git";
 import { syncPull } from "@/api/git_ops";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
+import RebaseDialog from "@/components/branch/RebaseDialog.vue";
+import { getMergeInProgress, mergeAbort, mergeBranch, mergeContinue } from "@/api/merge";
+import { getRebaseState, rebaseAbort, rebaseContinue, rebaseSkip } from "@/api/rebase";
+import type { MergeOutcome } from "@/types/merge";
+import type { RebaseOutcome, RebaseState } from "@/types/rebase";
 import { errMsg } from "@/utils/error";
 
 const route = useRoute();
@@ -212,6 +282,38 @@ const router = useRouter();
 const repoPath = ref("");
 const overview = ref<BranchOverview | null>(null);
 const loading = ref(false);
+
+// --- T-15 merge / rebase state ---
+const mergeDialog = reactive({ show: false, branch: "", mode: "normal", loading: false });
+const rebaseDialogVisible = ref(false);
+const mergeInProgress = ref(false);
+const rebaseState = ref<RebaseState | null>(null);
+
+/** Onto candidates: every local branch except the current one, plus remotes. */
+const rebaseRevisions = computed<string[]>(() => {
+  if (!overview.value) return [];
+  return [
+    ...overview.value.locals.filter((b) => !b.isCurrent).map((b) => b.name),
+    ...overview.value.remotes.map((r) => r.name),
+  ];
+});
+
+const defaultOnto = computed<string>(() => {
+  const opts = rebaseRevisions.value;
+  return (
+    opts.find((n) => n === "master") ??
+    opts.find((n) => n === "main") ??
+    opts[0] ??
+    ""
+  );
+});
+
+const currentOpLabel = computed<string>(() => {
+  const s = rebaseState.value;
+  if (!s || s.position >= s.ops.length) return "—";
+  const op = s.ops[s.position];
+  return `${op.action} ${op.oid.slice(0, 7)} ${op.subject}`;
+});
 
 const compare = reactive<{
   show: boolean;
@@ -256,11 +358,18 @@ async function load() {
   loading.value = true;
   try {
     overview.value = await listBranches(repoPath.value);
+    // Resume surface for an interrupted merge/rebase (T-15 restart recovery).
+    mergeInProgress.value = await getMergeInProgress(repoPath.value);
+    rebaseState.value = await getRebaseState(repoPath.value);
   } catch (e) {
     ElMessage.error("获取分支列表失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
+}
+
+function openResolver() {
+  router.push({ name: "conflict-resolver", query: { repo: repoPath.value } });
 }
 
 function goBack() {
@@ -311,6 +420,11 @@ async function handleLocalCommand(cmd: string, b: BranchEntry) {
       break;
     case "compare":
       openCompare(b.name);
+      break;
+    case "merge":
+      mergeDialog.branch = b.name;
+      mergeDialog.mode = "normal";
+      mergeDialog.show = true;
       break;
     case "delete":
       await handleDelete(b);
@@ -471,6 +585,160 @@ async function handleDelete(b: BranchEntry) {
     } else {
       ElMessage.error("删除失败: " + msg);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Merge / Rebase (T-15): Warning 确认 + 中断恢复
+// ---------------------------------------------------------------------------
+
+async function runMerge() {
+  const { branch, mode } = mergeDialog;
+  // Warning-level confirm (§46): history-changing op with impact scope.
+  try {
+    await ElMessageBox.confirm(
+      `仓库：${repoPath.value}\n将把分支 ${branch} 合并到当前分支 ${overview.value?.current ?? "HEAD"}（模式：${mode}）。\n若产生冲突，仓库会进入 Merge 状态，可解决后继续或中止恢复。`,
+      "Merge 确认（Warning）",
+      { confirmButtonText: "执行 Merge", cancelButtonText: "取消", type: "warning" },
+    );
+  } catch {
+    return;
+  }
+
+  mergeDialog.loading = true;
+  try {
+    const outcome = await mergeBranch(repoPath.value, branch, mode);
+    mergeDialog.show = false;
+    handleMergeOutcome(outcome);
+    await load();
+  } catch (e) {
+    ElMessage.error("Merge 失败: " + errMsg(e));
+  } finally {
+    mergeDialog.loading = false;
+  }
+}
+
+function handleMergeOutcome(outcome: MergeOutcome) {
+  switch (outcome.status) {
+    case "upToDate":
+      ElMessage.info("已是最新，无需合并");
+      break;
+    case "fastForward":
+      ElMessage.success(`已快进到 ${outcome.to.slice(0, 7)}`);
+      break;
+    case "merged":
+      ElMessage.success(`合并完成（${outcome.commitOid.slice(0, 7)}）`);
+      break;
+    case "squashed":
+      ElMessage.success("Squash 结果已暂存，请在变更视图提交");
+      break;
+    case "conflict":
+      ElMessage.warning(
+        `合并冲突（${outcome.files.length} 个文件）：${outcome.files.join("、")}。请在变更视图解决后回来 Continue，或 Abort 恢复。`,
+      );
+      break;
+  }
+}
+
+async function handleMergeContinue() {
+  try {
+    const oid = await mergeContinue(repoPath.value);
+    ElMessage.success(`Merge 已完成（${oid.slice(0, 7)}）`);
+    await load();
+  } catch (e) {
+    ElMessage.error(errMsg(e));
+  }
+}
+
+async function handleMergeAbort() {
+  try {
+    await ElMessageBox.confirm(
+      `仓库：${repoPath.value}\n将放弃本次合并并恢复到合并前状态（hard reset），冲突中的修改将丢失。`,
+      "Merge Abort 确认（Dangerous）",
+      {
+        confirmButtonText: "中止并恢复",
+        cancelButtonText: "取消",
+        type: "error",
+        confirmButtonClass: "el-button--danger",
+      },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await mergeAbort(repoPath.value);
+    ElMessage.success("已中止 Merge 并恢复");
+    await load();
+  } catch (e) {
+    ElMessage.error("Abort 失败: " + errMsg(e));
+  }
+}
+
+async function onRebaseFinished(outcome: RebaseOutcome | null) {
+  if (!outcome) return;
+  if (outcome.status === "success") {
+    ElMessage.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
+  } else {
+    ElMessage.warning(
+      `Rebase 在第 ${outcome.position + 1}/${outcome.total} 步冲突（${outcome.files.join("、")}）。解决后可 Continue / Skip / Abort。`,
+    );
+  }
+  await load();
+}
+
+async function handleRebaseContinue() {
+  try {
+    const outcome = await rebaseContinue(repoPath.value);
+    if (outcome.status === "success") {
+      ElMessage.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
+    } else {
+      ElMessage.warning(
+        `第 ${outcome.position + 1}/${outcome.total} 步再次冲突：${outcome.files.join("、")}`,
+      );
+    }
+    await load();
+  } catch (e) {
+    ElMessage.error(errMsg(e));
+  }
+}
+
+async function handleRebaseSkip() {
+  try {
+    const outcome = await rebaseSkip(repoPath.value);
+    if (outcome.status === "success") {
+      ElMessage.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
+    } else {
+      ElMessage.warning(
+        `第 ${outcome.position + 1}/${outcome.total} 步再次冲突：${outcome.files.join("、")}`,
+      );
+    }
+    await load();
+  } catch (e) {
+    ElMessage.error("Skip 失败: " + errMsg(e));
+  }
+}
+
+async function handleRebaseAbort() {
+  try {
+    await ElMessageBox.confirm(
+      `仓库：${repoPath.value}\n将放弃本次 Rebase 并恢复到 rebase 前位置（hard reset 到 ${rebaseState.value?.originalHead.slice(0, 7) ?? "?"}），进行中的修改将丢失。`,
+      "Rebase Abort 确认（Dangerous）",
+      {
+        confirmButtonText: "中止并恢复",
+        cancelButtonText: "取消",
+        type: "error",
+        confirmButtonClass: "el-button--danger",
+      },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await rebaseAbort(repoPath.value);
+    ElMessage.success("已中止 Rebase 并恢复");
+    await load();
+  } catch (e) {
+    ElMessage.error("Abort 失败: " + errMsg(e));
   }
 }
 
@@ -745,5 +1013,50 @@ async function runCompare() {
 .file-diff {
   flex: 1;
   overflow: hidden;
+}
+</style>
+
+<style scoped>
+.state-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid #fde2e2;
+}
+
+.state-banner.merge {
+  background: #fdf6ec;
+  border-bottom-color: #faecd8;
+}
+
+.state-banner.rebase {
+  background: #fef0f0;
+}
+
+.banner-text {
+  font-weight: 500;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.banner-hint {
+  color: #909399;
+  font-size: 12px;
+}
+
+.merge-line {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.merge-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>

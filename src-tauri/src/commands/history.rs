@@ -42,3 +42,10 @@ pub fn abort_pick(repo_path: String, base_oid: Option<String>) -> AppResult<()> 
 pub fn get_conflict_files(repo_path: String) -> AppResult<Vec<String>> {
     history::conflict_files(Path::new(&repo_path))
 }
+
+/// Continue an in-progress cherry-pick / revert after conflicts were resolved
+/// (T-16). Returns the new commit oid.
+#[tauri::command]
+pub fn pick_continue(repo_path: String) -> AppResult<String> {
+    history::pick_continue(Path::new(&repo_path))
+}
