@@ -117,7 +117,7 @@ pub fn commit_record_from_oid(repo: &git2::Repository, oid: &git2::Oid) -> Optio
 }
 
 /// Format a unix timestamp (+ optional tz offset in minutes) as a readable string.
-fn format_commit_time(seconds: i64, offset_minutes: i32) -> String {
+pub(crate) fn format_commit_time(seconds: i64, offset_minutes: i32) -> String {
     let dt = chrono::DateTime::from_timestamp(seconds, 0)
         .unwrap_or_default()
         .naive_utc();

@@ -23,6 +23,11 @@ const router = createRouter({
       name: "branch-manager",
       component: () => import("@/views/BranchManager.vue"),
     },
+    {
+      path: "/reflog",
+      name: "reflog-view",
+      component: () => import("@/views/Reflog.vue"),
+    },
   ],
 });
 

@@ -131,6 +131,15 @@
       "total": 2
     }
   ],
+  "ReflogEntry": {
+    "commitMessage": "msg",
+    "index": 0,
+    "newOid": "def456",
+    "oldOid": "abc123",
+    "selector": "HEAD@{0}",
+    "summary": "commit: msg",
+    "time": "2026-01-01 00:00:00 +0000"
+  },
   "RemoteBranchEntry": {
     "lastCommitMessage": "msg",
     "lastCommitOid": "abc123",

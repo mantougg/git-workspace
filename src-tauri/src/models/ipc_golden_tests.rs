@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use serde_json::{json, Map, Value};
 
 use crate::commands::{ai, diff as diff_cmd, git_ops, logs};
-use crate::core::{branch as branch_core, diff, graph, history as history_core};
+use crate::core::{branch as branch_core, diff, graph, history as history_core, reflog as reflog_core};
 use crate::error::AppError;
 use crate::models::{group, repository, task, workspace};
 
@@ -410,6 +410,20 @@ fn samples() -> Map<String, Value> {
         }),
     );
 
+    // core/reflog.rs (T-14)
+    m.insert(
+        "ReflogEntry".into(),
+        json!(reflog_core::ReflogEntry {
+            index: 0,
+            selector: "HEAD@{0}".into(),
+            old_oid: "abc123".into(),
+            new_oid: "def456".into(),
+            summary: "commit: msg".into(),
+            commit_message: "msg".into(),
+            time: "2026-01-01 00:00:00 +0000".into(),
+        }),
+    );
+
     // commands/logs.rs
     m.insert(
         "LogFileInfo".into(),
@@ -502,6 +516,7 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("CompareResult", "types/branch.ts", "CompareResult"),
     ("PickOutcome", "types/history.ts", "PickOutcome"),
     ("ResetResult", "types/history.ts", "ResetResult"),
+    ("ReflogEntry", "types/reflog.ts", "ReflogEntry"),
     ("ReviewResult", "types/ai.ts", "ReviewResult"),
     ("ReviewIssue", "types/ai.ts", "ReviewIssue"),
     ("SearchResult", "types/ai.ts", "SearchResult"),

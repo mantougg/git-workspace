@@ -15,6 +15,9 @@
       >
         刷新
       </el-button>
+      <el-button size="small" @click="viewReflog">
+        Reflog
+      </el-button>
     </div>
 
     <!-- Branch bar -->
@@ -362,7 +365,7 @@ async function confirmReset() {
   try {
     const result = await resetTo(repoPath.value, commit.oid, mode);
     const prev = result.previousHead ? result.previousHead.slice(0, 7) : "无";
-    ElMessage.success(`Reset（${mode}）完成；原 HEAD：${prev}`);
+    ElMessage.success(`Reset（${mode}）完成；原 HEAD：${prev}（可在 Reflog 视图恢复）`);
     await afterHistoryOp();
   } catch (e) {
     ElMessage.error("Reset 失败: " + errMsg(e));
@@ -397,6 +400,10 @@ async function abortFromDialog() {
   const base = conflictDialog.baseOid ?? undefined;
   conflictDialog.show = false;
   await abortInProgress(base);
+}
+
+function viewReflog() {
+  router.push({ name: "reflog-view", query: { repo: repoPath.value } });
 }
 
 function goBack() {

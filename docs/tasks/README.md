@@ -20,8 +20,8 @@
 ## 总体进度
 
 - 任务总数：**35**
-- 已完成：**7** · 进行中：**3** · 未开始：**25**
-- 完成度：**7 / 35（20%）**
+- 已完成：**8** · 进行中：**3** · 未开始：**24**
+- 完成度：**8 / 35（23%）**
 
 ---
 
@@ -51,7 +51,7 @@
 | T-11 | Commit 增强（Amend / Selected / Hunk / Line / Commit+Push） | P0 | ⬜ | T-04 | [T-11-commit-enhance.md](./T-11-commit-enhance.md) |
 | T-12 | Diff 增强（Hunk / Line Stage + 多对象 Diff） | P0 | ⬜ | T-04 | [T-12-diff-stage.md](./T-12-diff-stage.md) |
 | T-13 | Cherry-pick / Revert / Reset | P0 | 🟦 | T-09 | [T-13-cherry-pick-revert-reset.md](./T-13-cherry-pick-revert-reset.md) |
-| T-14 | Reflog | P0 | ⬜ | T-09 | [T-14-reflog.md](./T-14-reflog.md) |
+| T-14 | Reflog | P0 | ✅ | T-09 | [T-14-reflog.md](./T-14-reflog.md) |
 | T-15 | Merge / Rebase | P0 | ⬜ | T-09 | [T-15-merge-rebase.md](./T-15-merge-rebase.md) |
 | T-16 | Conflict Resolver | P0 | ⬜ | T-15, T-04 | [T-16-conflict-resolver.md](./T-16-conflict-resolver.md) |
 | T-17 | Worktree | P1 | ⬜ | T-09 | [T-17-worktree.md](./T-17-worktree.md) |

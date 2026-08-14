@@ -132,6 +132,8 @@ pub fn run() {
             commands::history::reset_to,
             commands::history::abort_pick,
             commands::history::get_conflict_files,
+            // Reflog command (T-14)
+            commands::reflog::get_reflog,
             // Git ops commands (batch operations)
             git_ops::batch_add,
             git_ops::batch_restore,
