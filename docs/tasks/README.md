@@ -20,8 +20,8 @@
 ## 总体进度
 
 - 任务总数：**35**
-- 已完成：**5** · 进行中：**3** · 未开始：**27**
-- 完成度：**5 / 35（14%）**
+- 已完成：**7** · 进行中：**3** · 未开始：**25**
+- 完成度：**7 / 35（20%）**
 
 ---
 
@@ -35,7 +35,7 @@
 |---|---|---|---|---|---|
 | T-01 | Scanner 硬化 | P0 | ✅ | — | [T-01-scanner.md](./T-01-scanner.md) |
 | T-02 | Status Engine（增量 + libgit2 线程安全 + 并发限流） | P0 | ✅ | T-01 | [T-02-status-engine.md](./T-02-status-engine.md) |
-| T-03 | SQLite 数据层硬化（WAL / 单写者 / 完整 schema） | P0 | 🟦 | — | [T-03-sqlite-data-layer.md](./T-03-sqlite-data-layer.md) |
+| T-03 | SQLite 数据层硬化（WAL / 单写者 / 完整 schema） | P0 | ✅ | — | [T-03-sqlite-data-layer.md](./T-03-sqlite-data-layer.md) |
 | T-04 | Diff & Graph 硬化 | P0 | 🟦 | T-03 | [T-04-diff-graph.md](./T-04-diff-graph.md) |
 | T-05 | Task Queue 硬化（Partial Success / 重试 / 超时） | P0 | 🟦 | T-03 | [T-05-task-queue.md](./T-05-task-queue.md) |
 | T-06 | File Watcher 升级 + 事件聚合 | P0 | ✅ | T-02 | [T-06-file-watcher.md](./T-06-file-watcher.md) |
@@ -46,11 +46,11 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| T-09 | Branch Manager | P0 | ⬜ | T-02 | [T-09-branch-manager.md](./T-09-branch-manager.md) |
+| T-09 | Branch Manager | P0 | ✅ | T-02 | [T-09-branch-manager.md](./T-09-branch-manager.md) |
 | T-10 | Stash | P0 | ⬜ | T-02 | [T-10-stash.md](./T-10-stash.md) |
 | T-11 | Commit 增强（Amend / Selected / Hunk / Line / Commit+Push） | P0 | ⬜ | T-04 | [T-11-commit-enhance.md](./T-11-commit-enhance.md) |
 | T-12 | Diff 增强（Hunk / Line Stage + 多对象 Diff） | P0 | ⬜ | T-04 | [T-12-diff-stage.md](./T-12-diff-stage.md) |
-| T-13 | Cherry-pick / Revert / Reset | P0 | ⬜ | T-09 | [T-13-cherry-pick-revert-reset.md](./T-13-cherry-pick-revert-reset.md) |
+| T-13 | Cherry-pick / Revert / Reset | P0 | 🟦 | T-09 | [T-13-cherry-pick-revert-reset.md](./T-13-cherry-pick-revert-reset.md) |
 | T-14 | Reflog | P0 | ⬜ | T-09 | [T-14-reflog.md](./T-14-reflog.md) |
 | T-15 | Merge / Rebase | P0 | ⬜ | T-09 | [T-15-merge-rebase.md](./T-15-merge-rebase.md) |
 | T-16 | Conflict Resolver | P0 | ⬜ | T-15, T-04 | [T-16-conflict-resolver.md](./T-16-conflict-resolver.md) |

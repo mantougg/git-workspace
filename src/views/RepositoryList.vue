@@ -235,6 +235,14 @@
             <el-icon><View /></el-icon>
             Diff
           </el-button>
+          <el-button
+            size="small"
+            :disabled="!selectedRepoPath"
+            @click="viewBranches(selectedRepoPath)"
+          >
+            <el-icon><Grid /></el-icon>
+            分支
+          </el-button>
         </div>
         <div class="commit-row">
           <div class="commit-input">
@@ -350,6 +358,7 @@ import {
   RefreshLeft,
   Download,
   FolderOpened,
+  Grid,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listen } from "@tauri-apps/api/event";
@@ -361,6 +370,7 @@ import { getDiff } from "@/api/git";
 import { batchAdd, batchRestore, getWorkspaceChanges, type AddRequest, type RestoreRequest } from "@/api/changes";
 import type { CommitRequest } from "@/types/task";
 import type { RepoChanges } from "@/types/changes";
+import type { ScanProgress } from "@/types/events";
 import type { FileDiff } from "@/types/git";
 import ChangeTree, {
   type ChangeNode,
@@ -452,12 +462,7 @@ onMounted(async () => {
   }
 
   // Listen for scan progress events
-  unlistenScan = await listen<{
-    workspaceId: number;
-    found: number;
-    current: number;
-    total: number | null;
-  }>("scan_progress", (event) => {
+  unlistenScan = await listen<ScanProgress>("scan_progress", (event) => {
     scanProgress.value = event.payload;
   });
 });
@@ -793,6 +798,10 @@ function viewDiff(repoPath: string) {
 
 function viewGraph(repoPath: string) {
   router.push({ name: "git-graph", query: { repo: repoPath } });
+}
+
+function viewBranches(repoPath: string) {
+  router.push({ name: "branch-manager", query: { repo: repoPath } });
 }
 </script>
 

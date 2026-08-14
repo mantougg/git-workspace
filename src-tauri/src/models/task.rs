@@ -60,7 +60,7 @@ pub struct Task {
 }
 
 /// Request payload for submitting a batch of tasks.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskRequest {
     pub task_type: TaskType,

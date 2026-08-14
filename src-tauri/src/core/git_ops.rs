@@ -75,6 +75,34 @@ impl GitOps {
         Ok(out)
     }
 
+    /// Push a specific local branch (T-09). Uses the branch's configured
+    /// upstream remote + remote branch name when set; otherwise pushes to the
+    /// default remote under the same branch name.
+    pub fn push_branch(&self, repo_path: &Path, branch: &str) -> AppResult<String> {
+        let repo = git2::Repository::open(repo_path)?;
+        let upstream = repo
+            .find_branch(branch, git2::BranchType::Local)
+            .ok()
+            .and_then(|b| b.upstream().ok())
+            .and_then(|u| u.name().ok().flatten().map(String::from));
+
+        let (remote_name, refspec) = match upstream.as_deref() {
+            // "origin/feature-x" -> push to origin as local:feature-x
+            Some(u) => {
+                let mut parts = u.splitn(2, '/');
+                let remote = parts.next().unwrap_or("origin").to_string();
+                let remote_branch = parts.next().unwrap_or(branch).to_string();
+                (remote, format!("{}:{}", branch, remote_branch))
+            }
+            None => (self.find_default_remote_name(&repo)?, branch.to_string()),
+        };
+
+        log::info!("Pushing branch '{}' to '{}' for {:?}", branch, remote_name, repo_path);
+        let out = run_git(repo_path, &["push", &remote_name, &refspec])?;
+        log::info!("Push branch completed for {:?}", repo_path);
+        Ok(out)
+    }
+
     /// Push the current branch to its upstream remote.
     pub fn push(&self, repo_path: &Path) -> AppResult<String> {
         log::info!("Pushing for {:?}", repo_path);

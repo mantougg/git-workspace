@@ -45,9 +45,10 @@ pub struct DiffConfig {
     pub ignore_case: bool,
 }
 
-/// Maximum lines rendered for a single "entire file added" hunk, to avoid
-/// transferring MB-sized files over IPC and freezing the UI.
-const MAX_FULL_FILE_LINES: usize = 2000;
+/// Maximum diff lines transferred per file over IPC, to avoid MB-sized
+/// payloads freezing the UI. Applies both to "entire file added" hunks
+/// (untracked/new files) and to tracked modifications (`extract_hunks`).
+const MAX_DIFF_LINES_PER_FILE: usize = 2000;
 
 /// Compute the diff between the HEAD tree and the working directory (with index).
 ///
@@ -83,6 +84,33 @@ pub fn get_workdir_diff_with_config(
     let diff =
         repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))?;
 
+    let mut files = files_from_diff(&diff, Some(repo_path));
+
+    if config.ignore_case {
+        apply_ignore_case_to_files(&mut files);
+    }
+
+    Ok(files)
+}
+
+/// Compute the diff between two revisions (branch / tag / oid specs) of an
+/// already-open repository, e.g. `main` vs `feature` for Branch Compare.
+/// Tracked-modification truncation (`extract_hunks` budget) applies as usual.
+pub fn diff_revisions(
+    repo: &git2::Repository,
+    base: &str,
+    other: &str,
+) -> AppResult<Vec<FileDiff>> {
+    let base_tree = repo.revparse_single(base)?.peel_to_tree()?;
+    let other_tree = repo.revparse_single(other)?.peel_to_tree()?;
+    let diff = repo.diff_tree_to_tree(Some(&base_tree), Some(&other_tree), None)?;
+    Ok(files_from_diff(&diff, None))
+}
+
+/// Turn every delta of a computed diff into a `FileDiff` with extracted
+/// hunks. When `repo_path` is given, untracked/added files without hunks get
+/// a synthetic full-file-add hunk (workdir diffs only).
+fn files_from_diff(diff: &git2::Diff, repo_path: Option<&Path>) -> Vec<FileDiff> {
     let mut files = Vec::new();
 
     for (i, delta) in diff.deltas().enumerate() {
@@ -110,14 +138,17 @@ pub fn get_workdir_diff_with_config(
         }
         .to_string();
 
-        let mut hunks = extract_hunks(&diff, i);
+        let mut hunks = extract_hunks(diff, i);
 
         // Untracked/new files usually have no hunks (libgit2 does not diff
         // their content against anything). Fill them with the full file
         // content as added lines so the UI can show what would be added.
-        if (status == "untracked" || status == "added") && hunks.is_empty() {
-            if let Some(hunk) = full_add_hunk_for_file(repo_path, &new_path) {
-                hunks.push(hunk);
+        // (Workdir diffs only; revision diffs always diff against a tree.)
+        if let Some(rp) = repo_path {
+            if (status == "untracked" || status == "added") && hunks.is_empty() {
+                if let Some(hunk) = full_add_hunk_for_file(rp, &new_path) {
+                    hunks.push(hunk);
+                }
             }
         }
 
@@ -129,11 +160,7 @@ pub fn get_workdir_diff_with_config(
         });
     }
 
-    if config.ignore_case {
-        apply_ignore_case_to_files(&mut files);
-    }
-
-    Ok(files)
+    files
 }
 
 /// Apply content-level "Ignore Case" (Roadmap §9) to the computed diffs.
@@ -226,7 +253,7 @@ fn full_add_hunk_for_file(repo_path: &Path, new_path: &str) -> Option<Hunk> {
 
     let total_lines = content.lines().count();
     let mut lines = Vec::new();
-    for (i, line) in content.lines().take(MAX_FULL_FILE_LINES).enumerate() {
+    for (i, line) in content.lines().take(MAX_DIFF_LINES_PER_FILE).enumerate() {
         lines.push(DiffLine {
             line_type: "add".to_string(),
             content: line.to_string(),
@@ -234,12 +261,12 @@ fn full_add_hunk_for_file(repo_path: &Path, new_path: &str) -> Option<Hunk> {
             new_line: Some(i as u32 + 1),
         });
     }
-    if total_lines > MAX_FULL_FILE_LINES {
+    if total_lines > MAX_DIFF_LINES_PER_FILE {
         lines.push(DiffLine {
             line_type: "context".to_string(),
             content: format!(
                 "... ({} more lines truncated)",
-                total_lines - MAX_FULL_FILE_LINES
+                total_lines - MAX_DIFF_LINES_PER_FILE
             ),
             old_line: None,
             new_line: None,
@@ -257,6 +284,11 @@ fn full_add_hunk_for_file(repo_path: &Path, new_path: &str) -> Option<Hunk> {
 
 /// Extract hunks and lines from a specific diff delta using Patch API.
 /// Returns an empty vector for binary files or patch failures.
+///
+/// Output is capped at `MAX_DIFF_LINES_PER_FILE` lines per file: tracked
+/// modifications of huge files otherwise cross IPC unbounded and freeze the
+/// UI. When the budget caps the output, a truncation marker line is appended
+/// to the last hunk (mirroring the untracked-file behavior).
 fn extract_hunks(diff: &git2::Diff, delta_index: usize) -> Vec<Hunk> {
     let patch = match git2::Patch::from_diff(diff, delta_index) {
         Ok(Some(p)) => p,
@@ -266,7 +298,17 @@ fn extract_hunks(diff: &git2::Diff, delta_index: usize) -> Vec<Hunk> {
     let mut hunks = Vec::new();
     let num_hunks = patch.num_hunks();
 
+    // Total line count from patch metadata (no content extraction), used for
+    // the truncation marker's "N more lines" count.
+    let total_lines: usize = (0..num_hunks)
+        .map(|h| patch.num_lines_in_hunk(h).unwrap_or(0))
+        .sum();
+    let mut budget = MAX_DIFF_LINES_PER_FILE;
+
     for hunk_idx in 0..num_hunks {
+        if budget == 0 {
+            break;
+        }
         let hunk = match patch.hunk(hunk_idx) {
             Ok((h, _)) => h,
             Err(_) => continue,
@@ -279,6 +321,9 @@ fn extract_hunks(diff: &git2::Diff, delta_index: usize) -> Vec<Hunk> {
         };
 
         for line_idx in 0..num_lines {
+            if budget == 0 {
+                break;
+            }
             if let Ok(line) = patch.line_in_hunk(hunk_idx, line_idx) {
                 let (line_type, content, old_line, new_line) = match line.origin() {
                     '+' => (
@@ -318,6 +363,7 @@ fn extract_hunks(diff: &git2::Diff, delta_index: usize) -> Vec<Hunk> {
                     old_line,
                     new_line,
                 });
+                budget -= 1;
             }
         }
 
@@ -328,6 +374,18 @@ fn extract_hunks(diff: &git2::Diff, delta_index: usize) -> Vec<Hunk> {
             new_lines: hunk.new_lines(),
             lines,
         });
+    }
+
+    let shown: usize = hunks.iter().map(|h| h.lines.len()).sum();
+    if shown < total_lines {
+        if let Some(last) = hunks.last_mut() {
+            last.lines.push(DiffLine {
+                line_type: "context".to_string(),
+                content: format!("... ({} more lines truncated)", total_lines - shown),
+                old_line: None,
+                new_line: None,
+            });
+        }
     }
 
     hunks
@@ -521,11 +579,48 @@ mod tests {
         assert_eq!(f.hunks.len(), 1);
 
         let lines = &f.hunks[0].lines;
-        assert_eq!(lines.len(), MAX_FULL_FILE_LINES + 1);
+        assert_eq!(lines.len(), MAX_DIFF_LINES_PER_FILE + 1);
         assert!(
             lines[lines.len() - 1].content.contains("truncated"),
             "truncation marker missing: {}",
             lines[lines.len() - 1].content
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A huge tracked modification must also be truncated at
+    /// MAX_DIFF_LINES_PER_FILE with a marker (acceptance: oversized diffs
+    /// never cross IPC unbounded).
+    #[test]
+    fn oversized_tracked_modification_is_truncated() {
+        let dir = tmpdir("big_tracked");
+        {
+            let old: String = (0..3000).map(|i| format!("old line {}\n", i)).collect();
+            let repo = init_repo_with_file(&dir, "big.txt", &old);
+            drop(repo);
+        }
+        let new: String = (0..3000).map(|i| format!("new line {}\n", i)).collect();
+        std::fs::write(dir.join("big.txt"), &new).unwrap();
+
+        let files = get_workdir_diff_with_config(&dir, &DiffConfig::default()).unwrap();
+        let f = files
+            .iter()
+            .find(|f| f.new_path == "big.txt")
+            .expect("modified big.txt must appear in the diff");
+        assert_eq!(f.status, "modified");
+
+        let shown: usize = f.hunks.iter().map(|h| h.lines.len()).sum();
+        assert_eq!(
+            shown,
+            MAX_DIFF_LINES_PER_FILE + 1,
+            "budget lines + one truncation marker"
+        );
+        let last = f.hunks.last().unwrap().lines.last().unwrap();
+        assert!(
+            last.content.contains("truncated"),
+            "truncation marker missing: {}",
+            last.content
         );
 
         let _ = std::fs::remove_dir_all(&dir);

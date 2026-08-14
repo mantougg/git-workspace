@@ -6,7 +6,7 @@ use crate::core::diff::{self, FileDiff};
 use crate::error::AppResult;
 
 /// Diff rendering options from the UI (Roadmap §9 diff settings).
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DiffOptionsParam {
     pub ignore_whitespace: bool,

@@ -1,0 +1,333 @@
+{
+  "AddRequest": {
+    "files": [
+      "a.rs"
+    ],
+    "repoName": "repo",
+    "repoPath": "/ws/repo"
+  },
+  "BranchEntry": {
+    "ahead": 1,
+    "behind": 2,
+    "isCurrent": true,
+    "lastCommitMessage": "msg",
+    "lastCommitOid": "abc123",
+    "name": "main",
+    "upstream": "origin/main"
+  },
+  "BranchInfo": {
+    "isCurrent": true,
+    "isRemote": false,
+    "lastCommitMessage": "msg",
+    "lastCommitOid": "abc123",
+    "name": "main"
+  },
+  "BranchOverview": {
+    "current": "main",
+    "locals": [],
+    "remotes": [],
+    "tags": []
+  },
+  "CommitInfo": {
+    "author": "A U Thor",
+    "email": "a@example.com",
+    "message": "msg",
+    "oid": "abc123",
+    "parents": [
+      "def456"
+    ],
+    "refs": [
+      "main"
+    ],
+    "shortOid": "abc123",
+    "time": "2026-01-01T00:00:00Z"
+  },
+  "CommitRequest": {
+    "files": [
+      "a.rs"
+    ],
+    "message": "msg",
+    "repoName": "repo",
+    "repoPath": "/ws/repo"
+  },
+  "CompareResult": {
+    "ahead": [],
+    "base": "main",
+    "behind": [],
+    "files": [],
+    "other": "feature"
+  },
+  "CreateGroupRequest": {
+    "name": "g",
+    "parentId": null,
+    "workspaceId": 2
+  },
+  "CreateWorkspaceRequest": {
+    "name": "ws",
+    "path": "/ws",
+    "scanDepth": 5
+  },
+  "DiffLine": {
+    "content": "let x = 1;",
+    "lineType": "add",
+    "newLine": 3,
+    "oldLine": null
+  },
+  "DiffOptionsParam": {
+    "ignoreCase": true,
+    "ignoreWhitespace": true,
+    "ignoreWhitespaceEol": false
+  },
+  "ErrorResponse": {
+    "code": "RepositoryError",
+    "details": null,
+    "message": "Not found: thing",
+    "operation": null,
+    "recoverable": false,
+    "repository": null
+  },
+  "FileChange": {
+    "path": "src/a.rs",
+    "status": "modified"
+  },
+  "FileDiff": {
+    "hunks": [],
+    "newPath": "a.rs",
+    "oldPath": "a.rs",
+    "status": "modified"
+  },
+  "GitCommandResult": {
+    "command": "git fetch origin",
+    "output": "ok",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "success": true
+  },
+  "Hunk": {
+    "lines": [],
+    "newLines": 4,
+    "newStart": 3,
+    "oldLines": 2,
+    "oldStart": 1
+  },
+  "LogFileInfo": {
+    "name": "app.log",
+    "path": "/logs/app.log",
+    "sizeBytes": 42
+  },
+  "PickOutcome": [
+    {
+      "picked": 2,
+      "status": "success"
+    },
+    {
+      "baseOid": "def456",
+      "current": "abc123",
+      "done": 1,
+      "files": [
+        "a.rs"
+      ],
+      "status": "conflict",
+      "total": 2
+    }
+  ],
+  "RemoteBranchEntry": {
+    "lastCommitMessage": "msg",
+    "lastCommitOid": "abc123",
+    "name": "origin/main"
+  },
+  "RepoChanges": {
+    "ahead": 0,
+    "behind": 0,
+    "branch": "main",
+    "changes": [],
+    "isDetached": false,
+    "relativePath": "repo",
+    "repoName": "repo",
+    "repoPath": "/ws/repo"
+  },
+  "RepoGroup": {
+    "id": 1,
+    "name": "g",
+    "parentId": 3,
+    "sortOrder": 4,
+    "workspaceId": 2
+  },
+  "RepoStatus": {
+    "added": 4,
+    "ahead": 1,
+    "behind": 2,
+    "branch": "main",
+    "deleted": 5,
+    "isClean": false,
+    "isDetached": false,
+    "modified": 3,
+    "staged": 7,
+    "untracked": 6
+  },
+  "RepoStatusUpdate": {
+    "repoPath": "/ws/repo",
+    "status": {
+      "added": 0,
+      "ahead": 0,
+      "behind": 0,
+      "branch": "main",
+      "deleted": 0,
+      "isClean": true,
+      "isDetached": false,
+      "modified": 0,
+      "staged": 0,
+      "untracked": 0
+    }
+  },
+  "Repository": {
+    "groupId": 3,
+    "id": 1,
+    "isFavorite": true,
+    "name": "repo",
+    "path": "/ws/repo",
+    "relativePath": "repo",
+    "tags": [
+      "tag"
+    ],
+    "workspaceId": 2
+  },
+  "RepositoryWithStatus": {
+    "lastError": "err",
+    "repository": {
+      "groupId": null,
+      "id": null,
+      "isFavorite": false,
+      "name": "repo",
+      "path": "/ws/repo",
+      "relativePath": "repo",
+      "tags": [],
+      "workspaceId": 2
+    },
+    "status": null
+  },
+  "ResetResult": {
+    "mode": "hard",
+    "previousHead": "abc123",
+    "target": "def456"
+  },
+  "RestoreRequest": {
+    "files": [
+      "a.rs"
+    ],
+    "repoName": "repo",
+    "repoPath": "/ws/repo"
+  },
+  "ReviewIssue": {
+    "category": "bug",
+    "description": "desc",
+    "file": "a.rs",
+    "severity": "high"
+  },
+  "ReviewResult": {
+    "issues": [],
+    "summary": "ok"
+  },
+  "ScanProgress": {
+    "current": 3,
+    "found": 5,
+    "total": 10,
+    "workspaceId": 1
+  },
+  "SearchResult": {
+    "filePath": "a.rs",
+    "rank": 0.5,
+    "repoPath": "/ws/repo",
+    "snippet": "let x"
+  },
+  "TagEntry": {
+    "message": "release",
+    "name": "v1.0",
+    "targetOid": "abc123"
+  },
+  "Task": {
+    "createdAt": "2026-01-01T00:00:00Z",
+    "id": "t-1",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "status": {
+      "type": "queued"
+    },
+    "taskType": {
+      "type": "fetch"
+    }
+  },
+  "TaskProgress": {
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "status": {
+      "progress": 1.0,
+      "type": "running"
+    },
+    "taskId": "t-1",
+    "taskType": {
+      "type": "push"
+    }
+  },
+  "TaskRequest": {
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "taskType": {
+      "type": "pull"
+    }
+  },
+  "TaskStatus": [
+    {
+      "type": "queued"
+    },
+    {
+      "progress": 0.5,
+      "type": "running"
+    },
+    {
+      "type": "success"
+    },
+    {
+      "failed": 1,
+      "succeeded": 2,
+      "type": "partialSuccess"
+    },
+    {
+      "error": "boom",
+      "type": "failed"
+    },
+    {
+      "type": "cancelled"
+    }
+  ],
+  "TaskType": [
+    {
+      "type": "fetch"
+    },
+    {
+      "type": "pull"
+    },
+    {
+      "type": "push"
+    },
+    {
+      "files": [
+        "a.rs"
+      ],
+      "message": "msg",
+      "type": "commit"
+    }
+  ],
+  "UpdateWorkspaceRequest": {
+    "name": "ws2",
+    "scanDepth": null
+  },
+  "Workspace": {
+    "createdAt": "2026-01-01T00:00:00Z",
+    "id": 1,
+    "name": "ws",
+    "path": "/ws",
+    "scanDepth": 5,
+    "updatedAt": "2026-01-01T00:00:00Z"
+  }
+}

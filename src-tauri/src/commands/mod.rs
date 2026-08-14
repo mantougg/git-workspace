@@ -1,5 +1,7 @@
 pub mod ai;
+pub mod branch;
 pub mod diff;
+pub mod history;
 pub mod git_ops;
 pub mod graph;
 pub mod logs;

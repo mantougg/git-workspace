@@ -172,7 +172,7 @@ pub fn stop_watcher(state: State<'_, AppState>) -> AppResult<()> {
 }
 
 /// Request payload for batch commit.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitRequest {
     pub repo_path: String,
@@ -182,7 +182,7 @@ pub struct CommitRequest {
 }
 
 /// Request payload for staging files (git add).
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddRequest {
     pub repo_path: String,
@@ -191,7 +191,7 @@ pub struct AddRequest {
 }
 
 /// Request payload for reverting working-tree changes (git restore).
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreRequest {
     pub repo_path: String,

@@ -18,6 +18,11 @@ const router = createRouter({
       name: "git-graph",
       component: () => import("@/views/GitGraph.vue"),
     },
+    {
+      path: "/branches",
+      name: "branch-manager",
+      component: () => import("@/views/BranchManager.vue"),
+    },
   ],
 });
 

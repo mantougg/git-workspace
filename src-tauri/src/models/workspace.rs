@@ -14,7 +14,7 @@ pub struct Workspace {
 }
 
 /// Request payload for creating a new workspace.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkspaceRequest {
     pub name: String,
@@ -25,7 +25,7 @@ pub struct CreateWorkspaceRequest {
 }
 
 /// Request payload for updating an existing workspace.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateWorkspaceRequest {
     pub name: Option<String>,

@@ -116,6 +116,22 @@ pub fn run() {
             repository::assign_group,
             // Diff commands
             diff::get_diff,
+            // Branch commands (T-09)
+            commands::branch::list_branches,
+            commands::branch::create_branch,
+            commands::branch::checkout_branch,
+            commands::branch::delete_branch,
+            commands::branch::rename_branch,
+            commands::branch::set_upstream,
+            commands::branch::track_remote_branch,
+            commands::branch::push_branch,
+            commands::branch::compare_branches,
+            // History commands (T-13)
+            commands::history::cherry_pick,
+            commands::history::revert_commit,
+            commands::history::reset_to,
+            commands::history::abort_pick,
+            commands::history::get_conflict_files,
             // Git ops commands (batch operations)
             git_ops::batch_add,
             git_ops::batch_restore,

@@ -1,31 +1,48 @@
 <template>
-  <div class="unified-diff">
-    <div v-for="(hunk, hi) in file.hunks" :key="hi" class="hunk">
-      <div class="hunk-header">
-        @@ -{{ hunk.oldStart }},{{ hunk.oldLines }} +{{ hunk.newStart }},{{
-          hunk.newLines
-        }} @@
+  <VirtualList :items="rows" :item-height="ROW_HEIGHT" class="unified-diff">
+    <template #row="{ item }">
+      <div v-if="item.type === 'header'" class="hunk-header">
+        {{ item.text }}
       </div>
-      <div
-        v-for="(line, li) in hunk.lines"
-        :key="li"
-        :class="['diff-line', line.lineType]"
-      >
-        <span class="line-num old">{{ line.oldLine ?? "" }}</span>
-        <span class="line-num new">{{ line.newLine ?? "" }}</span>
-        <span class="line-prefix">{{ prefix(line.lineType) }}</span>
-        <span class="line-content">{{ line.content }}</span>
+      <div v-else :class="['diff-line', item.line.lineType]">
+        <span class="line-num old">{{ item.line.oldLine ?? "" }}</span>
+        <span class="line-num new">{{ item.line.newLine ?? "" }}</span>
+        <span class="line-prefix">{{ prefix(item.line.lineType) }}</span>
+        <span class="line-content">{{ item.line.content }}</span>
       </div>
-    </div>
-  </div>
+    </template>
+  </VirtualList>
 </template>
 
 <script setup lang="ts">
-import type { FileDiff } from "@/types/git";
+import { computed } from "vue";
+import VirtualList from "@/components/common/VirtualList.vue";
+import type { DiffLine, FileDiff } from "@/types/git";
 
-defineProps<{
+const props = defineProps<{
   file: FileDiff;
 }>();
+
+/** Fixed row height (px) required by VirtualList. */
+const ROW_HEIGHT = 21;
+
+type Row = { type: "header"; text: string } | { type: "line"; line: DiffLine };
+
+// Flatten hunks into a uniform row list so a single virtual window covers
+// both hunk headers and diff lines (T-04 frontend rendering budget).
+const rows = computed<Row[]>(() => {
+  const out: Row[] = [];
+  for (const hunk of props.file.hunks) {
+    out.push({
+      type: "header",
+      text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+    });
+    for (const line of hunk.lines) {
+      out.push({ type: "line", line });
+    }
+  }
+  return out;
+});
 
 function prefix(type: string): string {
   switch (type) {
@@ -43,23 +60,23 @@ function prefix(type: string): string {
 .unified-diff {
   font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
   font-size: 13px;
-  line-height: 1.6;
-  /* Grow to fit the widest line so long lines scroll horizontally
-     instead of wrapping. */
-  width: max-content;
-  min-width: 100%;
 }
 
 .hunk-header {
+  height: 21px;
+  line-height: 21px;
   background: #f0f0f0;
   color: #909399;
-  padding: 2px 8px;
+  padding: 0 8px;
   font-size: 12px;
+  white-space: pre;
 }
 
 .diff-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  height: 21px;
+  line-height: 21px;
   padding: 0 8px;
   white-space: pre;
 }

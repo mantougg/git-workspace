@@ -13,7 +13,7 @@ pub struct RepoGroup {
 }
 
 /// Request payload for creating a new group.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateGroupRequest {
     pub workspace_id: i64,

@@ -114,7 +114,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, MagicStick } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -125,6 +125,7 @@ import type { FileDiff } from "@/types/git";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import SideBySideDiff from "@/components/diff/SideBySideDiff.vue";
 import { errMsg } from "@/utils/error";
+import { startFrameMeter, type FrameStats } from "@/utils/frameTime";
 
 const route = useRoute();
 const router = useRouter();
@@ -144,6 +145,7 @@ const showReview = ref(false);
 const reviewResult = ref<ReviewResult | null>(null);
 
 onMounted(async () => {
+  stopFrameMeter = startFrameMeter("diff-viewer");
   const repo = route.query.repo as string;
   if (!repo) {
     ElMessage.warning("未指定仓库路径");
@@ -152,6 +154,20 @@ onMounted(async () => {
   }
   repoPath.value = repo;
   await loadDiff();
+});
+
+let stopFrameMeter: (() => FrameStats) | null = null;
+
+// Frame-time measurement channel for the diff rendering budget (T-04):
+// samples rAF frame durations while this view is open; live stats are on
+// window.__gwPerf["diff-viewer"], slow frames are warned in the console.
+onUnmounted(() => {
+  const stats = stopFrameMeter?.();
+  if (stats && stats.frames > 0) {
+    console.debug(
+      `[perf:diff-viewer] frames=${stats.frames} avg=${stats.avgMs}ms p95=${stats.p95Ms}ms max=${stats.maxMs}ms`,
+    );
+  }
 });
 
 let loadSeq = 0;
@@ -388,3 +404,9 @@ function statusIcon(status: string): string {
   margin-top: 4px;
 }
 </style>
+
+/* VirtualList owns diff-body scrolling now (T-04); clip the outer container
+   so a double scrollbar can never appear. */
+.file-diff-body {
+  overflow: hidden;
+}

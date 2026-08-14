@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 1 · 完整 Git Client（P0） |
 | 优先级 | P0 |
-| 状态 | ⬜ 未开始 |
+| 状态 | 🟦 进行中 |
 | 依赖 | T-09 |
 | 对应 Roadmap | §10 History 操作、§46 Git Operation Safety |
 
@@ -16,11 +16,11 @@
 
 ## 需求范围
 
-- [ ] Cherry-pick：单 commit / 多 commit，冲突时进入 T-16 Conflict Resolver
-- [ ] Revert：单个 commit revert，生成 revert 提交
-- [ ] Reset：soft / mixed / hard 三档，hard 归为 Dangerous 级二次确认，明确显示影响范围（仓库/分支/文件/潜在数据丢失）
-- [ ] 入口：History 的 commit 上下文菜单 + Command Palette
-- [ ] 操作结果反馈：成功 / 冲突（跳转 T-16）/ 失败（结构化错误）
+- [x] Cherry-pick：单 commit / 多 commit（API 支持多 commit 顺序应用；UI 入口当前为单 commit），冲突时进入 T-16 Conflict Resolver（待 T-16，当前为冲突对话框 + Abort）
+- [x] Revert：单个 commit revert，生成 revert 提交
+- [x] Reset：soft / mixed / hard 三档，hard 归为 Dangerous 级二次确认，明确显示影响范围（仓库/分支/文件/潜在数据丢失）
+- [x] 入口：History 的 commit 上下文菜单（CommitGraph 行内操作菜单）；Command Palette 入口待 T-31
+- [x] 操作结果反馈：成功 / 冲突（跳转 T-16 待实现，当前对话框列出冲突文件 + Abort）/ 失败（结构化错误）
 
 ## 架构 / 性能注意点
 
@@ -29,27 +29,28 @@
 
 ## 验收标准
 
-- [ ] 三档 reset 语义正确，hard 有明确危险确认
-- [ ] Cherry-pick 冲突进入 Conflict Resolver 且可 abort 恢复
-- [ ] Revert 生成正确 revert 提交
-- [ ] 所有危险操作确认弹窗包含仓库/分支/影响文件/数据丢失提示
+- [x] 三档 reset 语义正确，hard 有明确危险确认
+- [ ] Cherry-pick 冲突进入 Conflict Resolver 且可 abort 恢复（abort 恢复已实现并有测试；进入 Resolver 待 T-16）
+- [x] Revert 生成正确 revert 提交
+- [x] 所有危险操作确认弹窗包含仓库/分支/影响文件/数据丢失提示
 
 ## 进度
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：进行中（剩余：冲突进入 Conflict Resolver 待 T-16；Command Palette 入口待 T-31；UI 多 commit cherry-pick 选择器）
+- 最近更新：2026-08-14 核心完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
-| — | — | — |
+| 2026-08-14 | 🟦 | 开始开发 |
+| 2026-08-14 | 🟦 | 核心完成：新增 `core/history.rs`（cherry_pick 多 commit 顺序应用/冲突保留现场、revert 生成回滚提交、reset soft/mixed/hard、abort_pick 恢复 + conflict_files 检测）+ `commands/history.rs` 5 个 command；前端 CommitGraph 行内操作菜单（Cherry-pick/Revert/Reset）+ GitGraph §46 确认流（hard reset Dangerous 列出仓库/分支/目标/数据丢失 + 原 HEAD 保底提示）+ 冲突对话框（文件列表 + Abort）+ 载入时冲突横幅；4 个核心单元测试；IPC golden 新增 PickOutcome/ResetResult（union 解析器支持 `status` 判别字段与多行 variant）；`cargo test` 53 passed、`vue-tsc` + `vite build` 通过。剩余：Resolver 跳转待 T-16、Palette 入口待 T-31、UI 多 commit 选择器 |
 
 ### 子任务清单
 
-- [ ] Cherry-pick 实现与冲突衔接
-- [ ] Revert 实现
-- [ ] Reset 三档 + 危险确认
-- [ ] History 上下文菜单接入
+- [x] Cherry-pick 实现与冲突衔接（冲突检测 + Abort 恢复；Resolver 跳转待 T-16）
+- [x] Revert 实现
+- [x] Reset 三档 + 危险确认
+- [x] History 上下文菜单接入（Command Palette 入口待 T-31）

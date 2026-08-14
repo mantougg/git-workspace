@@ -84,6 +84,20 @@
           <span class="commit-author">{{ row.commit.author }}</span>
           <span class="commit-time">{{ formatTime(row.commit.time) }}</span>
         </span>
+
+        <!-- Row actions (T-13 history operations) -->
+        <el-dropdown trigger="click" @command="onAction($event, row.commit)">
+          <el-button size="small" text class="row-action-btn" @click.stop>
+            <el-icon><MoreFilled /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="cherry-pick">Cherry-pick</el-dropdown-item>
+              <el-dropdown-item command="revert">Revert</el-dropdown-item>
+              <el-dropdown-item command="reset" divided>Reset 到此处…</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
       <div v-if="loading" class="loading-more">
         <el-icon class="is-loading"><Loading /></el-icon>
@@ -102,7 +116,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Loading } from "@element-plus/icons-vue";
+import { Loading, MoreFilled } from "@element-plus/icons-vue";
 import type { CommitInfo } from "@/types/graph";
 
 const props = defineProps<{
@@ -114,6 +128,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "select", commit: CommitInfo): void;
   (e: "load-more"): void;
+  /** T-13 history operations: "cherry-pick" | "revert" | "reset". */
+  (e: "action", action: string, commit: CommitInfo): void;
 }>();
 
 const ROW_H = 30;
@@ -235,6 +251,10 @@ function isMerge(row: Row): boolean {
 function selectCommit(commit: CommitInfo) {
   selectedOid.value = commit.oid;
   emit("select", commit);
+}
+
+function onAction(cmd: string | number | object, commit: CommitInfo) {
+  emit("action", String(cmd), commit);
 }
 
 function commitMessage(commit: CommitInfo): string {

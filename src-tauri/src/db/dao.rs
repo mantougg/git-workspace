@@ -594,3 +594,78 @@ pub fn list_task_history(conn: &Connection, limit: i64) -> AppResult<Vec<(i64, S
 
     Ok(records)
 }
+
+// ---------------------------------------------------------------------------
+// Branch DAO (T-09): persistent snapshots of branches / remote_branches / tags
+// ---------------------------------------------------------------------------
+
+/// Replace the local-branch snapshot of a repository.
+///
+/// `branches` items are `(name, is_head, ahead, behind)`. Replace (delete +
+/// batch insert in one transaction) so branches deleted on the git side do
+/// not linger as stale rows.
+pub fn replace_branches(
+    conn: &mut Connection,
+    repo_id: i64,
+    branches: &[(String, bool, usize, usize)],
+) -> AppResult<()> {
+    let now = Utc::now().to_rfc3339();
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM branches WHERE repo_id = ?1", params![repo_id])?;
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO branches (repo_id, name, is_head, ahead, behind, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )?;
+        for (name, is_head, ahead, behind) in branches {
+            stmt.execute(params![repo_id, name, is_head, ahead, behind, now])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Replace the remote-tracking-branch snapshot of a repository.
+pub fn replace_remote_branches(
+    conn: &mut Connection,
+    repo_id: i64,
+    names: &[String],
+) -> AppResult<()> {
+    let now = Utc::now().to_rfc3339();
+    let tx = conn.transaction()?;
+    tx.execute(
+        "DELETE FROM remote_branches WHERE repo_id = ?1",
+        params![repo_id],
+    )?;
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO remote_branches (repo_id, name, updated_at) VALUES (?1, ?2, ?3)",
+        )?;
+        for name in names {
+            stmt.execute(params![repo_id, name, now])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Replace the tag snapshot of a repository.
+/// `tags` items are `(name, target_oid)`.
+pub fn replace_tags(
+    conn: &mut Connection,
+    repo_id: i64,
+    tags: &[(String, Option<String>)],
+) -> AppResult<()> {
+    let now = Utc::now().to_rfc3339();
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM tags WHERE repo_id = ?1", params![repo_id])?;
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO tags (repo_id, name, target_oid, updated_at) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (name, target_oid) in tags {
+            stmt.execute(params![repo_id, name, target_oid, now])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
