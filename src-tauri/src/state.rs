@@ -112,6 +112,8 @@ mod tests {
             deleted: 0,
             untracked: 0,
             staged: 0,
+            conflicted: 0,
+            has_remote: false,
             is_clean: true,
         }
     }

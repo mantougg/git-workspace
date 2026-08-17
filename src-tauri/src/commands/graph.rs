@@ -9,7 +9,7 @@ use crate::models::repository::CommitRecord;
 use crate::state::AppState;
 
 /// Get commit history for a repository, starting from HEAD.
-/// Returns up to `max_count` commits, sorted topologically.
+/// Returns up to `max_count` commits, newest first.
 ///
 /// Commit metadata is cached in SQLite (`commits` / `commit_parents`): repeat
 /// loads only parse commits that are not yet cached, avoiding re-reading every
@@ -25,14 +25,25 @@ pub fn get_commit_history(
         .db
         .lock()
         .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
+    load_commit_history_cached(&mut conn, Path::new(&repo_path), max)
+}
 
-    let repo_id = dao::get_repository_id_by_path(&conn, &repo_path)?;
+/// Commit-history load with the SQLite metadata cache (command body, shared
+/// with the T-07 benchmark harness so the measured path is the real one).
+pub(crate) fn load_commit_history_cached(
+    conn: &mut rusqlite::Connection,
+    repo_path: &Path,
+    max: usize,
+) -> AppResult<Vec<CommitInfo>> {
+    let repo_path_str = repo_path.to_string_lossy().to_string();
+    let repo_id = dao::get_repository_id_by_path(conn, &repo_path_str)?;
 
-    // Walk HEAD for the topological OID order (cheap; no commit parsing).
-    let oids = graph::revwalk_oids(Path::new(&repo_path), max)?;
+    // Walk HEAD for the newest-first OID order (lazy heap walk; bounded by
+    // `max`, does not touch the rest of the history).
+    let oids = graph::revwalk_oids(repo_path, max)?;
 
     // Open the repo once for ref resolution + uncached commit parsing.
-    let repo = git2::Repository::open(Path::new(&repo_path))?;
+    let repo = git2::Repository::open(repo_path)?;
     let ref_map = graph::ref_map(&repo);
 
     let mut result: Vec<CommitInfo> = Vec::with_capacity(oids.len());
@@ -44,7 +55,7 @@ pub fn get_commit_history(
 
         // Cache hit: reconstruct from DB, skipping `find_commit`.
         let cached = match repo_id {
-            Some(id) => dao::get_commit_record(&conn, id, oid_str)?,
+            Some(id) => dao::get_commit_record(conn, id, oid_str)?,
             None => None,
         };
 
@@ -61,7 +72,7 @@ pub fn get_commit_history(
 
     // Persist any uncached commits for the next load.
     if let Some(id) = repo_id {
-        dao::upsert_commits_batch(&mut conn, id, &to_store)?;
+        dao::upsert_commits_batch(conn, id, &to_store)?;
     }
 
     Ok(result)

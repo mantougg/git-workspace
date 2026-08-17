@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use serde_json::{json, Map, Value};
 
 use crate::commands::{ai, batch as batch_cmd, diff as diff_cmd, git_ops, logs};
-use crate::core::{branch as branch_core, conflict as conflict_core, diff, graph, history as history_core, merge as merge_core, rebase as rebase_core, reflog as reflog_core, stash as stash_core, worktree as worktree_core};
+use crate::core::{branch as branch_core, change_set, conflict as conflict_core, diff, graph, health as health_core, history as history_core, manifest, merge as merge_core, operation_log, pipeline, rebase as rebase_core, reflog as reflog_core, stash as stash_core, worktree as worktree_core, workspace_stash};
 use crate::error::AppError;
 use crate::models::{commit, group, repository, task, workspace};
 
@@ -57,6 +57,8 @@ fn samples() -> Map<String, Value> {
             deleted: 5,
             untracked: 6,
             staged: 7,
+            conflicted: 1,
+            has_remote: true,
             is_clean: false,
         }),
     );
@@ -100,6 +102,8 @@ fn samples() -> Map<String, Value> {
                 deleted: 0,
                 untracked: 0,
                 staged: 0,
+                conflicted: 0,
+                has_remote: false,
                 is_clean: true,
             },
         }),
@@ -147,6 +151,14 @@ fn samples() -> Map<String, Value> {
                 op: task::BranchOpKind::Checkout,
                 name: "feature".into(),
                 force: false,
+            },
+            task::TaskType::Clone {
+                url: "https://example.com/repo.git".into(),
+                branch: Some("main".into()),
+            },
+            task::TaskType::ShellCommand {
+                command: "make build".into(),
+                timeout_secs: Some(600),
             },
         ]),
     );
@@ -610,6 +622,597 @@ fn samples() -> Map<String, Value> {
         json!(AppError::NotFound("thing".into())),
     );
 
+    // core/health.rs (T-19)
+    m.insert(
+        "HealthWeights".into(),
+        json!(health_core::HealthWeights::default()),
+    );
+    m.insert(
+        "RepoHealth".into(),
+        json!(health_core::RepoHealth {
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            branch: "main".into(),
+            anomalies: vec!["dirty".into(), "conflict".into()],
+            score: 60,
+        }),
+    );
+    m.insert(
+        "WorkspaceHealth".into(),
+        json!(health_core::WorkspaceHealth {
+            score: 91,
+            total: 2,
+            anomalous: 1,
+            repos: vec![],
+            weights: health_core::HealthWeights::default(),
+        }),
+    );
+    m.insert(
+        "RepoHealthExtra".into(),
+        json!(health_core::RepoHealthExtra {
+            repo_path: "/ws/repo".into(),
+            large_files: 1,
+            largest_file_bytes: 11 * 1024 * 1024,
+            lfs_error: true,
+            submodule_error: false,
+        }),
+    );
+
+    // core/workspace_stash.rs (T-21)
+    m.insert(
+        "WorkspaceStashRepoOutcome".into(),
+        json!(workspace_stash::WorkspaceStashRepoOutcome {
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            status: "stashed".into(),
+            stash_oid: Some("abc123".into()),
+            detail: String::new(),
+        }),
+    );
+    m.insert(
+        "SaveWorkspaceStashResult".into(),
+        json!(workspace_stash::SaveWorkspaceStashResult {
+            id: Some(1),
+            name: "Workspace Stash #1".into(),
+            items: vec![workspace_stash::WorkspaceStashRepoOutcome {
+                repo_path: "/ws/repo".into(),
+                repo_name: "repo".into(),
+                status: "stashed".into(),
+                stash_oid: Some("abc123".into()),
+                detail: String::new(),
+            }],
+        }),
+    );
+    m.insert(
+        "WorkspaceStashSummary".into(),
+        json!(workspace_stash::WorkspaceStashSummary {
+            id: 1,
+            name: "Workspace Stash #1".into(),
+            message: Some("sprint work".into()),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            repo_count: 2,
+        }),
+    );
+    m.insert(
+        "WorkspaceStashItemEntry".into(),
+        json!(workspace_stash::WorkspaceStashItemEntry {
+            repo_path: "/ws/repo".into(),
+            stash_oid: "abc123".into(),
+            stash_index: 0,
+            branch: "main".into(),
+        }),
+    );
+    m.insert(
+        "WorkspaceStashCheckItem".into(),
+        json!(workspace_stash::WorkspaceStashCheckItem {
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            branch: "main".into(),
+            current_branch: Some("main".into()),
+            status: "ok".into(),
+            detail: String::new(),
+        }),
+    );
+
+    // core/change_set.rs (T-22)
+    m.insert(
+        "ChangeSet".into(),
+        json!(change_set::ChangeSet {
+            id: 1,
+            workspace_id: 2,
+            name: "Feature: AI Review".into(),
+            description: Some("desc".into()),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "ChangeSetRepo".into(),
+        json!(change_set::ChangeSetRepo {
+            change_set_id: 1,
+            repo_id: 3,
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            relative_path: "repo".into(),
+            target_branch: Some("feature/ai".into()),
+        }),
+    );
+    m.insert(
+        "ChangeSetRepoInput".into(),
+        json!(change_set::ChangeSetRepoInput {
+            repo_id: 3,
+            target_branch: Some("feature/ai".into()),
+        }),
+    );
+    m.insert(
+        "CreateChangeSetRequest".into(),
+        json!(change_set::CreateChangeSetRequest {
+            workspace_id: 2,
+            name: "Feature: AI Review".into(),
+            description: Some("desc".into()),
+            repos: vec![change_set::ChangeSetRepoInput {
+                repo_id: 3,
+                target_branch: Some("feature/ai".into()),
+            }],
+        }),
+    );
+    m.insert(
+        "UpdateChangeSetRequest".into(),
+        json!(change_set::UpdateChangeSetRequest {
+            id: 1,
+            name: Some("renamed".into()),
+            description: Some("new desc".into()),
+        }),
+    );
+    m.insert(
+        "ChangeSetRepoSummary".into(),
+        json!(change_set::ChangeSetRepoSummary {
+            repo: change_set::ChangeSetRepo {
+                change_set_id: 1,
+                repo_id: 3,
+                repo_path: "/ws/repo".into(),
+                repo_name: "repo".into(),
+                relative_path: "repo".into(),
+                target_branch: Some("feature/ai".into()),
+            },
+            current_branch: Some("feature/ai".into()),
+            ahead: 1,
+            behind: 2,
+            files: 3,
+            added: 4,
+            deleted: 5,
+            error: None,
+        }),
+    );
+    m.insert(
+        "ChangeSetSummary".into(),
+        json!(change_set::ChangeSetSummary {
+            change_set: change_set::ChangeSet {
+                id: 1,
+                workspace_id: 2,
+                name: "Feature: AI Review".into(),
+                description: Some("desc".into()),
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+            },
+            repositories: 1,
+            files: 3,
+            added: 4,
+            deleted: 5,
+            commits: 1,
+            repos: vec![change_set::ChangeSetRepoSummary {
+                repo: change_set::ChangeSetRepo {
+                    change_set_id: 1,
+                    repo_id: 3,
+                    repo_path: "/ws/repo".into(),
+                    repo_name: "repo".into(),
+                    relative_path: "repo".into(),
+                    target_branch: Some("feature/ai".into()),
+                },
+                current_branch: Some("feature/ai".into()),
+                ahead: 1,
+                behind: 2,
+                files: 3,
+                added: 4,
+                deleted: 5,
+                error: None,
+            }],
+        }),
+    );
+
+    // models/task.rs (T-24 DAG) + core/pipeline.rs (T-23)
+    m.insert(
+        "DagNodeRequest".into(),
+        json!(task::DagNodeRequest {
+            task: task::TaskRequest {
+                task_type: task::TaskType::Fetch,
+                repo_path: "/ws/repo".into(),
+                repo_name: "repo".into(),
+            },
+            depends_on: vec![0],
+            max_attempts: 1,
+            condition: Some(task::NodeCondition::RepoClean),
+            group: Some("fetch-all".into()),
+            label: Some("Fetch All · repo".into()),
+        }),
+    );
+    m.insert(
+        "DagSubmitRequest".into(),
+        json!(task::DagSubmitRequest {
+            name: "示例流水线".into(),
+            nodes: vec![task::DagNodeRequest {
+                task: task::TaskRequest {
+                    task_type: task::TaskType::Fetch,
+                    repo_path: "/ws/repo".into(),
+                    repo_name: "repo".into(),
+                },
+                depends_on: vec![],
+                max_attempts: 1,
+                condition: None,
+                group: Some("fetch-all".into()),
+                label: Some("Fetch All · repo".into()),
+            }],
+            on_failure: task::FailurePolicy::Continue,
+        }),
+    );
+    m.insert(
+        "NodeCondition".into(),
+        json!([task::NodeCondition::RepoClean]),
+    );
+    m.insert(
+        "DagNodeInfo".into(),
+        json!(task::DagNodeInfo {
+            task_id: "t-1".into(),
+            label: "Fetch All · repo".into(),
+            group: Some("fetch-all".into()),
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            depends_on: vec!["t-0".into()],
+            status: task::TaskStatus::Success,
+            skipped: false,
+            attempts: 1,
+            output: Some("ok".into()),
+            started_at: Some("2026-01-01T00:00:00Z".into()),
+            finished_at: Some("2026-01-01T00:00:02Z".into()),
+        }),
+    );
+    m.insert(
+        "DagEdge".into(),
+        json!(task::DagEdge {
+            from: "t-0".into(),
+            to: "t-1".into(),
+        }),
+    );
+    m.insert(
+        "DagGraph".into(),
+        json!(task::DagGraph {
+            dag_id: "dag-1".into(),
+            name: "示例流水线".into(),
+            on_failure: task::FailurePolicy::Continue,
+            nodes: vec![task::DagNodeInfo {
+                task_id: "t-1".into(),
+                label: "Fetch All · repo".into(),
+                group: Some("fetch-all".into()),
+                repo_path: "/ws/repo".into(),
+                repo_name: "repo".into(),
+                depends_on: vec![],
+                status: task::TaskStatus::Success,
+                skipped: false,
+                attempts: 1,
+                output: Some("ok".into()),
+                started_at: Some("2026-01-01T00:00:00Z".into()),
+                finished_at: Some("2026-01-01T00:00:02Z".into()),
+            }],
+            edges: vec![task::DagEdge {
+                from: "t-0".into(),
+                to: "t-1".into(),
+            }],
+        }),
+    );
+    m.insert(
+        "Pipeline".into(),
+        json!(pipeline::Pipeline {
+            id: "p-1".into(),
+            name: "示例流水线".into(),
+            description: "内置示例流".into(),
+            steps: vec![pipeline::PipelineStep {
+                id: "fetch-all".into(),
+                name: "Fetch All".into(),
+                kind: pipeline::StepKind::Fetch,
+                depends_on: vec![],
+                condition: None,
+                retries: 0,
+                timeout_secs: None,
+            }],
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "PipelineStep".into(),
+        json!(pipeline::PipelineStep {
+            id: "build".into(),
+            name: "Build".into(),
+            kind: pipeline::StepKind::Build {
+                command: "cargo build".into(),
+            },
+            depends_on: vec!["fetch-all".into()],
+            condition: Some(task::NodeCondition::RepoClean),
+            retries: 1,
+            timeout_secs: Some(600),
+        }),
+    );
+    m.insert(
+        "StepKind".into(),
+        json!([
+            pipeline::StepKind::Fetch,
+            pipeline::StepKind::CheckStatus,
+            pipeline::StepKind::Pull,
+            pipeline::StepKind::Build {
+                command: "cargo build".into(),
+            },
+            pipeline::StepKind::Test {
+                command: "cargo test".into(),
+            },
+            pipeline::StepKind::Report,
+        ]),
+    );
+    m.insert(
+        "RepoSelection".into(),
+        json!(pipeline::RepoSelection {
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+        }),
+    );
+    m.insert(
+        "StepItemReport".into(),
+        json!(pipeline::StepItemReport {
+            task_id: "t-1".into(),
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            status: "success".into(),
+            message: None,
+            output: Some("ok".into()),
+            attempts: 1,
+            started_at: Some("2026-01-01T00:00:00Z".into()),
+            finished_at: Some("2026-01-01T00:00:02Z".into()),
+            duration_ms: Some(2000),
+        }),
+    );
+    m.insert(
+        "StepReport".into(),
+        json!(pipeline::StepReport {
+            step_id: "fetch-all".into(),
+            name: "Fetch All".into(),
+            kind: "fetch".into(),
+            status: "success".into(),
+            total: 1,
+            succeeded: 1,
+            failed: 0,
+            skipped: 0,
+            cancelled: 0,
+            items: vec![pipeline::StepItemReport {
+                task_id: "t-1".into(),
+                repo_path: "/ws/repo".into(),
+                repo_name: "repo".into(),
+                status: "success".into(),
+                message: None,
+                output: Some("ok".into()),
+                attempts: 1,
+                started_at: Some("2026-01-01T00:00:00Z".into()),
+                finished_at: Some("2026-01-01T00:00:02Z".into()),
+                duration_ms: Some(2000),
+            }],
+            started_at: Some("2026-01-01T00:00:00Z".into()),
+            finished_at: Some("2026-01-01T00:00:02Z".into()),
+            duration_ms: Some(2000),
+        }),
+    );
+    m.insert(
+        "PipelineRunReport".into(),
+        json!(pipeline::PipelineRunReport {
+            run_id: "run-1".into(),
+            pipeline_name: "示例流水线".into(),
+            status: "success".into(),
+            total: 1,
+            succeeded: 1,
+            failed: 0,
+            skipped: 0,
+            cancelled: 0,
+            steps: vec![pipeline::StepReport {
+                step_id: "fetch-all".into(),
+                name: "Fetch All".into(),
+                kind: "fetch".into(),
+                status: "success".into(),
+                total: 1,
+                succeeded: 1,
+                failed: 0,
+                skipped: 0,
+                cancelled: 0,
+                items: vec![pipeline::StepItemReport {
+                    task_id: "t-1".into(),
+                    repo_path: "/ws/repo".into(),
+                    repo_name: "repo".into(),
+                    status: "success".into(),
+                    message: None,
+                    output: Some("ok".into()),
+                    attempts: 1,
+                    started_at: Some("2026-01-01T00:00:00Z".into()),
+                    finished_at: Some("2026-01-01T00:00:02Z".into()),
+                    duration_ms: Some(2000),
+                }],
+                started_at: Some("2026-01-01T00:00:00Z".into()),
+                finished_at: Some("2026-01-01T00:00:02Z".into()),
+                duration_ms: Some(2000),
+            }],
+            started_at: Some("2026-01-01T00:00:00Z".into()),
+            finished_at: Some("2026-01-01T00:00:02Z".into()),
+            duration_ms: Some(2000),
+        }),
+    );
+
+    // core/manifest.rs (T-33)
+    m.insert(
+        "ManifestRepo".into(),
+        json!(manifest::ManifestRepo {
+            path: "apps/web".into(),
+            name: "web".into(),
+            remote_url: Some("https://example.com/org/web.git".into()),
+            default_branch: Some("main".into()),
+            group: Some("前端".into()),
+            tags: vec!["vue".into()],
+        }),
+    );
+    m.insert(
+        "WorkspaceManifest".into(),
+        json!(manifest::WorkspaceManifest {
+            version: 1,
+            name: "ws".into(),
+            exported_at: "2026-01-01T00:00:00Z".into(),
+            repositories: vec![manifest::ManifestRepo {
+                path: "apps/web".into(),
+                name: "web".into(),
+                remote_url: Some("https://example.com/org/web.git".into()),
+                default_branch: Some("main".into()),
+                group: Some("前端".into()),
+                tags: vec!["vue".into()],
+            }],
+        }),
+    );
+    m.insert(
+        "ClonePlanItem".into(),
+        json!(manifest::ClonePlanItem {
+            path: "apps/web".into(),
+            name: "web".into(),
+            remote_url: Some("https://example.com/org/web.git".into()),
+            default_branch: Some("main".into()),
+            group: Some("前端".into()),
+            tags: vec!["vue".into()],
+            dest_path: "/ws/apps/web".into(),
+            action: manifest::CloneAction::Clone,
+        }),
+    );
+    m.insert(
+        "ClonePlan".into(),
+        json!(manifest::ClonePlan {
+            workspace_root: "/ws".into(),
+            to_clone: 1,
+            skip_existing: 0,
+            no_url: 0,
+            items: vec![manifest::ClonePlanItem {
+                path: "apps/web".into(),
+                name: "web".into(),
+                remote_url: Some("https://example.com/org/web.git".into()),
+                default_branch: Some("main".into()),
+                group: Some("前端".into()),
+                tags: vec!["vue".into()],
+                dest_path: "/ws/apps/web".into(),
+                action: manifest::CloneAction::Clone,
+            }],
+        }),
+    );
+
+    // core/operation_log.rs (T-34)
+    m.insert(
+        "OperationLogPage".into(),
+        json!(operation_log::OperationLogPage {
+            total: 1,
+            logs: vec![operation_log::OperationLogSummary {
+                id: 1,
+                workspace_id: Some(2),
+                op_type: "reset".into(),
+                summary: "reset --hard".into(),
+                created_at: "2026-01-01T00:00:00Z".into(),
+                undone_at: None,
+                repo_count: 1,
+                undone_count: 0,
+            }],
+        }),
+    );
+    m.insert(
+        "OperationLogSummary".into(),
+        json!(operation_log::OperationLogSummary {
+            id: 1,
+            workspace_id: Some(2),
+            op_type: "reset".into(),
+            summary: "reset --hard".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            undone_at: None,
+            repo_count: 1,
+            undone_count: 0,
+        }),
+    );
+    m.insert(
+        "OperationLogItem".into(),
+        json!(operation_log::OperationLogItem {
+            id: 1,
+            log_id: 1,
+            repo_path: "/ws/repo".into(),
+            ref_name: "main".into(),
+            before_oid: "abc123".into(),
+            after_oid: Some("def456".into()),
+            detail: Some("mode:hard".into()),
+            undone_at: None,
+        }),
+    );
+    m.insert(
+        "OperationLogDetail".into(),
+        json!(operation_log::OperationLogDetail {
+            id: 1,
+            workspace_id: Some(2),
+            op_type: "reset".into(),
+            summary: "reset --hard".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            undone_at: None,
+            items: vec![operation_log::OperationLogItem {
+                id: 1,
+                log_id: 1,
+                repo_path: "/ws/repo".into(),
+                ref_name: "main".into(),
+                before_oid: "abc123".into(),
+                after_oid: Some("def456".into()),
+                detail: Some("mode:hard".into()),
+                undone_at: None,
+            }],
+        }),
+    );
+    m.insert(
+        "UndoPreviewItem".into(),
+        json!(operation_log::UndoPreviewItem {
+            item_id: 1,
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            action: "将分支 'main' 回退到 abc123".into(),
+            ok: true,
+            message: String::new(),
+            undone: false,
+        }),
+    );
+    m.insert(
+        "UndoItemResult".into(),
+        json!(operation_log::UndoItemResult {
+            item_id: 1,
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            success: true,
+            message: "已回退".into(),
+        }),
+    );
+    m.insert(
+        "UndoOutcome".into(),
+        json!(operation_log::UndoOutcome {
+            log_id: 1,
+            fully_undone: true,
+            results: vec![operation_log::UndoItemResult {
+                item_id: 1,
+                repo_path: "/ws/repo".into(),
+                repo_name: "repo".into(),
+                success: true,
+                message: "已回退".into(),
+            }],
+        }),
+    );
+
     m
 }
 
@@ -684,6 +1287,95 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("AddRequest", "api/changes.ts", "AddRequest"),
     ("RestoreRequest", "api/changes.ts", "RestoreRequest"),
     ("ErrorResponse", "utils/error.ts", "ErrorResponse"),
+    ("HealthWeights", "types/health.ts", "HealthWeights"),
+    ("RepoHealth", "types/health.ts", "RepoHealth"),
+    ("WorkspaceHealth", "types/health.ts", "WorkspaceHealth"),
+    ("RepoHealthExtra", "types/health.ts", "RepoHealthExtra"),
+    // T-21 workspace stash
+    (
+        "WorkspaceStashRepoOutcome",
+        "types/workspaceStash.ts",
+        "WorkspaceStashRepoOutcome",
+    ),
+    (
+        "SaveWorkspaceStashResult",
+        "types/workspaceStash.ts",
+        "SaveWorkspaceStashResult",
+    ),
+    (
+        "WorkspaceStashSummary",
+        "types/workspaceStash.ts",
+        "WorkspaceStashSummary",
+    ),
+    (
+        "WorkspaceStashItemEntry",
+        "types/workspaceStash.ts",
+        "WorkspaceStashItemEntry",
+    ),
+    (
+        "WorkspaceStashCheckItem",
+        "types/workspaceStash.ts",
+        "WorkspaceStashCheckItem",
+    ),
+    // T-22 change set
+    ("ChangeSet", "types/changeSet.ts", "ChangeSet"),
+    ("ChangeSetRepo", "types/changeSet.ts", "ChangeSetRepo"),
+    (
+        "ChangeSetRepoInput",
+        "types/changeSet.ts",
+        "ChangeSetRepoInput",
+    ),
+    (
+        "CreateChangeSetRequest",
+        "types/changeSet.ts",
+        "CreateChangeSetRequest",
+    ),
+    (
+        "UpdateChangeSetRequest",
+        "types/changeSet.ts",
+        "UpdateChangeSetRequest",
+    ),
+    (
+        "ChangeSetRepoSummary",
+        "types/changeSet.ts",
+        "ChangeSetRepoSummary",
+    ),
+    ("ChangeSetSummary", "types/changeSet.ts", "ChangeSetSummary"),
+    // T-23/T-24 pipeline + DAG
+    ("DagNodeRequest", "types/pipeline.ts", "DagNodeRequest"),
+    ("DagSubmitRequest", "types/pipeline.ts", "DagSubmitRequest"),
+    ("NodeCondition", "types/pipeline.ts", "NodeCondition"),
+    ("DagNodeInfo", "types/pipeline.ts", "DagNodeInfo"),
+    ("DagEdge", "types/pipeline.ts", "DagEdge"),
+    ("DagGraph", "types/pipeline.ts", "DagGraph"),
+    ("Pipeline", "types/pipeline.ts", "Pipeline"),
+    ("PipelineStep", "types/pipeline.ts", "PipelineStep"),
+    ("StepKind", "types/pipeline.ts", "StepKind"),
+    ("RepoSelection", "types/pipeline.ts", "RepoSelection"),
+    ("StepItemReport", "types/pipeline.ts", "StepItemReport"),
+    ("StepReport", "types/pipeline.ts", "StepReport"),
+    ("PipelineRunReport", "types/pipeline.ts", "PipelineRunReport"),
+    // T-33 manifest
+    ("ManifestRepo", "types/manifest.ts", "ManifestRepo"),
+    ("WorkspaceManifest", "types/manifest.ts", "WorkspaceManifest"),
+    ("ClonePlanItem", "types/manifest.ts", "ClonePlanItem"),
+    ("ClonePlan", "types/manifest.ts", "ClonePlan"),
+    // T-34 operation log
+    ("OperationLogPage", "types/operationLog.ts", "OperationLogPage"),
+    (
+        "OperationLogSummary",
+        "types/operationLog.ts",
+        "OperationLogSummary",
+    ),
+    ("OperationLogItem", "types/operationLog.ts", "OperationLogItem"),
+    (
+        "OperationLogDetail",
+        "types/operationLog.ts",
+        "OperationLogDetail",
+    ),
+    ("UndoPreviewItem", "types/operationLog.ts", "UndoPreviewItem"),
+    ("UndoItemResult", "types/operationLog.ts", "UndoItemResult"),
+    ("UndoOutcome", "types/operationLog.ts", "UndoOutcome"),
 ];
 
 fn golden_path() -> PathBuf {
@@ -808,6 +1500,13 @@ fn parse_ts_file(content: &str) -> TsFileTypes {
                     Some(next) => rest = next.to_string(),
                     None => break,
                 }
+            }
+            // Pure string-literal unions (e.g. `FailurePolicy`, `CloneAction`)
+            // carry no `{...}` object variants, so the parser cannot validate
+            // them as tagged unions; skip them so the reverse coverage check
+            // does not demand their registration.
+            if !body.contains('{') {
+                continue;
             }
             // Each top-level `{ ... }` group is one variant.
             let mut variants = BTreeMap::new();

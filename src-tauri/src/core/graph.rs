@@ -21,7 +21,68 @@ pub struct CommitInfo {
     pub refs: Vec<String>,
 }
 
-/// Read commit history from HEAD, sorted topologically.
+/// Lazy newest-first commit walk from HEAD (T-04).
+///
+/// Replaces libgit2's revwalk for paginated history loads: measured on a
+/// 10k-commit repo, libgit2's TIME/TOPOLOGICAL-sorted revwalk costs
+/// O(whole history) before emitting the first commit (~2-3 s), which defeats
+/// the < 1 s graph-first-screen budget; `Sort::NONE` is lazy but ignores
+/// commit times. This walk pops the newest commit from a max-heap keyed by
+/// commit time and pushes parents only when a commit is emitted, so loading
+/// N commits touches ~2N commit objects (~30-40 ms per 100).
+///
+/// Ordering semantics match `git log`: newest commit time first; a commit is
+/// only discovered through one of its children, so children always precede
+/// parents. Ties on identical timestamps break towards earlier discovery
+/// (`Reverse(seq)`), which keeps a parent from jumping ahead of the child
+/// that discovered it.
+struct CommitWalk<'r> {
+    repo: &'r git2::Repository,
+    heap: std::collections::BinaryHeap<(i64, std::cmp::Reverse<u64>, git2::Oid)>,
+    seen: std::collections::HashSet<git2::Oid>,
+    seq: u64,
+}
+
+impl<'r> CommitWalk<'r> {
+    fn new(repo: &'r git2::Repository) -> AppResult<Self> {
+        let head = repo.head()?.peel_to_commit()?;
+        let mut walk = Self {
+            repo,
+            heap: std::collections::BinaryHeap::new(),
+            seen: std::collections::HashSet::new(),
+            seq: 0,
+        };
+        walk.push(head.id(), head.time().seconds());
+        Ok(walk)
+    }
+
+    fn push(&mut self, oid: git2::Oid, time: i64) {
+        if self.seen.insert(oid) {
+            self.seq += 1;
+            self.heap
+                .push((time, std::cmp::Reverse(self.seq), oid));
+        }
+    }
+
+    /// Emit the next commit in newest-first order, queueing its parents.
+    fn next_commit(&mut self) -> AppResult<Option<git2::Commit<'r>>> {
+        let Some((_, _, oid)) = self.heap.pop() else {
+            return Ok(None);
+        };
+        let commit = self.repo.find_commit(oid)?;
+        let parents: Vec<git2::Oid> = commit
+            .parent_ids()
+            .filter(|pid| !self.seen.contains(pid))
+            .collect();
+        for pid in parents {
+            let time = self.repo.find_commit(pid)?.time().seconds();
+            self.push(pid, time);
+        }
+        Ok(Some(commit))
+    }
+}
+
+/// Read commit history from HEAD, newest first.
 ///
 /// `max_count` limits the number of commits returned (pagination).
 /// Each commit includes its parent OIDs and any refs pointing to it.
@@ -31,63 +92,65 @@ pub fn get_commit_history(repo_path: &Path, max_count: usize) -> AppResult<Vec<C
     // Build a map of OID -> refs for quick lookup
     let ref_map = ref_map(&repo);
 
-    let mut revwalk = repo.revwalk()?;
-    revwalk.push_head()?;
-    revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+    let mut walk = CommitWalk::new(&repo)?;
+    let mut commits: Vec<CommitInfo> = Vec::new();
 
-    let commits: Vec<CommitInfo> = revwalk
-        .take(max_count)
-        .filter_map(|oid_result| {
-            let oid = oid_result.ok()?;
-            let commit = repo.find_commit(oid).ok()?;
+    while commits.len() < max_count {
+        let Some(commit) = walk.next_commit()? else {
+            break;
+        };
 
-            let oid_str = oid.to_string();
-            let short_oid = if oid_str.len() >= 7 {
-                oid_str[..7].to_string()
-            } else {
-                oid_str.clone()
-            };
+        let oid_str = commit.id().to_string();
+        let short_oid = if oid_str.len() >= 7 {
+            oid_str[..7].to_string()
+        } else {
+            oid_str.clone()
+        };
 
-            let message = commit.message().unwrap_or("").trim_end().to_string();
+        let message = commit.message().unwrap_or("").trim_end().to_string();
 
-            let author = commit.author();
-            let time = commit.time();
-            let time_str = format_commit_time(time.seconds(), time.offset_minutes());
+        let author = commit.author();
+        let time = commit.time();
+        let time_str = format_commit_time(time.seconds(), time.offset_minutes());
 
-            let parents: Vec<String> = commit.parent_ids().map(|p| p.to_string()).collect();
+        let parents: Vec<String> = commit.parent_ids().map(|p| p.to_string()).collect();
 
-            let refs = ref_map.get(&oid_str).cloned().unwrap_or_default();
+        let refs = ref_map.get(&oid_str).cloned().unwrap_or_default();
 
-            Some(CommitInfo {
-                oid: oid_str,
-                short_oid,
-                message,
-                author: author.name().unwrap_or("").to_string(),
-                email: author.email().unwrap_or("").to_string(),
-                time: time_str,
-                parents,
-                refs,
-            })
-        })
-        .collect();
+        commits.push(CommitInfo {
+            oid: oid_str,
+            short_oid,
+            message,
+            author: author.name().unwrap_or("").to_string(),
+            email: author.email().unwrap_or("").to_string(),
+            time: time_str,
+            parents,
+            refs,
+        });
+    }
 
     Ok(commits)
 }
 
-/// Walk HEAD and return up to `max_count` commit OIDs in topological order.
+/// Walk HEAD and return up to `max_count` commit OIDs, newest first.
 /// Separated from commit parsing so the command layer can consult the DB cache
 /// per OID and only parse commits that are not yet cached.
+///
+/// Uses the lazy heap walk (`CommitWalk`), not libgit2 revwalk — see the
+/// `CommitWalk` docs for why (T-04: bounded pagination cost on big repos).
 pub fn revwalk_oids(repo_path: &Path, max_count: usize) -> AppResult<Vec<String>> {
     let repo = git2::Repository::open(repo_path)?;
-    let mut revwalk = repo.revwalk()?;
-    revwalk.push_head()?;
-    revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
+    let mut walk = CommitWalk::new(&repo)?;
+    let mut oids: Vec<String> = Vec::new();
 
-    Ok(revwalk
-        .take(max_count)
-        .filter_map(|r| r.ok())
-        .map(|oid| oid.to_string())
-        .collect())
+    while oids.len() < max_count {
+        let Some(commit) = walk.next_commit()? else {
+            break;
+        };
+        oids.push(commit.id().to_string());
+    }
+
+    Ok(oids)
 }
 
 /// Build a persistable `CommitRecord` from a commit object (for the DB cache).
@@ -348,6 +411,80 @@ mod tests {
         assert_eq!(info.refs, vec!["main".to_string()]);
         assert_eq!(info.parents.len(), 1);
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Create a commit with explicit parents and commit time (no HEAD update).
+    fn commit_at(
+        repo: &git2::Repository,
+        dir: &Path,
+        name: &str,
+        content: &str,
+        msg: &str,
+        secs: i64,
+        parents: &[&git2::Commit],
+    ) -> git2::Oid {
+        std::fs::write(dir.join(name), content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(name)).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let sig = git2::Signature::new("t", "t@e.c", &git2::Time::new(secs, 0)).unwrap();
+        repo.commit(None, &sig, &sig, msg, &tree, parents).unwrap()
+    }
+
+    /// Build a merge diamond: c0 root, side+main fork off c0, merge on top.
+    /// Returns (dir, [merge, main, side, c0]).
+    fn merge_diamond(tag: &str, base_secs: i64, equal_times: bool) -> (std::path::PathBuf, Vec<git2::Oid>) {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_graph_walk_{}_{}",
+            tag,
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let repo = git2::Repository::init(&dir).unwrap();
+
+        let t = |i: i64| if equal_times { base_secs } else { base_secs + i };
+        let c0 = commit_at(&repo, &dir, "f", "0", "c0", t(0), &[]);
+        let c0c = repo.find_commit(c0).unwrap();
+        let side = commit_at(&repo, &dir, "s", "s", "side", t(1), &[&c0c]);
+        let main = commit_at(&repo, &dir, "m", "m", "main", t(2), &[&c0c]);
+        let sidec = repo.find_commit(side).unwrap();
+        let mainc = repo.find_commit(main).unwrap();
+        let merge = commit_at(&repo, &dir, "x", "x", "merge", t(3), &[&mainc, &sidec]);
+        repo.reference("refs/heads/master", merge, true, "test").unwrap();
+        repo.set_head("refs/heads/master").unwrap();
+
+        (dir, vec![merge, main, side, c0])
+    }
+
+    /// With distinct commit times the walk must be strictly newest-first
+    /// (merge → main → side → c0 for the diamond).
+    #[test]
+    fn walk_orders_merge_diamond_newest_first() {
+        let (dir, expected) = merge_diamond("timed", 1_700_000_000, false);
+        let oids = revwalk_oids(&dir, 10).unwrap();
+        let expected: Vec<String> = expected.iter().map(|o| o.to_string()).collect();
+        assert_eq!(oids, expected);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// With identical commit times the walk must still emit every child
+    /// before its parents (graph lane rendering depends on it).
+    #[test]
+    fn walk_keeps_children_before_parents_on_time_ties() {
+        let (dir, order) = merge_diamond("ties", 1_700_000_000, true);
+        let oids = revwalk_oids(&dir, 10).unwrap();
+        assert_eq!(oids.len(), 4);
+
+        let pos = |oid: &git2::Oid| {
+            oids.iter().position(|o| o == &oid.to_string()).unwrap()
+        };
+        let (merge, main, side, c0) = (&order[0], &order[1], &order[2], &order[3]);
+        assert!(pos(merge) < pos(main), "merge must precede main parent");
+        assert!(pos(merge) < pos(side), "merge must precede side parent");
+        assert!(pos(main) < pos(c0) && pos(side) < pos(c0), "c0 must be last");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

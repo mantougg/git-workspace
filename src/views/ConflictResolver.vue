@@ -197,7 +197,7 @@ onMounted(async () => {
   const repo = route.query.repo as string;
   if (!repo) {
     ElMessage.warning("未指定仓库或工作区");
-    router.push({ name: "repository-list" });
+    router.push({ name: "changes" });
     return;
   }
   repoPath.value = repo;
@@ -421,7 +421,7 @@ async function handleAbort() {
 
 function goBack() {
   if (queueMode.value) {
-    router.push({ name: "repository-list" });
+    router.push({ name: "changes" });
   } else {
     router.back();
   }

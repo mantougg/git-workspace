@@ -38,6 +38,11 @@ pub struct RepoStatus {
     pub untracked: usize,
     /// Number of staged files (in index, not committed).
     pub staged: usize,
+    /// Number of conflicted files (unresolved merge/rebase/cherry-pick
+    /// conflicts; counted separately from modified/deleted).
+    pub conflicted: usize,
+    /// Whether any git remote is configured (T-19 "Missing Remote" check).
+    pub has_remote: bool,
     pub is_clean: bool,
 }
 

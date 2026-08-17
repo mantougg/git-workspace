@@ -2,9 +2,13 @@
 
 use std::path::Path;
 
+use tauri::State;
+
 use crate::core::merge::{self, MergeOutcome};
+use crate::core::operation_log::{self, NewOperationLogItem};
 use crate::core::rebase::{self, RebaseOp, RebaseOutcome, RebaseState};
 use crate::error::AppResult;
+use crate::state::AppState;
 
 /// Merge `branch` into the current HEAD. `mode`: "normal" | "no-ff" | "squash".
 /// Merge is a Warning-level op (§46) — the UI confirms first.
@@ -44,13 +48,40 @@ pub fn list_rebase_commits(
 
 /// Start a rebase: replay `ops` onto `onto`. Covers basic / --onto /
 /// interactive (user-arranged ops).
+///
+/// T-34: only a COMPLETED rebase is logged (before + after ref snapshots) —
+/// a conflicted, in-progress rebase already has its own recovery path
+/// (`rebase_abort` restores `original_head`), and undo refuses repos with a
+/// rebase still in progress.
 #[tauri::command]
 pub fn start_rebase(
     repo_path: String,
     onto: String,
     ops: Vec<RebaseOp>,
+    state: State<'_, AppState>,
 ) -> AppResult<RebaseOutcome> {
-    rebase::start_rebase(Path::new(&repo_path), &onto, ops)
+    let path = Path::new(&repo_path);
+    let before = operation_log::snapshot_head(path);
+    let outcome = rebase::start_rebase(path, &onto, ops)?;
+    if let (RebaseOutcome::Success { .. }, Some((ref_name, before_oid))) = (&outcome, before) {
+        let after_oid = operation_log::snapshot_head(path).map(|(_, oid)| oid);
+        let item = NewOperationLogItem {
+            repo_path: repo_path.clone(),
+            ref_name,
+            before_oid,
+            after_oid,
+            detail: Some(format!("onto:{onto}")),
+        };
+        let summary = format!("rebase → {onto}");
+        operation_log::record_operation_best_effort(
+            &state.db,
+            &repo_path,
+            operation_log::OP_REBASE,
+            &summary,
+            vec![item],
+        );
+    }
+    Ok(outcome)
 }
 
 /// Continue after the conflicted op was resolved (index must be clean).

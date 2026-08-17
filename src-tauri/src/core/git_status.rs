@@ -96,7 +96,7 @@ pub fn get_repo_changes(repo_path: &Path) -> AppResult<RepoChanges> {    let rep
 
 /// Whether a path lives under a common runtime/generated directory that
 /// should not be shown as untracked (mirrors the scanner's skip list).
-fn is_runtime_path(path: &str) -> bool {
+pub(crate) fn is_runtime_path(path: &str) -> bool {
     let top = path.split('/').next().unwrap_or("");
     matches!(
         top,
@@ -192,6 +192,8 @@ pub fn get_repo_status(repo_path: &Path) -> AppResult<RepoStatus> {
                 deleted: 0,
                 untracked,
                 staged: 0,
+                conflicted: 0,
+                has_remote: repo.remotes().map(|r| !r.is_empty()).unwrap_or(false),
                 is_clean: untracked == 0,
             });
         }
@@ -209,9 +211,18 @@ pub fn get_repo_status(repo_path: &Path) -> AppResult<RepoStatus> {
     let mut deleted = 0;
     let mut untracked = 0;
     let mut staged = 0;
+    let mut conflicted = 0;
 
     for entry in statuses.iter() {
         let s = entry.status();
+
+        // Conflicts are counted in their own bucket (T-18 Dashboard conflict
+        // card): libgit2 gives conflicted paths their own status bit; do not
+        // also count them as modified/deleted.
+        if s.is_conflicted() {
+            conflicted += 1;
+            continue;
+        }
 
         // Staged (index) changes
         if s.is_index_new() {
@@ -260,6 +271,7 @@ pub fn get_repo_status(repo_path: &Path) -> AppResult<RepoStatus> {
         && deleted == 0
         && untracked == 0
         && staged == 0
+        && conflicted == 0
         && ahead == 0
         && behind == 0;
 
@@ -273,6 +285,8 @@ pub fn get_repo_status(repo_path: &Path) -> AppResult<RepoStatus> {
         deleted,
         untracked,
         staged,
+        conflicted,
+        has_remote: repo.remotes().map(|r| !r.is_empty()).unwrap_or(false),
         is_clean,
     })
 }
@@ -358,5 +372,69 @@ mod tests {
         let repos = vec!["D:/ws/a".to_string()];
         let affected = find_affected_repos(&["D:/other/x.txt".to_string()], &repos);
         assert!(affected.is_empty());
+    }
+
+    fn commit_file(repo: &git2::Repository, dir: &Path, name: &str, content: &str, msg: &str) {
+        std::fs::write(dir.join(name), content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(name)).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let sig = git2::Signature::now("tester", "t@example.com").unwrap();
+        let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+        match &parent {
+            Some(p) => repo
+                .commit(Some("HEAD"), &sig, &sig, msg, &tree, &[p])
+                .unwrap(),
+            None => repo
+                .commit(Some("HEAD"), &sig, &sig, msg, &tree, &[])
+                .unwrap(),
+        };
+    }
+
+    /// Conflicted files get their own bucket (T-18 Dashboard conflict card):
+    /// a repo mid-merge reports conflicted > 0, is not clean, and does not
+    /// double-count the conflicted path as modified.
+    #[test]
+    fn repo_status_counts_conflicts_separately() {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_status_conflict_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Divergent edits on master + side, then a merge that conflicts.
+        {
+            let repo = git2::Repository::init(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "base\n", "init");
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.branch("side", &head, false).unwrap();
+            commit_file(&repo, &dir, "a.txt", "ours\n", "master change");
+        }
+        crate::core::branch::checkout_branch(&dir, "side").unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "theirs\n", "side change");
+        }
+        crate::core::branch::checkout_branch(&dir, "master").unwrap();
+        let outcome = crate::core::merge::merge(&dir, "side", "normal").unwrap();
+        assert!(matches!(
+            outcome,
+            crate::core::merge::MergeOutcome::Conflict { .. }
+        ));
+
+        let status = get_repo_status(&dir).unwrap();
+        assert_eq!(status.conflicted, 1);
+        assert!(!status.is_clean, "conflicted repo must not be clean");
+        assert_eq!(
+            status.modified, 0,
+            "conflicted path must not also count as modified"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

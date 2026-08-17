@@ -37,3 +37,21 @@ jobs:
           assert per_repo_status < 100, f"per-repo status too slow: {per_repo_status:.2f}ms (target < 100)"
           print(f"thresholds OK: initial_scan={initial_scan}ms, per_repo_status={per_repo_status:.2f}ms")
           EOF
+
+      - name: Run T-04 diff/graph acceptance benchmark
+        run: cargo run --release --example benchmark -- diff-graph --json | tee /tmp/bench_t04.json
+
+      - name: Enforce T-04 thresholds
+        run: |
+          python3 - <<'EOF'
+          import json
+          with open('/tmp/bench_t04.json') as f:
+              r = json.load(f)
+          hit_ms = r['diff_cache_hit_us'] / 1000
+          assert hit_ms < 50, f"diff cache hit too slow: {hit_ms:.3f}ms (target < 50)"
+          cold = r['graph_first_screen_cold_ms']
+          assert cold < 1000, f"graph first screen (cold) too slow: {cold}ms (target < 1000)"
+          warm = r['graph_first_screen_warm_ms']
+          assert warm < 1000, f"graph first screen (warm) too slow: {warm}ms (target < 1000)"
+          print(f"T-04 thresholds OK: diff_hit={hit_ms:.3f}ms, graph_cold={cold}ms, graph_warm={warm}ms")
+          EOF

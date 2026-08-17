@@ -28,6 +28,109 @@
     "remotes": [],
     "tags": []
   },
+  "ChangeSet": {
+    "createdAt": "2026-01-01T00:00:00Z",
+    "description": "desc",
+    "id": 1,
+    "name": "Feature: AI Review",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "workspaceId": 2
+  },
+  "ChangeSetRepo": {
+    "changeSetId": 1,
+    "relativePath": "repo",
+    "repoId": 3,
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "targetBranch": "feature/ai"
+  },
+  "ChangeSetRepoInput": {
+    "repoId": 3,
+    "targetBranch": "feature/ai"
+  },
+  "ChangeSetRepoSummary": {
+    "added": 4,
+    "ahead": 1,
+    "behind": 2,
+    "currentBranch": "feature/ai",
+    "deleted": 5,
+    "error": null,
+    "files": 3,
+    "repo": {
+      "changeSetId": 1,
+      "relativePath": "repo",
+      "repoId": 3,
+      "repoName": "repo",
+      "repoPath": "/ws/repo",
+      "targetBranch": "feature/ai"
+    }
+  },
+  "ChangeSetSummary": {
+    "added": 4,
+    "changeSet": {
+      "createdAt": "2026-01-01T00:00:00Z",
+      "description": "desc",
+      "id": 1,
+      "name": "Feature: AI Review",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "workspaceId": 2
+    },
+    "commits": 1,
+    "deleted": 5,
+    "files": 3,
+    "repos": [
+      {
+        "added": 4,
+        "ahead": 1,
+        "behind": 2,
+        "currentBranch": "feature/ai",
+        "deleted": 5,
+        "error": null,
+        "files": 3,
+        "repo": {
+          "changeSetId": 1,
+          "relativePath": "repo",
+          "repoId": 3,
+          "repoName": "repo",
+          "repoPath": "/ws/repo",
+          "targetBranch": "feature/ai"
+        }
+      }
+    ],
+    "repositories": 1
+  },
+  "ClonePlan": {
+    "items": [
+      {
+        "action": "clone",
+        "defaultBranch": "main",
+        "destPath": "/ws/apps/web",
+        "group": "前端",
+        "name": "web",
+        "path": "apps/web",
+        "remoteUrl": "https://example.com/org/web.git",
+        "tags": [
+          "vue"
+        ]
+      }
+    ],
+    "noUrl": 0,
+    "skipExisting": 0,
+    "toClone": 1,
+    "workspaceRoot": "/ws"
+  },
+  "ClonePlanItem": {
+    "action": "clone",
+    "defaultBranch": "main",
+    "destPath": "/ws/apps/web",
+    "group": "前端",
+    "name": "web",
+    "path": "apps/web",
+    "remoteUrl": "https://example.com/org/web.git",
+    "tags": [
+      "vue"
+    ]
+  },
   "CommitIdentity": {
     "email": "alice@example.com",
     "name": "alice",
@@ -83,6 +186,17 @@
     "conflictType": "both-modified",
     "path": "a.rs"
   },
+  "CreateChangeSetRequest": {
+    "description": "desc",
+    "name": "Feature: AI Review",
+    "repos": [
+      {
+        "repoId": 3,
+        "targetBranch": "feature/ai"
+      }
+    ],
+    "workspaceId": 2
+  },
   "CreateGroupRequest": {
     "name": "g",
     "parentId": null,
@@ -92,6 +206,95 @@
     "name": "ws",
     "path": "/ws",
     "scanDepth": 5
+  },
+  "DagEdge": {
+    "from": "t-0",
+    "to": "t-1"
+  },
+  "DagGraph": {
+    "dagId": "dag-1",
+    "edges": [
+      {
+        "from": "t-0",
+        "to": "t-1"
+      }
+    ],
+    "name": "示例流水线",
+    "nodes": [
+      {
+        "attempts": 1,
+        "dependsOn": [],
+        "finishedAt": "2026-01-01T00:00:02Z",
+        "group": "fetch-all",
+        "label": "Fetch All · repo",
+        "output": "ok",
+        "repoName": "repo",
+        "repoPath": "/ws/repo",
+        "skipped": false,
+        "startedAt": "2026-01-01T00:00:00Z",
+        "status": {
+          "type": "success"
+        },
+        "taskId": "t-1"
+      }
+    ],
+    "onFailure": "continue"
+  },
+  "DagNodeInfo": {
+    "attempts": 1,
+    "dependsOn": [
+      "t-0"
+    ],
+    "finishedAt": "2026-01-01T00:00:02Z",
+    "group": "fetch-all",
+    "label": "Fetch All · repo",
+    "output": "ok",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "skipped": false,
+    "startedAt": "2026-01-01T00:00:00Z",
+    "status": {
+      "type": "success"
+    },
+    "taskId": "t-1"
+  },
+  "DagNodeRequest": {
+    "condition": {
+      "type": "repoClean"
+    },
+    "dependsOn": [
+      0
+    ],
+    "group": "fetch-all",
+    "label": "Fetch All · repo",
+    "maxAttempts": 1,
+    "task": {
+      "repoName": "repo",
+      "repoPath": "/ws/repo",
+      "taskType": {
+        "type": "fetch"
+      }
+    }
+  },
+  "DagSubmitRequest": {
+    "name": "示例流水线",
+    "nodes": [
+      {
+        "condition": null,
+        "dependsOn": [],
+        "group": "fetch-all",
+        "label": "Fetch All · repo",
+        "maxAttempts": 1,
+        "task": {
+          "repoName": "repo",
+          "repoPath": "/ws/repo",
+          "taskType": {
+            "type": "fetch"
+          }
+        }
+      }
+    ],
+    "onFailure": "continue"
   },
   "DiffLine": {
     "content": "let x = 1;",
@@ -137,6 +340,19 @@
     "repoPath": "/ws/repo",
     "success": true
   },
+  "HealthWeights": {
+    "ahead": 5,
+    "behind": 8,
+    "conflict": 30,
+    "detached": 10,
+    "dirty": 10,
+    "diverged": 20,
+    "largeFiles": 15,
+    "lfsError": 25,
+    "missingRemote": 15,
+    "submoduleError": 25,
+    "untracked": 3
+  },
   "Hunk": {
     "lines": [],
     "newLines": 4,
@@ -148,6 +364,16 @@
     "name": "app.log",
     "path": "/logs/app.log",
     "sizeBytes": 42
+  },
+  "ManifestRepo": {
+    "defaultBranch": "main",
+    "group": "前端",
+    "name": "web",
+    "path": "apps/web",
+    "remoteUrl": "https://example.com/org/web.git",
+    "tags": [
+      "vue"
+    ]
   },
   "MergeOutcome": [
     {
@@ -172,6 +398,66 @@
       "status": "conflict"
     }
   ],
+  "NodeCondition": [
+    {
+      "type": "repoClean"
+    }
+  ],
+  "OperationLogDetail": {
+    "createdAt": "2026-01-01T00:00:00Z",
+    "id": 1,
+    "items": [
+      {
+        "afterOid": "def456",
+        "beforeOid": "abc123",
+        "detail": "mode:hard",
+        "id": 1,
+        "logId": 1,
+        "refName": "main",
+        "repoPath": "/ws/repo",
+        "undoneAt": null
+      }
+    ],
+    "opType": "reset",
+    "summary": "reset --hard",
+    "undoneAt": null,
+    "workspaceId": 2
+  },
+  "OperationLogItem": {
+    "afterOid": "def456",
+    "beforeOid": "abc123",
+    "detail": "mode:hard",
+    "id": 1,
+    "logId": 1,
+    "refName": "main",
+    "repoPath": "/ws/repo",
+    "undoneAt": null
+  },
+  "OperationLogPage": {
+    "logs": [
+      {
+        "createdAt": "2026-01-01T00:00:00Z",
+        "id": 1,
+        "opType": "reset",
+        "repoCount": 1,
+        "summary": "reset --hard",
+        "undoneAt": null,
+        "undoneCount": 0,
+        "workspaceId": 2
+      }
+    ],
+    "total": 1
+  },
+  "OperationLogSummary": {
+    "createdAt": "2026-01-01T00:00:00Z",
+    "id": 1,
+    "opType": "reset",
+    "repoCount": 1,
+    "summary": "reset --hard",
+    "undoneAt": null,
+    "undoneCount": 0,
+    "workspaceId": 2
+  },
   "OperationState": {
     "cherryPick": false,
     "conflicts": [],
@@ -195,6 +481,85 @@
       "total": 2
     }
   ],
+  "Pipeline": {
+    "createdAt": "2026-01-01T00:00:00Z",
+    "description": "内置示例流",
+    "id": "p-1",
+    "name": "示例流水线",
+    "steps": [
+      {
+        "condition": null,
+        "dependsOn": [],
+        "id": "fetch-all",
+        "kind": {
+          "type": "fetch"
+        },
+        "name": "Fetch All",
+        "retries": 0,
+        "timeoutSecs": null
+      }
+    ],
+    "updatedAt": "2026-01-01T00:00:00Z"
+  },
+  "PipelineRunReport": {
+    "cancelled": 0,
+    "durationMs": 2000,
+    "failed": 0,
+    "finishedAt": "2026-01-01T00:00:02Z",
+    "pipelineName": "示例流水线",
+    "runId": "run-1",
+    "skipped": 0,
+    "startedAt": "2026-01-01T00:00:00Z",
+    "status": "success",
+    "steps": [
+      {
+        "cancelled": 0,
+        "durationMs": 2000,
+        "failed": 0,
+        "finishedAt": "2026-01-01T00:00:02Z",
+        "items": [
+          {
+            "attempts": 1,
+            "durationMs": 2000,
+            "finishedAt": "2026-01-01T00:00:02Z",
+            "message": null,
+            "output": "ok",
+            "repoName": "repo",
+            "repoPath": "/ws/repo",
+            "startedAt": "2026-01-01T00:00:00Z",
+            "status": "success",
+            "taskId": "t-1"
+          }
+        ],
+        "kind": "fetch",
+        "name": "Fetch All",
+        "skipped": 0,
+        "startedAt": "2026-01-01T00:00:00Z",
+        "status": "success",
+        "stepId": "fetch-all",
+        "succeeded": 1,
+        "total": 1
+      }
+    ],
+    "succeeded": 1,
+    "total": 1
+  },
+  "PipelineStep": {
+    "condition": {
+      "type": "repoClean"
+    },
+    "dependsOn": [
+      "fetch-all"
+    ],
+    "id": "build",
+    "kind": {
+      "command": "cargo build",
+      "type": "build"
+    },
+    "name": "Build",
+    "retries": 1,
+    "timeoutSecs": 600
+  },
   "RebaseOp": {
     "action": "pick",
     "message": "msg",
@@ -254,12 +619,35 @@
     "sortOrder": 4,
     "workspaceId": 2
   },
+  "RepoHealth": {
+    "anomalies": [
+      "dirty",
+      "conflict"
+    ],
+    "branch": "main",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "score": 60
+  },
+  "RepoHealthExtra": {
+    "largeFiles": 1,
+    "largestFileBytes": 11534336,
+    "lfsError": true,
+    "repoPath": "/ws/repo",
+    "submoduleError": false
+  },
+  "RepoSelection": {
+    "repoName": "repo",
+    "repoPath": "/ws/repo"
+  },
   "RepoStatus": {
     "added": 4,
     "ahead": 1,
     "behind": 2,
     "branch": "main",
+    "conflicted": 1,
     "deleted": 5,
+    "hasRemote": true,
     "isClean": false,
     "isDetached": false,
     "modified": 3,
@@ -273,7 +661,9 @@
       "ahead": 0,
       "behind": 0,
       "branch": "main",
+      "conflicted": 0,
       "deleted": 0,
+      "hasRemote": false,
       "isClean": true,
       "isDetached": false,
       "modified": 0,
@@ -329,6 +719,19 @@
     "issues": [],
     "summary": "ok"
   },
+  "SaveWorkspaceStashResult": {
+    "id": 1,
+    "items": [
+      {
+        "detail": "",
+        "repoName": "repo",
+        "repoPath": "/ws/repo",
+        "stashOid": "abc123",
+        "status": "stashed"
+      }
+    ],
+    "name": "Workspace Stash #1"
+  },
   "ScanProgress": {
     "current": 3,
     "found": 5,
@@ -346,6 +749,68 @@
     "message": "On master: work",
     "oid": "abc123",
     "time": "2026-01-01 00:00:00 +0000"
+  },
+  "StepItemReport": {
+    "attempts": 1,
+    "durationMs": 2000,
+    "finishedAt": "2026-01-01T00:00:02Z",
+    "message": null,
+    "output": "ok",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "startedAt": "2026-01-01T00:00:00Z",
+    "status": "success",
+    "taskId": "t-1"
+  },
+  "StepKind": [
+    {
+      "type": "fetch"
+    },
+    {
+      "type": "checkStatus"
+    },
+    {
+      "type": "pull"
+    },
+    {
+      "command": "cargo build",
+      "type": "build"
+    },
+    {
+      "command": "cargo test",
+      "type": "test"
+    },
+    {
+      "type": "report"
+    }
+  ],
+  "StepReport": {
+    "cancelled": 0,
+    "durationMs": 2000,
+    "failed": 0,
+    "finishedAt": "2026-01-01T00:00:02Z",
+    "items": [
+      {
+        "attempts": 1,
+        "durationMs": 2000,
+        "finishedAt": "2026-01-01T00:00:02Z",
+        "message": null,
+        "output": "ok",
+        "repoName": "repo",
+        "repoPath": "/ws/repo",
+        "startedAt": "2026-01-01T00:00:00Z",
+        "status": "success",
+        "taskId": "t-1"
+      }
+    ],
+    "kind": "fetch",
+    "name": "Fetch All",
+    "skipped": 0,
+    "startedAt": "2026-01-01T00:00:00Z",
+    "status": "success",
+    "stepId": "fetch-all",
+    "succeeded": 1,
+    "total": 1
   },
   "TagEntry": {
     "message": "release",
@@ -438,8 +903,52 @@
       "name": "feature",
       "op": "checkout",
       "type": "branchOp"
+    },
+    {
+      "branch": "main",
+      "type": "clone",
+      "url": "https://example.com/repo.git"
+    },
+    {
+      "command": "make build",
+      "timeoutSecs": 600,
+      "type": "shellCommand"
     }
   ],
+  "UndoItemResult": {
+    "itemId": 1,
+    "message": "已回退",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "success": true
+  },
+  "UndoOutcome": {
+    "fullyUndone": true,
+    "logId": 1,
+    "results": [
+      {
+        "itemId": 1,
+        "message": "已回退",
+        "repoName": "repo",
+        "repoPath": "/ws/repo",
+        "success": true
+      }
+    ]
+  },
+  "UndoPreviewItem": {
+    "action": "将分支 'main' 回退到 abc123",
+    "itemId": 1,
+    "message": "",
+    "ok": true,
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "undone": false
+  },
+  "UpdateChangeSetRequest": {
+    "description": "new desc",
+    "id": 1,
+    "name": "renamed"
+  },
   "UpdateWorkspaceRequest": {
     "name": "ws2",
     "scanDepth": null
@@ -451,6 +960,70 @@
     "path": "/ws",
     "scanDepth": 5,
     "updatedAt": "2026-01-01T00:00:00Z"
+  },
+  "WorkspaceHealth": {
+    "anomalous": 1,
+    "repos": [],
+    "score": 91,
+    "total": 2,
+    "weights": {
+      "ahead": 5,
+      "behind": 8,
+      "conflict": 30,
+      "detached": 10,
+      "dirty": 10,
+      "diverged": 20,
+      "largeFiles": 15,
+      "lfsError": 25,
+      "missingRemote": 15,
+      "submoduleError": 25,
+      "untracked": 3
+    }
+  },
+  "WorkspaceManifest": {
+    "exportedAt": "2026-01-01T00:00:00Z",
+    "name": "ws",
+    "repositories": [
+      {
+        "defaultBranch": "main",
+        "group": "前端",
+        "name": "web",
+        "path": "apps/web",
+        "remoteUrl": "https://example.com/org/web.git",
+        "tags": [
+          "vue"
+        ]
+      }
+    ],
+    "version": 1
+  },
+  "WorkspaceStashCheckItem": {
+    "branch": "main",
+    "currentBranch": "main",
+    "detail": "",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "status": "ok"
+  },
+  "WorkspaceStashItemEntry": {
+    "branch": "main",
+    "repoPath": "/ws/repo",
+    "stashIndex": 0,
+    "stashOid": "abc123"
+  },
+  "WorkspaceStashRepoOutcome": {
+    "detail": "",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "stashOid": "abc123",
+    "status": "stashed"
+  },
+  "WorkspaceStashSummary": {
+    "createdAt": "2026-01-01T00:00:00Z",
+    "id": 1,
+    "message": "sprint work",
+    "name": "Workspace Stash #1",
+    "repoCount": 2
   },
   "WorktreeInfo": {
     "branch": "feature/x",

@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use tauri::State;
 
+use crate::core::operation_log::{self, NewOperationLogItem};
 use crate::core::selector::{self, RepoFacet};
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
@@ -37,9 +38,9 @@ pub fn select_repos(
         .into_iter()
         .map(|r| {
             let status = state.status_cache.get(&r.path);
-            let (ahead, behind, dirty) = match &status {
-                Some(s) => (s.ahead > 0, s.behind > 0, !s.is_clean),
-                None => (false, false, false),
+            let (ahead, behind, dirty, detached) = match &status {
+                Some(s) => (s.ahead > 0, s.behind > 0, !s.is_clean, s.is_detached),
+                None => (false, false, false, false),
             };
             RepoFacet {
                 path: r.path.clone(),
@@ -50,6 +51,7 @@ pub fn select_repos(
                 conflicted: has_conflict_marker(Path::new(&r.path)),
                 ahead,
                 behind,
+                detached,
                 favorite: r.is_favorite,
             }
         })
@@ -93,6 +95,12 @@ fn resolve_git_dir(repo_path: &Path) -> Option<std::path::PathBuf> {
 /// Submit a bulk branch operation (T-20): checkout / create / delete the
 /// named branch in each repo, through the task queue. `force` only applies
 /// to delete (unmerged branches).
+///
+/// T-34: for the reversible ops (checkout / delete) a per-repo ref snapshot
+/// is captured BEFORE submission (queued tasks may start immediately), and
+/// the operation log is written after the queue accepts the batch — a
+/// rejected submission leaves no fake record. Create is not logged (its
+/// reverse — delete — stays available as a normal op).
 #[tauri::command]
 pub fn batch_branch_op(
     repo_paths: Vec<String>,
@@ -101,6 +109,46 @@ pub fn batch_branch_op(
     force: bool,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
+    // T-34 ref snapshots (pure data; repos without a loggable ref — unborn
+    // HEAD or missing branch — are simply not undoable and skipped).
+    let snapshots: Vec<NewOperationLogItem> = match op {
+        BranchOpKind::Checkout => repo_paths
+            .iter()
+            .filter_map(|p| {
+                operation_log::snapshot_head(Path::new(p)).map(|(ref_name, oid)| {
+                    NewOperationLogItem {
+                        repo_path: p.clone(),
+                        ref_name,
+                        before_oid: oid,
+                        // Executed asynchronously by the task queue: the after
+                        // state is unknown at submit time and stays NULL.
+                        after_oid: None,
+                        detail: Some(format!("检出目标分支：{name}")),
+                    }
+                })
+            })
+            .collect(),
+        BranchOpKind::Delete => repo_paths
+            .iter()
+            .filter_map(|p| {
+                operation_log::snapshot_branch(Path::new(p), &name).map(|(ref_name, oid)| {
+                    NewOperationLogItem {
+                        repo_path: p.clone(),
+                        ref_name,
+                        before_oid: oid,
+                        after_oid: None,
+                        detail: Some(if force {
+                            "force 删除".to_string()
+                        } else {
+                            "删除已合入分支".to_string()
+                        }),
+                    }
+                })
+            })
+            .collect(),
+        BranchOpKind::Create => Vec::new(),
+    };
+
     let requests: Vec<TaskRequest> = repo_paths
         .iter()
         .map(|p| {
@@ -120,7 +168,34 @@ pub fn batch_branch_op(
             }
         })
         .collect();
-    state.task_manager.submit(&requests)
+    let task_ids = state.task_manager.submit(&requests)?;
+
+    // T-34: record the accepted batch (best-effort; a log failure must not
+    // fail the already-queued operation).
+    if !snapshots.is_empty() {
+        let (op_type, summary) = match op {
+            BranchOpKind::Checkout => (
+                operation_log::OP_CHECKOUT_ALL,
+                format!("批量检出分支 '{name}'（{} 个仓库）", snapshots.len()),
+            ),
+            BranchOpKind::Delete => (
+                operation_log::OP_DELETE_BRANCH_ALL,
+                format!("批量删除分支 '{name}'（{} 个仓库）", snapshots.len()),
+            ),
+            BranchOpKind::Create => unreachable!("create is not logged"),
+        };
+        if let Some(first) = repo_paths.first() {
+            operation_log::record_operation_best_effort(
+                &state.db,
+                first,
+                op_type,
+                &summary,
+                snapshots,
+            );
+        }
+    }
+
+    Ok(task_ids)
 }
 
 /// One repo's dry-run outcome (T-20, Roadmap 评审增量: 批量预演影响报告).

@@ -44,7 +44,10 @@ fn init_database(app_data_dir: &std::path::Path) -> AppResult<rusqlite::Connecti
 /// On Windows: %APPDATA%/com.gitworkspace.app
 /// On Linux: ~/.local/share/com.gitworkspace.app
 /// On macOS: ~/Library/Application Support/com.gitworkspace.app
-fn get_app_data_dir() -> PathBuf {
+///
+/// `pub(crate)` so commands that keep config files next to the DB (e.g. the
+/// T-19 health weights) resolve the same location.
+pub(crate) fn get_app_data_dir() -> PathBuf {
     if let Some(dir) = dirs::config_dir() {
         dir.join("com.gitworkspace.app")
     } else if let Some(dir) = dirs::home_dir() {
@@ -203,6 +206,9 @@ pub fn run() {
             // Graph commands
             graph::get_commit_history,
             graph::get_branches,
+            // Workspace Health commands (T-19)
+            commands::health::get_workspace_health,
+            commands::health::get_health_extras,
             // AI commands
             commands::ai::ai_review,
             commands::ai::build_code_index,
@@ -213,6 +219,40 @@ pub fn run() {
             commands::logs::open_logs,
             commands::logs::export_logs,
             commands::logs::clear_logs,
+            // Workspace Stash commands (T-21)
+            commands::workspace_stash::save_workspace_stash,
+            commands::workspace_stash::list_workspace_stashes,
+            commands::workspace_stash::get_workspace_stash_items,
+            commands::workspace_stash::check_workspace_stash,
+            commands::workspace_stash::restore_workspace_stash,
+            commands::workspace_stash::delete_workspace_stash,
+            // Workspace Change Set commands (T-22)
+            commands::change_set::list_change_sets,
+            commands::change_set::create_change_set,
+            commands::change_set::update_change_set,
+            commands::change_set::delete_change_set,
+            commands::change_set::add_change_set_repositories,
+            commands::change_set::remove_change_set_repository,
+            commands::change_set::get_change_set_summary,
+            // Pipeline / Task DAG commands (T-23 / T-24)
+            commands::pipeline::submit_dag_tasks,
+            commands::pipeline::get_dag_graph,
+            commands::pipeline::cancel_dag,
+            commands::pipeline::list_pipeline_templates,
+            commands::pipeline::save_pipeline_template,
+            commands::pipeline::delete_pipeline_template,
+            commands::pipeline::get_sample_pipeline,
+            commands::pipeline::run_pipeline,
+            commands::pipeline::get_pipeline_run,
+            // Workspace Manifest commands (T-33)
+            commands::manifest::export_workspace_manifest,
+            commands::manifest::read_manifest_file,
+            commands::manifest::plan_manifest_clone,
+            // Operation Log / Undo commands (T-34)
+            commands::operation_log::list_operation_logs,
+            commands::operation_log::get_operation_log_detail,
+            commands::operation_log::preview_undo_operation,
+            commands::operation_log::undo_operation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

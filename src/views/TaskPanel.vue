@@ -72,6 +72,13 @@
             >
               部分成功
             </el-tag>
+            <el-tag
+              v-else-if="task.status.type === 'cancelled'"
+              type="info"
+              size="small"
+            >
+              已取消
+            </el-tag>
           </div>
           <div class="task-actions">
             <el-button
@@ -348,6 +355,10 @@ function taskTypeLabel(task: Task): string {
       return "Commit";
     case "branchOp":
       return "分支操作";
+    case "clone":
+      return "Clone";
+    case "shellCommand":
+      return "Shell";
   }
 }
 

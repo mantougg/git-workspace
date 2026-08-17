@@ -342,4 +342,62 @@ ALTER TABLE repo_groups ADD COLUMN author_name TEXT;
 ALTER TABLE repo_groups ADD COLUMN author_email TEXT;
 "#;
 
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6];
+/// v7 (T-21 + T-34, Phase 2 parallel work): workspace-stash association
+/// records and the unified operation log for undo.
+pub const SCHEMA_V7: &str = r#"
+-- Named multi-repo stash group (T-21): one row per "Workspace Stash #N".
+CREATE TABLE IF NOT EXISTS workspace_stashes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    name         TEXT NOT NULL,
+    message      TEXT,
+    created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_stashes_ws ON workspace_stashes(workspace_id);
+
+-- Per-repo member of a workspace stash: links the group to each repo's
+-- stash (by oid + index so restore can resolve it even after later stashes).
+CREATE TABLE IF NOT EXISTS workspace_stash_items (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_stash_id INTEGER NOT NULL REFERENCES workspace_stashes(id) ON DELETE CASCADE,
+    repo_path          TEXT NOT NULL,
+    stash_oid          TEXT NOT NULL,
+    stash_index        INTEGER NOT NULL,
+    branch             TEXT NOT NULL,
+    UNIQUE(workspace_stash_id, repo_path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ws_stash_items_group ON workspace_stash_items(workspace_stash_id);
+
+-- Unified operation log (T-34): one batch row per high-risk operation, with
+-- per-repo before/after ref snapshots as items (pure data, no libgit2
+-- handles — global constraint §3).
+CREATE TABLE IF NOT EXISTS operation_logs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+    op_type      TEXT NOT NULL,
+    summary      TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    undone_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_operation_logs_ws ON operation_logs(workspace_id);
+
+CREATE TABLE IF NOT EXISTS operation_log_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    log_id      INTEGER NOT NULL REFERENCES operation_logs(id) ON DELETE CASCADE,
+    repo_path   TEXT NOT NULL,
+    ref_name    TEXT NOT NULL,
+    before_oid  TEXT NOT NULL,
+    after_oid   TEXT,
+    detail      TEXT,
+    undone_at   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_operation_log_items_log ON operation_log_items(log_id);
+"#;
+
+pub const MIGRATIONS: &[&str] = &[
+    SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7,
+];

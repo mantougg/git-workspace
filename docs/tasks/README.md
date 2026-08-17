@@ -20,8 +20,8 @@
 ## 总体进度
 
 - 任务总数：**35**
-- 已完成：**17** · 进行中：**1** · 未开始：**17**
-- 完成度：**17 / 35（49%）**
+- 已完成：**26** · 进行中：**0** · 未开始：**9**
+- 完成度：**26 / 35（74%）**
 
 ---
 
@@ -36,7 +36,7 @@
 | T-01 | Scanner 硬化 | P0 | ✅ | — | [T-01-scanner.md](./T-01-scanner.md) |
 | T-02 | Status Engine（增量 + libgit2 线程安全 + 并发限流） | P0 | ✅ | T-01 | [T-02-status-engine.md](./T-02-status-engine.md) |
 | T-03 | SQLite 数据层硬化（WAL / 单写者 / 完整 schema） | P0 | ✅ | — | [T-03-sqlite-data-layer.md](./T-03-sqlite-data-layer.md) |
-| T-04 | Diff & Graph 硬化 | P0 | 🟦 | T-03 | [T-04-diff-graph.md](./T-04-diff-graph.md) |
+| T-04 | Diff & Graph 硬化 | P0 | ✅ | T-03 | [T-04-diff-graph.md](./T-04-diff-graph.md) |
 | T-05 | Task Queue 硬化（Partial Success / 重试 / 超时） | P0 | ✅ | T-03 | [T-05-task-queue.md](./T-05-task-queue.md) |
 | T-06 | File Watcher 升级 + 事件聚合 | P0 | ✅ | T-02 | [T-06-file-watcher.md](./T-06-file-watcher.md) |
 | T-07 | Benchmark 系统（提前到 Phase 0） | P0 | ✅ | T-01, T-02 | [T-07-benchmark.md](./T-07-benchmark.md) |
@@ -60,15 +60,15 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| T-18 | Workspace Dashboard | P1 | ⬜ | T-02, T-09 | [T-18-dashboard.md](./T-18-dashboard.md) |
-| T-19 | Workspace Health | P1 | ⬜ | T-02 | [T-19-health.md](./T-19-health.md) |
+| T-18 | Workspace Dashboard | P1 | ✅ | T-02, T-09 | [T-18-dashboard.md](./T-18-dashboard.md) |
+| T-19 | Workspace Health | P1 | ✅ | T-02 | [T-19-health.md](./T-19-health.md) |
 | T-20 | Batch Operations 增强（选择器 + 批量操作全集） | P1 | ✅ | T-05 | [T-20-batch-ops.md](./T-20-batch-ops.md) |
-| T-21 | Workspace Stash & Branch | P1 | ⬜ | T-09, T-10 | [T-21-workspace-stash-branch.md](./T-21-workspace-stash-branch.md) |
-| T-22 | Workspace Change Set | P1 | ⬜ | T-09, T-20 | [T-22-change-set.md](./T-22-change-set.md) |
-| T-23 | Workspace Pipeline | P1 | ⬜ | T-05 | [T-23-pipeline.md](./T-23-pipeline.md) |
-| T-24 | Task DAG（依赖 / 并行 / 部分失败） | P1 | ⬜ | T-05 | [T-24-task-dag.md](./T-24-task-dag.md) |
-| T-33 | Workspace Manifest + 批量 Clone | P1 | ⬜ | T-01, T-05 | [T-33-workspace-manifest.md](./T-33-workspace-manifest.md) |
-| T-34 | 统一 Undo / 操作日志 | P1 | ⬜ | T-05 | [T-34-undo-operation-log.md](./T-34-undo-operation-log.md) |
+| T-21 | Workspace Stash & Branch | P1 | ✅ | T-09, T-10 | [T-21-workspace-stash-branch.md](./T-21-workspace-stash-branch.md) |
+| T-22 | Workspace Change Set | P1 | ✅ | T-09, T-20 | [T-22-change-set.md](./T-22-change-set.md) |
+| T-23 | Workspace Pipeline | P1 | ✅ | T-05 | [T-23-pipeline.md](./T-23-pipeline.md) |
+| T-24 | Task DAG（依赖 / 并行 / 部分失败） | P1 | ✅ | T-05 | [T-24-task-dag.md](./T-24-task-dag.md) |
+| T-33 | Workspace Manifest + 批量 Clone | P1 | ✅ | T-01, T-05 | [T-33-workspace-manifest.md](./T-33-workspace-manifest.md) |
+| T-34 | 统一 Undo / 操作日志 | P1 | ✅ | T-05 | [T-34-undo-operation-log.md](./T-34-undo-operation-log.md) |
 
 ### Phase 3 · AI Git Assistant（P1，3 个）
 

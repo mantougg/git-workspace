@@ -19,6 +19,8 @@ export interface RepoStatus {
   deleted: number;
   untracked: number;
   staged: number;
+  conflicted: number;
+  hasRemote: boolean;
   isClean: boolean;
 }
 

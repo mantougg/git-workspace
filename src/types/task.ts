@@ -19,7 +19,9 @@ export type TaskType =
       op: "checkout" | "create" | "delete";
       name: string;
       force?: boolean;
-    };
+    }
+  | { type: "clone"; url: string; branch?: string | null }
+  | { type: "shellCommand"; command: string; timeoutSecs?: number | null };
 
 export type TaskStatus =
   | { type: "queued" }

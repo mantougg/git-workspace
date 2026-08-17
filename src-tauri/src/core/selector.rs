@@ -3,7 +3,7 @@
 //! Query syntax: whitespace-separated tokens, ANDed together:
 //! - `@group:<name>`  — repositories in the named group
 //! - `@tag:<tag>`     — repositories carrying the tag
-//! - `@status:<s>`    — dirty / clean / conflict / ahead / behind / favorite
+//! - `@status:<s>`    — dirty / clean / conflict / ahead / behind / detached / favorite
 //! - any other token  — case-insensitive substring match on the repo name
 //!
 //! Filtering runs in memory over already-loaded repo facets (global
@@ -20,6 +20,7 @@ pub struct RepoFacet {
     pub conflicted: bool,
     pub ahead: bool,
     pub behind: bool,
+    pub detached: bool,
     pub favorite: bool,
 }
 
@@ -66,6 +67,7 @@ pub fn matches_selector(facet: &RepoFacet, tokens: &[SelectorToken]) -> bool {
             "conflict" => facet.conflicted,
             "ahead" => facet.ahead,
             "behind" => facet.behind,
+            "detached" => facet.detached,
             "favorite" => facet.favorite,
             _ => false,
         },
@@ -100,6 +102,7 @@ mod tests {
             conflicted: false,
             ahead: true,
             behind: false,
+            detached: true,
             favorite: true,
         }
     }
@@ -129,6 +132,7 @@ mod tests {
         assert!(!matches_selector(&f, &parse_selector("@status:clean")));
         assert!(matches_selector(&f, &parse_selector("@status:ahead")));
         assert!(!matches_selector(&f, &parse_selector("@status:behind")));
+        assert!(matches_selector(&f, &parse_selector("@status:detached")));
         assert!(matches_selector(&f, &parse_selector("@status:favorite")));
         assert!(matches_selector(&f, &parse_selector("web")));
         assert!(!matches_selector(&f, &parse_selector("api")));

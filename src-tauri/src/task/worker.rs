@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, Mutex};
 use crate::core::git_ops::GitOps;
 use crate::db::dao;
 use crate::models::task::{BatchState, GitCommandResult, Task, TaskProgress, TaskStatus, TaskType};
+use crate::task::dag::{DagContext, DagState};
 
 /// Maximum retries for a failed task (network operations benefit most).
 const MAX_RETRIES: usize = 2;
@@ -20,16 +21,20 @@ const TASK_TIMEOUT: Duration = Duration::from_secs(300);
 ///
 /// Each worker pulls tasks from the channel, executes them using GitOps
 /// (in a blocking thread with a timeout + retries), and emits progress events
-/// to the frontend.
+/// to the frontend. `dag_sender` is the queue's own sender, handed to the
+/// DAG scheduler (T-24) so it can dispatch newly-unblocked nodes.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_worker_pool(
     worker_count: usize,
     receiver: mpsc::Receiver<super::queue::TaskMessage>,
+    dag_sender: mpsc::Sender<super::queue::TaskMessage>,
     git_ops: Arc<GitOps>,
     active_tasks: Arc<DashMap<String, Task>>,
     cancel_flags: Arc<DashMap<String, Arc<AtomicBool>>>,
     app_handle: AppHandle,
     db: Arc<std::sync::Mutex<Connection>>,
     batches: Arc<DashMap<String, BatchState>>,
+    dags: Arc<DashMap<String, DagState>>,
 ) {
     let receiver = Arc::new(Mutex::new(receiver));
 
@@ -38,12 +43,14 @@ pub fn spawn_worker_pool(
 
         for worker_id in 0..worker_count {
             let rx = Arc::clone(&receiver);
+            let tx = dag_sender.clone();
             let ops = Arc::clone(&git_ops);
             let tasks = Arc::clone(&active_tasks);
             let flags = Arc::clone(&cancel_flags);
             let app = app_handle.clone();
             let db = Arc::clone(&db);
             let batch_map = Arc::clone(&batches);
+            let dag_map = Arc::clone(&dags);
 
             workers.push(tauri::async_runtime::spawn(async move {
                 log::debug!("Task worker {} started", worker_id);
@@ -56,7 +63,10 @@ pub fn spawn_worker_pool(
 
                     match msg {
                         Some(msg) => {
-                            execute_task(&ops, &tasks, &flags, &app, &db, &batch_map, msg.task).await;
+                            execute_task(
+                                &ops, &tasks, &flags, &app, &db, &batch_map, &dag_map, &tx, msg.task,
+                            )
+                            .await;
                         }
                         None => {
                             log::debug!("Task worker {} shutting down", worker_id);
@@ -84,6 +94,7 @@ fn is_cancelled(flags: &DashMap<String, Arc<AtomicBool>>, task_id: &str) -> bool
 
 /// Execute a single task: update status, run the Git operation (with timeout +
 /// retries), honour cancellation, and emit progress.
+#[allow(clippy::too_many_arguments)]
 async fn execute_task(
     ops: &Arc<GitOps>,
     tasks: &Arc<DashMap<String, Task>>,
@@ -91,8 +102,34 @@ async fn execute_task(
     app: &AppHandle,
     db: &Arc<std::sync::Mutex<Connection>>,
     batches: &Arc<DashMap<String, BatchState>>,
+    dags: &Arc<DashMap<String, DagState>>,
+    dag_sender: &mpsc::Sender<super::queue::TaskMessage>,
     mut task: Task,
 ) {
+    // Early cancellation: the flag may have been set while the task sat in
+    // the channel (queued cancel). Don't even start the git operation.
+    if is_cancelled(cancel_flags, &task.id) {
+        task.status = TaskStatus::Cancelled;
+        if let Some(mut entry) = tasks.get_mut(&task.id) {
+            entry.status = TaskStatus::Cancelled;
+        }
+        persist_final_status(db, &task);
+        emit_progress(app, &task);
+        finish_dag_node(dags, dag_sender, tasks, cancel_flags, db, app, batches, &task, None);
+        update_batch(batches, db, app, &task);
+
+        // Same delayed cleanup as the normal path.
+        let tasks = Arc::clone(tasks);
+        let flags = Arc::clone(cancel_flags);
+        let task_id = task.id.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            tasks.remove(&task_id);
+            flags.remove(&task_id);
+        });
+        return;
+    }
+
     // Update status to Running
     if let Some(mut entry) = tasks.get_mut(&task.id) {
         entry.status = TaskStatus::Running { progress: 0.0 };
@@ -142,12 +179,12 @@ async fn execute_task(
         };
 
         // Retry on failure with exponential backoff. Only network operations
-        // (Fetch/Pull/Push) are retried: a commit failure is local and a
+        // (Fetch/Pull/Push/Clone) are retried: a commit failure is local and a
         // Commit & Push middle-state failure must never re-run the commit
         // (T-11; the push itself is retried inside execute).
         let retryable = matches!(
             task_type,
-            TaskType::Fetch | TaskType::Pull | TaskType::Push
+            TaskType::Fetch | TaskType::Pull | TaskType::Push | TaskType::Clone { .. }
         );
         if retryable && matches!(status, TaskStatus::Failed { .. }) && attempt < MAX_RETRIES {
             attempt += 1;
@@ -178,6 +215,8 @@ async fn execute_task(
         TaskType::Fetch => Some("git fetch <remote>".to_string()),
         TaskType::Pull => Some("git pull --ff-only".to_string()),
         TaskType::Push => Some("git push".to_string()),
+        TaskType::Clone { url, .. } => Some(format!("git clone {}", url)),
+        TaskType::ShellCommand { command, .. } => Some(command.clone()),
         TaskType::Commit {
             then_push: true, ..
         } => Some("git commit && git push".to_string()),
@@ -185,7 +224,7 @@ async fn execute_task(
     };
     if let Some(command) = console_command {
         let (success, out) = match &final_status {
-            TaskStatus::Success => (true, output.unwrap_or_default()),
+            TaskStatus::Success => (true, output.clone().unwrap_or_default()),
             TaskStatus::Failed { error } => (false, error.clone()),
             TaskStatus::Cancelled => (false, "Cancelled".to_string()),
             _ => (false, String::new()),
@@ -214,20 +253,66 @@ async fn execute_task(
     // Emit final status
     emit_progress(app, &task);
 
-    // Aggregate into the parent batch (T-20): evolves the synthetic batch
-    // task towards Success / Failed / PartialSuccess and persists the
-    // per-repo sub-result into task_items.
-    update_batch(batches, db, app, &task);
+    // T-24: evolve the DAG this node belongs to (release dependents,
+    // propagate failure/cancellation). A retried node must not be accounted
+    // into the batch aggregate yet, nor cleaned up.
+    let retried = finish_dag_node(
+        dags,
+        dag_sender,
+        tasks,
+        cancel_flags,
+        db,
+        app,
+        batches,
+        &task,
+        output,
+    );
 
-    // Schedule cleanup after a delay
-    let tasks = Arc::clone(tasks);
-    let flags = Arc::clone(cancel_flags);
-    let task_id = task.id.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(30)).await;
-        tasks.remove(&task_id);
-        flags.remove(&task_id);
-    });
+    if !retried {
+        // Aggregate into the parent batch (T-20): evolves the synthetic batch
+        // task towards Success / Failed / PartialSuccess and persists the
+        // per-repo sub-result into task_items.
+        update_batch(batches, db, app, &task);
+
+        // Schedule cleanup after a delay
+        let tasks = Arc::clone(tasks);
+        let flags = Arc::clone(cancel_flags);
+        let task_id = task.id.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            tasks.remove(&task_id);
+            flags.remove(&task_id);
+        });
+    }
+}
+
+/// Hand a finished task to the DAG scheduler (T-24). Returns true when the
+/// node is being retried at scheduler level (skip accounting + cleanup).
+#[allow(clippy::too_many_arguments)]
+fn finish_dag_node(
+    dags: &Arc<DashMap<String, DagState>>,
+    sender: &mpsc::Sender<super::queue::TaskMessage>,
+    tasks: &Arc<DashMap<String, Task>>,
+    cancel_flags: &Arc<DashMap<String, Arc<AtomicBool>>>,
+    db: &Arc<std::sync::Mutex<Connection>>,
+    app: &AppHandle,
+    batches: &Arc<DashMap<String, BatchState>>,
+    task: &Task,
+    output: Option<String>,
+) -> bool {
+    if task.batch_id.is_none() {
+        return false;
+    }
+    let ctx = DagContext {
+        dags,
+        sender,
+        active_tasks: tasks,
+        cancel_flags,
+        db,
+        app,
+        batches,
+    };
+    crate::task::dag::on_task_finished(&ctx, task, output)
 }
 
 /// Persist a task's final status (and finished_at) to the `tasks` table.

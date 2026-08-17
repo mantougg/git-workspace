@@ -45,6 +45,26 @@
           <el-icon><Bell /></el-icon>
           任务 ({{ taskStore.tasks.length }})
         </el-button>
+        <el-button @click="router.push({ name: 'health' })">
+          <el-icon><Odometer /></el-icon>
+          健康检查
+        </el-button>
+        <el-button @click="router.push({ name: 'change-sets' })">
+          <el-icon><Collection /></el-icon>
+          Change Set
+        </el-button>
+        <el-button @click="router.push({ name: 'pipeline' })">
+          <el-icon><Connection /></el-icon>
+          Pipeline
+        </el-button>
+        <el-button @click="router.push({ name: 'manifest' })">
+          <el-icon><Document /></el-icon>
+          Manifest
+        </el-button>
+        <el-button @click="router.push({ name: 'operation-log' })">
+          <el-icon><Clock /></el-icon>
+          操作日志
+        </el-button>
         <el-button @click="showLogManager = true">
           <el-icon><FolderOpened /></el-icon>
           日志
@@ -314,6 +334,10 @@
               Push 预演
             </el-button>
           </el-button-group>
+          <el-button size="small" @click="openWsStashDialog">
+            <el-icon><Collection /></el-icon>
+            Workspace Stash
+          </el-button>
         </div>
         <div class="commit-row">
           <div class="commit-input">
@@ -446,6 +470,145 @@
       </template>
     </el-dialog>
 
+
+    <!-- Workspace Stash dialog (T-21): save the selected repo set as one
+         named multi-repo stash, and manage / restore the records. -->
+    <el-dialog
+      v-model="wsStashDialog.show"
+      title="Workspace Stash（多仓库暂存）"
+      width="760px"
+    >
+      <div class="ws-stash-save-row">
+        <el-input
+          v-model="wsStashDialog.message"
+          size="small"
+          placeholder="备注信息（可选）"
+          style="max-width: 260px"
+          clearable
+        />
+        <el-checkbox v-model="wsStashDialog.includeUntracked" size="small">
+          包含未跟踪文件
+        </el-checkbox>
+        <el-button
+          size="small"
+          type="primary"
+          :loading="wsStashDialog.saving"
+          :disabled="wsStashTargetCount === 0"
+          @click="saveWsStash"
+        >
+          暂存选中组（{{ wsStashTargetCount }} 个仓库）
+        </el-button>
+      </div>
+      <el-alert
+        v-if="wsStashDialog.lastSave"
+        :type="wsStashDialog.lastSave.id != null ? 'success' : 'info'"
+        :closable="false"
+        show-icon
+        class="ws-stash-save-result"
+        :title="wsStashSaveSummary"
+      />
+      <el-table
+        :data="wsStashDialog.list"
+        v-loading="wsStashDialog.loading"
+        max-height="380"
+        @expand-change="onWsStashExpand"
+      >
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="ws-stash-items">
+              <div
+                v-for="item in wsStashDialog.items[row.id] ?? []"
+                :key="item.repoPath"
+                class="ws-stash-item"
+              >
+                <span class="ws-stash-item-repo">{{ repoNameOf(item.repoPath) }}</span>
+                <el-tag size="small" effect="plain">{{ item.branch }}</el-tag>
+                <span class="ws-stash-item-oid">{{ item.stashOid.slice(0, 8) }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="name" label="名称" min-width="150" />
+        <el-table-column label="备注" min-width="160">
+          <template #default="{ row }">
+            <span>{{ row.message || "—" }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="仓库数" width="80" align="center">
+          <template #default="{ row }">{{ row.repoCount }}</template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="创建时间" min-width="170" />
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" text type="primary" @click="openWsStashRestore(row)">
+              恢复
+            </el-button>
+            <el-button size="small" text type="danger" @click="removeWsStash(row)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+        <template #empty>暂无 Workspace Stash 记录</template>
+      </el-table>
+    </el-dialog>
+
+    <!-- Workspace Stash restore: pre-check + §46 Warning confirm (T-21) -->
+    <el-dialog
+      v-model="wsStashCheck.show"
+      :title="`恢复 ${wsStashCheck.name}`"
+      width="680px"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="恢复将把各仓库的 stash 应用回工作区（stash 条目保留，可重复恢复）。以下为影响仓库与恢复前校验结果："
+      />
+      <el-table
+        :data="wsStashCheck.items"
+        v-loading="wsStashCheck.loading"
+        max-height="320"
+      >
+        <el-table-column prop="repoName" label="仓库" min-width="140" />
+        <el-table-column label="记录分支" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain">{{ row.branch }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="当前分支" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain">{{ row.currentBranch ?? "—" }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="校验" width="100">
+          <template #default="{ row }">
+            <el-tag size="small" :type="wsStashCheckTagType(row.status)">
+              {{ wsStashCheckLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="detail" label="说明" min-width="180" />
+      </el-table>
+      <el-checkbox
+        v-if="wsStashCheck.items.some((i) => i.status === 'branch_mismatch')"
+        v-model="wsStashCheck.allowMismatch"
+        size="small"
+        class="ws-stash-mismatch-allow"
+      >
+        允许在分支不一致的仓库上恢复（变更会落到当前分支）
+      </el-checkbox>
+      <template #footer>
+        <el-button @click="wsStashCheck.show = false">取消</el-button>
+        <el-button
+          type="warning"
+          :loading="wsStashCheck.restoring"
+          :disabled="wsStashApplicableCount === 0"
+          @click="confirmWsStashRestore"
+        >
+          确认恢复（{{ wsStashApplicableCount }} 个仓库）
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- Commit identity dialog (T-11 §54) -->
     <el-dialog v-model="identityDialog.show" title="提交身份" width="480px">
@@ -580,7 +743,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   Plus,
   Refresh,
@@ -604,6 +767,11 @@ import {
   Box,
   Files,
   Warning,
+  Collection,
+  Odometer,
+  Connection,
+  Document,
+  Clock,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { listen } from "@tauri-apps/api/event";
@@ -620,6 +788,20 @@ import {
 import type { CommitScanFinding, CommitIdentity } from "@/types/commit";
 import { selectRepos, batchBranchOp, batchDryRun } from "@/api/batch";
 import type { DryRunItem } from "@/types/batch";
+import {
+  saveWorkspaceStash,
+  listWorkspaceStashes,
+  getWorkspaceStashItems,
+  checkWorkspaceStash,
+  restoreWorkspaceStash,
+  deleteWorkspaceStash,
+} from "@/api/workspaceStash";
+import type {
+  SaveWorkspaceStashResult,
+  WorkspaceStashCheckItem,
+  WorkspaceStashItemEntry,
+  WorkspaceStashSummary,
+} from "@/types/workspaceStash";
 import { getDiff } from "@/api/git";
 import { batchAdd, batchRestore, getWorkspaceChanges, type AddRequest, type RestoreRequest } from "@/api/changes";
 import type { CommitRequest } from "@/types/task";
@@ -642,6 +824,7 @@ interface SelectedDiff {
 }
 
 const router = useRouter();
+const route = useRoute();
 const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
 const taskStore = useTaskStore();
@@ -695,6 +878,26 @@ const dryRunDialog = ref({
   loading: false,
   op: "pull" as "pull" | "push",
   items: [] as DryRunItem[],
+});
+// --- Workspace Stash (T-21) ---
+const wsStashDialog = ref({
+  show: false,
+  loading: false,
+  saving: false,
+  message: "",
+  includeUntracked: true,
+  list: [] as WorkspaceStashSummary[],
+  items: {} as Record<number, WorkspaceStashItemEntry[]>,
+  lastSave: null as SaveWorkspaceStashResult | null,
+});
+const wsStashCheck = ref({
+  show: false,
+  loading: false,
+  restoring: false,
+  id: 0,
+  name: "",
+  allowMismatch: false,
+  items: [] as WorkspaceStashCheckItem[],
 });
 const scanProgress = ref<{ found: number; current: number; total: number | null } | null>(null);
 const selectedDiff = ref<SelectedDiff | null>(null);
@@ -753,6 +956,7 @@ onMounted(async () => {
     selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
     await loadChanges();
     await startFileWatcher();
+    await applyRoutePrefill();
   }
 
   // Listen for scan progress events
@@ -760,6 +964,59 @@ onMounted(async () => {
     scanProgress.value = event.payload;
   });
 });
+
+/** Prefill from Dashboard quick actions (T-18): `?selector=@status:xxx`
+ * primes the T-20 selector (resolved immediately, not via the debounced
+ * watcher), `?action=...` triggers the matching batch flow. The query is
+ * cleared afterwards so a refresh does not re-fire the action. */
+async function applyRoutePrefill() {
+  const selector =
+    typeof route.query.selector === "string" ? route.query.selector : "";
+  const action = typeof route.query.action === "string" ? route.query.action : "";
+  if (!selector && !action) return;
+  try {
+    if (selector) {
+      selectorQuery.value = selector;
+      selectorPaths.value = await selectRepos(selectedWorkspaceId.value!, selector);
+      commitPanelOpen.value = true;
+    }
+    switch (action) {
+      case "fetch": {
+        // Fetch All: every repo in the workspace, not just dirty ones.
+        const paths = changes.value.map((c) => c.repoPath);
+        if (paths.length === 0) break;
+        actionLoading.value = true;
+        try {
+          const ids = await batchFetch(paths);
+          ElMessage.success(`已提交 ${ids.length} 个 fetch 任务`);
+          await loadChanges();
+        } finally {
+          actionLoading.value = false;
+        }
+        break;
+      }
+      case "pull":
+        // Clean repos were prefilled; the dry-run dialog decides which are
+        // fast-forwardable before anything mutates (T-20 safety flow).
+        runDryRun("pull");
+        break;
+      case "push":
+        openPushDialog();
+        break;
+      case "commit":
+        commitPanelOpen.value = true;
+        changeTreeRef.value?.expandAll();
+        break;
+      case "branch-create":
+        openBranchOp("create");
+        break;
+    }
+  } catch (e) {
+    ElMessage.error("预填快捷操作失败: " + errMsg(e));
+  } finally {
+    router.replace({ query: {} });
+  }
+}
 
 onUnmounted(() => {
   if (unlistenScan) {
@@ -1229,6 +1486,194 @@ function dryRunTagType(c: string): "success" | "warning" | "danger" | "info" {
   )[c] ?? "info";
 }
 
+// --- Workspace Stash (T-21) ---
+
+/** Target repo count for the save button (selector > tree > all, T-20). */
+const wsStashTargetCount = computed(() => batchTargetRepos().length);
+
+/** One-line summary of the last save result. */
+const wsStashSaveSummary = computed(() => {
+  const r = wsStashDialog.value.lastSave;
+  if (!r) return "";
+  const stashed = r.items.filter((i) => i.status === "stashed").length;
+  const skipped = r.items.filter((i) => i.status === "skipped_clean").length;
+  const failed = r.items.filter((i) => i.status === "failed").length;
+  const base = `${r.name}：已暂存 ${stashed} 个仓库，跳过干净仓库 ${skipped} 个`;
+  const failText = failed > 0 ? `，失败 ${failed} 个` : "";
+  return r.id != null ? `${base}${failText}` : `没有可暂存的变更（${base}${failText}），未生成记录`;
+});
+
+function openWsStashDialog() {
+  if (!selectedWorkspaceId.value) return;
+  wsStashDialog.value.show = true;
+  wsStashDialog.value.lastSave = null;
+  loadWsStashes();
+}
+
+async function loadWsStashes() {
+  if (!selectedWorkspaceId.value) return;
+  wsStashDialog.value.loading = true;
+  try {
+    wsStashDialog.value.list = await listWorkspaceStashes(selectedWorkspaceId.value);
+    wsStashDialog.value.items = {};
+  } catch (e) {
+    ElMessage.error("加载 Workspace Stash 记录失败: " + errMsg(e));
+  } finally {
+    wsStashDialog.value.loading = false;
+  }
+}
+
+/** Save the current target repo set as one `Workspace Stash #N` (T-21). */
+async function saveWsStash() {
+  const targets = batchTargetRepos();
+  if (targets.length === 0) {
+    ElMessage.warning("没有目标仓库（先用选择器或勾选）");
+    return;
+  }
+  const d = wsStashDialog.value;
+  d.saving = true;
+  try {
+    const result = await saveWorkspaceStash(
+      selectedWorkspaceId.value!,
+      targets,
+      d.message.trim() || undefined,
+      d.includeUntracked,
+    );
+    d.lastSave = result;
+    const failed = result.items.filter((i) => i.status === "failed");
+    if (failed.length > 0) {
+      ElMessageBox.alert(
+        failed.map((f) => `${f.repoName}：${f.detail}`).join("\n"),
+        "部分仓库暂存失败",
+        { type: "warning" },
+      );
+    }
+    if (result.id != null) {
+      d.message = "";
+      await loadWsStashes();
+    }
+    await loadChanges();
+  } catch (e) {
+    ElMessage.error("暂存失败: " + errMsg(e));
+  } finally {
+    d.saving = false;
+  }
+}
+
+/** Lazy-load the per-repo items when a record row is expanded. */
+async function onWsStashExpand(row: WorkspaceStashSummary, expanded: WorkspaceStashSummary[]) {
+  if (!expanded.includes(row) || wsStashDialog.value.items[row.id]) return;
+  try {
+    wsStashDialog.value.items[row.id] = await getWorkspaceStashItems(row.id);
+  } catch (e) {
+    ElMessage.error("加载记录明细失败: " + errMsg(e));
+  }
+}
+
+/** Restore flow step 1 (§46): pre-check every repo, then show the Warning
+ * confirmation with the affected-repo list. */
+async function openWsStashRestore(row: WorkspaceStashSummary) {
+  wsStashCheck.value = {
+    show: true,
+    loading: true,
+    restoring: false,
+    id: row.id,
+    name: row.name,
+    allowMismatch: false,
+    items: [],
+  };
+  try {
+    wsStashCheck.value.items = await checkWorkspaceStash(row.id);
+  } catch (e) {
+    ElMessage.error("恢复前校验失败: " + errMsg(e));
+    wsStashCheck.value.show = false;
+  } finally {
+    wsStashCheck.value.loading = false;
+  }
+}
+
+/** Repos the restore will actually touch. */
+const wsStashApplicableCount = computed(() =>
+  wsStashCheck.value.items.filter(
+    (i) =>
+      i.status === "ok" ||
+      (i.status === "branch_mismatch" && wsStashCheck.value.allowMismatch),
+  ).length,
+);
+
+/** Restore flow step 2: apply per repo, collect partial failures. */
+async function confirmWsStashRestore() {
+  const c = wsStashCheck.value;
+  c.restoring = true;
+  try {
+    const outcomes = await restoreWorkspaceStash(c.id, c.allowMismatch);
+    const applied = outcomes.filter((o) => o.status === "applied").length;
+    const skipped = outcomes.filter((o) => o.status === "skipped").length;
+    const failed = outcomes.filter((o) => o.status === "failed");
+    c.show = false;
+    if (failed.length > 0) {
+      ElMessageBox.alert(
+        failed.map((f) => `${f.repoName}：${f.detail}`).join("\n"),
+        `已恢复 ${applied} 个仓库，${failed.length} 个失败`,
+        { type: "warning" },
+      );
+    } else {
+      ElMessage.success(
+        `已恢复 ${applied} 个仓库${skipped > 0 ? `，跳过 ${skipped} 个` : ""}`,
+      );
+    }
+    await loadChanges();
+  } catch (e) {
+    ElMessage.error("恢复失败: " + errMsg(e));
+  } finally {
+    c.restoring = false;
+  }
+}
+
+/** Delete a record; the per-repo stashes stay on each repo's stack. */
+async function removeWsStash(row: WorkspaceStashSummary) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除记录「${row.name}」吗？仅删除关联记录，各仓库的 stash 条目仍保留在各自的 stash 栈中。`,
+      "删除 Workspace Stash 记录",
+      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await deleteWorkspaceStash(row.id);
+    ElMessage.success("已删除记录");
+    await loadWsStashes();
+  } catch (e) {
+    ElMessage.error("删除失败: " + errMsg(e));
+  }
+}
+
+function wsStashCheckLabel(s: string): string {
+  return (
+    {
+      ok: "可恢复",
+      branch_mismatch: "分支不一致",
+      stash_missing: "stash 缺失",
+      repo_missing: "仓库缺失",
+      error: "错误",
+    } as Record<string, string>
+  )[s] ?? s;
+}
+
+function wsStashCheckTagType(s: string): "success" | "warning" | "danger" | "info" {
+  return (
+    {
+      ok: "success",
+      branch_mismatch: "warning",
+      stash_missing: "danger",
+      repo_missing: "danger",
+      error: "danger",
+    } as const
+  )[s] ?? "info";
+}
+
 async function handleFetch() {
   // Selector > tree selection > all dirty repos (T-20 selector precedence).
   const paths = batchTargetRepos();
@@ -1674,5 +2119,45 @@ function viewConflicts() {
   max-height: 200px;
   overflow-y: auto;
   font-size: 13px;
+}
+
+.ws-stash-save-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.ws-stash-save-result {
+  margin-bottom: 10px;
+}
+
+.ws-stash-items {
+  padding: 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-stash-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.ws-stash-item-repo {
+  font-weight: 600;
+  color: #409eff;
+}
+
+.ws-stash-item-oid {
+  font-family: monospace;
+  color: #909399;
+  font-size: 12px;
+}
+
+.ws-stash-mismatch-allow {
+  margin-top: 10px;
 }
 </style>

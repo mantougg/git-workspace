@@ -5,8 +5,38 @@ const router = createRouter({
   routes: [
     {
       path: "/",
-      name: "repository-list",
+      name: "dashboard",
+      component: () => import("@/views/DashboardView.vue"),
+    },
+    {
+      path: "/changes",
+      name: "changes",
       component: () => import("@/views/RepositoryList.vue"),
+    },
+    {
+      path: "/health",
+      name: "health",
+      component: () => import("@/views/HealthView.vue"),
+    },
+    {
+      path: "/change-sets",
+      name: "change-sets",
+      component: () => import("@/views/ChangeSetView.vue"),
+    },
+    {
+      path: "/pipeline",
+      name: "pipeline",
+      component: () => import("@/views/PipelineView.vue"),
+    },
+    {
+      path: "/manifest",
+      name: "manifest",
+      component: () => import("@/views/ManifestView.vue"),
+    },
+    {
+      path: "/operation-log",
+      name: "operation-log",
+      component: () => import("@/views/OperationLogView.vue"),
     },
     {
       path: "/diff",

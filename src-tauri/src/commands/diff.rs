@@ -83,7 +83,7 @@ pub fn get_revision_diff(
     let repo = git2::Repository::open(&repo_path)?;
     let old_tree = repo.revparse_single(&base)?.peel_to_tree()?;
     let new_tree = repo.revparse_single(&other)?.peel_to_tree()?;
-    cached_tree_diff(&state, &repo, &repo_path, &old_tree, &new_tree, &config)
+    cached_tree_diff(&state.diff_cache, &repo, &repo_path, &old_tree, &new_tree, &config)
 }
 
 /// Diff of a single commit (T-12 Commit Diff): first parent → commit
@@ -105,14 +105,17 @@ pub fn get_commit_diff(
         let empty = repo.treebuilder(None)?.write()?;
         repo.find_tree(empty)?
     };
-    cached_tree_diff(&state, &repo, &repo_path, &old_tree, &new_tree, &config)
+    cached_tree_diff(&state.diff_cache, &repo, &repo_path, &old_tree, &new_tree, &config)
 }
 
 /// Compute a tree↔tree diff, serving repeated views from the bounded LRU
 /// revision-diff cache (T-04 acceptance: second view of the same pair is a
 /// cache hit; measured by T-07 benchmark).
-fn cached_tree_diff(
-    state: &AppState,
+///
+/// Takes the cache directly (instead of `AppState`) so the T-07 benchmark
+/// harness can exercise the exact command-path logic without a Tauri runtime.
+pub(crate) fn cached_tree_diff(
+    cache: &moka::sync::Cache<DiffCacheKey, Vec<FileDiff>>,
     repo: &git2::Repository,
     repo_path: &str,
     old_tree: &git2::Tree,
@@ -125,11 +128,11 @@ fn cached_tree_diff(
         new_oid: new_tree.id().to_string(),
         flags: config.bits(),
     };
-    if let Some(hit) = state.diff_cache.get(&key) {
+    if let Some(hit) = cache.get(&key) {
         return Ok(hit);
     }
     let files = diff::diff_trees_with_config(repo, old_tree, new_tree, config)?;
-    state.diff_cache.insert(key, files.clone());
+    cache.insert(key, files.clone());
     Ok(files)
 }
 

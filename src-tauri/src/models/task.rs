@@ -48,6 +48,22 @@ pub enum TaskType {
         #[serde(default)]
         force: bool,
     },
+    /// Clone a repository from a remote URL into `repo_path` (T-33 batch
+    /// clone; the destination must not exist yet). Runs the system git CLI
+    /// (network boundary), retryable by the worker.
+    Clone {
+        url: String,
+        #[serde(default)]
+        branch: Option<String>,
+    },
+    /// Run a user-defined shell command in the repo directory (T-23 pipeline
+    /// Build / Test steps). `timeout_secs` is enforced inside the executor;
+    /// the worker's outer task timeout still applies as the hard bound.
+    ShellCommand {
+        command: String,
+        #[serde(default)]
+        timeout_secs: Option<u64>,
+    },
 }
 
 /// Status of a background task.
@@ -187,6 +203,122 @@ pub struct GitCommandResult {
     pub success: bool,
     /// Combined stdout/stderr (or the error message on failure).
     pub output: String,
+}
+
+// ---------------------------------------------------------------------------
+// T-24 Task DAG
+// ---------------------------------------------------------------------------
+
+/// What the DAG scheduler does when a node fails (T-24, configurable per DAG).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FailurePolicy {
+    /// Cancel every unfinished node in the DAG on the first failure.
+    FailFast,
+    /// Skip only the (transitive) dependents of the failed node; independent
+    /// branches keep running.
+    Continue,
+}
+
+impl Default for FailurePolicy {
+    fn default() -> Self {
+        FailurePolicy::Continue
+    }
+}
+
+/// Runtime condition gating a DAG node's dispatch (T-23 Conditional steps).
+/// Evaluated in memory when the node becomes ready; a false result marks the
+/// node skipped (its dependents are still released).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum NodeCondition {
+    /// Dispatch only when the repository working tree is clean.
+    RepoClean,
+}
+
+/// One node of a DAG submission: a task plus the indices (into the same
+/// `nodes` list) of the nodes it depends on.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DagNodeRequest {
+    pub task: TaskRequest,
+    /// Indices into the same submission's `nodes` array; the referenced
+    /// nodes must all succeed before this node is dispatched.
+    #[serde(default)]
+    pub depends_on: Vec<usize>,
+    /// Extra scheduler-level attempts (1 = no retry; the worker's own
+    /// network retry still applies per attempt).
+    #[serde(default = "default_max_attempts")]
+    pub max_attempts: u32,
+    /// Optional dispatch condition (evaluated in memory, T-23).
+    #[serde(default)]
+    pub condition: Option<NodeCondition>,
+    /// Optional grouping label (T-23 uses the pipeline step id).
+    #[serde(default)]
+    pub group: Option<String>,
+    /// Human-readable node label for the DAG view.
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+fn default_max_attempts() -> u32 {
+    1
+}
+
+/// Submit a dependency DAG of tasks (T-24). Nodes are executed in
+/// topological order as their dependencies succeed; independent branches run
+/// in parallel bounded by the worker pool (§45 limits still apply).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DagSubmitRequest {
+    /// Display name (also used as the synthetic batch task's name).
+    pub name: String,
+    pub nodes: Vec<DagNodeRequest>,
+    #[serde(default)]
+    pub on_failure: FailurePolicy,
+}
+
+/// One node in the DAG visualization / report query (T-24/T-23).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DagNodeInfo {
+    pub task_id: String,
+    pub label: String,
+    /// Grouping label (pipeline step id for pipeline runs).
+    pub group: Option<String>,
+    pub repo_path: String,
+    pub repo_name: String,
+    /// Task ids this node depends on.
+    pub depends_on: Vec<String>,
+    pub status: TaskStatus,
+    /// True when the node was skipped (dependency failed or condition false)
+    /// rather than executed; its task status reads `cancelled`.
+    pub skipped: bool,
+    /// Scheduler-level attempts so far.
+    pub attempts: u32,
+    /// Captured output tail (bounded) for reports.
+    pub output: Option<String>,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+}
+
+/// Dependency edge of the DAG view (`from` must finish before `to`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DagEdge {
+    pub from: String,
+    pub to: String,
+}
+
+/// DAG visualization payload: nodes + edges + live states (T-24).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DagGraph {
+    pub dag_id: String,
+    pub name: String,
+    pub on_failure: FailurePolicy,
+    pub nodes: Vec<DagNodeInfo>,
+    pub edges: Vec<DagEdge>,
 }
 
 #[cfg(test)]

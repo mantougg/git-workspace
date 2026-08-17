@@ -200,7 +200,7 @@ onMounted(async () => {
   const repo = route.query.repo as string;
   if (!repo) {
     ElMessage.warning("未指定仓库路径");
-    router.push({ name: "repository-list" });
+    router.push({ name: "changes" });
     return;
   }
   repoPath.value = repo;
@@ -431,7 +431,7 @@ function openResolver() {
 }
 
 function goBack() {
-  router.push({ name: "repository-list" });
+  router.push({ name: "changes" });
 }
 </script>
 
