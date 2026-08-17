@@ -22,9 +22,9 @@ use std::path::PathBuf;
 use serde_json::{json, Map, Value};
 
 use crate::commands::{ai, diff as diff_cmd, git_ops, logs};
-use crate::core::{branch as branch_core, conflict as conflict_core, diff, graph, history as history_core, merge as merge_core, rebase as rebase_core, reflog as reflog_core, stash as stash_core};
+use crate::core::{branch as branch_core, conflict as conflict_core, diff, graph, history as history_core, merge as merge_core, rebase as rebase_core, reflog as reflog_core, stash as stash_core, worktree as worktree_core};
 use crate::error::AppError;
-use crate::models::{group, repository, task, workspace};
+use crate::models::{commit, group, repository, task, workspace};
 
 /// Representative sample of every IPC type, keyed by Rust type name.
 /// Enum (tagged-union) types serialize as an array of all variants.
@@ -135,6 +135,13 @@ fn samples() -> Map<String, Value> {
             task::TaskType::Commit {
                 message: "msg".into(),
                 files: vec!["a.rs".into()],
+                amend: false,
+                no_edit: false,
+                index_only: false,
+                then_push: false,
+                allow_unsafe: false,
+                author_name: Some("alice".into()),
+                author_email: Some("alice@example.com".into()),
             },
         ]),
     );
@@ -391,6 +398,38 @@ fn samples() -> Map<String, Value> {
             repo_name: "repo".into(),
             message: "msg".into(),
             files: vec!["a.rs".into()],
+            amend: false,
+            no_edit: false,
+            index_only: false,
+            then_push: false,
+            allow_unsafe: false,
+        }),
+    );
+    m.insert(
+        "CommitScanFinding".into(),
+        json!(commit::CommitScanFinding {
+            path: "a.rs".into(),
+            kind: "secret".into(),
+            detail: "疑似 Secret（AWS Key）".into(),
+        }),
+    );
+    m.insert(
+        "CommitIdentity".into(),
+        json!(commit::CommitIdentity {
+            name: "alice".into(),
+            email: "alice@example.com".into(),
+            source: "repo".into(),
+        }),
+    );
+    m.insert(
+        "WorktreeInfo".into(),
+        json!(worktree_core::WorktreeInfo {
+            name: "feature-x".into(),
+            path: "/ws/repo-wt".into(),
+            branch: Some("feature/x".into()),
+            is_main: false,
+            is_locked: false,
+            is_dirty: true,
         }),
     );
     m.insert(
@@ -577,6 +616,9 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("TaskProgress", "types/task.ts", "TaskProgress"),
     ("GitCommandResult", "types/task.ts", "GitCommandResult"),
     ("CommitRequest", "types/task.ts", "CommitRequest"),
+    ("CommitScanFinding", "types/commit.ts", "CommitScanFinding"),
+    ("CommitIdentity", "types/commit.ts", "CommitIdentity"),
+    ("WorktreeInfo", "types/worktree.ts", "WorktreeInfo"),
     ("Workspace", "types/workspace.ts", "Workspace"),
     (
         "CreateWorkspaceRequest",

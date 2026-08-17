@@ -409,4 +409,59 @@ mod tests {
             .unwrap();
         assert_eq!(t3_status, "success", "finished task must be untouched");
     }
+    /// Commit identity resolution (T-11 §54): repo override wins over the
+    /// group override; clearing the repo override falls back to the group;
+    /// repos outside the group see nothing.
+    #[test]
+    fn commit_identity_resolution_prefers_repo_then_group() {
+        let mut conn = open_memory();
+        init_db(&mut conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO workspaces (name, path, created_at, updated_at) VALUES ('w', 'D:/w', 't', 't')",
+            [],
+        )
+        .unwrap();
+        let ws_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO repo_groups (workspace_id, name) VALUES (?1, 'g')",
+            [ws_id],
+        )
+        .unwrap();
+        let gid = conn.last_insert_rowid();
+
+        let repos = vec![
+            ScannedRepo { path: "D:/w/a".into(), name: "a".into(), relative_path: "a".into(), git_dir_mtime: None },
+            ScannedRepo { path: "D:/w/b".into(), name: "b".into(), relative_path: "b".into(), git_dir_mtime: None },
+        ];
+        dao::upsert_repositories_batch(&mut conn, ws_id, &repos).unwrap();
+        conn.execute(
+            "UPDATE repositories SET group_id = ?1 WHERE path = 'D:/w/a'",
+            [gid],
+        )
+        .unwrap();
+
+        // Nothing configured -> None (git default is used by the caller).
+        assert!(dao::resolve_commit_identity(&conn, "D:/w/a").unwrap().is_none());
+
+        // Group identity applies to the member repo.
+        dao::set_group_identity(&conn, gid, Some("Group Bot"), Some("g@x.c")).unwrap();
+        let id = dao::resolve_commit_identity(&conn, "D:/w/a").unwrap().unwrap();
+        assert_eq!(id.name, "Group Bot");
+        assert_eq!(id.source, "group");
+
+        // Repo identity wins over the group identity.
+        dao::set_repo_identity(&conn, "D:/w/a", Some("Repo Bot"), Some("r@x.c")).unwrap();
+        let id = dao::resolve_commit_identity(&conn, "D:/w/a").unwrap().unwrap();
+        assert_eq!(id.name, "Repo Bot");
+        assert_eq!(id.source, "repo");
+
+        // A repo outside the group is unaffected by the group config.
+        assert!(dao::resolve_commit_identity(&conn, "D:/w/b").unwrap().is_none());
+
+        // Clearing the repo override falls back to the group.
+        dao::set_repo_identity(&conn, "D:/w/a", None, None).unwrap();
+        let id = dao::resolve_commit_identity(&conn, "D:/w/a").unwrap().unwrap();
+        assert_eq!(id.source, "group");
+    }
 }

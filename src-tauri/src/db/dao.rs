@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::{AppError, AppResult};
 use crate::models::group::{CreateGroupRequest, RepoGroup};
@@ -692,6 +692,125 @@ pub fn replace_stashes(
         )?;
         for (stash_ref, message, created_at) in stashes {
             stmt.execute(params![repo_id, stash_ref, message, created_at])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Set or clear the per-repository commit identity override (T-11 §54).
+/// Both `None` clears the override (fall back to group/git default).
+pub fn set_repo_identity(
+    conn: &Connection,
+    repo_path: &str,
+    name: Option<&str>,
+    email: Option<&str>,
+) -> AppResult<()> {
+    conn.execute(
+        "UPDATE repositories SET author_name = ?1, author_email = ?2, updated_at = ?3 WHERE path = ?4",
+        rusqlite::params![name, email, chrono::Utc::now().to_rfc3339(), repo_path],
+    )?;
+    Ok(())
+}
+
+/// Set or clear the per-group commit identity override (T-11 §54).
+pub fn set_group_identity(
+    conn: &Connection,
+    group_id: i64,
+    name: Option<&str>,
+    email: Option<&str>,
+) -> AppResult<()> {
+    conn.execute(
+        "UPDATE repo_groups SET author_name = ?1, author_email = ?2 WHERE id = ?3",
+        rusqlite::params![name, email, group_id],
+    )?;
+    Ok(())
+}
+
+/// Resolve the commit identity for a repository (T-11 §54): per-repo
+/// override wins, then the repo's group override; `None` when neither is
+/// configured (caller falls back to the git default signature).
+pub fn resolve_commit_identity(
+    conn: &Connection,
+    repo_path: &str,
+) -> AppResult<Option<crate::models::commit::CommitIdentity>> {
+    let row = conn
+        .query_row(
+            "SELECT r.author_name, r.author_email, g.author_name, g.author_email \
+             FROM repositories r LEFT JOIN repo_groups g ON r.group_id = g.id \
+             WHERE r.path = ?1",
+            rusqlite::params![repo_path],
+            |row| {
+                Ok((
+                    row.get::<usize, Option<String>>(0)?,
+                    row.get::<usize, Option<String>>(1)?,
+                    row.get::<usize, Option<String>>(2)?,
+                    row.get::<usize, Option<String>>(3)?,
+                ))
+            },
+        )
+        .optional()?;
+
+    let Some((rn, re, gn, ge)) = row else {
+        return Ok(None);
+    };
+
+    let name = rn.or(gn);
+    let email = re.or(ge);
+    let (Some(name), Some(email)) = (name, email) else {
+        return Ok(None);
+    };
+
+    // Source label: fully repo-level, fully group-level, or mixed.
+    let from_repo = conn
+        .query_row(
+            "SELECT author_name IS NOT NULL AND author_email IS NOT NULL \
+             FROM repositories WHERE path = ?1",
+            rusqlite::params![repo_path],
+            |row| row.get::<usize, bool>(0),
+        )
+        .optional()?
+        .unwrap_or(false);
+    let source = if from_repo {
+        "repo"
+    } else {
+        let from_group = conn
+            .query_row(
+                "SELECT g.author_name IS NOT NULL AND g.author_email IS NOT NULL \
+                 FROM repositories r JOIN repo_groups g ON r.group_id = g.id \
+                 WHERE r.path = ?1",
+                rusqlite::params![repo_path],
+                |row| row.get::<usize, bool>(0),
+            )
+            .optional()?
+            .unwrap_or(false);
+        if from_group { "group" } else { "mixed" }
+    };
+
+    Ok(Some(crate::models::commit::CommitIdentity {
+        name,
+        email,
+        source: source.to_string(),
+    }))
+}
+
+
+/// Replace the worktree snapshot of a repository (T-17).
+/// `worktrees` items are `(path, branch)`.
+pub fn replace_worktrees(
+    conn: &mut Connection,
+    repo_id: i64,
+    worktrees: &[(String, Option<String>)],
+) -> AppResult<()> {
+    let now = Utc::now().to_rfc3339();
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM worktrees WHERE repo_id = ?1", params![repo_id])?;
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO worktrees (repo_id, path, branch, created_at) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for (path, branch) in worktrees {
+            stmt.execute(params![repo_id, path, branch, now])?;
         }
     }
     tx.commit()?;

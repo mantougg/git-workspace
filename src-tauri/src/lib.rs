@@ -116,6 +116,24 @@ pub fn run() {
             repository::assign_group,
             // Diff commands
             diff::get_diff,
+            diff::get_unstaged_diff,
+            diff::get_staged_diff,
+            diff::get_revision_diff,
+            diff::get_commit_diff,
+            // Hunk / line staging commands (T-12)
+            diff::stage_hunk,
+            diff::unstage_hunk,
+            diff::stage_lines,
+            diff::unstage_lines,
+            // Worktree commands (T-17)
+            commands::worktree::list_worktrees,
+            commands::worktree::create_worktree,
+            commands::worktree::remove_worktree,
+            // Commit 增强 commands (T-11)
+            git_ops::scan_commit,
+            git_ops::get_commit_identity,
+            git_ops::set_repo_identity,
+            git_ops::set_group_identity,
             // Branch commands (T-09)
             commands::branch::list_branches,
             commands::branch::create_branch,

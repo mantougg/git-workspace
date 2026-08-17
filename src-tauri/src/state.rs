@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use moka::sync::Cache;
 use rusqlite::Connection;
 
+use crate::core::diff::FileDiff;
 use crate::core::watcher::FileWatcher;
 use crate::models::repository::RepoStatus;
 use crate::task::manager::TaskManager;
@@ -13,6 +14,26 @@ use crate::task::manager::TaskManager;
 /// 500 MB idle-memory target even for a 1000-repository workspace. The cap is
 /// defensive: it prevents unbounded growth when repository paths churn.
 const STATUS_CACHE_CAPACITY: u64 = 5000;
+
+/// Upper bound on the revision-diff cache (T-04/T-12, LRU).
+///
+/// Entries are whole `Vec<FileDiff>` payloads (bounded per file by the
+/// 2000-line IPC cap, but potentially ~MB each), so the entry count is kept
+/// small: 32 entries worst-case ≈ tens of MB, still far below the 500 MB
+/// idle-memory target. Only immutable tree↔tree diffs (commit / branch / tag /
+/// A↔B) are cached — workdir diffs mutate and are invalidated by watcher
+/// events instead.
+const DIFF_CACHE_CAPACITY: u64 = 32;
+
+/// Cache key for immutable revision diffs (T-04: `(path, old_oid, new_oid)`;
+/// flags keep Ignore-* renderings apart).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DiffCacheKey {
+    pub repo_path: String,
+    pub old_oid: String,
+    pub new_oid: String,
+    pub flags: u8,
+}
 
 /// Global application state managed by Tauri.
 ///
@@ -38,6 +59,11 @@ pub struct AppState {
     /// File watcher for real-time repository status updates.
     /// Mutex-protected because start/stop require &mut self.
     pub watcher: Mutex<FileWatcher>,
+
+    /// Revision-diff result cache (T-04/T-12), keyed by
+    /// `(repo_path, old_oid, new_oid, flags)`. Holds only plain data
+    /// (`Vec<FileDiff>`), never libgit2 handles; bounded LRU.
+    pub diff_cache: Arc<Cache<DiffCacheKey, Vec<FileDiff>>>,
 }
 
 /// Build the bounded LRU status cache.
@@ -51,6 +77,13 @@ pub(crate) fn build_status_cache() -> Cache<String, RepoStatus> {
         .build()
 }
 
+/// Build the bounded LRU revision-diff cache.
+pub(crate) fn build_diff_cache() -> Cache<DiffCacheKey, Vec<FileDiff>> {
+    Cache::builder()
+        .max_capacity(DIFF_CACHE_CAPACITY)
+        .build()
+}
+
 impl AppState {
     /// Create a new AppState with the given database connection and task manager.
     pub fn new(db: Arc<Mutex<Connection>>, task_manager: TaskManager) -> Self {
@@ -59,6 +92,7 @@ impl AppState {
             status_cache: Arc::new(build_status_cache()),
             task_manager,
             watcher: Mutex::new(FileWatcher::new()),
+            diff_cache: Arc::new(build_diff_cache()),
         }
     }
 }
@@ -110,5 +144,13 @@ mod tests {
             "cache must stay within its capacity bound, got {}",
             cache.entry_count()
         );
+    }
+
+    /// The revision-diff cache must also have an LRU capacity bound
+    /// (global constraint: every LRU cache has an upper limit).
+    #[test]
+    fn diff_cache_has_lru_capacity_bound() {
+        let cache = build_diff_cache();
+        assert_eq!(cache.policy().max_capacity(), Some(DIFF_CACHE_CAPACITY));
     }
 }

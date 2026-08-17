@@ -1,3 +1,4 @@
+pub mod commit;
 pub mod group;
 pub mod repository;
 pub mod task;

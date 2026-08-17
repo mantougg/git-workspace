@@ -2,7 +2,18 @@ export type TaskType =
   | { type: "fetch" }
   | { type: "pull" }
   | { type: "push" }
-  | { type: "commit"; message: string; files: string[] };
+  | {
+      type: "commit";
+      message: string;
+      files: string[];
+      amend?: boolean;
+      noEdit?: boolean;
+      indexOnly?: boolean;
+      thenPush?: boolean;
+      allowUnsafe?: boolean;
+      authorName?: string | null;
+      authorEmail?: string | null;
+    };
 
 export type TaskStatus =
   | { type: "queued" }
@@ -40,6 +51,11 @@ export interface CommitRequest {
   repoName: string;
   message: string;
   files: string[];
+  amend?: boolean;
+  noEdit?: boolean;
+  indexOnly?: boolean;
+  thenPush?: boolean;
+  allowUnsafe?: boolean;
 }
 
 /** Payload of the `git_command_result` event (IDE-style git console). */

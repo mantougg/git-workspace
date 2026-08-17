@@ -45,6 +45,26 @@ pub struct DiffConfig {
     pub ignore_case: bool,
 }
 
+impl DiffConfig {
+    /// Bit flags for cache keys (revision-diff LRU, T-12).
+    pub fn bits(&self) -> u8 {
+        (self.ignore_whitespace as u8)
+            | ((self.ignore_whitespace_eol as u8) << 1)
+            | ((self.ignore_case as u8) << 2)
+    }
+}
+
+/// libgit2 diff options shared by all diff entry points: rendering flags from
+/// `DiffConfig`, unmodified files always excluded. (Content-level ignore_case
+/// has no libgit2 equivalent and stays a post-processing pass.)
+fn base_diff_opts(config: &DiffConfig) -> git2::DiffOptions {
+    let mut opts = git2::DiffOptions::new();
+    opts.include_unmodified(false);
+    opts.ignore_whitespace(config.ignore_whitespace);
+    opts.ignore_whitespace_eol(config.ignore_whitespace_eol);
+    opts
+}
+
 /// Maximum diff lines transferred per file over IPC, to avoid MB-sized
 /// payloads freezing the UI. Applies both to "entire file added" hunks
 /// (untracked/new files) and to tracked modifications (`extract_hunks`).
@@ -71,11 +91,8 @@ pub fn get_workdir_diff_with_config(
         Err(_) => None,
     };
 
-    let mut diff_opts = git2::DiffOptions::new();
+    let mut diff_opts = base_diff_opts(config);
     diff_opts.include_untracked(true);
-    diff_opts.include_unmodified(false);
-    diff_opts.ignore_whitespace(config.ignore_whitespace);
-    diff_opts.ignore_whitespace_eol(config.ignore_whitespace_eol);
     // Note: `DiffOptions::ignore_case` only makes *filename* comparison
     // case-insensitive (GIT_DIFF_IGNORE_CASE). Content-level "Ignore Case"
     // (Roadmap §9) has no libgit2 equivalent, so it is applied as a
@@ -91,6 +108,95 @@ pub fn get_workdir_diff_with_config(
     }
 
     Ok(files)
+}
+
+/// HEAD tree, or the empty tree when HEAD is unborn (no commits yet), so that
+/// staged/unstaged diffs work in fresh repositories too.
+pub fn head_or_empty_tree(repo: &git2::Repository) -> AppResult<git2::Tree<'_>> {
+    match repo.head() {
+        Ok(head) => Ok(head.peel_to_tree()?),
+        Err(_) => {
+            let oid = repo.treebuilder(None)?.write()?;
+            Ok(repo.find_tree(oid)?)
+        }
+    }
+}
+
+/// Unstaged changes only (T-12): index → working directory, including
+/// untracked files. This is the diff hunk/line staging operates on, so the UI
+/// must show exactly this set when offering "Stage" actions.
+pub fn get_unstaged_diff_with_config(
+    repo_path: &Path,
+    config: &DiffConfig,
+) -> AppResult<Vec<FileDiff>> {
+    let repo = git2::Repository::open(repo_path)?;
+    let mut diff_opts = base_diff_opts(config);
+    diff_opts.include_untracked(true);
+
+    let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
+    let mut files = files_from_diff(&diff, Some(repo_path));
+
+    if config.ignore_case {
+        apply_ignore_case_to_files(&mut files);
+    }
+
+    Ok(files)
+}
+
+/// Staged changes only (T-12): HEAD tree → index. This is the diff
+/// "Unstage" actions operate on.
+pub fn get_staged_diff_with_config(
+    repo_path: &Path,
+    config: &DiffConfig,
+) -> AppResult<Vec<FileDiff>> {
+    let repo = git2::Repository::open(repo_path)?;
+    let head_tree = head_or_empty_tree(&repo)?;
+    let mut diff_opts = base_diff_opts(config);
+
+    let diff = repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut diff_opts))?;
+    let mut files = files_from_diff(&diff, None);
+
+    if config.ignore_case {
+        apply_ignore_case_to_files(&mut files);
+    }
+
+    Ok(files)
+}
+
+/// Diff between two already-resolved trees, with rendering options.
+/// Tree pairs are immutable, so callers may safely cache the result keyed by
+/// `(old_tree_id, new_tree_id, config.bits())` (T-04 revision-diff LRU).
+pub fn diff_trees_with_config(
+    repo: &git2::Repository,
+    old_tree: &git2::Tree,
+    new_tree: &git2::Tree,
+    config: &DiffConfig,
+) -> AppResult<Vec<FileDiff>> {
+    let mut diff_opts = base_diff_opts(config);
+    let diff =
+        repo.diff_tree_to_tree(Some(old_tree), Some(new_tree), Some(&mut diff_opts))?;
+    let mut files = files_from_diff(&diff, None);
+
+    if config.ignore_case {
+        apply_ignore_case_to_files(&mut files);
+    }
+
+    Ok(files)
+}
+
+/// Diff of a single commit (T-12 Commit Diff): first parent → commit, or
+/// empty tree → commit for a root commit.
+pub fn diff_commit(repo: &git2::Repository, oid_spec: &str) -> AppResult<Vec<FileDiff>> {
+    let commit = repo.revparse_single(oid_spec)?.peel_to_commit()?;
+    let new_tree = commit.tree()?;
+    let old_tree = if commit.parent_count() > 0 {
+        commit.parent(0)?.tree()?
+    } else {
+        let oid = repo.treebuilder(None)?.write()?;
+        repo.find_tree(oid)?
+    };
+    let diff = repo.diff_tree_to_tree(Some(&old_tree), Some(&new_tree), None)?;
+    Ok(files_from_diff(&diff, None))
 }
 
 /// Compute the diff between two revisions (branch / tag / oid specs) of an
@@ -344,12 +450,11 @@ fn extract_hunks(diff: &git2::Diff, delta_index: usize) -> Vec<Hunk> {
                         line.old_lineno(),
                         line.new_lineno(),
                     ),
-                    _ => (
-                        "context",
-                        line.content(),
-                        line.old_lineno(),
-                        line.new_lineno(),
-                    ),
+                    // Skip `\ No newline at end of file` marker lines (origins
+                    // '>' / '<' / '='): they carry no content of their own,
+                    // and keeping them would shift hunk line indices away from
+                    // the ones hunk/line staging (T-12) operates on.
+                    _ => continue,
                 };
 
                 let content_str = String::from_utf8_lossy(content)

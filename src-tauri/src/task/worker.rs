@@ -138,8 +138,15 @@ async fn execute_task(
             ),
         };
 
-        // Retry on failure with exponential backoff.
-        if matches!(status, TaskStatus::Failed { .. }) && attempt < MAX_RETRIES {
+        // Retry on failure with exponential backoff. Only network operations
+        // (Fetch/Pull/Push) are retried: a commit failure is local and a
+        // Commit & Push middle-state failure must never re-run the commit
+        // (T-11; the push itself is retried inside execute).
+        let retryable = matches!(
+            task_type,
+            TaskType::Fetch | TaskType::Pull | TaskType::Push
+        );
+        if retryable && matches!(status, TaskStatus::Failed { .. }) && attempt < MAX_RETRIES {
             attempt += 1;
             let backoff = Duration::from_millis(500 * 2u64.pow(attempt as u32));
             log::warn!(
@@ -162,14 +169,18 @@ async fn execute_task(
         final_status = TaskStatus::Cancelled;
     }
 
-    // Emit an IDE-style git console event for network operations.
-    if matches!(task_type, TaskType::Fetch | TaskType::Pull | TaskType::Push) {
-        let command = match &task_type {
-            TaskType::Fetch => "git fetch <remote>".to_string(),
-            TaskType::Pull => "git pull --ff-only".to_string(),
-            TaskType::Push => "git push".to_string(),
-            _ => String::new(),
-        };
+    // Emit an IDE-style git console event for network operations (and for
+    // Commit & Push, which runs a network push as its second phase).
+    let console_command = match &task_type {
+        TaskType::Fetch => Some("git fetch <remote>".to_string()),
+        TaskType::Pull => Some("git pull --ff-only".to_string()),
+        TaskType::Push => Some("git push".to_string()),
+        TaskType::Commit {
+            then_push: true, ..
+        } => Some("git commit && git push".to_string()),
+        _ => None,
+    };
+    if let Some(command) = console_command {
         let (success, out) = match &final_status {
             TaskStatus::Success => (true, output.unwrap_or_default()),
             TaskStatus::Failed { error } => (false, error.clone()),

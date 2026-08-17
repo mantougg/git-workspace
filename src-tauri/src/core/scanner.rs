@@ -10,8 +10,10 @@ use walkdir::{DirEntry, WalkDir};
 use crate::models::repository::ScannedRepo;
 
 /// Multi-threaded Git repository scanner.
-/// Recursively traverses directories to find `.git` folders, using rayon
-/// for parallel validation of candidate repositories.
+/// Recursively traverses directories to find `.git` markers, using rayon
+/// for parallel validation of candidate repositories. A `.git` marker is a
+/// directory for a normal repository, or a *file* (gitdir pointer) for a
+/// linked worktree / submodule checkout (T-17).
 ///
 /// Traversal rules:
 /// - Descends up to `scan_depth` levels deep
@@ -126,7 +128,9 @@ impl RepoScanner {
 
         log::debug!("Collected {} directory entries", entries.len());
 
-        // Parallel: filter for .git dirs and validate as Git repos.
+        // Parallel: filter for .git markers and validate as Git repos.
+        // A `.git` entry is a directory for a normal repository and a *file*
+        // (gitdir pointer) for a linked worktree / submodule checkout (T-17).
         let repos: Vec<ScannedRepo> = entries
             .par_iter()
             .filter_map(|entry| {
@@ -134,7 +138,7 @@ impl RepoScanner {
                     return None;
                 }
                 let path = entry.path();
-                if !entry.file_type().is_dir() {
+                if !(entry.file_type().is_dir() || entry.file_type().is_file()) {
                     return None;
                 }
                 if entry.file_name() != OsStr::new(".git") {
@@ -382,4 +386,49 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
+
+    /// A linked worktree (`.git` *file*, gitdir pointer) must be discovered
+    /// as a repository (T-17 / T-01 linkage).
+    #[test]
+    fn scan_discovers_worktree_gitfile_form() {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_wtscan_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+
+        // Main repo + a linked worktree alongside it.
+        let main = dir.join("main_repo");
+        git2::Repository::init(&main).unwrap();
+        std::fs::write(main.join("a.txt"), "one
+").unwrap();
+        {
+            let repo = git2::Repository::open(&main).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("a.txt")).unwrap();
+            index.write().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let sig = git2::Signature::now("t", "t@e.c").unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+                .unwrap();
+        }
+        let wt = dir.join("linked_wt");
+        crate::core::worktree::add_worktree(&main, &wt, None, Some("wtbr")).unwrap();
+        assert!(wt.join(".git").is_file());
+
+        let scanner = RepoScanner::new(3);
+        let found = scanner.scan(&dir);
+        let mut rels: Vec<&str> = found.iter().map(|r| r.relative_path.as_str()).collect();
+        rels.sort_unstable();
+        assert_eq!(
+            rels,
+            vec!["linked_wt", "main_repo"],
+            "worktree .git file must be discovered"
+        );
+
+        crate::core::worktree::remove_worktree(&main, "linked_wt", true).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
+

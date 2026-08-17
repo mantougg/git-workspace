@@ -12,3 +12,4 @@ pub mod logs;
 pub mod repository;
 pub mod task;
 pub mod workspace;
+pub mod worktree;

@@ -135,6 +135,14 @@
             <pre class="commit-message-full">{{ selectedCommit.message }}</pre>
           </el-descriptions-item>
         </el-descriptions>
+        <el-button
+          type="primary"
+          plain
+          style="margin-top: 12px"
+          @click="viewCommitDiff"
+        >
+          查看 Diff
+        </el-button>
       </div>
     </el-drawer>
   </div>
@@ -407,6 +415,15 @@ async function abortFromDialog() {
 
 function viewReflog() {
   router.push({ name: "reflog-view", query: { repo: repoPath.value } });
+}
+
+// Commit Diff entry (T-12): open the DiffViewer in commit mode.
+function viewCommitDiff() {
+  if (!selectedCommit.value) return;
+  router.push({
+    name: "diff-viewer",
+    query: { repo: repoPath.value, commit: selectedCommit.value.oid },
+  });
 }
 
 function openResolver() {

@@ -253,6 +253,14 @@
           </el-button>
           <el-button
             size="small"
+            :disabled="!selectedRepoPath"
+            @click="viewWorktrees(selectedRepoPath)"
+          >
+            <el-icon><Files /></el-icon>
+            Worktree
+          </el-button>
+          <el-button
+            size="small"
             :disabled="!selectedWorkspaceId"
             @click="viewConflicts"
           >
@@ -290,8 +298,97 @@
             提交
           </el-button>
         </div>
+        <!-- Commit options (T-11) -->
+        <div class="commit-options">
+          <el-checkbox v-model="commitForm.amend" size="small">
+            Amend 上次提交
+          </el-checkbox>
+          <el-checkbox v-model="commitForm.thenPush" size="small">
+            提交后 Push
+          </el-checkbox>
+          <el-button
+            size="small"
+            text
+            :disabled="!selectedRepoPath"
+            @click="openIdentityDialog"
+          >
+            提交身份
+          </el-button>
+        </div>
       </div>
     </div>
+
+    <!-- Commit identity dialog (T-11 §54) -->
+    <el-dialog v-model="identityDialog.show" title="提交身份" width="480px">
+      <div class="identity-current">
+        当前生效：
+        <template v-if="identityDialog.current">
+          <strong>
+            {{ identityDialog.current.name }} &lt;{{ identityDialog.current.email }}&gt;
+          </strong>
+          <el-tag size="small" style="margin-left: 6px">
+            {{ identitySourceLabel }}
+          </el-tag>
+        </template>
+        <el-tag v-else size="small" type="info">
+          Git 默认（user.name / user.email）
+        </el-tag>
+      </div>
+      <el-form label-width="70px" style="margin-top: 12px">
+        <el-form-item label="作用于">
+          <el-radio-group v-model="identityDialog.scope">
+            <el-radio value="repo">本仓库</el-radio>
+            <el-radio value="group" :disabled="identityDialog.groupId == null">
+              本分组
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="Name">
+          <el-input v-model="identityDialog.name" placeholder="留空并保存 = 清除自定义" />
+        </el-form-item>
+        <el-form-item label="Email">
+          <el-input v-model="identityDialog.email" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="identityDialog.show = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="identityDialog.saving"
+          @click="saveIdentity"
+        >
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Pre-commit safety findings dialog (T-11 §5) -->
+    <el-dialog v-model="scanDialog.show" title="提交安全检查" width="560px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="发现以下风险项，确认无误后可放行提交："
+      />
+      <ul class="scan-finding-list">
+        <li v-for="(f, i) in scanDialog.findings" :key="i">
+          <el-tag
+            size="small"
+            :type="f.kind === 'forbidden' ? 'danger' : 'warning'"
+          >
+            {{ f.kind }}
+          </el-tag>
+          <span class="scan-path">{{ f.path }}</span>
+          <span class="scan-detail">{{ f.detail }}</span>
+        </li>
+      </ul>
+      <template #footer>
+        <el-button @click="scanDialog.show = false">取消</el-button>
+        <el-button type="danger" @click="commitWithOverride">
+          仍要提交
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- Add workspace dialog -->
     <WorkspaceManager v-model="showAddWorkspace" @added="onWorkspaceAdded" />
@@ -376,6 +473,7 @@ import {
   FolderOpened,
   Grid,
   Box,
+  Files,
   Warning,
 } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -384,6 +482,13 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
 import { useTaskStore } from "@/stores/task";
 import { startWatcher, stopWatcher, batchCommit, batchFetch, batchPull, batchPush } from "@/api/git_ops";
+import {
+  scanCommit,
+  getCommitIdentity,
+  setRepoIdentity,
+  setGroupIdentity,
+} from "@/api/commit";
+import type { CommitScanFinding, CommitIdentity } from "@/types/commit";
 import { getDiff } from "@/api/git";
 import { batchAdd, batchRestore, getWorkspaceChanges, type AddRequest, type RestoreRequest } from "@/api/changes";
 import type { CommitRequest } from "@/types/task";
@@ -419,7 +524,21 @@ const changes = ref<RepoChanges[]>([]);
 const changesLoading = ref(false);
 const actionLoading = ref(false);
 const commitPanelOpen = ref(true);
-const commitForm = ref({ message: "" });
+const commitForm = ref({ message: "", amend: false, thenPush: false });
+const scanDialog = ref<{
+  show: boolean;
+  findings: CommitScanFinding[];
+  pending: CommitRequest[];
+}>({ show: false, findings: [], pending: [] });
+const identityDialog = ref({
+  show: false,
+  saving: false,
+  scope: "repo" as "repo" | "group",
+  name: "",
+  email: "",
+  current: null as CommitIdentity | null,
+  groupId: null as number | null,
+});
 const scanProgress = ref<{ found: number; current: number; total: number | null } | null>(null);
 const selectedDiff = ref<SelectedDiff | null>(null);
 const diffLoading = ref(false);
@@ -660,8 +779,10 @@ async function handleRestore() {
 }
 
 async function handleCommit() {
-  if (!commitForm.value.message.trim()) {
-    ElMessage.warning("请输入提交信息");
+  const amend = commitForm.value.amend;
+  const message = commitForm.value.message.trim();
+  if (!message && !amend) {
+    ElMessage.warning("请输入提交信息（Amend 可留空 = --no-edit）");
     return;
   }
   const commits: CommitRequest[] = [];
@@ -669,14 +790,49 @@ async function handleCommit() {
     commits.push({
       repoPath,
       repoName: repoNameOf(repoPath),
-      message: commitForm.value.message,
+      message,
       files,
+      amend,
+      noEdit: amend && !message,
+      thenPush: commitForm.value.thenPush,
     });
   }
   if (commits.length === 0) {
     ElMessage.warning("请先勾选要提交的文件");
     return;
   }
+  // Pre-commit safety scan (T-11 §5): block on findings until the user
+  // explicitly overrides via the findings dialog.
+  actionLoading.value = true;
+  try {
+    const findings: CommitScanFinding[] = [];
+    for (const c of commits) {
+      findings.push(...(await scanCommit(c.repoPath, c.files, false)));
+    }
+    if (findings.length > 0) {
+      scanDialog.value = { show: true, findings, pending: commits };
+      return;
+    }
+  } catch (e) {
+    ElMessage.error("安全检查失败: " + errMsg(e));
+    return;
+  } finally {
+    actionLoading.value = false;
+  }
+  await submitCommits(commits);
+}
+
+/** Resubmit the pending commits with the safety override (T-11 可放行). */
+async function commitWithOverride() {
+  const commits = scanDialog.value.pending.map((c) => ({
+    ...c,
+    allowUnsafe: true,
+  }));
+  scanDialog.value.show = false;
+  await submitCommits(commits);
+}
+
+async function submitCommits(commits: CommitRequest[]) {
   actionLoading.value = true;
   try {
     const taskIds = await batchCommit(commits);
@@ -687,6 +843,66 @@ async function handleCommit() {
     ElMessage.error("提交失败: " + errMsg(e));
   } finally {
     actionLoading.value = false;
+  }
+}
+
+const identitySourceLabel = computed(() => {
+  switch (identityDialog.value.current?.source) {
+    case "repo":
+      return "本仓库配置";
+    case "group":
+      return "分组配置";
+    case "mixed":
+      return "仓库/分组混合";
+    default:
+      return "";
+  }
+});
+
+/** Open the commit-identity dialog for the first selected repo (T-11 §54). */
+async function openIdentityDialog() {
+  const repo = selectedRepoPath.value;
+  if (!repo) return;
+  const d = identityDialog.value;
+  d.show = true;
+  d.scope = "repo";
+  d.name = "";
+  d.email = "";
+  const found = repoStore.repositories.find(
+    (r) => r.repository.path === repo,
+  );
+  d.groupId = found?.repository.groupId ?? null;
+  try {
+    d.current = await getCommitIdentity(repo);
+  } catch {
+    d.current = null;
+  }
+}
+
+/** Save (or clear, when both fields are empty) the identity override. */
+async function saveIdentity() {
+  const d = identityDialog.value;
+  const repo = selectedRepoPath.value;
+  if (!repo) return;
+  const name = d.name.trim() || null;
+  const email = d.email.trim() || null;
+  if ((name === null) !== (email === null)) {
+    ElMessage.warning("Name 和 Email 需同时填写或同时留空");
+    return;
+  }
+  d.saving = true;
+  try {
+    if (d.scope === "group" && d.groupId != null) {
+      await setGroupIdentity(d.groupId, name, email);
+    } else {
+      await setRepoIdentity(repo, name, email);
+    }
+    ElMessage.success(name ? "已保存提交身份" : "已清除自定义身份（恢复默认）");
+    d.show = false;
+  } catch (e) {
+    ElMessage.error("保存失败: " + errMsg(e));
+  } finally {
+    d.saving = false;
   }
 }
 
@@ -824,6 +1040,11 @@ function viewBranches(repoPath: string) {
 
 function viewStash(repoPath: string) {
   router.push({ name: "stash-manager", query: { repo: repoPath } });
+}
+
+/** Open the worktree manager for the given repo (T-17). */
+function viewWorktrees(repo: string) {
+  router.push({ name: "worktree-manager", query: { repo } });
 }
 
 function viewConflicts() {
@@ -1073,5 +1294,46 @@ function viewConflicts() {
   color: #c0c4cc;
   padding: 2px 4px 0;
   flex-shrink: 0;
+}
+
+.commit-options {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.identity-current {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.scan-finding-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.scan-finding-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+}
+
+.scan-path {
+  font-family: monospace;
+  color: #303133;
+}
+
+.scan-detail {
+  color: #909399;
+  font-size: 12px;
 }
 </style>

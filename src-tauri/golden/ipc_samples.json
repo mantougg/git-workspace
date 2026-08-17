@@ -28,6 +28,11 @@
     "remotes": [],
     "tags": []
   },
+  "CommitIdentity": {
+    "email": "alice@example.com",
+    "name": "alice",
+    "source": "repo"
+  },
   "CommitInfo": {
     "author": "A U Thor",
     "email": "a@example.com",
@@ -43,12 +48,22 @@
     "time": "2026-01-01T00:00:00Z"
   },
   "CommitRequest": {
+    "allowUnsafe": false,
+    "amend": false,
     "files": [
       "a.rs"
     ],
+    "indexOnly": false,
     "message": "msg",
+    "noEdit": false,
     "repoName": "repo",
-    "repoPath": "/ws/repo"
+    "repoPath": "/ws/repo",
+    "thenPush": false
+  },
+  "CommitScanFinding": {
+    "detail": "疑似 Secret（AWS Key）",
+    "kind": "secret",
+    "path": "a.rs"
   },
   "CompareResult": {
     "ahead": [],
@@ -395,10 +410,17 @@
       "type": "push"
     },
     {
+      "allowUnsafe": false,
+      "amend": false,
+      "authorEmail": "alice@example.com",
+      "authorName": "alice",
       "files": [
         "a.rs"
       ],
+      "indexOnly": false,
       "message": "msg",
+      "noEdit": false,
+      "thenPush": false,
       "type": "commit"
     }
   ],
@@ -413,5 +435,13 @@
     "path": "/ws",
     "scanDepth": 5,
     "updatedAt": "2026-01-01T00:00:00Z"
+  },
+  "WorktreeInfo": {
+    "branch": "feature/x",
+    "isDirty": true,
+    "isLocked": false,
+    "isMain": false,
+    "name": "feature-x",
+    "path": "/ws/repo-wt"
   }
 }

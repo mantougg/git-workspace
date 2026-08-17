@@ -29,6 +29,11 @@ const router = createRouter({
       component: () => import("@/views/Reflog.vue"),
     },
     {
+      path: "/worktrees",
+      name: "worktree-manager",
+      component: () => import("@/views/WorktreeManager.vue"),
+    },
+    {
       path: "/stash",
       name: "stash-manager",
       component: () => import("@/views/StashManager.vue"),

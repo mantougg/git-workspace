@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Types of Git operations that can be submitted to the task queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum TaskType {
     Fetch,
     Pull,
@@ -10,6 +10,26 @@ pub enum TaskType {
     Commit {
         message: String,
         files: Vec<String>,
+        /// Amend the HEAD commit (T-11).
+        #[serde(default)]
+        amend: bool,
+        /// With `amend`: keep the original message (T-11 --no-edit).
+        #[serde(default)]
+        no_edit: bool,
+        /// Commit the index as-is, preserving hunk/line staging (T-11+T-12).
+        #[serde(default)]
+        index_only: bool,
+        /// Push after a successful commit (T-11 Commit & Push).
+        #[serde(default)]
+        then_push: bool,
+        /// Proceed despite pre-commit safety findings (explicit user override).
+        #[serde(default)]
+        allow_unsafe: bool,
+        /// Per-repo/group identity override (T-11 §54); resolved server-side.
+        #[serde(default)]
+        author_name: Option<String>,
+        #[serde(default)]
+        author_email: Option<String>,
     },
 }
 

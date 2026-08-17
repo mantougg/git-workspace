@@ -334,4 +334,12 @@ ALTER TABLE stashes ADD COLUMN workspace_ref TEXT;
 
 /// Ordered schema migrations. Index 0 = version 1, index 1 = version 2, ...
 /// Append new entries at the END only.
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];
+/// v6 (T-11 §54): per-repo / per-group commit identity overrides.
+pub const SCHEMA_V6: &str = r#"
+ALTER TABLE repositories ADD COLUMN author_name TEXT;
+ALTER TABLE repositories ADD COLUMN author_email TEXT;
+ALTER TABLE repo_groups ADD COLUMN author_name TEXT;
+ALTER TABLE repo_groups ADD COLUMN author_email TEXT;
+"#;
+
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6];

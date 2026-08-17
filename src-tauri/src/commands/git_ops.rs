@@ -4,7 +4,9 @@ use tauri::State;
 
 use crate::core::git_ops::GitOps;
 use crate::core::git_status;
+use crate::db::dao;
 use crate::error::AppResult;
+use crate::models::commit::{CommitIdentity, CommitScanFinding};
 use crate::models::repository::RepoStatus;
 use crate::models::task::{TaskRequest, TaskType};
 use crate::state::AppState;
@@ -87,24 +89,100 @@ pub fn batch_push(
 
 /// Batch commit: create Commit tasks with a message and optional file list.
 /// Each entry in `commits` specifies the repo path, message, and files.
+/// The commit identity is resolved server-side (repo > group > git default).
 #[tauri::command]
 pub fn batch_commit(
     commits: Vec<CommitRequest>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<String>> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|e| crate::error::AppError::Other(format!("DB lock error: {}", e)))?;
+
     let requests: Vec<TaskRequest> = commits
         .into_iter()
-        .map(|c| TaskRequest {
-            task_type: TaskType::Commit {
-                message: c.message,
-                files: c.files,
-            },
-            repo_path: c.repo_path.clone(),
-            repo_name: c.repo_name,
+        .map(|c| {
+            let identity = dao::resolve_commit_identity(&conn, &c.repo_path)
+                .ok()
+                .flatten();
+            TaskRequest {
+                task_type: TaskType::Commit {
+                    message: c.message,
+                    files: c.files,
+                    amend: c.amend,
+                    no_edit: c.no_edit,
+                    index_only: c.index_only,
+                    then_push: c.then_push,
+                    allow_unsafe: c.allow_unsafe,
+                    author_name: identity.as_ref().map(|i| i.name.clone()),
+                    author_email: identity.as_ref().map(|i| i.email.clone()),
+                },
+                repo_path: c.repo_path.clone(),
+                repo_name: c.repo_name,
+            }
         })
         .collect();
+    drop(conn);
 
     state.task_manager.submit(&requests)
+}
+
+/// Pre-commit safety scan (T-11, §5): list findings (forbidden / large file /
+/// secret) for the paths that would be committed, without committing. The UI
+/// shows these and lets the user explicitly override via `allow_unsafe`.
+#[tauri::command]
+pub fn scan_commit(
+    repo_path: String,
+    files: Vec<String>,
+    index_only: bool,
+) -> AppResult<Vec<CommitScanFinding>> {
+    crate::core::git_ops::pre_commit_scan(Path::new(&repo_path), &files, index_only)
+}
+
+/// Resolved commit identity for a repository (T-11 §54): repo override >
+/// group override; `None` means the git default signature is used.
+#[tauri::command]
+pub fn get_commit_identity(
+    repo_path: String,
+    state: State<'_, AppState>,
+) -> AppResult<Option<CommitIdentity>> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|e| crate::error::AppError::Other(format!("DB lock error: {}", e)))?;
+    dao::resolve_commit_identity(&conn, &repo_path)
+}
+
+/// Set or clear the per-repository commit identity override (T-11 §54).
+/// Both `None` clears the override.
+#[tauri::command]
+pub fn set_repo_identity(
+    repo_path: String,
+    name: Option<String>,
+    email: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|e| crate::error::AppError::Other(format!("DB lock error: {}", e)))?;
+    dao::set_repo_identity(&conn, &repo_path, name.as_deref(), email.as_deref())
+}
+
+/// Set or clear the per-group commit identity override (T-11 §54).
+#[tauri::command]
+pub fn set_group_identity(
+    group_id: i64,
+    name: Option<String>,
+    email: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|e| crate::error::AppError::Other(format!("DB lock error: {}", e)))?;
+    dao::set_group_identity(&conn, group_id, name.as_deref(), email.as_deref())
 }
 
 /// Sync fetch for a single repo (synchronous, not queued).
@@ -172,13 +250,23 @@ pub fn stop_watcher(state: State<'_, AppState>) -> AppResult<()> {
 }
 
 /// Request payload for batch commit.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct CommitRequest {
     pub repo_path: String,
     pub repo_name: String,
     pub message: String,
     pub files: Vec<String>,
+    /// Amend the HEAD commit (T-11).
+    pub amend: bool,
+    /// With `amend`: keep the original message (T-11 --no-edit).
+    pub no_edit: bool,
+    /// Commit the index as-is, preserving hunk/line staging (T-11+T-12).
+    pub index_only: bool,
+    /// Push after a successful commit (T-11 Commit & Push).
+    pub then_push: bool,
+    /// Proceed despite pre-commit safety findings (explicit user override).
+    pub allow_unsafe: bool,
 }
 
 /// Request payload for staging files (git add).
