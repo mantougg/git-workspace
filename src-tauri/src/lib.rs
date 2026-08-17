@@ -65,6 +65,7 @@ pub fn run() {
         .expect("failed to initialize logger");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -79,10 +80,9 @@ pub fn run() {
                 let now = chrono::Utc::now().to_rfc3339();
                 match db::dao::mark_interrupted_tasks(&c, &now) {
                     Ok(0) => {}
-                    Ok(n) => log::warn!(
-                        "Marked {} unfinished tasks as interrupted after restart",
-                        n
-                    ),
+                    Ok(n) => {
+                        log::warn!("Marked {} unfinished tasks as interrupted after restart", n)
+                    }
                     Err(e) => log::warn!("Failed to mark interrupted tasks: {}", e),
                 }
             }
@@ -91,8 +91,7 @@ pub fn run() {
             let git_ops = Arc::new(GitOps::with_default_ssh());
 
             // Create TaskManager with 8 workers
-            let task_manager =
-                TaskManager::new(8, git_ops, app.handle().clone(), Arc::clone(&db));
+            let task_manager = TaskManager::new(8, git_ops, app.handle().clone(), Arc::clone(&db));
 
             // Create and manage app state
             let state = AppState::new(db, task_manager);

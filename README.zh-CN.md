@@ -172,6 +172,47 @@ pnpm build
 pnpm tauri build
 ```
 
+### 发布与签名
+
+项目通过 GitHub Actions 自动构建 Windows NSIS 安装包（`.exe`）并发布到 GitHub Release，工作流定义见 [`.github/workflows/release.yml`](.github/workflows/release.yml)。
+
+**触发方式：**
+
+| 触发方式 | 操作 | 产物 |
+| --- | --- | --- |
+| 推送版本 tag | `git tag v0.1.0 && git push origin v0.1.0` | 正式 Release，版本号取自 tag |
+| 手动触发 | 仓库 → Actions → Release → Run workflow | 草稿 Release，版本号 `0.0.0-dev.<run号>` |
+
+工作流会在构建前把 tag 版本号同步进 `tauri.conf.json`，避免多个版本产物版本号重复。
+
+**Tauri Updater 签名密钥（可选，用于自动更新验证）**
+
+工作流已配置读取 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 Secret。它们用于给安装包生成 `.sig` 签名，供 Tauri 内置更新器在自动更新时验证安装包完整性——**这是 Tauri 的更新器签名，并非 Windows 代码签名**。
+
+生成密钥对（在本地执行一次，妥善保管私钥，丢失后已安装旧版本将无法接收新更新）：
+
+```bash
+pnpm tauri signer generate -w ~/.tauri/gitworkspace.key
+```
+
+执行后会输出一段公钥（`dW50cnVzdGVk...` 形式）和私钥文件。随后在 GitHub 仓库 Settings → Secrets and variables → Actions 中配置两个 Secret：
+
+| Secret 名 | 值 |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | 私钥文件内容（或路径） |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 生成密钥时设置的密码（未设密码则留空） |
+
+> 配置后，构建时会在 `target/release/bundle/nsis/` 下额外生成 `*.exe.sig` 签名文件。若启用自动更新，还需把公钥填入 `tauri.conf.json` 的 `plugins.updater.pubkey`。
+
+**关于 Windows SmartScreen “未知发布者” 警告（重要澄清）**
+
+上面的 Tauri Updater 签名**不能**消除 SmartScreen 警告。SmartScreen 识别的是 **Windows Authenticode 代码签名证书**，需从受信任的 CA（如 DigiCert、Sectigo）购买 OV/EV 证书，是另一套独立机制：
+
+- 在 `tauri.conf.json` 的 `bundle.windows` 下配置 `certificateThumbprint`、`digestAlgorithm`（如 `sha256`）、`timestampUrl`（时间戳服务器）；
+- 在 CI 中把 `.pfx` 证书 base64 编码后存为 GitHub Secret（如 `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD`），构建前解码导入证书库，`tauri build` 会自动调用 `signtool` 签名。
+
+如需消除 SmartScreen 警告，请准备 Authenticode 证书后参照 [Tauri Windows 代码签名文档](https://v2.tauri.app/distribute/sign/windows/) 配置。
+
 ### 性能基准
 
 ```bash
