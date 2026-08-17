@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 2 · Multi-Repo Engine（P1） |
 | 优先级 | P1 |
-| 状态 | 🟦 进行中 |
+| 状态 | ✅ 已完成 |
 | 依赖 | T-05 |
 | 对应 Roadmap | §18 Workspace Pipeline、§21 任务依赖 DAG |
 
