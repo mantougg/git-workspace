@@ -8,6 +8,9 @@ on:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-tauri
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +26,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run benchmark (100 repositories)
-        run: cargo run --release --example benchmark -- 100 --json | tee /tmp/bench.json
+        run: |
+          set -o pipefail
+          cargo run --release --example benchmark -- 100 --json | tee /tmp/bench.json
 
       - name: Enforce Roadmap §65 thresholds
         run: |
@@ -39,7 +44,9 @@ jobs:
           EOF
 
       - name: Run T-04 diff/graph acceptance benchmark
-        run: cargo run --release --example benchmark -- diff-graph --json | tee /tmp/bench_t04.json
+        run: |
+          set -o pipefail
+          cargo run --release --example benchmark -- diff-graph --json | tee /tmp/bench_t04.json
 
       - name: Enforce T-04 thresholds
         run: |
