@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use serde_json::{json, Map, Value};
 
-use crate::commands::{ai, diff as diff_cmd, git_ops, logs};
+use crate::commands::{ai, batch as batch_cmd, diff as diff_cmd, git_ops, logs};
 use crate::core::{branch as branch_core, conflict as conflict_core, diff, graph, history as history_core, merge as merge_core, rebase as rebase_core, reflog as reflog_core, stash as stash_core, worktree as worktree_core};
 use crate::error::AppError;
 use crate::models::{commit, group, repository, task, workspace};
@@ -143,6 +143,11 @@ fn samples() -> Map<String, Value> {
                 author_name: Some("alice".into()),
                 author_email: Some("alice@example.com".into()),
             },
+            task::TaskType::BranchOp {
+                op: task::BranchOpKind::Checkout,
+                name: "feature".into(),
+                force: false,
+            },
         ]),
     );
     m.insert(
@@ -170,6 +175,7 @@ fn samples() -> Map<String, Value> {
             repo_name: "repo".into(),
             status: task::TaskStatus::Queued,
             created_at: "2026-01-01T00:00:00Z".into(),
+            batch_id: Some("b-1".into()),
         }),
     );
     m.insert(
@@ -188,6 +194,7 @@ fn samples() -> Map<String, Value> {
             repo_path: "/ws/repo".into(),
             repo_name: "repo".into(),
             status: task::TaskStatus::Running { progress: 1.0 },
+            batch_id: Some("b-1".into()),
         }),
     );
     m.insert(
@@ -433,6 +440,17 @@ fn samples() -> Map<String, Value> {
         }),
     );
     m.insert(
+        "DryRunItem".into(),
+        json!(batch_cmd::DryRunItem {
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            category: "fast_forward".into(),
+            ahead: 1,
+            behind: 2,
+            detail: "可快进 2 个提交".into(),
+        }),
+    );
+    m.insert(
         "AddRequest".into(),
         json!(git_ops::AddRequest {
             repo_path: "/ws/repo".into(),
@@ -619,6 +637,7 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("CommitScanFinding", "types/commit.ts", "CommitScanFinding"),
     ("CommitIdentity", "types/commit.ts", "CommitIdentity"),
     ("WorktreeInfo", "types/worktree.ts", "WorktreeInfo"),
+    ("DryRunItem", "types/batch.ts", "DryRunItem"),
     ("Workspace", "types/workspace.ts", "Workspace"),
     (
         "CreateWorkspaceRequest",

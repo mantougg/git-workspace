@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod batch;
 pub mod branch;
 pub mod conflict;
 pub mod diff;

@@ -268,6 +268,53 @@
             冲突
           </el-button>
         </div>
+        <!-- Batch selector + repo-level ops (T-20) -->
+        <div class="batch-row">
+          <el-input
+            v-model="selectorQuery"
+            size="small"
+            class="selector-input"
+            placeholder="选择器：@group:frontend @tag:p0 @status:dirty 或名称关键字"
+            clearable
+          />
+          <el-check-tag
+            v-for="chip in quickChips"
+            :key="chip.token"
+            :checked="chip.active"
+            @change="toggleChip(chip)"
+          >
+            {{ chip.label }}
+          </el-check-tag>
+          <span v-if="selectorActive" class="selector-count">
+            匹配 {{ selectorPaths.length }} 个仓库
+          </span>
+        </div>
+        <div class="batch-row">
+          <el-button-group>
+            <el-button size="small" @click="openBranchOp('checkout')">
+              Checkout All
+            </el-button>
+            <el-button size="small" @click="openBranchOp('create')">
+              Create Branch All
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              @click="openBranchOp('delete')"
+            >
+              Delete Branch All
+            </el-button>
+          </el-button-group>
+          <el-button-group>
+            <el-button size="small" @click="runDryRun('pull')">
+              Pull 预演
+            </el-button>
+            <el-button size="small" @click="runDryRun('push')">
+              Push 预演
+            </el-button>
+          </el-button-group>
+        </div>
         <div class="commit-row">
           <div class="commit-input">
             <el-input
@@ -317,6 +364,88 @@
         </div>
       </div>
     </div>
+
+    <!-- Bulk branch op dialog (T-20) -->
+    <el-dialog v-model="branchOpDialog.show" :title="branchOpTitle" width="520px">
+      <el-form label-width="80px">
+        <el-form-item label="分支名">
+          <el-input v-model="branchOpDialog.name" placeholder="分支名" />
+        </el-form-item>
+        <el-form-item v-if="branchOpDialog.op === 'delete'" label="强制">
+          <el-checkbox v-model="branchOpDialog.force">
+            强制删除未合并分支
+          </el-checkbox>
+        </el-form-item>
+      </el-form>
+      <el-alert
+        v-if="branchOpDialog.op === 'delete'"
+        type="error"
+        :closable="false"
+        show-icon
+        title="危险操作：将从以下仓库删除分支"
+      />
+      <el-alert
+        v-else
+        type="info"
+        :closable="false"
+        show-icon
+        :title="`将作用于 ${branchOpTargets.length} 个仓库`"
+      />
+      <ul v-if="branchOpDialog.op === 'delete'" class="affected-repo-list">
+        <li v-for="r in branchOpTargets" :key="r">
+          {{ repoNameOf(r) }}
+        </li>
+      </ul>
+      <template #footer>
+        <el-button @click="branchOpDialog.show = false">取消</el-button>
+        <el-button
+          :type="branchOpDialog.op === 'delete' ? 'danger' : 'primary'"
+          :loading="branchOpDialog.loading"
+          @click="handleBranchOp"
+        >
+          {{ branchOpActionLabel }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+
+    <!-- Dry-run impact report dialog (T-20) -->
+    <el-dialog
+      v-model="dryRunDialog.show"
+      :title="dryRunDialog.op === 'pull' ? 'Pull 预演（不影响任何仓库）' : 'Push 预演（不影响任何仓库）'"
+      width="720px"
+    >
+      <el-table
+        :data="dryRunDialog.items"
+        v-loading="dryRunDialog.loading"
+        max-height="400"
+      >
+        <el-table-column prop="repoName" label="仓库" min-width="140" />
+        <el-table-column label="预测" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" :type="dryRunTagType(row.category)">
+              {{ dryRunLabel(row.category) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="前/后" width="90">
+          <template #default="{ row }">+{{ row.ahead }} / -{{ row.behind }}</template>
+        </el-table-column>
+        <el-table-column prop="detail" label="说明" min-width="220" />
+      </el-table>
+      <template #footer>
+        <el-button @click="dryRunDialog.show = false">关闭</el-button>
+        <el-button
+          v-if="dryRunActionable.length > 0"
+          type="primary"
+          @click="executeDryRun"
+        >
+          对 {{ dryRunActionable.length }} 个可快进仓库执行
+          {{ dryRunDialog.op === 'pull' ? 'Pull' : 'Push' }}
+        </el-button>
+      </template>
+    </el-dialog>
+
 
     <!-- Commit identity dialog (T-11 §54) -->
     <el-dialog v-model="identityDialog.show" title="提交身份" width="480px">
@@ -450,7 +579,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import {
   Plus,
@@ -489,6 +618,8 @@ import {
   setGroupIdentity,
 } from "@/api/commit";
 import type { CommitScanFinding, CommitIdentity } from "@/types/commit";
+import { selectRepos, batchBranchOp, batchDryRun } from "@/api/batch";
+import type { DryRunItem } from "@/types/batch";
 import { getDiff } from "@/api/git";
 import { batchAdd, batchRestore, getWorkspaceChanges, type AddRequest, type RestoreRequest } from "@/api/changes";
 import type { CommitRequest } from "@/types/task";
@@ -538,6 +669,32 @@ const identityDialog = ref({
   email: "",
   current: null as CommitIdentity | null,
   groupId: null as number | null,
+});
+
+// --- Batch selector + repo-level ops (T-20) ---
+const selectorQuery = ref("");
+const selectorPaths = ref<string[]>([]);
+const selectorActive = computed(() => selectorQuery.value.trim().length > 0);
+const quickChips = ref([
+  { label: "脏", token: "@status:dirty", active: false },
+  { label: "冲突", token: "@status:conflict", active: false },
+  { label: "Ahead", token: "@status:ahead", active: false },
+  { label: "Behind", token: "@status:behind", active: false },
+  { label: "收藏", token: "@status:favorite", active: false },
+]);
+const branchOpTargets = ref<string[]>([]);
+const branchOpDialog = ref({
+  show: false,
+  loading: false,
+  op: "checkout" as "checkout" | "create" | "delete",
+  name: "",
+  force: false,
+});
+const dryRunDialog = ref({
+  show: false,
+  loading: false,
+  op: "pull" as "pull" | "push",
+  items: [] as DryRunItem[],
 });
 const scanProgress = ref<{ found: number; current: number; total: number | null } | null>(null);
 const selectedDiff = ref<SelectedDiff | null>(null);
@@ -906,12 +1063,175 @@ async function saveIdentity() {
   }
 }
 
-async function handleFetch() {
-  // Selected repos if any; otherwise batch over ALL repositories.
-  let paths = treeSelection.value.repoPaths;
-  if (paths.length === 0) {
-    paths = changes.value.map((c) => c.repoPath);
+/** Selector query (debounced) against the in-memory repo facets (T-20). */
+let selectorTimer: number | undefined;
+watch(selectorQuery, (q) => {
+  window.clearTimeout(selectorTimer);
+  selectorTimer = window.setTimeout(async () => {
+    const query = q.trim();
+    if (!query || !selectedWorkspaceId.value) {
+      selectorPaths.value = [];
+      return;
+    }
+    try {
+      selectorPaths.value = await selectRepos(selectedWorkspaceId.value, query);
+    } catch (e) {
+      ElMessage.error("选择器查询失败: " + errMsg(e));
+    }
+  }, 300);
+});
+
+
+/** Toggle a quick-filter chip: add/remove its @status token in the query. */
+function toggleChip(chip: { token: string; active: boolean }) {
+  const tokens = selectorQuery.value
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((t) => t !== chip.token);
+  if (chip.active) tokens.push(chip.token);
+  selectorQuery.value = tokens.join(" ");
+}
+
+
+/** Target repo set for repo-level batch ops: selector > tree > all dirty. */
+function batchTargetRepos(): string[] {
+  if (selectorActive.value) return selectorPaths.value;
+  if (treeSelection.value.repoPaths.length > 0) return treeSelection.value.repoPaths;
+  return changes.value.map((c) => c.repoPath);
+}
+
+
+const branchOpTitle = computed(() =>
+  ({
+    checkout: "Checkout All（批量检出分支）",
+    create: "Create Branch All（批量建分支）",
+    delete: "Delete Branch All（批量删分支）",
+  })[branchOpDialog.value.op],
+);
+
+
+const branchOpActionLabel = computed(() =>
+  ({ checkout: "检出", create: "创建", delete: "删除" })[
+    branchOpDialog.value.op
+  ],
+);
+
+
+function openBranchOp(op: "checkout" | "create" | "delete") {
+  const targets = batchTargetRepos();
+  if (targets.length === 0) {
+    ElMessage.warning("没有目标仓库（先用选择器或勾选）");
+    return;
   }
+  branchOpTargets.value = targets;
+  branchOpDialog.value = { show: true, loading: false, op, name: "", force: false };
+}
+
+
+/** Execute the bulk branch op; delete goes through a §46 danger confirm. */
+async function handleBranchOp() {
+  const d = branchOpDialog.value;
+  if (!d.name.trim()) {
+    ElMessage.warning("请输入分支名");
+    return;
+  }
+  if (d.op === "delete") {
+    try {
+      await ElMessageBox.confirm(
+        `确定从 ${branchOpTargets.value.length} 个仓库删除分支「${d.name}」吗？`,
+        "危险操作确认",
+        { type: "error", confirmButtonText: "确认删除", cancelButtonText: "取消" },
+      );
+    } catch {
+      return;
+    }
+  }
+  d.loading = true;
+  try {
+    const ids = await batchBranchOp(branchOpTargets.value, d.op, d.name.trim(), d.force);
+    ElMessage.success(`已提交 ${ids.length} 个分支任务`);
+    d.show = false;
+  } catch (e) {
+    ElMessage.error("操作失败: " + errMsg(e));
+  } finally {
+    d.loading = false;
+  }
+}
+
+
+/** Dry-run report rows that can proceed (fast-forward only). */
+const dryRunActionable = computed(() =>
+  dryRunDialog.value.items.filter((i) => i.category === "fast_forward"),
+);
+
+
+/** Pull/Push dry-run: compute the impact report without mutating repos. */
+async function runDryRun(op: "pull" | "push") {
+  const targets = batchTargetRepos();
+  if (targets.length === 0) {
+    ElMessage.warning("没有目标仓库");
+    return;
+  }
+  dryRunDialog.value = { show: true, loading: true, op, items: [] };
+  try {
+    dryRunDialog.value.items = await batchDryRun(targets, op);
+  } catch (e) {
+    ElMessage.error("预演失败: " + errMsg(e));
+    dryRunDialog.value.show = false;
+  } finally {
+    dryRunDialog.value.loading = false;
+  }
+}
+
+
+/** Execute the real batch op for the fast-forwardable repos only. */
+async function executeDryRun() {
+  const paths = dryRunActionable.value.map((i) => i.repoPath);
+  const op = dryRunDialog.value.op;
+  dryRunDialog.value.show = false;
+  try {
+    if (op === "pull") {
+      await batchPull(paths);
+    } else {
+      await batchPush(paths);
+    }
+    ElMessage.success(`已提交 ${paths.length} 个任务`);
+  } catch (e) {
+    ElMessage.error("执行失败: " + errMsg(e));
+  }
+}
+
+
+function dryRunLabel(c: string): string {
+  return (
+    {
+      up_to_date: "已同步",
+      fast_forward: "可快进",
+      diverged: "分叉",
+      conflict: "预计冲突",
+      no_upstream: "无上游",
+      error: "错误",
+    } as Record<string, string>
+  )[c] ?? c;
+}
+
+
+function dryRunTagType(c: string): "success" | "warning" | "danger" | "info" {
+  return (
+    {
+      up_to_date: "info",
+      fast_forward: "success",
+      diverged: "warning",
+      conflict: "danger",
+      no_upstream: "info",
+      error: "danger",
+    } as const
+  )[c] ?? "info";
+}
+
+async function handleFetch() {
+  // Selector > tree selection > all dirty repos (T-20 selector precedence).
+  const paths = batchTargetRepos();
   if (paths.length === 0) {
     ElMessage.warning("没有可操作的仓库");
     return;
@@ -929,11 +1249,8 @@ async function handleFetch() {
 }
 
 async function handlePull() {
-  // Selected repos if any; otherwise batch over ALL repositories.
-  let paths = treeSelection.value.repoPaths;
-  if (paths.length === 0) {
-    paths = changes.value.map((c) => c.repoPath);
-  }
+  // Selector > tree selection > all dirty repos (T-20 selector precedence).
+  const paths = batchTargetRepos();
   if (paths.length === 0) {
     ElMessage.warning("没有可操作的仓库");
     return;
@@ -952,10 +1269,7 @@ async function handlePull() {
 
 /** Open the push picker dialog, defaulting to the current selection or all repos. */
 function openPushDialog() {
-  const defaultSelected =
-    treeSelection.value.repoPaths.length > 0
-      ? treeSelection.value.repoPaths
-      : changes.value.map((c) => c.repoPath);
+  const defaultSelected = batchTargetRepos();
   pushSelection.value = defaultSelected;
   showPushDialog.value = true;
   // Pre-check matching rows after the dialog/table renders.
@@ -1335,5 +1649,30 @@ function viewConflicts() {
 .scan-detail {
   color: #909399;
   font-size: 12px;
+}
+
+.batch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.selector-input {
+  max-width: 420px;
+}
+
+.selector-count {
+  font-size: 12px;
+  color: #909399;
+}
+
+.affected-repo-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 13px;
 }
 </style>

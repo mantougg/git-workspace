@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::core::git_ops::GitOps;
 use crate::db::dao;
-use crate::models::task::{GitCommandResult, Task, TaskProgress, TaskStatus, TaskType};
+use crate::models::task::{BatchState, GitCommandResult, Task, TaskProgress, TaskStatus, TaskType};
 
 /// Maximum retries for a failed task (network operations benefit most).
 const MAX_RETRIES: usize = 2;
@@ -29,6 +29,7 @@ pub fn spawn_worker_pool(
     cancel_flags: Arc<DashMap<String, Arc<AtomicBool>>>,
     app_handle: AppHandle,
     db: Arc<std::sync::Mutex<Connection>>,
+    batches: Arc<DashMap<String, BatchState>>,
 ) {
     let receiver = Arc::new(Mutex::new(receiver));
 
@@ -42,6 +43,7 @@ pub fn spawn_worker_pool(
             let flags = Arc::clone(&cancel_flags);
             let app = app_handle.clone();
             let db = Arc::clone(&db);
+            let batch_map = Arc::clone(&batches);
 
             workers.push(tauri::async_runtime::spawn(async move {
                 log::debug!("Task worker {} started", worker_id);
@@ -54,7 +56,7 @@ pub fn spawn_worker_pool(
 
                     match msg {
                         Some(msg) => {
-                            execute_task(&ops, &tasks, &flags, &app, &db, msg.task).await;
+                            execute_task(&ops, &tasks, &flags, &app, &db, &batch_map, msg.task).await;
                         }
                         None => {
                             log::debug!("Task worker {} shutting down", worker_id);
@@ -88,6 +90,7 @@ async fn execute_task(
     cancel_flags: &Arc<DashMap<String, Arc<AtomicBool>>>,
     app: &AppHandle,
     db: &Arc<std::sync::Mutex<Connection>>,
+    batches: &Arc<DashMap<String, BatchState>>,
     mut task: Task,
 ) {
     // Update status to Running
@@ -211,6 +214,11 @@ async fn execute_task(
     // Emit final status
     emit_progress(app, &task);
 
+    // Aggregate into the parent batch (T-20): evolves the synthetic batch
+    // task towards Success / Failed / PartialSuccess and persists the
+    // per-repo sub-result into task_items.
+    update_batch(batches, db, app, &task);
+
     // Schedule cleanup after a delay
     let tasks = Arc::clone(tasks);
     let flags = Arc::clone(cancel_flags);
@@ -234,16 +242,84 @@ fn persist_final_status(db: &Arc<std::sync::Mutex<Connection>>, task: &Task) {
 }
 
 /// Emit a task_progress event to the frontend.
-fn emit_progress(app: &AppHandle, task: &Task) {
+pub(crate) fn emit_progress(app: &AppHandle, task: &Task) {
     let progress = TaskProgress {
         task_id: task.id.clone(),
         task_type: task.task_type.clone(),
         repo_path: task.repo_path.clone(),
         repo_name: task.repo_name.clone(),
         status: task.status.clone(),
+        batch_id: task.batch_id.clone(),
     };
 
     if let Err(e) = app.emit("task_progress", &progress) {
         log::warn!("Failed to emit task_progress: {}", e);
+    }
+}
+
+/// Aggregate a finished child task into its parent batch (T-20): updates the
+/// synthetic batch task's status (PartialSuccess when mixed), persists the
+/// per-repo sub-result into `task_items`, and emits the batch's progress.
+/// Also called by the manager when a child fails to even queue.
+pub(crate) fn update_batch(
+    batches: &Arc<DashMap<String, BatchState>>,
+    db: &Arc<std::sync::Mutex<Connection>>,
+    app: &AppHandle,
+    child: &Task,
+) {
+    let Some(batch_id) = child.batch_id.clone() else {
+        return;
+    };
+    let Some(mut entry) = batches.get_mut(&batch_id) else {
+        return;
+    };
+    let b = entry.value_mut();
+
+    let error_msg = match &child.status {
+        TaskStatus::Failed { error } => Some(error.clone()),
+        _ => None,
+    };
+    // Evolve the aggregate (pure part lives in BatchState::record_child).
+    let done = b.record_child(&child.status);
+    if matches!(child.status, TaskStatus::Queued | TaskStatus::Running { .. }) {
+        return; // not a final status
+    }
+
+    // Per-repo sub-result into task_items (T-05 schema intent).
+    if let Ok(conn) = db.lock() {
+        let now = chrono::Utc::now().to_rfc3339();
+        if let Err(e) = dao::insert_task_item(
+            &conn,
+            b.db_row_id,
+            &child.repo_path,
+            child.status.key(),
+            error_msg.as_deref(),
+            &now,
+        ) {
+            log::warn!("Failed to persist task item for {}: {}", child.id, e);
+        }
+    }
+
+    let batch_task = b.task.clone();
+    if done {
+        if let Ok(conn) = db.lock() {
+            let now = chrono::Utc::now().to_rfc3339();
+            if let Err(e) =
+                dao::update_task_status(&conn, &batch_id, batch_task.status.key(), Some(&now))
+            {
+                log::warn!("Failed to persist batch {} status: {}", batch_id, e);
+            }
+        }
+    }
+    drop(entry);
+    emit_progress(app, &batch_task);
+
+    // Schedule cleanup of the finished batch aggregate.
+    if done {
+        let batches = Arc::clone(batches);
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            batches.remove(&batch_id);
+        });
     }
 }

@@ -816,3 +816,19 @@ pub fn replace_worktrees(
     tx.commit()?;
     Ok(())
 }
+
+/// Insert a per-repository sub-result of a batch task (T-05/T-20).
+pub fn insert_task_item(
+    conn: &Connection,
+    task_row_id: i64,
+    repo_path: &str,
+    status: &str,
+    message: Option<&str>,
+    finished_at: &str,
+) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO task_items (task_id, repo_path, status, message, finished_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![task_row_id, repo_path, status, message, finished_at],
+    )?;
+    Ok(())
+}

@@ -125,6 +125,10 @@ pub fn run() {
             diff::unstage_hunk,
             diff::stage_lines,
             diff::unstage_lines,
+            // Batch operation commands (T-20)
+            commands::batch::select_repos,
+            commands::batch::batch_branch_op,
+            commands::batch::batch_dry_run,
             // Worktree commands (T-17)
             commands::worktree::list_worktrees,
             commands::worktree::create_worktree,

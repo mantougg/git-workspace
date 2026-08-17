@@ -104,6 +104,14 @@
     "ignoreWhitespace": true,
     "ignoreWhitespaceEol": false
   },
+  "DryRunItem": {
+    "ahead": 1,
+    "behind": 2,
+    "category": "fast_forward",
+    "detail": "可快进 2 个提交",
+    "repoName": "repo",
+    "repoPath": "/ws/repo"
+  },
   "ErrorResponse": {
     "code": "RepositoryError",
     "details": null,
@@ -345,6 +353,7 @@
     "targetOid": "abc123"
   },
   "Task": {
+    "batchId": "b-1",
     "createdAt": "2026-01-01T00:00:00Z",
     "id": "t-1",
     "repoName": "repo",
@@ -357,6 +366,7 @@
     }
   },
   "TaskProgress": {
+    "batchId": "b-1",
     "repoName": "repo",
     "repoPath": "/ws/repo",
     "status": {
@@ -422,6 +432,12 @@
       "noEdit": false,
       "thenPush": false,
       "type": "commit"
+    },
+    {
+      "force": false,
+      "name": "feature",
+      "op": "checkout",
+      "type": "branchOp"
     }
   ],
   "UpdateWorkspaceRequest": {

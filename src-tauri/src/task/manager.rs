@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::core::git_ops::GitOps;
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
-use crate::models::task::{Task, TaskRequest, TaskStatus};
+use crate::models::task::{BatchState, Task, TaskRequest, TaskStatus};
 use crate::task::queue::{self, TaskMessage};
 use crate::task::worker;
 
@@ -24,6 +24,10 @@ pub struct TaskManager {
     cancel_flags: Arc<DashMap<String, Arc<AtomicBool>>>,
     /// Shared DB connection for task persistence (history + crash recovery).
     db: Arc<Mutex<Connection>>,
+    /// Aggregate state of multi-repo batches (T-20), keyed by batch id.
+    batches: Arc<DashMap<String, BatchState>>,
+    /// Kept to emit progress events for synthetic batch tasks.
+    app_handle: AppHandle,
 }
 
 impl TaskManager {
@@ -41,6 +45,7 @@ impl TaskManager {
         let (sender, receiver) = queue::new_queue(128);
         let active_tasks = Arc::new(DashMap::<String, Task>::new());
         let cancel_flags = Arc::new(DashMap::<String, Arc<AtomicBool>>::new());
+        let batches = Arc::new(DashMap::<String, BatchState>::new());
 
         // Spawn the worker pool using the worker module
         worker::spawn_worker_pool(
@@ -49,8 +54,9 @@ impl TaskManager {
             Arc::clone(&git_ops),
             Arc::clone(&active_tasks),
             Arc::clone(&cancel_flags),
-            app_handle,
+            app_handle.clone(),
             Arc::clone(&db),
+            Arc::clone(&batches),
         );
 
         log::info!("TaskManager started with {} workers", worker_count);
@@ -60,6 +66,8 @@ impl TaskManager {
             active_tasks,
             cancel_flags,
             db,
+            batches,
+            app_handle,
         }
     }
 
@@ -67,6 +75,37 @@ impl TaskManager {
     /// Returns the list of generated task IDs.
     pub fn submit(&self, requests: &[TaskRequest]) -> AppResult<Vec<String>> {
         let mut ids = Vec::with_capacity(requests.len());
+
+        // Multi-repo submits get a synthetic batch task (T-20): it tracks
+        // the aggregate (Partial Success etc.) while children keep their
+        // per-repo rows. Single submits stay flat (no batch row).
+        let batch_id = (requests.len() > 1).then(|| Uuid::new_v4().to_string());
+        if let Some(bid) = &batch_id {
+            let now = Utc::now().to_rfc3339();
+            let batch_task = Task {
+                id: bid.clone(),
+                task_type: requests[0].task_type.clone(),
+                repo_path: String::new(),
+                repo_name: format!("批量（{} 个仓库）", requests.len()),
+                status: TaskStatus::Running { progress: 0.0 },
+                created_at: now,
+                batch_id: None,
+            };
+            let row_id = self.persist_new_task(&batch_task);
+            self.batches.insert(
+                bid.clone(),
+                BatchState {
+                    task: batch_task.clone(),
+                    db_row_id: row_id.unwrap_or(0),
+                    total: requests.len(),
+                    finished: 0,
+                    succeeded: 0,
+                    failed: 0,
+                    cancelled: 0,
+                },
+            );
+            worker::emit_progress(&self.app_handle, &batch_task);
+        }
 
         for req in requests {
             let id = Uuid::new_v4().to_string();
@@ -79,6 +118,7 @@ impl TaskManager {
                 repo_name: req.repo_name.clone(),
                 status: TaskStatus::Queued,
                 created_at: now,
+                batch_id: batch_id.clone(),
             };
 
             // Persist to the `tasks` table (history + crash recovery).
@@ -90,15 +130,20 @@ impl TaskManager {
                 .insert(id.clone(), Arc::new(AtomicBool::new(false)));
 
             // Send to channel
-            if let Err(e) = self.sender.try_send(TaskMessage { task }) {
+            if let Err(e) = self.sender.try_send(TaskMessage { task: task.clone() }) {
                 // Remove from active tasks if sending failed and mark the
                 // persisted record failed so crash recovery won't resurrect it.
                 self.active_tasks.remove(&id);
                 self.cancel_flags.remove(&id);
-                self.persist_task_status(
-                    &id,
-                    TaskStatus::Failed { error: e.to_string() }.key(),
-                );
+                let failed = TaskStatus::Failed { error: e.to_string() };
+                self.persist_task_status(&id, failed.key());
+                // Account the failed child into its batch so the batch
+                // cannot hang unfinished (T-20 aggregation).
+                if task.batch_id.is_some() {
+                    let mut failed_task = task;
+                    failed_task.status = failed;
+                    worker::update_batch(&self.batches, &self.db, &self.app_handle, &failed_task);
+                }
                 return Err(AppError::Task(format!(
                     "Failed to queue task: {}",
                     e
@@ -113,13 +158,13 @@ impl TaskManager {
 
     /// Persist a newly submitted task to the `tasks` table. Failure is logged,
     /// not fatal — the in-memory queue still works without persistence.
-    fn persist_new_task(&self, task: &Task) {
+    fn persist_new_task(&self, task: &Task) -> Option<i64> {
         let Ok(conn) = self.db.lock() else {
-            return;
+            return None;
         };
         let task_type_json = serde_json::to_string(&task.task_type).unwrap_or_default();
         let params_json = serde_json::to_string(task).unwrap_or_default();
-        if let Err(e) = dao::insert_task_record(
+        match dao::insert_task_record(
             &conn,
             &task.id,
             &task_type_json,
@@ -127,7 +172,11 @@ impl TaskManager {
             &params_json,
             &task.created_at,
         ) {
-            log::warn!("Failed to persist task {}: {}", task.id, e);
+            Ok(row_id) => Some(row_id),
+            Err(e) => {
+                log::warn!("Failed to persist task {}: {}", task.id, e);
+                None
+            }
         }
     }
 
@@ -179,9 +228,12 @@ impl TaskManager {
         }
     }
 
-    /// Get all active tasks (for the task panel display).
+    /// Get all active tasks (for the task panel display), with the
+    /// synthetic batch rows (T-20) appended.
     pub fn list_active(&self) -> Vec<Task> {
-        self.active_tasks.iter().map(|e| e.clone()).collect()
+        let mut out: Vec<Task> = self.active_tasks.iter().map(|e| e.clone()).collect();
+        out.extend(self.batches.iter().map(|e| e.task.clone()));
+        out
     }
 
     /// Remove finished tasks from the active list (cleanup).

@@ -24,6 +24,9 @@ export const useTaskStore = defineStore("task", () => {
       repoName: progress.repoName,
       status: progress.status,
       createdAt: new Date().toISOString(),
+      // Batch grouping key (T-20): children carry the batch id; the batch
+      // row itself arrives with batchId null and id == batch id.
+      batchId: progress.batchId ?? null,
     };
 
     if (idx >= 0) {

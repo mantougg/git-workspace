@@ -25,7 +25,7 @@
           <el-empty description="暂无任务" :image-size="60" />
         </div>
         <div
-          v-for="task in tasks"
+          v-for="task in standaloneTasks"
           :key="task.id"
           class="task-item"
         >
@@ -65,6 +65,13 @@
             >
               失败
             </el-tag>
+            <el-tag
+              v-else-if="task.status.type === 'partialSuccess'"
+              type="warning"
+              size="small"
+            >
+              部分成功
+            </el-tag>
           </div>
           <div class="task-actions">
             <el-button
@@ -82,6 +89,75 @@
             class="task-error"
           >
             {{ task.status.error }}
+          </div>
+        </div>
+        <!-- Batch groups (T-20): aggregate row + expandable per-repo results -->
+        <div
+          v-for="batch in batchRows"
+          :key="batch.id"
+          class="task-item batch-item"
+        >
+          <div class="task-info">
+            <span class="task-type-badge" :class="taskTypeClass(batch)">
+              {{ taskTypeLabel(batch) }}
+            </span>
+            <span class="task-repo">{{ batch.repoName }}</span>
+          </div>
+          <div class="task-status">
+            <el-tag
+              v-if="batch.status.type === 'running'"
+              type="warning"
+              size="small"
+            >
+              <el-icon class="is-loading"><Loading /></el-icon>
+              执行中
+            </el-tag>
+            <el-tag
+              v-else-if="batch.status.type === 'success'"
+              type="success"
+              size="small"
+            >
+              成功
+            </el-tag>
+            <el-tag
+              v-else-if="batch.status.type === 'partialSuccess'"
+              type="warning"
+              size="small"
+            >
+              部分成功 {{ batch.status.succeeded }}/{{
+                batch.status.succeeded + batch.status.failed
+              }}
+            </el-tag>
+            <el-tag
+              v-else-if="batch.status.type === 'failed'"
+              type="danger"
+              size="small"
+            >
+              失败
+            </el-tag>
+          </div>
+          <div class="task-actions">
+            <el-button size="small" link @click="toggleBatch(batch.id)">
+              {{ expandedBatches.has(batch.id) ? '收起' : '明细' }}
+            </el-button>
+          </div>
+          <div v-if="expandedBatches.has(batch.id)" class="batch-children">
+            <div
+              v-for="child in childrenOf(batch.id)"
+              :key="child.id"
+              class="batch-child"
+            >
+              <span :class="['child-mark', child.status.type]">
+                {{ childMark(child) }}
+              </span>
+              <span class="child-repo">{{ child.repoName }}</span>
+              <span
+                v-if="child.status.type === 'failed'"
+                class="child-error"
+              >
+                {{ child.status.error }}
+              </span>
+            </div>
           </div>
         </div>
       </el-scrollbar>
@@ -215,6 +291,51 @@ const finishedCount = computed(
     ).length,
 );
 
+// Batch grouping (T-20): children carry batchId; the batch row itself has
+// batchId null and its id equals the children's batchId.
+const batchIds = computed(() =>
+  new Set(
+    tasks.value
+      .map((t) => t.batchId)
+      .filter((b): b is string => !!b),
+  ),
+);
+const batchRows = computed(() =>
+  tasks.value.filter((t) => batchIds.value.has(t.id)),
+);
+const standaloneTasks = computed(() =>
+  tasks.value.filter((t) => !t.batchId && !batchIds.value.has(t.id)),
+);
+
+const expandedBatches = ref<Set<string>>(new Set());
+
+function childrenOf(batchId: string): Task[] {
+  return tasks.value.filter((t) => t.batchId === batchId);
+}
+
+function toggleBatch(batchId: string) {
+  const next = new Set(expandedBatches.value);
+  if (next.has(batchId)) {
+    next.delete(batchId);
+  } else {
+    next.add(batchId);
+  }
+  expandedBatches.value = next;
+}
+
+function childMark(task: Task): string {
+  switch (task.status.type) {
+    case "success":
+      return "✓";
+    case "failed":
+      return "✗";
+    case "cancelled":
+      return "⊘";
+    default:
+      return "…";
+  }
+}
+
 function taskTypeLabel(task: Task): string {
   switch (task.taskType.type) {
     case "fetch":
@@ -225,6 +346,8 @@ function taskTypeLabel(task: Task): string {
       return "Push";
     case "commit":
       return "Commit";
+    case "branchOp":
+      return "分支操作";
   }
 }
 
@@ -353,6 +476,44 @@ async function handleClear() {
 .task-repo {
   font-size: 13px;
   font-weight: 500;
+}
+
+.batch-item {
+  flex-wrap: wrap;
+}
+
+.batch-children {
+  width: 100%;
+  margin-top: 4px;
+  border-top: 1px dashed #ebeef5;
+  padding-top: 4px;
+}
+
+.batch-child {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  padding: 1px 0;
+}
+
+.child-mark {
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.child-mark.success {
+  color: #67c23a;
+}
+
+.child-mark.failed {
+  color: #f56c6c;
+}
+
+.child-error {
+  color: #f56c6c;
+  word-break: break-all;
 }
 
 .task-error {

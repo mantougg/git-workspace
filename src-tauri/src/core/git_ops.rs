@@ -112,6 +112,21 @@ impl GitOps {
             TaskType::Fetch => self.fetch(repo_path).map(Some),
             TaskType::Pull => self.pull(repo_path).map(Some),
             TaskType::Push => self.push(repo_path).map(Some),
+            // Bulk branch operation (T-20): local libgit2 ops, one repo per task.
+            TaskType::BranchOp { op, name, force } => {
+                match op {
+                    crate::models::task::BranchOpKind::Checkout => {
+                        crate::core::branch::checkout_branch(repo_path, name)?
+                    }
+                    crate::models::task::BranchOpKind::Create => {
+                        crate::core::branch::create_branch(repo_path, name, None)?
+                    }
+                    crate::models::task::BranchOpKind::Delete => {
+                        crate::core::branch::delete_branch(repo_path, name, *force)?
+                    }
+                }
+                Ok(None)
+            }
             TaskType::Commit { then_push, .. } => {
                 let outcome = self.commit(repo_path, &CommitOptions::from_task(task_type))?;
                 if !then_push {
@@ -505,6 +520,7 @@ fn run_git(repo_path: &Path, args: &[&str]) -> AppResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::task::BranchOpKind;
 
     fn tmpdir(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -797,6 +813,52 @@ mod tests {
         );
         // The commit itself survived the failed push.
         assert_eq!(head_commit(&dir).message().unwrap(), "cp");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Bulk branch ops execute per repo through the task path (T-20):
+    /// create, then checkout, then delete a branch via GitOps::execute.
+    #[test]
+    fn branch_op_task_create_checkout_delete() {
+        let dir = tmpdir("branchop");
+        init_repo(&dir, "a.txt", "one\n");
+        let ops = GitOps::with_default_ssh();
+
+        let mk = |op: BranchOpKind, name: &str, force: bool| TaskType::BranchOp {
+            op,
+            name: name.to_string(),
+            force,
+        };
+
+        ops.execute(&mk(BranchOpKind::Create, "feature", false), &dir)
+            .unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            assert!(
+                repo.find_branch("feature", git2::BranchType::Local).is_ok(),
+                "branch must be created"
+            );
+        }
+
+        ops.execute(&mk(BranchOpKind::Checkout, "feature", false), &dir)
+            .unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            let head = repo.head().unwrap();
+            assert_eq!(head.shorthand().unwrap(), "feature");
+        }
+
+        // Checked-out branch cannot be deleted (git refuses); go back first.
+        ops.execute(&mk(BranchOpKind::Checkout, "master", false), &dir)
+            .or_else(|_| ops.execute(&mk(BranchOpKind::Checkout, "main", false), &dir))
+            .unwrap();
+        ops.execute(&mk(BranchOpKind::Delete, "feature", false), &dir)
+            .unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            assert!(repo.find_branch("feature", git2::BranchType::Local).is_err());
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }

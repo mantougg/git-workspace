@@ -13,6 +13,12 @@ export type TaskType =
       allowUnsafe?: boolean;
       authorName?: string | null;
       authorEmail?: string | null;
+    }
+  | {
+      type: "branchOp";
+      op: "checkout" | "create" | "delete";
+      name: string;
+      force?: boolean;
     };
 
 export type TaskStatus =
@@ -30,6 +36,8 @@ export interface Task {
   repoName: string;
   status: TaskStatus;
   createdAt: string;
+  /** Batch this task belongs to (T-20); null for standalone/batch rows. */
+  batchId?: string | null;
 }
 
 export interface TaskRequest {
@@ -44,6 +52,8 @@ export interface TaskProgress {
   repoPath: string;
   repoName: string;
   status: TaskStatus;
+  /** Batch grouping key (T-20); null for the batch row itself. */
+  batchId?: string | null;
 }
 
 export interface CommitRequest {
