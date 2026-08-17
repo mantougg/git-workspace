@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use tauri::State;
 
+use crate::core::git_status;
 use crate::core::operation_log::{self, NewOperationLogItem};
 use crate::core::selector::{self, RepoFacet};
 use crate::db::dao;
@@ -35,9 +36,19 @@ pub fn select_repos(
         groups.into_iter().map(|g| (g.id, g.name)).collect();
 
     let facets: Vec<RepoFacet> = repos
-        .into_iter()
+        .into_par_iter()
         .map(|r| {
-            let status = state.status_cache.get(&r.path);
+            // T-02 status cache first; on miss, one live read that also
+            // backfills the cache (same pattern as change_set/health). This
+            // keeps @status:* selectors working even when the page was
+            // entered directly without a prior list_repositories/scan.
+            let status = match state.status_cache.get(&r.path) {
+                Some(s) => Some(s),
+                None => git_status::get_repo_status(Path::new(&r.path)).ok().map(|s| {
+                    state.status_cache.insert(r.path.clone(), s.clone());
+                    s
+                }),
+            };
             let (ahead, behind, dirty, detached) = match &status {
                 Some(s) => (s.ahead > 0, s.behind > 0, !s.is_clean, s.is_detached),
                 None => (false, false, false, false),

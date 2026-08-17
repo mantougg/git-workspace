@@ -301,12 +301,16 @@
             v-for="chip in quickChips"
             :key="chip.token"
             :checked="chip.active"
-            @change="toggleChip(chip)"
+            @change="(v: boolean) => toggleChip(chip, v)"
           >
             {{ chip.label }}
           </el-check-tag>
-          <span v-if="selectorActive" class="selector-count">
-            匹配 {{ selectorPaths.length }} 个仓库
+          <span v-if="selectorActive" class="selector-count" :class="{ 'is-empty': selectorPaths.length === 0 }">
+            <template v-if="!selectedWorkspaceId">请先选择工作区</template>
+            <template v-else>
+              匹配 {{ selectorPaths.length }} 个仓库
+              <template v-if="selectorPaths.length === 0">（无匹配：检查分组/标签/状态条件是否正确）</template>
+            </template>
           </span>
         </div>
         <div class="batch-row">
@@ -1323,6 +1327,10 @@ async function saveIdentity() {
 /** Selector query (debounced) against the in-memory repo facets (T-20). */
 let selectorTimer: number | undefined;
 watch(selectorQuery, (q) => {
+  // Keep the quick chips in sync when the query is edited by hand.
+  for (const chip of quickChips.value) {
+    chip.active = q.split(/\s+/).includes(chip.token);
+  }
   window.clearTimeout(selectorTimer);
   selectorTimer = window.setTimeout(async () => {
     const query = q.trim();
@@ -1339,13 +1347,19 @@ watch(selectorQuery, (q) => {
 });
 
 
-/** Toggle a quick-filter chip: add/remove its @status token in the query. */
-function toggleChip(chip: { token: string; active: boolean }) {
+/** Toggle a quick-filter chip: add/remove its @status token in the query.
+ * `checked` comes from el-check-tag's change event (its own toggle state),
+ * so the chip state and the query stay consistent. */
+function toggleChip(
+  chip: { token: string; active: boolean },
+  checked: boolean,
+) {
+  chip.active = checked;
   const tokens = selectorQuery.value
     .split(/\s+/)
     .filter(Boolean)
     .filter((t) => t !== chip.token);
-  if (chip.active) tokens.push(chip.token);
+  if (checked) tokens.push(chip.token);
   selectorQuery.value = tokens.join(" ");
 }
 
@@ -2111,6 +2125,10 @@ function viewConflicts() {
 .selector-count {
   font-size: 12px;
   color: #909399;
+}
+
+.selector-count.is-empty {
+  color: #e6a23c;
 }
 
 .affected-repo-list {

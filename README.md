@@ -154,4 +154,4 @@ pnpm tauri build
 
 ## 署名
 
-- **作者：wangyi**
+- **作者：mantougg**
