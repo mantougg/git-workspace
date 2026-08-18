@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**6** · 进行中：**0** · 未开始：**20**
-- 完成度：**6 / 26（23%）**
+- 已完成：**7** · 进行中：**0** · 未开始：**19**
+- 完成度：**7 / 26（27%）**
 
 ## MVP 口径（源文档 §91 / §92）
 
@@ -48,7 +48,7 @@
 | R-04 | JDK 检测与 JDK Manager | P0 | ✅ | — | [R-04-jdk-manager.md](./R-04-jdk-manager.md) |
 | R-05 | Maven 检测与执行策略（mvn / mvnw） | P0 | ✅ | — | [R-05-maven-detection.md](./R-05-maven-detection.md) |
 | R-06 | Spring Boot 应用发现与 Main Class 推断 | P0 | ✅ | R-01 | [R-06-spring-boot-detection.md](./R-06-spring-boot-detection.md) |
-| R-07 | Runtime 配置体系（Config / 环境变量 / 配置分层） | P0 | ⬜ | R-02 | [R-07-runtime-config.md](./R-07-runtime-config.md) |
+| R-07 | Runtime 配置体系（Config / 环境变量 / 配置分层） | P0 | ✅ | R-02 | [R-07-runtime-config.md](./R-07-runtime-config.md) |
 | R-08 | Runtime Benchmark 与性能基线 | P0 | ⬜ | R-01, T-07 | [R-08-runtime-benchmark.md](./R-08-runtime-benchmark.md) |
 
 ### Phase 1 · 构建运行闭环（P0，6 个）

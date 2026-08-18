@@ -104,6 +104,16 @@ pub fn mask_secrets(text: &str) -> String {
     out
 }
 
+/// Whether an environment variable name is sensitive enough to redact across
+/// IPC/UI boundaries. Keep this key policy next to the shared T-08 secret
+/// scanner so Runtime config and logs cannot drift into separate rules.
+pub fn is_sensitive_environment_key(key: &str) -> bool {
+    let upper = key.to_ascii_uppercase();
+    ["PASSWORD", "TOKEN", "SECRET", "PRIVATE_KEY", "API_KEY"]
+        .iter()
+        .any(|needle| upper.contains(needle))
+}
+
 /// Whether a path (or bare file name) must never be committed without
 /// explicit confirmation: env files, private keys, credential bundles.
 pub fn is_forbidden_file(path: &str) -> bool {
@@ -171,6 +181,13 @@ mod tests {
     fn mask_leaves_clean_text_untouched() {
         let text = "just a normal sentence";
         assert_eq!(mask_secrets(text), text);
+    }
+
+    #[test]
+    fn sensitive_environment_keys_are_detected() {
+        assert!(is_sensitive_environment_key("DB_PASSWORD"));
+        assert!(is_sensitive_environment_key("api_token"));
+        assert!(!is_sensitive_environment_key("SERVER_PORT"));
     }
 
     #[test]

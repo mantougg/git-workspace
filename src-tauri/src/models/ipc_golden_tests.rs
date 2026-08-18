@@ -30,7 +30,7 @@ use crate::maven::{
     model as maven_model, reactor as maven_reactor, resolver as maven_resolver,
 };
 use crate::models::{commit, group, repository, task, workspace};
-use crate::runtime::spring_boot as spring_boot_model;
+use crate::runtime::{config as runtime_config, spring_boot as spring_boot_model};
 
 /// Representative sample of every IPC type, keyed by Rust type name.
 /// Enum (tagged-union) types serialize as an array of all variants.
@@ -214,6 +214,55 @@ fn samples() -> Map<String, Value> {
         json!(spring_boot_model::SpringBootWorkspaceResult {
             projects: vec![],
             elapsed_ms: 12,
+        }),
+    );
+    // R-07 Runtime configuration
+    let runtime_sample = runtime_config::RuntimeApplicationConfig {
+        schema_version: 1,
+        name: "boot".into(),
+        project: "repo-boot".into(),
+        main_class: Some("com.example.Application".into()),
+        jdk: Some("21".into()),
+        profile: Some("dev".into()),
+        vm_options: vec!["-Xmx1g".into()],
+        program_arguments: vec!["--server.port=8080".into()],
+        environment: BTreeMap::from([("SERVER_PORT".into(), "8080".into())]),
+        runtime_environment: BTreeMap::from([("RUNTIME_FLAG".into(), "on".into())]),
+        build_engine: Some("maven".into()),
+    };
+    m.insert(
+        "RuntimeApplicationConfig".into(),
+        json!(runtime_sample.clone()),
+    );
+    m.insert(
+        "RuntimeConfigSummary".into(),
+        json!(runtime_config::RuntimeConfigSummary {
+            id: 1,
+            workspace_id: 2,
+            name: "boot".into(),
+            project: "repo-boot".into(),
+            main_class: Some("com.example.Application".into()),
+            jdk: Some("21".into()),
+            profile: Some("dev".into()),
+            build_engine: Some("maven".into()),
+            config_path: "/ws/.gitworkspace/runtimes/boot.json".into(),
+            created_at: "2026-08-18T00:00:00Z".into(),
+            updated_at: "2026-08-18T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "CreateRuntimeConfigRequest".into(),
+        json!(runtime_config::CreateRuntimeConfigRequest {
+            workspace_id: 2,
+            config: runtime_sample.clone(),
+        }),
+    );
+    m.insert(
+        "UpdateRuntimeConfigRequest".into(),
+        json!(runtime_config::UpdateRuntimeConfigRequest {
+            workspace_id: 2,
+            name: "boot".into(),
+            config: runtime_sample,
         }),
     );
     m.insert(
@@ -1566,6 +1615,27 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "SpringBootWorkspaceResult",
         "types/springBoot.ts",
         "SpringBootWorkspaceResult",
+    ),
+    // R-07 Runtime configuration
+    (
+        "RuntimeApplicationConfig",
+        "types/runtime.ts",
+        "RuntimeApplicationConfig",
+    ),
+    (
+        "RuntimeConfigSummary",
+        "types/runtime.ts",
+        "RuntimeConfigSummary",
+    ),
+    (
+        "CreateRuntimeConfigRequest",
+        "types/runtime.ts",
+        "CreateRuntimeConfigRequest",
+    ),
+    (
+        "UpdateRuntimeConfigRequest",
+        "types/runtime.ts",
+        "UpdateRuntimeConfigRequest",
     ),
     // R-02 dependency graph
     ("DependencyGraph", "types/maven.ts", "DependencyGraph"),

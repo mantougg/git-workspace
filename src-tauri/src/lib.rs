@@ -276,6 +276,15 @@ pub fn run() {
             commands::maven::build_maven_command,
             // Spring Boot application discovery (R-06)
             commands::spring_boot::detect_spring_boot,
+            // Runtime configuration (R-07)
+            commands::runtime::create_runtime_config,
+            commands::runtime::update_runtime_config,
+            commands::runtime::delete_runtime_config,
+            commands::runtime::list_runtime_configs,
+            commands::runtime::get_runtime_config,
+            commands::runtime::resolve_runtime_environment,
+            commands::runtime::get_workspace_runtime_environment,
+            commands::runtime::set_workspace_runtime_environment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

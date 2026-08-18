@@ -592,7 +592,14 @@ CREATE INDEX IF NOT EXISTS idx_maven_executables_valid ON maven_executables(is_v
 CREATE INDEX IF NOT EXISTS idx_maven_executables_source ON maven_executables(source);
 "#;
 
+/// v11 (R-07): persist the user-facing Maven project selector alongside the
+/// Runtime metadata index. The full Runtime configuration remains in the
+/// version-controlled JSON document under `.gitworkspace/runtimes/`.
+pub const SCHEMA_V11: &str = r#"
+ALTER TABLE runtime_projects ADD COLUMN project TEXT NOT NULL DEFAULT '';
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
-    SCHEMA_V9, SCHEMA_V10,
+    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11,
 ];

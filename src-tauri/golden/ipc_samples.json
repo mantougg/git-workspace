@@ -202,6 +202,30 @@
     "parentId": null,
     "workspaceId": 2
   },
+  "CreateRuntimeConfigRequest": {
+    "config": {
+      "buildEngine": "maven",
+      "environment": {
+        "SERVER_PORT": "8080"
+      },
+      "jdk": "21",
+      "mainClass": "com.example.Application",
+      "name": "boot",
+      "profile": "dev",
+      "programArguments": [
+        "--server.port=8080"
+      ],
+      "project": "repo-boot",
+      "runtimeEnvironment": {
+        "RUNTIME_FLAG": "on"
+      },
+      "schemaVersion": 1,
+      "vmOptions": [
+        "-Xmx1g"
+      ]
+    },
+    "workspaceId": 2
+  },
   "CreateWorkspaceRequest": {
     "name": "ws",
     "path": "/ws",
@@ -948,6 +972,27 @@
     "issues": [],
     "summary": "ok"
   },
+  "RuntimeApplicationConfig": {
+    "buildEngine": "maven",
+    "environment": {
+      "SERVER_PORT": "8080"
+    },
+    "jdk": "21",
+    "mainClass": "com.example.Application",
+    "name": "boot",
+    "profile": "dev",
+    "programArguments": [
+      "--server.port=8080"
+    ],
+    "project": "repo-boot",
+    "runtimeEnvironment": {
+      "RUNTIME_FLAG": "on"
+    },
+    "schemaVersion": 1,
+    "vmOptions": [
+      "-Xmx1g"
+    ]
+  },
   "RuntimeClosure": {
     "graphFingerprint": "graph-hash",
     "mode": "hybrid",
@@ -967,6 +1012,19 @@
     ],
     "rootProjectId": 10,
     "workspaceId": 1
+  },
+  "RuntimeConfigSummary": {
+    "buildEngine": "maven",
+    "configPath": "/ws/.gitworkspace/runtimes/boot.json",
+    "createdAt": "2026-08-18T00:00:00Z",
+    "id": 1,
+    "jdk": "21",
+    "mainClass": "com.example.Application",
+    "name": "boot",
+    "profile": "dev",
+    "project": "repo-boot",
+    "updatedAt": "2026-08-18T00:00:00Z",
+    "workspaceId": 2
   },
   "RuntimeReactorPlan": {
     "arguments": [
@@ -1265,6 +1323,31 @@
     "description": "new desc",
     "id": 1,
     "name": "renamed"
+  },
+  "UpdateRuntimeConfigRequest": {
+    "config": {
+      "buildEngine": "maven",
+      "environment": {
+        "SERVER_PORT": "8080"
+      },
+      "jdk": "21",
+      "mainClass": "com.example.Application",
+      "name": "boot",
+      "profile": "dev",
+      "programArguments": [
+        "--server.port=8080"
+      ],
+      "project": "repo-boot",
+      "runtimeEnvironment": {
+        "RUNTIME_FLAG": "on"
+      },
+      "schemaVersion": 1,
+      "vmOptions": [
+        "-Xmx1g"
+      ]
+    },
+    "name": "boot",
+    "workspaceId": 2
   },
   "UpdateWorkspaceRequest": {
     "name": "ws2",

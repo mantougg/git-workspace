@@ -54,6 +54,9 @@ pub enum AppError {
     #[error("Maven not found: {0}")]
     MavenNotFound(String),
 
+    #[error("Runtime configuration error: {0}")]
+    RuntimeConfig(String),
+
     #[error("Network error: {0}")]
     Network(String),
 
@@ -91,6 +94,7 @@ impl AppError {
             AppError::ProjectNotFound(_) => "ProjectNotFound",
             AppError::JdkNotFound(_) => "JdkNotFound",
             AppError::MavenNotFound(_) => "MavenNotFound",
+            AppError::RuntimeConfig(_) => "RuntimeConfigError",
             AppError::Task(_) => "TaskError",
             AppError::Network(_) => "NetworkError",
             AppError::Conflict(_) => "ConflictError",

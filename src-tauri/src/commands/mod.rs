@@ -19,6 +19,7 @@ pub mod manifest;
 pub mod maven;
 pub mod pipeline;
 pub mod repository;
+pub mod runtime;
 pub mod task;
 pub mod workspace;
 pub mod worktree;
