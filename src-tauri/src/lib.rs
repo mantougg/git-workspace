@@ -7,6 +7,7 @@ pub mod maven;
 mod models;
 mod state;
 mod task;
+pub mod runtime;
 
 pub mod benchmark;
 
@@ -273,6 +274,8 @@ pub fn run() {
             commands::maven::preview_maven_command,
             commands::maven::list_maven_candidates,
             commands::maven::build_maven_command,
+            // Spring Boot application discovery (R-06)
+            commands::spring_boot::detect_spring_boot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

@@ -1033,6 +1033,34 @@
     "recoverable": true,
     "repository": null
   },
+  "SpringBootCandidate": {
+    "className": "com.example.Application",
+    "module": "app",
+    "simpleName": "Application",
+    "sourcePath": "/ws/repo/src/main/java/com/example/Application.java"
+  },
+  "SpringBootProject": {
+    "candidates": [
+      {
+        "className": "com.example.Application",
+        "module": "app",
+        "simpleName": "Application",
+        "sourcePath": "/ws/repo/src/main/java/com/example/Application.java"
+      }
+    ],
+    "defaultMainClass": "com.example.Application",
+    "isSpringBoot": true,
+    "module": "app",
+    "projectPath": "/ws/repo/pom.xml",
+    "sourceFilesScanned": 1,
+    "sourceScanTruncated": false,
+    "springBootDependency": true,
+    "springBootPlugin": true
+  },
+  "SpringBootWorkspaceResult": {
+    "elapsedMs": 12,
+    "projects": []
+  },
   "StashEntry": {
     "index": 0,
     "message": "On master: work",

@@ -5,7 +5,9 @@ use rusqlite::Connection;
 
 use crate::core::diff::FileDiff;
 use crate::core::watcher::FileWatcher;
+use crate::maven::PomCache;
 use crate::models::repository::RepoStatus;
+use crate::runtime::spring_boot::SpringBootDetectionCache;
 use crate::task::manager::TaskManager;
 
 /// Upper bound on the in-memory status cache (LRU).
@@ -64,6 +66,13 @@ pub struct AppState {
     /// `(repo_path, old_oid, new_oid, flags)`. Holds only plain data
     /// (`Vec<FileDiff>`), never libgit2 handles; bounded LRU.
     pub diff_cache: Arc<Cache<DiffCacheKey, Vec<FileDiff>>>,
+
+    /// Runtime Maven POM cache shared by discovery and Spring Boot detection.
+    pub pom_cache: Arc<PomCache>,
+
+    /// Runtime Spring Boot source detection cache. Keys include POM and source
+    /// fingerprints, so watcher-driven content changes naturally refresh it.
+    pub spring_boot_cache: Arc<SpringBootDetectionCache>,
 }
 
 /// Build the bounded LRU status cache.
@@ -93,6 +102,8 @@ impl AppState {
             task_manager,
             watcher: Mutex::new(FileWatcher::new()),
             diff_cache: Arc::new(build_diff_cache()),
+            pom_cache: Arc::new(PomCache::new()),
+            spring_boot_cache: Arc::new(SpringBootDetectionCache::new()),
         }
     }
 }

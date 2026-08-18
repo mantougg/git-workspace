@@ -30,6 +30,7 @@ use crate::maven::{
     model as maven_model, reactor as maven_reactor, resolver as maven_resolver,
 };
 use crate::models::{commit, group, repository, task, workspace};
+use crate::runtime::spring_boot as spring_boot_model;
 
 /// Representative sample of every IPC type, keyed by Rust type name.
 /// Enum (tagged-union) types serialize as an array of all variants.
@@ -175,6 +176,44 @@ fn samples() -> Map<String, Value> {
                 version: Some("3.3.0".into()),
             }],
             file_hash: "0123456789abcdef".into(),
+        }),
+    );
+    // R-06 Spring Boot application discovery
+    m.insert(
+        "SpringBootCandidate".into(),
+        json!(spring_boot_model::SpringBootCandidate {
+            class_name: "com.example.Application".into(),
+            simple_name: "Application".into(),
+            module: "app".into(),
+            source_path: PathBuf::from("/ws/repo/src/main/java/com/example/Application.java"),
+        }),
+    );
+    m.insert(
+        "SpringBootProject".into(),
+        json!(spring_boot_model::SpringBootProject {
+            project_path: PathBuf::from("/ws/repo/pom.xml"),
+            module: "app".into(),
+            spring_boot_plugin: true,
+            spring_boot_dependency: true,
+            is_spring_boot: true,
+            candidates: vec![spring_boot_model::SpringBootCandidate {
+                class_name: "com.example.Application".into(),
+                simple_name: "Application".into(),
+                module: "app".into(),
+                source_path: PathBuf::from(
+                    "/ws/repo/src/main/java/com/example/Application.java",
+                ),
+            }],
+            default_main_class: Some("com.example.Application".into()),
+            source_files_scanned: 1,
+            source_scan_truncated: false,
+        }),
+    );
+    m.insert(
+        "SpringBootWorkspaceResult".into(),
+        json!(spring_boot_model::SpringBootWorkspaceResult {
+            projects: vec![],
+            elapsed_ms: 12,
         }),
     );
     m.insert(
@@ -1512,6 +1551,22 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("RepoChanges", "types/changes.ts", "RepoChanges"),
     // R-01 Maven model
     ("MavenProject", "types/maven.ts", "MavenProject"),
+    // R-06 Spring Boot application discovery
+    (
+        "SpringBootCandidate",
+        "types/springBoot.ts",
+        "SpringBootCandidate",
+    ),
+    (
+        "SpringBootProject",
+        "types/springBoot.ts",
+        "SpringBootProject",
+    ),
+    (
+        "SpringBootWorkspaceResult",
+        "types/springBoot.ts",
+        "SpringBootWorkspaceResult",
+    ),
     // R-02 dependency graph
     ("DependencyGraph", "types/maven.ts", "DependencyGraph"),
     // R-03 Runtime Closure and Reactor
