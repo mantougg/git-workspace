@@ -45,6 +45,15 @@ pub enum AppError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    #[error("Project not found: {0}")]
+    ProjectNotFound(String),
+
+    #[error("JDK not found: {0}")]
+    JdkNotFound(String),
+
+    #[error("Maven not found: {0}")]
+    MavenNotFound(String),
+
     #[error("Network error: {0}")]
     Network(String),
 
@@ -53,6 +62,12 @@ pub enum AppError {
 
     #[error("Index error: {0}")]
     Index(String),
+
+    #[error("Dependency resolution failed: {0}")]
+    DependencyResolve(String),
+
+    #[error("Source mapping failed: {0}")]
+    SourceMapping(String),
 
     #[error("AI error: {0}")]
     Ai(String),
@@ -73,10 +88,15 @@ impl AppError {
             AppError::Io(_) | AppError::Watcher(_) => "IOError",
             AppError::Json(_) => "DataError",
             AppError::Scanner(_) | AppError::NotFound(_) => "RepositoryError",
+            AppError::ProjectNotFound(_) => "ProjectNotFound",
+            AppError::JdkNotFound(_) => "JdkNotFound",
+            AppError::MavenNotFound(_) => "MavenNotFound",
             AppError::Task(_) => "TaskError",
             AppError::Network(_) => "NetworkError",
             AppError::Conflict(_) => "ConflictError",
             AppError::Index(_) => "IndexError",
+            AppError::DependencyResolve(_) => "DependencyResolveFailed",
+            AppError::SourceMapping(_) => "SourceMappingFailed",
             AppError::Ai(_) => "AIError",
             AppError::Permission(_) => "PermissionError",
             AppError::Other(_) => "Other",
@@ -123,3 +143,30 @@ impl Serialize for AppError {
 
 /// Convenience type alias for command return types.
 pub type AppResult<T> = Result<T, AppError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_dependency_errors_keep_actionable_codes() {
+        for (error, code) in [
+            (
+                AppError::DependencyResolve("missing effective model".into()),
+                "DependencyResolveFailed",
+            ),
+            (
+                AppError::SourceMapping("ambiguous source".into()),
+                "SourceMappingFailed",
+            ),
+            (
+                AppError::ProjectNotFound("missing Maven module".into()),
+                "ProjectNotFound",
+            ),
+        ] {
+            let payload = serde_json::to_value(error).unwrap();
+            assert_eq!(payload["code"], code);
+            assert_eq!(payload["recoverable"], true);
+        }
+    }
+}

@@ -296,6 +296,71 @@
     ],
     "onFailure": "continue"
   },
+  "DependencyGraph": {
+    "dependencies": [
+      {
+        "dependency": {
+          "artifactId": "library",
+          "classifier": null,
+          "depType": "jar",
+          "exclusions": [],
+          "groupId": "com.example",
+          "optional": false,
+          "scope": "compile",
+          "version": "1.0.0"
+        },
+        "dependencyId": 20,
+        "fromProjectId": 10,
+        "reason": "workspaceExactMatch",
+        "resolvedPath": "/ws/library",
+        "source": "workspaceSource",
+        "sourceProjectId": 11
+      }
+    ],
+    "fingerprint": "graph-hash",
+    "modules": [
+      {
+        "declaredPath": "library",
+        "moduleProjectId": 11,
+        "parentProjectId": 10
+      }
+    ],
+    "projects": [
+      {
+        "coordinates": {
+          "artifactId": "app",
+          "groupId": "com.example",
+          "version": "1.0.0"
+        },
+        "packaging": "jar",
+        "path": "/ws/repo/pom.xml",
+        "pomHash": "pom-hash",
+        "projectId": 10,
+        "repositoryId": 2
+      }
+    ],
+    "sourceMappings": [
+      {
+        "coordinates": {
+          "artifactId": "library",
+          "groupId": "com.example",
+          "version": "1.0.0"
+        },
+        "projectId": 11,
+        "projectPath": "/ws/library",
+        "repositoryId": 3
+      }
+    ],
+    "workspaceId": 1
+  },
+  "DependencyResolveFailedError": {
+    "code": "DependencyResolveFailed",
+    "details": null,
+    "message": "Dependency resolution failed: missing effective model",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
   "DiffLine": {
     "content": "let x = 1;",
     "lineType": "add",
@@ -360,6 +425,50 @@
     "oldLines": 2,
     "oldStart": 1
   },
+  "JdkDiscoverySource": [
+    "system",
+    "javaHome",
+    "path",
+    "mise",
+    "jenv",
+    "sdkman",
+    "manual"
+  ],
+  "JdkInstallation": {
+    "architecture": "x86_64",
+    "bitness": 64,
+    "createdAt": "2026-08-18T00:00:00Z",
+    "fullVersion": "17.0.12",
+    "homePath": "/Library/Java/JavaVirtualMachines/temurin-17",
+    "id": 1,
+    "isValid": true,
+    "javaExec": "/Library/Java/JavaVirtualMachines/temurin-17/bin/java",
+    "javacExec": "/Library/Java/JavaVirtualMachines/temurin-17/bin/javac",
+    "lastChecked": "2026-08-18T00:00:00Z",
+    "majorVersion": 17,
+    "rawVersion": "openjdk version \"17.0.12\"",
+    "source": "system",
+    "updatedAt": "2026-08-18T00:00:00Z",
+    "vendor": "temurin"
+  },
+  "JdkNotFoundError": {
+    "code": "JdkNotFound",
+    "details": null,
+    "message": "JDK not found: 未在 /opt/jdk/bin 下找到 java 可执行文件",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
+  "JdkVendor": [
+    "oracle",
+    "openJdk",
+    "temurin",
+    "corretto",
+    "graalVm",
+    "zulu",
+    "liberica",
+    "other"
+  ],
   "LogFileInfo": {
     "name": "app.log",
     "path": "/logs/app.log",
@@ -374,6 +483,101 @@
     "tags": [
       "vue"
     ]
+  },
+  "MavenExecutable": {
+    "createdAt": "2026-08-18T00:00:00Z",
+    "executablePath": "/proj/mvnw",
+    "fullVersion": "3.9.6",
+    "id": 1,
+    "isValid": true,
+    "lastChecked": "2026-08-18T00:00:00Z",
+    "majorVersion": 3,
+    "projectPath": "/proj",
+    "rawVersion": "Apache Maven 3.9.6",
+    "source": "projectWrapper",
+    "updatedAt": "2026-08-18T00:00:00Z"
+  },
+  "MavenExecutionRequest": {
+    "executable": "/proj/mvnw",
+    "extraArgs": [
+      "-DskipTests"
+    ],
+    "goals": [
+      "clean",
+      "install"
+    ],
+    "localRepository": "/home/alice/.m2/repository",
+    "viaCmdC": true,
+    "workingDir": "/proj"
+  },
+  "MavenNotFoundError": {
+    "code": "MavenNotFound",
+    "details": null,
+    "message": "Maven not found: 未在项目 /proj 找到可用的 Maven（wrapper / 配置 / 系统三者皆缺）",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
+  "MavenProject": {
+    "artifactId": "app",
+    "dependencies": [
+      {
+        "artifactId": "library",
+        "classifier": null,
+        "depType": "jar",
+        "exclusions": [],
+        "groupId": "com.example",
+        "optional": false,
+        "scope": "runtime",
+        "version": "2.0.0"
+      }
+    ],
+    "dependencyManagement": [],
+    "fileHash": "0123456789abcdef",
+    "groupId": "com.example",
+    "modules": [
+      {
+        "path": "module-a"
+      }
+    ],
+    "packaging": "jar",
+    "parent": {
+      "artifactId": "parent",
+      "groupId": "com.example",
+      "relativePath": "../pom.xml",
+      "version": "1.0.0"
+    },
+    "path": "/ws/repo/pom.xml",
+    "plugins": [
+      {
+        "artifactId": "spring-boot-maven-plugin",
+        "groupId": "org.springframework.boot",
+        "version": "3.3.0"
+      }
+    ],
+    "profiles": [
+      {
+        "dependencies": [],
+        "id": "dev",
+        "properties": {
+          "spring.profiles.active": "dev"
+        }
+      }
+    ],
+    "properties": {
+      "java.version": "21"
+    },
+    "version": "1.0.0"
+  },
+  "MavenSource": [
+    "projectWrapper",
+    "configured",
+    "system"
+  ],
+  "MavenVersionInfo": {
+    "fullVersion": "3.9.6",
+    "majorVersion": 3,
+    "raw": "Apache Maven 3.9.6 (bc0240f3c744)"
   },
   "MergeOutcome": [
     {
@@ -560,6 +764,14 @@
     "retries": 1,
     "timeoutSecs": 600
   },
+  "ProjectNotFoundError": {
+    "code": "ProjectNotFound",
+    "details": null,
+    "message": "Project not found: missing Maven module",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
   "RebaseOp": {
     "action": "pick",
     "message": "msg",
@@ -702,6 +914,23 @@
     "previousHead": "abc123",
     "target": "def456"
   },
+  "ResolvedMaven": {
+    "executable": {
+      "createdAt": null,
+      "executablePath": "/usr/bin/mvn",
+      "fullVersion": "3.9.6",
+      "id": null,
+      "isValid": true,
+      "lastChecked": "2026-08-18T00:00:00Z",
+      "majorVersion": 3,
+      "projectPath": null,
+      "rawVersion": "Apache Maven 3.9.6",
+      "source": "system",
+      "updatedAt": null
+    },
+    "localRepository": "/home/alice/.m2/repository",
+    "usesWrapper": false
+  },
   "RestoreRequest": {
     "files": [
       "a.rs"
@@ -719,6 +948,58 @@
     "issues": [],
     "summary": "ok"
   },
+  "RuntimeClosure": {
+    "graphFingerprint": "graph-hash",
+    "mode": "hybrid",
+    "projects": [
+      {
+        "coordinates": {
+          "artifactId": "app",
+          "groupId": "com.example",
+          "version": "1.0.0"
+        },
+        "packaging": "jar",
+        "path": "/ws/repo/pom.xml",
+        "pomHash": "pom-hash",
+        "projectId": 10,
+        "repositoryId": 2
+      }
+    ],
+    "rootProjectId": 10,
+    "workspaceId": 1
+  },
+  "RuntimeReactorPlan": {
+    "arguments": [
+      "-f",
+      "/ws/.gitworkspace/runtime/app/pom.xml"
+    ],
+    "kind": "synthetic",
+    "modulePaths": [
+      "/ws/repo"
+    ],
+    "pomPath": "/ws/.gitworkspace/runtime/app/pom.xml"
+  },
+  "RuntimeScope": [
+    {
+      "mode": "auto"
+    },
+    {
+      "mode": "manual",
+      "projectIds": [
+        10,
+        11
+      ]
+    },
+    {
+      "excludeProjectIds": [
+        13
+      ],
+      "includeProjectIds": [
+        12
+      ],
+      "mode": "hybrid"
+    }
+  ],
   "SaveWorkspaceStashResult": {
     "id": 1,
     "items": [
@@ -743,6 +1024,14 @@
     "rank": 0.5,
     "repoPath": "/ws/repo",
     "snippet": "let x"
+  },
+  "SourceMappingFailedError": {
+    "code": "SourceMappingFailed",
+    "details": null,
+    "message": "Source mapping failed: ambiguous workspace source",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
   },
   "StashEntry": {
     "index": 0,

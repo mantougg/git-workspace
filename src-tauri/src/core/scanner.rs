@@ -191,7 +191,7 @@ impl RepoScanner {
 /// - `third_party/`   → same
 /// - `generated/`     → same
 /// - `sub/dir/`       → relative path prefix, ignored under that prefix
-struct IgnoreRules {
+pub(crate) struct IgnoreRules {
     /// Bare directory names (no `/`), matched against the entry's file name.
     names: Vec<String>,
     /// Relative path prefixes (contain `/`), stored with a trailing `/`.
@@ -199,7 +199,7 @@ struct IgnoreRules {
 }
 
 impl IgnoreRules {
-    fn load(root: &Path) -> Self {
+    pub(crate) fn load(root: &Path) -> Self {
         let mut names = Vec::new();
         let mut path_prefixes = Vec::new();
         if let Ok(content) = std::fs::read_to_string(root.join(".gitworkspaceignore")) {
@@ -221,7 +221,7 @@ impl IgnoreRules {
         IgnoreRules { names, path_prefixes }
     }
 
-    fn is_ignored(&self, name: &str, relative: &str) -> bool {
+    pub(crate) fn is_ignored(&self, name: &str, relative: &str) -> bool {
         if self.names.iter().any(|n| n == name) {
             return true;
         }
@@ -234,7 +234,7 @@ impl IgnoreRules {
 /// Check if a directory name should be skipped during traversal.
 /// These are common build output / dependency directories that
 /// will never contain useful Git repositories and slow down scanning.
-fn is_skip_dir(name: &OsStr) -> bool {
+pub(crate) fn is_skip_dir(name: &OsStr) -> bool {
     matches!(
         name.to_str(),
         Some("node_modules")
@@ -431,4 +431,3 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 }
-

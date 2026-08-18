@@ -34,6 +34,8 @@ app-icon.png
 # Reasonix workspace metadata
 .reasonix/
 .agents
+.omx
+.zcode
 
 # Runtime artifacts
 GitWorkspace.exe

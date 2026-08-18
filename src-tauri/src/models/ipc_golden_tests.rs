@@ -24,6 +24,11 @@ use serde_json::{json, Map, Value};
 use crate::commands::{ai, batch as batch_cmd, diff as diff_cmd, git_ops, logs};
 use crate::core::{branch as branch_core, change_set, conflict as conflict_core, diff, graph, health as health_core, history as history_core, manifest, merge as merge_core, operation_log, pipeline, rebase as rebase_core, reflog as reflog_core, stash as stash_core, worktree as worktree_core, workspace_stash};
 use crate::error::AppError;
+use crate::java::model as jdk_model;
+use crate::maven::{
+    closure as maven_closure, exec_model as maven_exec_model, index as maven_index,
+    model as maven_model, reactor as maven_reactor, resolver as maven_resolver,
+};
 use crate::models::{commit, group, repository, task, workspace};
 
 /// Representative sample of every IPC type, keyed by Rust type name.
@@ -127,6 +132,267 @@ fn samples() -> Map<String, Value> {
             behind: 0,
             changes: vec![],
         }),
+    );
+
+    // R-01 Maven model
+    m.insert(
+        "MavenProject".into(),
+        json!(maven_model::MavenProject {
+            path: PathBuf::from("/ws/repo/pom.xml"),
+            group_id: "com.example".into(),
+            artifact_id: "app".into(),
+            version: "1.0.0".into(),
+            packaging: "jar".into(),
+            parent: Some(maven_model::MavenParent {
+                group_id: "com.example".into(),
+                artifact_id: "parent".into(),
+                version: "1.0.0".into(),
+                relative_path: Some("../pom.xml".into()),
+            }),
+            modules: vec![maven_model::MavenModule {
+                path: "module-a".into(),
+            }],
+            dependencies: vec![maven_model::MavenDependency {
+                group_id: "com.example".into(),
+                artifact_id: "library".into(),
+                version: Some("2.0.0".into()),
+                scope: maven_model::DependencyScope::Runtime,
+                optional: false,
+                dep_type: "jar".into(),
+                classifier: None,
+                exclusions: vec![],
+            }],
+            dependency_management: vec![],
+            profiles: vec![maven_model::MavenProfile {
+                id: "dev".into(),
+                properties: BTreeMap::from([("spring.profiles.active".into(), "dev".into())]),
+                dependencies: vec![],
+            }],
+            properties: BTreeMap::from([("java.version".into(), "21".into())]),
+            plugins: vec![maven_model::MavenPlugin {
+                group_id: "org.springframework.boot".into(),
+                artifact_id: "spring-boot-maven-plugin".into(),
+                version: Some("3.3.0".into()),
+            }],
+            file_hash: "0123456789abcdef".into(),
+        }),
+    );
+    m.insert(
+        "DependencyGraph".into(),
+        json!(maven_index::DependencyGraph {
+            workspace_id: 1,
+            fingerprint: "graph-hash".into(),
+            projects: vec![maven_index::MavenProjectNode {
+                project_id: 10,
+                repository_id: Some(2),
+                path: PathBuf::from("/ws/repo/pom.xml"),
+                coordinates: maven_model::PomCoordinates {
+                    group_id: "com.example".into(),
+                    artifact_id: "app".into(),
+                    version: "1.0.0".into(),
+                },
+                packaging: "jar".into(),
+                pom_hash: "pom-hash".into(),
+            }],
+            dependencies: vec![maven_index::DependencyEdge {
+                dependency_id: 20,
+                from_project_id: 10,
+                dependency: maven_model::MavenDependency {
+                    group_id: "com.example".into(),
+                    artifact_id: "library".into(),
+                    version: Some("1.0.0".into()),
+                    scope: maven_model::DependencyScope::Compile,
+                    optional: false,
+                    dep_type: "jar".into(),
+                    classifier: None,
+                    exclusions: vec![],
+                },
+                source: maven_resolver::DependencySource::WorkspaceSource,
+                source_project_id: Some(11),
+                resolved_path: Some(PathBuf::from("/ws/library")),
+                reason: maven_resolver::ResolutionReason::WorkspaceExactMatch,
+            }],
+            modules: vec![maven_index::MavenModuleLink {
+                parent_project_id: 10,
+                module_project_id: Some(11),
+                declared_path: "library".into(),
+            }],
+            source_mappings: vec![maven_index::SourceMapping {
+                coordinates: maven_model::PomCoordinates {
+                    group_id: "com.example".into(),
+                    artifact_id: "library".into(),
+                    version: "1.0.0".into(),
+                },
+                repository_id: Some(3),
+                project_id: 11,
+                project_path: PathBuf::from("/ws/library"),
+            }],
+        }),
+    );
+    m.insert(
+        "RuntimeScope".into(),
+        json!([
+            maven_closure::RuntimeScope::Auto,
+            maven_closure::RuntimeScope::Manual {
+                project_ids: vec![10, 11],
+            },
+            maven_closure::RuntimeScope::Hybrid {
+                include_project_ids: vec![12],
+                exclude_project_ids: vec![13],
+            },
+        ]),
+    );
+    m.insert(
+        "RuntimeClosure".into(),
+        json!(maven_closure::RuntimeClosure {
+            workspace_id: 1,
+            root_project_id: 10,
+            graph_fingerprint: "graph-hash".into(),
+            mode: maven_closure::RuntimeScopeMode::Hybrid,
+            projects: vec![maven_index::MavenProjectNode {
+                project_id: 10,
+                repository_id: Some(2),
+                path: PathBuf::from("/ws/repo/pom.xml"),
+                coordinates: maven_model::PomCoordinates {
+                    group_id: "com.example".into(),
+                    artifact_id: "app".into(),
+                    version: "1.0.0".into(),
+                },
+                packaging: "jar".into(),
+                pom_hash: "pom-hash".into(),
+            }],
+        }),
+    );
+    m.insert(
+        "RuntimeReactorPlan".into(),
+        json!(maven_reactor::RuntimeReactorPlan {
+            kind: maven_reactor::RuntimeReactorKind::Synthetic,
+            pom_path: PathBuf::from("/ws/.gitworkspace/runtime/app/pom.xml"),
+            module_paths: vec![PathBuf::from("/ws/repo")],
+            arguments: vec!["-f".into(), "/ws/.gitworkspace/runtime/app/pom.xml".into(),],
+        }),
+    );
+
+    // R-04 JDK Manager model
+    m.insert(
+        "JdkInstallation".into(),
+        json!(jdk_model::JdkInstallation {
+            id: Some(1),
+            home_path: "/Library/Java/JavaVirtualMachines/temurin-17".into(),
+            major_version: Some(17),
+            full_version: Some("17.0.12".into()),
+            vendor: Some(jdk_model::JdkVendor::Temurin),
+            architecture: Some("x86_64".into()),
+            bitness: Some(64),
+            source: jdk_model::JdkDiscoverySource::System,
+            java_exec: Some("/Library/Java/JavaVirtualMachines/temurin-17/bin/java".into()),
+            javac_exec: Some("/Library/Java/JavaVirtualMachines/temurin-17/bin/javac".into()),
+            is_valid: true,
+            last_checked: "2026-08-18T00:00:00Z".into(),
+            raw_version: Some("openjdk version \"17.0.12\"".into()),
+            created_at: Some("2026-08-18T00:00:00Z".into()),
+            updated_at: Some("2026-08-18T00:00:00Z".into()),
+        }),
+    );
+    m.insert(
+        "JdkDiscoverySource".into(),
+        json!([
+            jdk_model::JdkDiscoverySource::System,
+            jdk_model::JdkDiscoverySource::JavaHome,
+            jdk_model::JdkDiscoverySource::Path,
+            jdk_model::JdkDiscoverySource::Mise,
+            jdk_model::JdkDiscoverySource::Jenv,
+            jdk_model::JdkDiscoverySource::Sdkman,
+            jdk_model::JdkDiscoverySource::Manual,
+        ]),
+    );
+    m.insert(
+        "JdkVendor".into(),
+        json!([
+            jdk_model::JdkVendor::Oracle,
+            jdk_model::JdkVendor::OpenJdk,
+            jdk_model::JdkVendor::Temurin,
+            jdk_model::JdkVendor::Corretto,
+            jdk_model::JdkVendor::GraalVm,
+            jdk_model::JdkVendor::Zulu,
+            jdk_model::JdkVendor::Liberica,
+            jdk_model::JdkVendor::Other,
+        ]),
+    );
+    m.insert(
+        "JdkNotFoundError".into(),
+        json!(AppError::JdkNotFound("未在 /opt/jdk/bin 下找到 java 可执行文件".into())),
+    );
+
+    // R-05 Maven 检测与执行策略 model
+    m.insert(
+        "MavenSource".into(),
+        json!([
+            maven_exec_model::MavenSource::ProjectWrapper,
+            maven_exec_model::MavenSource::Configured,
+            maven_exec_model::MavenSource::System,
+        ]),
+    );
+    m.insert(
+        "MavenVersionInfo".into(),
+        json!(maven_exec_model::MavenVersionInfo {
+            major_version: Some(3),
+            full_version: Some("3.9.6".into()),
+            raw: "Apache Maven 3.9.6 (bc0240f3c744)".into(),
+        }),
+    );
+    m.insert(
+        "MavenExecutable".into(),
+        json!(maven_exec_model::MavenExecutable {
+            id: Some(1),
+            executable_path: "/proj/mvnw".into(),
+            source: maven_exec_model::MavenSource::ProjectWrapper,
+            project_path: Some("/proj".into()),
+            major_version: Some(3),
+            full_version: Some("3.9.6".into()),
+            is_valid: true,
+            last_checked: "2026-08-18T00:00:00Z".into(),
+            raw_version: Some("Apache Maven 3.9.6".into()),
+            created_at: Some("2026-08-18T00:00:00Z".into()),
+            updated_at: Some("2026-08-18T00:00:00Z".into()),
+        }),
+    );
+    m.insert(
+        "ResolvedMaven".into(),
+        json!(maven_exec_model::ResolvedMaven {
+            executable: maven_exec_model::MavenExecutable {
+                id: None,
+                executable_path: "/usr/bin/mvn".into(),
+                source: maven_exec_model::MavenSource::System,
+                project_path: None,
+                major_version: Some(3),
+                full_version: Some("3.9.6".into()),
+                is_valid: true,
+                last_checked: "2026-08-18T00:00:00Z".into(),
+                raw_version: Some("Apache Maven 3.9.6".into()),
+                created_at: None,
+                updated_at: None,
+            },
+            local_repository: PathBuf::from("/home/alice/.m2/repository"),
+            uses_wrapper: false,
+        }),
+    );
+    m.insert(
+        "MavenExecutionRequest".into(),
+        json!(maven_exec_model::MavenExecutionRequest {
+            working_dir: PathBuf::from("/proj"),
+            executable: "/proj/mvnw".into(),
+            goals: vec!["clean".into(), "install".into()],
+            extra_args: vec!["-DskipTests".into()],
+            via_cmd_c: true,
+            local_repository: Some(PathBuf::from("/home/alice/.m2/repository")),
+        }),
+    );
+    m.insert(
+        "MavenNotFoundError".into(),
+        json!(AppError::MavenNotFound(
+            "未在项目 /proj 找到可用的 Maven（wrapper / 配置 / 系统三者皆缺）".into()
+        )),
     );
 
     // models/task.rs
@@ -620,6 +886,20 @@ fn samples() -> Map<String, Value> {
     m.insert(
         "ErrorResponse".into(),
         json!(AppError::NotFound("thing".into())),
+    );
+    m.insert(
+        "DependencyResolveFailedError".into(),
+        json!(AppError::DependencyResolve(
+            "missing effective model".into()
+        )),
+    );
+    m.insert(
+        "SourceMappingFailedError".into(),
+        json!(AppError::SourceMapping("ambiguous workspace source".into())),
+    );
+    m.insert(
+        "ProjectNotFoundError".into(),
+        json!(AppError::ProjectNotFound("missing Maven module".into())),
     );
 
     // core/health.rs (T-19)
@@ -1230,6 +1510,23 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("RepoStatusUpdate", "types/events.ts", "RepoStatusUpdate"),
     ("FileChange", "types/changes.ts", "FileChange"),
     ("RepoChanges", "types/changes.ts", "RepoChanges"),
+    // R-01 Maven model
+    ("MavenProject", "types/maven.ts", "MavenProject"),
+    // R-02 dependency graph
+    ("DependencyGraph", "types/maven.ts", "DependencyGraph"),
+    // R-03 Runtime Closure and Reactor
+    ("RuntimeScope", "types/maven.ts", "RuntimeScope"),
+    ("RuntimeClosure", "types/maven.ts", "RuntimeClosure"),
+    ("RuntimeReactorPlan", "types/maven.ts", "RuntimeReactorPlan"),
+    // R-04 JDK Manager
+    ("JdkInstallation", "types/jdk.ts", "JdkInstallation"),
+    // R-05 Maven 检测与执行策略
+    // (MavenSource 是纯字符串 union，与 JdkDiscoverySource 一样被 parse_ts_file
+    // 跳过，不注册；样本仍写入 golden 快照守卫序列化稳定性)
+    ("MavenVersionInfo", "types/maven.ts", "MavenVersionInfo"),
+    ("MavenExecutable", "types/maven.ts", "MavenExecutable"),
+    ("ResolvedMaven", "types/maven.ts", "ResolvedMaven"),
+    ("MavenExecutionRequest", "types/maven.ts", "MavenExecutionRequest"),
     ("TaskType", "types/task.ts", "TaskType"),
     ("TaskStatus", "types/task.ts", "TaskStatus"),
     ("Task", "types/task.ts", "Task"),
@@ -1448,8 +1745,8 @@ fn parse_ts_file(content: &str) -> TsFileTypes {
     let iface_field_re = regex::Regex::new(r"^\s*([A-Za-z_]\w*)\??\s*:").unwrap();
     // Union variant fields: multiple per line, unanchored.
     let variant_field_re = regex::Regex::new(r"([A-Za-z_]\w*)\??\s*:").unwrap();
-    // Discriminant field: `type` (TaskType/TaskStatus) or `status` (PickOutcome).
-    let tag_re = regex::Regex::new(r#"(?:type|status)\s*:\s*"([^"]+)""#).unwrap();
+    // Discriminant field: `type`, `status`, or domain-specific `mode`.
+    let tag_re = regex::Regex::new(r#"(?:type|status|mode)\s*:\s*"([^"]+)""#).unwrap();
 
     let mut result = TsFileTypes::default();
     let stripped = strip_ts_comments(content);
@@ -1558,13 +1855,13 @@ fn rust_keys(sample: &Value) -> BTreeSet<String> {
         .collect()
 }
 
-/// Discriminant of a tagged-union sample variant: `type` (TaskType/TaskStatus)
-/// or `status` (PickOutcome).
+/// Discriminant of a tagged-union sample variant.
 fn variant_tag(v: &Value) -> String {
     v["type"]
         .as_str()
         .or_else(|| v["status"].as_str())
-        .expect("tagged-union variant must carry `type` or `status`")
+        .or_else(|| v["mode"].as_str())
+        .expect("tagged-union variant must carry `type`, `status`, or `mode`")
         .to_string()
 }
 

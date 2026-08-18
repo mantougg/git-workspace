@@ -398,6 +398,201 @@ CREATE TABLE IF NOT EXISTS operation_log_items (
 CREATE INDEX IF NOT EXISTS idx_operation_log_items_log ON operation_log_items(log_id);
 "#;
 
+/// v8 (R-02): persistent Workspace Maven Index and dependency-resolution cache.
+///
+/// Maven project/dependency rows are derived metadata. A POM rescan replaces
+/// them transactionally, while user-owned runtime configuration remains in
+/// `.gitworkspace/runtimes/*.json`; `runtime_projects` stores metadata only.
+pub const SCHEMA_V8: &str = r#"
+CREATE TABLE IF NOT EXISTS maven_projects (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id    INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    repository_id   INTEGER REFERENCES repositories(id) ON DELETE SET NULL,
+    path             TEXT NOT NULL,
+    group_id         TEXT NOT NULL,
+    artifact_id      TEXT NOT NULL,
+    version          TEXT NOT NULL,
+    packaging        TEXT NOT NULL DEFAULT 'jar',
+    parent_id        INTEGER REFERENCES maven_projects(id) ON DELETE SET NULL,
+    pom_hash         TEXT NOT NULL,
+    model_hash       TEXT NOT NULL,
+    last_scanned_at  TEXT NOT NULL,
+    UNIQUE(workspace_id, path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_maven_projects_workspace
+    ON maven_projects(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_maven_projects_gav
+    ON maven_projects(workspace_id, group_id, artifact_id, version);
+CREATE INDEX IF NOT EXISTS idx_maven_projects_repository
+    ON maven_projects(repository_id);
+
+CREATE TABLE IF NOT EXISTS maven_dependencies (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id          INTEGER NOT NULL REFERENCES maven_projects(id) ON DELETE CASCADE,
+    group_id             TEXT NOT NULL,
+    artifact_id          TEXT NOT NULL,
+    version              TEXT,
+    scope                TEXT NOT NULL DEFAULT 'compile',
+    optional             INTEGER NOT NULL DEFAULT 0,
+    dep_type             TEXT NOT NULL DEFAULT 'jar',
+    classifier           TEXT,
+    exclusions_json      TEXT NOT NULL DEFAULT '[]',
+    source_kind          TEXT NOT NULL CHECK(source_kind IN ('workspaceSource', 'localRepository', 'remoteRepository')),
+    source_project_id    INTEGER REFERENCES maven_projects(id) ON DELETE SET NULL,
+    resolved_path        TEXT,
+    resolution_reason    TEXT NOT NULL,
+    model_hash           TEXT NOT NULL,
+    sort_order           INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_maven_dependencies_project
+    ON maven_dependencies(project_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_maven_dependencies_coordinates
+    ON maven_dependencies(group_id, artifact_id, version);
+CREATE INDEX IF NOT EXISTS idx_maven_dependencies_source_project
+    ON maven_dependencies(source_project_id);
+
+CREATE TABLE IF NOT EXISTS maven_modules (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    parent_project_id   INTEGER NOT NULL REFERENCES maven_projects(id) ON DELETE CASCADE,
+    module_project_id   INTEGER REFERENCES maven_projects(id) ON DELETE SET NULL,
+    declared_path       TEXT NOT NULL,
+    UNIQUE(parent_project_id, declared_path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_maven_modules_parent
+    ON maven_modules(parent_project_id);
+CREATE INDEX IF NOT EXISTS idx_maven_modules_project
+    ON maven_modules(module_project_id);
+
+CREATE TABLE IF NOT EXISTS maven_artifacts (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id     INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    group_id          TEXT NOT NULL,
+    artifact_id       TEXT NOT NULL,
+    version           TEXT NOT NULL,
+    dep_type          TEXT NOT NULL DEFAULT 'jar',
+    classifier        TEXT NOT NULL DEFAULT '',
+    local_path        TEXT NOT NULL,
+    exists_local      INTEGER NOT NULL DEFAULT 0,
+    last_checked_at   TEXT NOT NULL,
+    UNIQUE(workspace_id, group_id, artifact_id, version, dep_type, classifier)
+);
+
+CREATE INDEX IF NOT EXISTS idx_maven_artifacts_workspace
+    ON maven_artifacts(workspace_id);
+
+CREATE TABLE IF NOT EXISTS maven_source_mappings (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id     INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    group_id          TEXT NOT NULL,
+    artifact_id       TEXT NOT NULL,
+    version           TEXT NOT NULL,
+    repository_id    INTEGER REFERENCES repositories(id) ON DELETE SET NULL,
+    project_id        INTEGER NOT NULL REFERENCES maven_projects(id) ON DELETE CASCADE,
+    project_path      TEXT NOT NULL,
+    UNIQUE(workspace_id, group_id, artifact_id, version, project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_maven_source_mappings_gav
+    ON maven_source_mappings(workspace_id, group_id, artifact_id, version);
+
+CREATE TABLE IF NOT EXISTS runtime_projects (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id      INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    name              TEXT NOT NULL,
+    root_project_id   INTEGER REFERENCES maven_projects(id) ON DELETE SET NULL,
+    main_class        TEXT,
+    jdk               TEXT,
+    profile           TEXT,
+    build_engine      TEXT,
+    config_path       TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    UNIQUE(workspace_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_projects_workspace
+    ON runtime_projects(workspace_id);
+
+CREATE TABLE IF NOT EXISTS runtime_dependencies (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    runtime_project_id    INTEGER NOT NULL REFERENCES runtime_projects(id) ON DELETE CASCADE,
+    maven_project_id      INTEGER NOT NULL REFERENCES maven_projects(id) ON DELETE CASCADE,
+    dependency_project_id INTEGER REFERENCES maven_projects(id) ON DELETE SET NULL,
+    scope                 TEXT NOT NULL DEFAULT 'compile',
+    source_kind           TEXT NOT NULL CHECK(source_kind IN ('workspaceSource', 'localRepository', 'remoteRepository')),
+    included              INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_dependencies_runtime
+    ON runtime_dependencies(runtime_project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_runtime_dependencies_unique
+    ON runtime_dependencies(
+        runtime_project_id,
+        maven_project_id,
+        COALESCE(dependency_project_id, -1),
+        scope
+    );
+"#;
+
+/// v9 (R-04): JDK registry - discovered and manually-added JDK installations.
+///
+/// One row per JDK home (`JAVA_HOME` semantics). `home_path` is the unique key
+/// (canonicalized by the detector); the registry upserts on it so rescans do
+/// not duplicate. Version / vendor fields stay nullable for entries whose
+/// `java -version` probe failed (kept `is_valid=false` for user re-validation).
+pub const SCHEMA_V9: &str = r#"
+CREATE TABLE IF NOT EXISTS jdks (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    home_path       TEXT NOT NULL UNIQUE,
+    major_version   INTEGER,
+    full_version    TEXT,
+    vendor          TEXT,
+    architecture    TEXT,
+    bitness         INTEGER,
+    source          TEXT NOT NULL,
+    java_exec       TEXT,
+    javac_exec      TEXT,
+    is_valid        INTEGER NOT NULL DEFAULT 0,
+    last_checked    TEXT NOT NULL,
+    raw_version     TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_jdks_valid ON jdks(is_valid);
+CREATE INDEX IF NOT EXISTS idx_jdks_major ON jdks(major_version);
+"#;
+
+/// v10 (R-05): Maven executable registry - caches `mvn -v` probe results.
+///
+/// One row per detected Maven executable (wrapper / configured / system),
+/// keyed by `executable_path`（wrapper 路径是 per-project 的 `/proj/mvnw`，
+/// system / configured 路径各不相同，故单列唯一即可区分）。`project_path`
+/// 是冗余信息字段（wrapper 记录所属项目目录，非 wrapper 为 NULL）。
+/// 版本字段在探测失败时为 `None` + `is_valid=false`，便于用户重检。
+pub const SCHEMA_V10: &str = r#"
+CREATE TABLE IF NOT EXISTS maven_executables (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    executable_path TEXT NOT NULL UNIQUE,
+    project_path    TEXT,
+    source          TEXT NOT NULL,
+    major_version   INTEGER,
+    full_version    TEXT,
+    is_valid        INTEGER NOT NULL DEFAULT 0,
+    last_checked    TEXT NOT NULL,
+    raw_version     TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_maven_executables_valid ON maven_executables(is_valid);
+CREATE INDEX IF NOT EXISTS idx_maven_executables_source ON maven_executables(source);
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
-    SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7,
+    SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
+    SCHEMA_V9, SCHEMA_V10,
 ];

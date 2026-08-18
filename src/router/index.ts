@@ -73,6 +73,16 @@ const router = createRouter({
       name: "conflict-resolver",
       component: () => import("@/views/ConflictResolver.vue"),
     },
+    {
+      path: "/jdk-manager",
+      name: "jdk-manager",
+      component: () => import("@/views/JdkManagerView.vue"),
+    },
+    {
+      path: "/maven-settings",
+      name: "maven-settings",
+      component: () => import("@/views/MavenSettingsView.vue"),
+    },
   ],
 });
 

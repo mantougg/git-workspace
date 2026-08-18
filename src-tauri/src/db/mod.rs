@@ -96,6 +96,14 @@ mod tests {
             "symbol_references",
             "ai_reviews",
             "ai_tasks",
+            "maven_projects",
+            "maven_dependencies",
+            "maven_modules",
+            "maven_artifacts",
+            "maven_source_mappings",
+            "runtime_projects",
+            "runtime_dependencies",
+            "jdks",
         ] {
             let count: i64 = conn
                 .query_row(

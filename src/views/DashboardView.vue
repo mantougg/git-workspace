@@ -64,6 +64,10 @@
           <el-icon><Clock /></el-icon>
           操作日志
         </el-button>
+        <el-button @click="router.push({ name: 'jdk-manager' })">
+          <el-icon><Cpu /></el-icon>
+          JDK 管理
+        </el-button>
         <el-button
           type="primary"
           plain
@@ -210,6 +214,7 @@ import {
   Collection,
   Connection,
   Clock,
+  Cpu,
 } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { useWorkspaceStore } from "@/stores/workspace";

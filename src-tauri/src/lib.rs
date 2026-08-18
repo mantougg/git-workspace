@@ -2,6 +2,8 @@ mod commands;
 mod core;
 mod db;
 mod error;
+pub mod java;
+pub mod maven;
 mod models;
 mod state;
 mod task;
@@ -252,6 +254,25 @@ pub fn run() {
             commands::operation_log::get_operation_log_detail,
             commands::operation_log::preview_undo_operation,
             commands::operation_log::undo_operation,
+            // JDK Manager commands (R-04)
+            commands::jdk::discover_jdks,
+            commands::jdk::list_jdks,
+            commands::jdk::get_jdk,
+            commands::jdk::add_jdk_manual,
+            commands::jdk::validate_jdk,
+            commands::jdk::prune_invalid_jdks,
+            commands::jdk::remove_jdk,
+            // Maven 检测与执行策略 commands (R-05)
+            commands::maven::detect_maven,
+            commands::maven::list_maven_executables_cmd,
+            commands::maven::get_maven_executable_cmd,
+            commands::maven::validate_maven_executable,
+            commands::maven::prune_invalid_maven,
+            commands::maven::remove_maven_executable_cmd,
+            commands::maven::resolve_local_repo,
+            commands::maven::preview_maven_command,
+            commands::maven::list_maven_candidates,
+            commands::maven::build_maven_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");
