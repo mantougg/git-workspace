@@ -1,0 +1,60 @@
+# R-07 Runtime 配置体系
+
+> **开发前必读**：先读 [00-全局开发约束.md](./00-全局开发约束.md)；直接依赖：[R-02 Maven 依赖图与 Workspace Source Mapping](./R-02-dependency-graph-source-mapping.md)（`runtime_projects` 表）。
+
+| 项 | 值 |
+|---|---|
+| 阶段 | Phase 0 · Runtime 基础设施 |
+| 优先级 | P0（前置） |
+| 状态 | ⬜ 未开始 |
+| 依赖 | R-02 |
+| 对应源文档 | §23 Spring Profile、§24 Runtime Configuration、§25 环境变量、§26 配置文件、§61 Runtime Configuration 存储、§62 Configuration 分层 |
+
+## 目标
+
+实现 Runtime Application 的完整配置模型与分层存储：SQLite 存元数据索引，`.gitworkspace/runtimes/*.json` 存用户配置（可 Git 版本化、团队共享），配置加载毫秒级。
+
+## 需求范围
+
+- [ ] Runtime Application 配置模型（§24/§26）：`name / project / mainClass / jdk / profile / vmOptions / programArguments / environment / buildEngine`
+- [ ] 存储分层（§61）：SQLite（`runtime_projects` 等表，元数据/索引）+ `.gitworkspace/runtimes/<name>.json`（用户配置正文），两侧一致性同步
+- [ ] 配置分层优先级（§62）：**Application/Service → Runtime → Workspace → Global → System**
+- [ ] 环境变量三层模型（§25）：Workspace / Runtime / Application Environment，同名按优先级合并覆盖
+- [ ] Spring Profiles（§23）：支持 `-Dspring.profiles.active=dev`（VM Options）与 `--spring.profiles.active=dev`（Program Arguments）两种注入方式
+- [ ] 配置 CRUD IPC：create / update / delete / list / get
+- [ ] JSON schema 向后兼容：缺省字段有默认值，旧配置可安全加载
+
+## 架构 / 性能注意点
+
+- JSON 文件与 SQLite 的**写入顺序与失败回滚**要有明确约定（先写文件成功再更新索引，或反之；禁止双写不一致）。
+- 配置加载目标 < 50ms（§99）：list 走 SQLite 索引，不逐个读 JSON。
+- 敏感环境变量：存储不做加密（第一版），但 IPC 返回与 UI 展示按 key 模式掩码（与 R-14 协同；全局约束 §4）。
+- JSON 可被用户手工编辑——加载时校验失败要给出文件路径 + 行号的错误，不得静默丢弃。
+
+## 验收标准
+
+- [ ] §26 示例 JSON 可读写，CRUD 全链路可用
+- [ ] 同名环境变量按 Application → Runtime → Workspace 优先级正确覆盖
+- [ ] 配置 list 加载 < 50ms（以 R-08 实测为准）
+- [ ] 手工改坏 JSON 时给出带路径/行号的可行动错误
+- [ ] IPC 类型入 golden-file 快照测试
+
+## 进度
+
+### 状态
+
+- 当前状态：未开始
+- 最近更新：—
+
+### 时间线
+
+| 日期 | 状态 | 说明 |
+|---|---|---|
+
+### 子任务清单
+
+- [ ] 配置模型 + serde（含默认值/兼容）
+- [ ] 双层存储与一致性策略
+- [ ] 配置/环境变量分层合并
+- [ ] CRUD IPC
+- [ ] 单元测试（合并优先级 / 兼容加载 / 错误路径）
