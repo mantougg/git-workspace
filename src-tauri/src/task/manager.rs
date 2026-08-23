@@ -43,12 +43,15 @@ impl TaskManager {
     ///
     /// The worker pool runs `worker_count` async tasks, each pulling
     /// from a shared mpsc receiver. Git operations (blocking) are
-    /// executed via `tokio::task::spawn_blocking`.
+    /// executed via `tokio::task::spawn_blocking`. Runtime tasks (R-12) are
+    /// dispatched to `runtime_handler`; `None` makes them fail fast with an
+    /// actionable error (tests / minimal setups).
     pub fn new(
         worker_count: usize,
         git_ops: Arc<GitOps>,
         app_handle: AppHandle,
         db: Arc<Mutex<Connection>>,
+        runtime_handler: Option<Arc<dyn crate::task::runtime::RuntimeTaskHandler>>,
     ) -> Self {
         let (sender, receiver) = queue::new_queue(128);
         let active_tasks = Arc::new(DashMap::<String, Task>::new());
@@ -62,6 +65,7 @@ impl TaskManager {
             receiver,
             sender.clone(),
             Arc::clone(&git_ops),
+            runtime_handler,
             Arc::clone(&active_tasks),
             Arc::clone(&cancel_flags),
             app_handle.clone(),
@@ -493,6 +497,16 @@ fn label_for(req: &TaskRequest) -> String {
         TaskType::BranchOp { .. } => "分支操作",
         TaskType::Clone { .. } => "Clone",
         TaskType::ShellCommand { .. } => "Shell",
+        TaskType::Runtime { op, .. } => {
+            let kind = match op {
+                crate::models::task::RuntimeOp::Build => "Build",
+                crate::models::task::RuntimeOp::Start => "Start",
+                crate::models::task::RuntimeOp::Stop => "Stop",
+                crate::models::task::RuntimeOp::Restart => "Restart",
+                crate::models::task::RuntimeOp::ResolveDependencies => "Resolve",
+            };
+            return format!("Runtime {} · {}", kind, req.repo_name);
+        }
     };
     format!("{} · {}", kind, req.repo_name)
 }

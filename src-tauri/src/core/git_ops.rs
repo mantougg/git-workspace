@@ -142,8 +142,7 @@ impl GitOps {
             TaskType::Commit { then_push, .. } => {                let outcome = self.commit(repo_path, &CommitOptions::from_task(task_type))?;
                 if !then_push {
                     return Ok(None);
-                }
-                // Commit & Push (T-11): only the push is retried — the commit
+                }                // Commit & Push (T-11): only the push is retried — the commit
                 // must never be re-run. A push failure surfaces the
                 // intermediate state "committed but push failed".
                 let mut attempt = 0usize;
@@ -170,6 +169,11 @@ impl GitOps {
                     }
                 }
             }
+            // Runtime 任务（R-12）由 worker 直接分发给 RuntimeTaskHandler，
+            // 正常不会走到这里；防御性报错而非 panic。
+            TaskType::Runtime { .. } => Err(AppError::Task(
+                "Runtime 任务不应由 GitOps 执行（worker 分发错误）".into(),
+            )),
         }
     }
 

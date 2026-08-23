@@ -9,6 +9,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::core::git_ops::GitOps;
 use crate::db::dao;
+use crate::error::AppError;
 use crate::models::task::{BatchState, GitCommandResult, Task, TaskProgress, TaskStatus, TaskType};
 use crate::task::dag::{DagContext, DagState};
 
@@ -16,19 +17,27 @@ use crate::task::dag::{DagContext, DagState};
 const MAX_RETRIES: usize = 2;
 /// Hard timeout for a single task execution.
 const TASK_TIMEOUT: Duration = Duration::from_secs(300);
+/// Hard outer bound for Runtime tasks (R-12). The real enforcement lives
+/// inside the Runtime executors (R-09 build timeout kills the Maven process
+/// tree; Stop/Kill have their own grace bounds); this is only a runaway
+/// guard. Builds of large workspaces legitimately run for tens of minutes,
+/// so `TASK_TIMEOUT` (5 min, git-oriented) cannot be reused.
+const RUNTIME_TASK_TIMEOUT: Duration = Duration::from_secs(3600);
 
 /// Spawn the worker pool that processes tasks from the shared receiver.
 ///
 /// Each worker pulls tasks from the channel, executes them using GitOps
 /// (in a blocking thread with a timeout + retries), and emits progress events
 /// to the frontend. `dag_sender` is the queue's own sender, handed to the
-/// DAG scheduler (T-24) so it can dispatch newly-unblocked nodes.
+/// DAG scheduler (T-24) so it can dispatch newly-unblocked nodes. Runtime
+/// tasks (R-12) go to `runtime_handler` with the task's cancel flag wired in.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_worker_pool(
     worker_count: usize,
     receiver: mpsc::Receiver<super::queue::TaskMessage>,
     dag_sender: mpsc::Sender<super::queue::TaskMessage>,
     git_ops: Arc<GitOps>,
+    runtime_handler: Option<Arc<super::runtime::RuntimeTaskHandler>>,
     active_tasks: Arc<DashMap<String, Task>>,
     cancel_flags: Arc<DashMap<String, Arc<AtomicBool>>>,
     app_handle: AppHandle,
@@ -45,6 +54,7 @@ pub fn spawn_worker_pool(
             let rx = Arc::clone(&receiver);
             let tx = dag_sender.clone();
             let ops = Arc::clone(&git_ops);
+            let runtime_handler = runtime_handler.clone();
             let tasks = Arc::clone(&active_tasks);
             let flags = Arc::clone(&cancel_flags);
             let app = app_handle.clone();
@@ -64,7 +74,16 @@ pub fn spawn_worker_pool(
                     match msg {
                         Some(msg) => {
                             execute_task(
-                                &ops, &tasks, &flags, &app, &db, &batch_map, &dag_map, &tx, msg.task,
+                                &ops,
+                                &runtime_handler,
+                                &tasks,
+                                &flags,
+                                &app,
+                                &db,
+                                &batch_map,
+                                &dag_map,
+                                &tx,
+                                msg.task,
                             )
                             .await;
                         }
@@ -97,6 +116,7 @@ fn is_cancelled(flags: &DashMap<String, Arc<AtomicBool>>, task_id: &str) -> bool
 #[allow(clippy::too_many_arguments)]
 async fn execute_task(
     ops: &Arc<GitOps>,
+    runtime_handler: &Option<Arc<super::runtime::RuntimeTaskHandler>>,
     tasks: &Arc<DashMap<String, Task>>,
     cancel_flags: &Arc<DashMap<String, Arc<AtomicBool>>>,
     app: &AppHandle,
@@ -151,11 +171,31 @@ async fn execute_task(
         let ops = Arc::clone(ops);
         let repo_path = task.repo_path.clone();
         let task_type_for_exec = task_type.clone();
+        // R-12: Runtime 任务拿到自己的 cancel flag（构建/启动可中途终止），
+        // 并使用更长的硬超时（git 的 5 分钟上限对构建不适用）。
+        let is_runtime = matches!(task_type_for_exec, TaskType::Runtime { .. });
+        let runtime_handler = runtime_handler.clone();
+        let cancel_flag = cancel_flags.get(&task.id).map(|f| Arc::clone(&f));
+        let hard_timeout = if is_runtime {
+            RUNTIME_TASK_TIMEOUT
+        } else {
+            TASK_TIMEOUT
+        };
 
         let result = tokio::time::timeout(
-            TASK_TIMEOUT,
+            hard_timeout,
             tokio::task::spawn_blocking(move || {
-                ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path))
+                if let TaskType::Runtime { .. } = &task_type_for_exec {
+                    let Some(handler) = runtime_handler else {
+                        return Err(AppError::Task(
+                            "Runtime 任务处理器未装配（应用启动未完成），请稍后重试".into(),
+                        ));
+                    };
+                    let cancel = cancel_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+                    handler.execute(&task_type_for_exec, cancel)
+                } else {
+                    ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path))
+                }
             }),
         )
         .await;
@@ -170,12 +210,22 @@ async fn execute_task(
                 },
                 None,
             ),
-            Err(_) => (
-                TaskStatus::Failed {
-                    error: "Task timed out".to_string(),
-                },
-                None,
-            ),
+            Err(_) => {
+                // 超时硬上限触发：阻塞线程仍在跑。Runtime 任务置 cancel flag
+                // 让执行体协作中止（杀掉 Maven 进程树 / 停止启动中的应用），
+                // 避免超时后遗留构建进程。
+                if is_runtime {
+                    if let Some(flag) = cancel_flags.get(&task.id) {
+                        flag.store(true, Ordering::Relaxed);
+                    }
+                }
+                (
+                    TaskStatus::Failed {
+                        error: "Task timed out".to_string(),
+                    },
+                    None,
+                )
+            }
         };
 
         // Retry on failure with exponential backoff. Only network operations

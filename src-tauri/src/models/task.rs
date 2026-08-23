@@ -64,6 +64,49 @@ pub enum TaskType {
         #[serde(default)]
         timeout_secs: Option<u64>,
     },
+    /// Runtime Workspace operation (R-12): build / start / stop / restart a
+    /// Runtime configuration, or refresh the workspace dependency index.
+    /// Executed by the Runtime task handler (not `GitOps`); the worker applies
+    /// a longer hard timeout and passes the cancel flag through so in-flight
+    /// Maven builds / launches abort promptly.
+    Runtime {
+        op: RuntimeOp,
+        workspace_id: i64,
+        /// Runtime config name; empty for `ResolveDependencies`.
+        #[serde(default)]
+        runtime_name: String,
+        #[serde(default)]
+        options: RuntimeTaskOptions,
+    },
+}
+
+/// Runtime task operations (R-12, §63/§65). Plain camelCase string union.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RuntimeOp {
+    Build,
+    Start,
+    Stop,
+    Restart,
+    /// Refresh the workspace Maven discovery + dependency index (R-02 sync).
+    ResolveDependencies,
+}
+
+/// User-tunable options carried by a Runtime task. Mapped onto
+/// `BuildOptions` / `StartOptions` by the Runtime task handler.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeTaskOptions {
+    /// Run Strategy override (§30); `None` = profile-based default.
+    #[serde(default)]
+    pub strategy: Option<crate::runtime::build::RunStrategy>,
+    /// Start-only: reuse the latest build artifacts (R-10 skip-build).
+    #[serde(default)]
+    pub skip_build: bool,
+    #[serde(default)]
+    pub skip_tests: bool,
+    #[serde(default)]
+    pub offline: bool,
 }
 
 /// Status of a background task.
