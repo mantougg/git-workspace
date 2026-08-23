@@ -72,6 +72,13 @@ pub enum AppError {
     #[error("Source mapping failed: {0}")]
     SourceMapping(String),
 
+    #[error("build failed in module {module}: maven exited with code {exit_code:?}")]
+    BuildFailed {
+        module: String,
+        exit_code: Option<i32>,
+        log_tail: String,
+    },
+
     #[error("AI error: {0}")]
     Ai(String),
 
@@ -101,6 +108,7 @@ impl AppError {
             AppError::Index(_) => "IndexError",
             AppError::DependencyResolve(_) => "DependencyResolveFailed",
             AppError::SourceMapping(_) => "SourceMappingFailed",
+            AppError::BuildFailed { .. } => "BuildFailed",
             AppError::Ai(_) => "AIError",
             AppError::Permission(_) => "PermissionError",
             AppError::Other(_) => "Other",
@@ -133,12 +141,29 @@ impl Serialize for AppError {
     where
         S: serde::Serializer,
     {
+        let details = match self {
+            // BuildFailed carries the structured context R-14 needs for
+            // actionable hints: failing module, Maven exit code and log tail.
+            AppError::BuildFailed {
+                module,
+                exit_code,
+                log_tail,
+            } => Some(
+                serde_json::json!({
+                    "module": module,
+                    "exitCode": exit_code,
+                    "logTail": log_tail,
+                })
+                .to_string(),
+            ),
+            _ => None,
+        };
         ErrorResponse {
             code: self.code(),
             message: self.to_string(),
             repository: None,
             operation: None,
-            details: None,
+            details,
             recoverable: self.recoverable(),
         }
         .serialize(serializer)
@@ -172,5 +197,28 @@ mod tests {
             assert_eq!(payload["code"], code);
             assert_eq!(payload["recoverable"], true);
         }
+    }
+
+    #[test]
+    fn build_failed_carries_structured_details() {
+        let error = AppError::BuildFailed {
+            module: "com.example:app".into(),
+            exit_code: Some(1),
+            log_tail: "[ERROR] COMPILATION ERROR".into(),
+        };
+        assert_eq!(error.code(), "BuildFailed");
+        assert!(error.recoverable());
+        let payload = serde_json::to_value(&error).unwrap();
+        assert_eq!(payload["code"], "BuildFailed");
+        assert_eq!(payload["recoverable"], true);
+        assert!(payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("com.example:app"));
+        let details: serde_json::Value =
+            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        assert_eq!(details["module"], "com.example:app");
+        assert_eq!(details["exitCode"], 1);
+        assert_eq!(details["logTail"], "[ERROR] COMPILATION ERROR");
     }
 }

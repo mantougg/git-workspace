@@ -17,6 +17,7 @@
 pub mod detect;
 pub mod model;
 pub mod registry;
+pub mod resolve;
 pub mod version;
 
 pub use detect::discover_jdks;
@@ -25,4 +26,5 @@ pub use registry::{
     apply_version, get_jdk as get_jdk_row, list_jdks as list_jdk_rows, mark_validity,
     prune_invalid_homes, remove_jdk as remove_jdk_row, upsert_jdk, upsert_jdks_batch,
 };
+pub use resolve::resolve_jdk_for_config;
 pub use version::{parse_java_version, JdkVersionInfo};

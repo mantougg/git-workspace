@@ -254,6 +254,18 @@ pub fn get_config(
     workspace_id: i64,
     name: &str,
 ) -> AppResult<RuntimeApplicationConfig> {
+    let config = load_config_unredacted(conn, workspace_id, name)?;
+    Ok(redact_config(config))
+}
+
+/// Internal engine load path (R-09 Build Engine): same read/validate/sync logic
+/// as `get_config` but **without** redaction — the build pipeline needs the real
+/// environment values to spawn Maven. The result must never cross IPC.
+pub(crate) fn load_config_unredacted(
+    conn: &Connection,
+    workspace_id: i64,
+    name: &str,
+) -> AppResult<RuntimeApplicationConfig> {
     validate_runtime_name(name)?;
     let summary = get_summary(conn, workspace_id, name)?
         .ok_or_else(|| AppError::NotFound(format!("Runtime 配置 '{}' 不存在", name)))?;
@@ -261,7 +273,7 @@ pub fn get_config(
     config = normalized_loaded_config(config, name);
     config.validate()?;
     sync_metadata_if_changed(conn, &summary, &config)?;
-    Ok(redact_config(config))
+    Ok(config)
 }
 
 pub fn update_config(

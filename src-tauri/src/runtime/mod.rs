@@ -1,5 +1,6 @@
 //! Runtime-specific discovery and orchestration primitives.
 
+pub mod build;
 pub mod config;
 pub mod spring_boot;
 

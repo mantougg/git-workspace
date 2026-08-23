@@ -28,6 +28,14 @@
     "remotes": [],
     "tags": []
   },
+  "BuildFailedError": {
+    "code": "BuildFailed",
+    "details": "{\"exitCode\":1,\"logTail\":\"[ERROR] Failed to execute goal ... compile\",\"module\":\"com.example:app\"}",
+    "message": "build failed in module com.example:app: maven exited with code Some(1)",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
   "ChangeSet": {
     "createdAt": "2026-01-01T00:00:00Z",
     "description": "desc",

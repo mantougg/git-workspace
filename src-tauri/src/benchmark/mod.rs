@@ -15,6 +15,11 @@ use crate::core::git_status;
 use crate::core::graph;
 use crate::core::scanner::RepoScanner;
 
+/// R-08: synthetic Maven workspace generator (§96 matrix).
+pub mod maven_gen;
+/// R-08: Runtime pipeline benchmark (staged timings + §99 verdicts).
+pub mod runtime;
+
 /// Structured benchmark result for a single run. Serializable to JSON so it can
 /// be saved as a baseline and diffed against later runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]

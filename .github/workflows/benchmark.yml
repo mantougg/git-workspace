@@ -62,3 +62,29 @@ jobs:
           assert warm < 1000, f"graph first screen (warm) too slow: {warm}ms (target < 1000)"
           print(f"T-04 thresholds OK: diff_hit={hit_ms:.3f}ms, graph_cold={cold}ms, graph_warm={warm}ms")
           EOF
+
+      - name: Run R-08 runtime benchmark (10 repos × 10 modules)
+        run: |
+          set -o pipefail
+          cargo run --release --example benchmark -- runtime 10 10 --json --no-save | tee /tmp/bench_r08.json
+
+      - name: Enforce §99 runtime thresholds
+        run: |
+          python3 - <<'EOF'
+          import json
+          with open('/tmp/bench_r08.json') as f:
+              r = json.load(f)
+          checks = [
+              ('discovery_cold_ms', 500),
+              ('pom_cache_hit_ms', 50),
+              ('graph_cache_hit_ms', 100),
+              ('config_load_ms', 50),
+          ]
+          for field, budget in checks:
+              value = r[field]
+              assert value < budget, f"{field} too slow: {value}ms (target < {budget})"
+          detection = r['file_change_detection_ms']
+          if detection is not None:
+              assert detection < 300, f"file change detection too slow: {detection}ms (target < 300)"
+          print(f"§99 thresholds OK: " + ", ".join(f"{f}={r[f]}ms" for f, _ in checks) + f", detection={detection}ms")
+          EOF

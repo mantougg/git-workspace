@@ -482,6 +482,14 @@ fn samples() -> Map<String, Value> {
             "未在项目 /proj 找到可用的 Maven（wrapper / 配置 / 系统三者皆缺）".into()
         )),
     );
+    m.insert(
+        "BuildFailedError".into(),
+        json!(AppError::BuildFailed {
+            module: "com.example:app".into(),
+            exit_code: Some(1),
+            log_tail: "[ERROR] Failed to execute goal ... compile".into(),
+        }),
+    );
 
     // models/task.rs
     m.insert(

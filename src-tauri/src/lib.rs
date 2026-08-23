@@ -5,6 +5,7 @@ mod error;
 pub mod java;
 pub mod maven;
 mod models;
+pub mod process;
 mod state;
 mod task;
 pub mod runtime;
