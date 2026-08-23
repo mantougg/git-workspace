@@ -104,6 +104,7 @@ mod tests {
             "runtime_projects",
             "runtime_dependencies",
             "jdks",
+            "runtime_processes",
         ] {
             let count: i64 = conn
                 .query_row(

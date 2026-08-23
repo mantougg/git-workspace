@@ -19,7 +19,8 @@ use std::time::{Duration, Instant};
 /// 轮询间隔：取消/超时检查的响应粒度。
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OutputStream {
     Stdout,
     Stderr,
@@ -45,6 +46,19 @@ pub fn spawn_streaming(
     timeout: Option<Duration>,
     on_line: &mut dyn FnMut(OutputStream, &str),
 ) -> std::io::Result<StreamingExit> {
+    spawn_streaming_ext(command, cancel, timeout, None, on_line)
+}
+
+/// [`spawn_streaming`] 的扩展变体（R-10）：spawn 成功后立刻把子进程 pid
+/// 写入 `pid_slot`，让外部（Process Manager 的 Stop/Kill）在 `run` 仍阻塞
+/// 期间就能拿到 pid 发信号。`pid_slot` 为 `None` 时与原语义完全一致。
+pub fn spawn_streaming_ext(
+    command: &mut Command,
+    cancel: Option<&AtomicBool>,
+    timeout: Option<Duration>,
+    pid_slot: Option<&std::sync::Mutex<Option<u32>>>,
+    on_line: &mut dyn FnMut(OutputStream, &str),
+) -> std::io::Result<StreamingExit> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -53,6 +67,9 @@ pub fn spawn_streaming(
     }
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command.spawn()?;
+    if let Some(slot) = pid_slot {
+        *slot.lock().unwrap() = Some(child.id());
+    }
 
     let stdout = child
         .stdout

@@ -56,6 +56,50 @@ pub fn kill_process_tree(root_pid: u32) {
     }
 }
 
+/// 向单个进程发送优雅终止信号（R-10 Stop，任务文档 §34「先发 SIGTERM 等效」）。
+///
+/// 只发信号、不等待退出；grace 超时后的进程树升级由调用方走
+/// [`kill_process_tree`]。返回 `false` 表示平台无优雅信号语义（Windows 无
+/// SIGTERM）或进程已不存在——调用方应直接升级为强杀进程树。
+pub fn terminate_process(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        let system = System::new_with_specifics(
+            RefreshKind::new().with_processes(ProcessRefreshKind::new()),
+        );
+        system
+            .process(Pid::from_u32(pid))
+            .and_then(|process| process.kill_with(sysinfo::Signal::Term))
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+/// 进程当前是否存活；`expected_start_time`（sysinfo `Process::start_time`，
+/// epoch 秒）用于防 PID 复用：给定且不匹配时视为「原进程已死，PID 被复用」。
+pub fn process_alive(pid: u32, expected_start_time: Option<u64>) -> bool {
+    process_start_time(pid).is_some_and(|start| match expected_start_time {
+        Some(expected) => start == expected,
+        None => true,
+    })
+}
+
+/// 读取进程的 `start_time`（epoch 秒）；进程不存在返回 `None`。
+/// spawn 后记录该值，后续存活核对可防 PID 复用误判。
+pub fn process_start_time(pid: u32) -> Option<u64> {
+    let mut system = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::new()),
+    );
+    system.refresh_processes();
+    system
+        .process(Pid::from_u32(pid))
+        .map(|process| process.start_time())
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
@@ -91,5 +135,34 @@ mod tests {
             })
             .collect();
         assert!(survivors.is_empty(), "sleep 300 should be killed: {survivors:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminate_process_sends_sigterm_and_probes_guard_pid_reuse() {
+        use std::process::{Command, Stdio};
+
+        // trap SIGTERM 并以退出码 0 退出，模拟 Spring Boot 优雅关闭。
+        let mut child = Command::new("sh")
+            .args(["-c", "trap 'exit 0' TERM; while true; do sleep 0.1; done"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+
+        let start = super::process_start_time(pid).expect("spawned process must be visible");
+        assert!(super::process_alive(pid, Some(start)));
+        // start_time 不匹配 → 视为 PID 复用，不算存活。
+        assert!(!super::process_alive(pid, Some(start.wrapping_add(1))));
+
+        assert!(super::terminate_process(pid), "SIGTERM should be delivered");
+        let status = child.wait().unwrap();
+        assert_eq!(status.code(), Some(0), "trap must turn SIGTERM into exit 0");
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!super::process_alive(pid, Some(start)), "exited process is gone");
+        assert!(!super::terminate_process(pid), "no signal target after exit");
     }
 }

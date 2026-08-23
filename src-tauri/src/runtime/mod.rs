@@ -2,6 +2,8 @@
 
 pub mod build;
 pub mod config;
+pub mod launch;
+pub mod logs;
 pub mod spring_boot;
 
 pub use config::{
@@ -9,6 +11,15 @@ pub use config::{
     merge_environment, resolve_environment, set_workspace_environment, update_config,
     CreateRuntimeConfigRequest, EnvironmentLayers, RuntimeApplicationConfig, RuntimeConfigSummary,
     UpdateRuntimeConfigRequest,
+};
+
+pub use launch::{
+    LifecycleStatus, RuntimeEvent, RuntimeEventSink, RuntimeProcessInfo, RuntimeProcessManager,
+    StartOptions,
+};
+
+pub use logs::{
+    LogEntry, LogExportOutcome, LogFilter, LogLevel, LogLine, LogPhase, RuntimeLogEngine,
 };
 
 pub use spring_boot::{

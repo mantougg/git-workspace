@@ -16,7 +16,9 @@ use crate::process::streaming::{spawn_streaming, StreamingExit};
 use crate::runtime::build::BuildOutputSink;
 
 /// 一次 Maven 调用的执行体。
-pub trait MavenRunner {
+///
+/// `Send + Sync`：R-10 Process Manager 经 `Arc<dyn MavenRunner>` 跨线程共享。
+pub trait MavenRunner: Send + Sync {
     /// 为项目解析/校验 Maven 可执行体（流水线的 Validate Maven 步骤）。
     ///
     /// 默认实现走真实检测（会 fork `mvn -v`）；测试 fake 覆盖它以保持

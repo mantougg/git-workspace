@@ -173,7 +173,7 @@ fn classpath_run_plan(inputs: &LaunchInputs) -> AppResult<LaunchPlan> {
     let main_class = config.main_class.clone().ok_or_else(|| {
         AppError::RuntimeConfig(format!(
             "Classpath Run 需要 mainClass：请在 Runtime 配置 '{}' 中设置 mainClass\
-             （R-10/R-13 将接入 R-06 的自动推断）",
+             （R-10 启动时已尝试经 R-06 自动推断，未找到候选）",
             config.name
         ))
     })?;

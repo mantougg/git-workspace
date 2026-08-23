@@ -458,7 +458,7 @@ fn workspace_environment_path(root: &Path) -> PathBuf {
     root.join(".gitworkspace").join("environment.json")
 }
 
-fn workspace_root(conn: &Connection, workspace_id: i64) -> AppResult<PathBuf> {
+pub(crate) fn workspace_root(conn: &Connection, workspace_id: i64) -> AppResult<PathBuf> {
     let path: Option<String> = conn
         .query_row(
             "SELECT path FROM workspaces WHERE id = ?1",

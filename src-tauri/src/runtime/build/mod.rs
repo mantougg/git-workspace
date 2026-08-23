@@ -98,6 +98,9 @@ pub struct BuildOptions {
     pub extra_maven_args: Vec<String>,
     /// 构建超时；`None` 表示不限。默认 Some(30min)。
     pub timeout: Option<Duration>,
+    /// R-10 Launcher 注入：R-06 检测推断出的 mainClass（配置 `mainClass`
+    /// 缺省时）；`Some` 时在加载配置后覆盖生效，不改动用户配置文件。
+    pub main_class_override: Option<String>,
 }
 
 impl Default for BuildOptions {
@@ -108,6 +111,7 @@ impl Default for BuildOptions {
             offline: false,
             extra_maven_args: Vec::new(),
             timeout: Some(Duration::from_secs(30 * 60)),
+            main_class_override: None,
         }
     }
 }

@@ -599,7 +599,42 @@ pub const SCHEMA_V11: &str = r#"
 ALTER TABLE runtime_projects ADD COLUMN project TEXT NOT NULL DEFAULT '';
 "#;
 
+/// v12 (R-10): one row per launched runtime process.
+///
+/// The row is a *cache* of the actual OS process state (task doc: 进程状态以
+/// 实际 OS 进程为准). `pid_start_time` (sysinfo `Process::start_time`) guards
+/// against PID reuse when reconciling after a GitWorkspace restart. Metrics
+/// columns (`cpu_percent` / `memory_bytes`) hold the latest sampled values and
+/// are refreshed on a throttled cadence by the process manager.
+pub const SCHEMA_V12: &str = r#"
+CREATE TABLE IF NOT EXISTS runtime_processes (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id     INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    runtime_name     TEXT NOT NULL,
+    pid              INTEGER,
+    pid_start_time   INTEGER,
+    status           TEXT NOT NULL,
+    run_strategy     TEXT,
+    command_preview  TEXT,
+    working_dir      TEXT,
+    ports_json       TEXT NOT NULL DEFAULT '[]',
+    exit_code        INTEGER,
+    cpu_percent      REAL,
+    memory_bytes     INTEGER,
+    adopted          INTEGER NOT NULL DEFAULT 0,
+    started_at       TEXT NOT NULL,
+    stopped_at       TEXT,
+    last_seen_at     TEXT,
+    updated_at       TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_runtime_processes_ws
+    ON runtime_processes(workspace_id, runtime_name);
+CREATE INDEX IF NOT EXISTS idx_runtime_processes_status
+    ON runtime_processes(status);
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
-    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11,
+    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12,
 ];

@@ -28,6 +28,7 @@ use crate::runtime::build::{
     BuildOutputSink, BuildRequest, RingTail, RunStrategy,
 };
 use crate::runtime::config;
+use crate::runtime::logs::redact::{sensitive_env_values, LogRedactor};
 
 /// Maven Build Engine：[`engine_for("maven")`][engine_for] 返回的实现。
 pub struct MavenBuildEngine;
@@ -76,7 +77,14 @@ pub fn execute_build(
     cancel: Option<&AtomicBool>,
 ) -> AppResult<BuildOutcome> {
     // ---- 1. 加载未脱敏 Runtime 配置 + 校验 Build Engine id ----
-    let config = config::load_config_unredacted(conn, request.workspace_id, &request.runtime_name)?;
+    let mut config = config::load_config_unredacted(conn, request.workspace_id, &request.runtime_name)?;
+    // R-10 Launcher 的 R-06 推断回退：配置缺省 mainClass 时以推断值覆盖
+    // （内存生效，不改用户配置文件）。
+    if let Some(main_class) = &request.options.main_class_override {
+        if config.main_class.is_none() {
+            config.main_class = Some(main_class.clone());
+        }
+    }
     // 只认 "maven"；mvnd（R-18）/ Gradle（R-22）将来在这里分发。
     let _engine = engine_for(config.build_engine.as_deref().unwrap_or("maven"))?;
     let strategy = request
@@ -114,7 +122,7 @@ pub fn execute_build(
     }
 
     // 脱敏转发 sink + 内部 RingTail（BuildFailed 上下文）。
-    let mut redacting = RedactingSink::new(sensitive_values(&env), sink);
+    let mut redacting = RedactingSink::new(sensitive_env_values(&env), sink);
 
     // ---- 7. Maven Build（限流闸内）----
     let build_request = strategy::build_maven_request(
@@ -332,20 +340,10 @@ fn infer_failed_module(tail: &str, fallback: &str) -> String {
     fallback.to_string()
 }
 
-/// 收集需要掩码的敏感环境变量值（T-08 共享 key 规则）。
-fn sensitive_values(env: &[(String, String)]) -> Vec<String> {
-    env.iter()
-        .filter(|(key, value)| {
-            crate::core::secret::is_sensitive_environment_key(key) && !value.is_empty()
-        })
-        .map(|(_, value)| value.clone())
-        .collect()
-}
-
-/// 脱敏转发 sink：行先掩码（T-08 `mask_secrets` + 敏感环境值替换）再进
-/// 内部 [`RingTail`] 与调用方 sink。
+/// 脱敏转发 sink：行先经 [`LogRedactor`] 掩码（T-08 `mask_secrets` + 敏感
+/// 环境值替换，R-11 起为共享实现）再进内部 [`RingTail`] 与调用方 sink。
 struct RedactingSink<'a> {
-    secrets: Vec<String>,
+    redactor: LogRedactor,
     tail: RingTail,
     inner: &'a mut dyn BuildOutputSink,
 }
@@ -353,7 +351,7 @@ struct RedactingSink<'a> {
 impl<'a> RedactingSink<'a> {
     fn new(secrets: Vec<String>, inner: &'a mut dyn BuildOutputSink) -> Self {
         Self {
-            secrets,
+            redactor: LogRedactor::new(secrets),
             tail: RingTail::new(),
             inner,
         }
@@ -366,21 +364,10 @@ impl<'a> RedactingSink<'a> {
 
 impl BuildOutputSink for RedactingSink<'_> {
     fn on_line(&mut self, stream: OutputStream, line: &str) {
-        let masked = mask_line(line, &self.secrets);
+        let masked = self.redactor.mask(line);
         self.tail.on_line(stream, &masked);
         self.inner.on_line(stream, &masked);
     }
-}
-
-fn mask_line(line: &str, secrets: &[String]) -> String {
-    let mut out = crate::core::secret::mask_secrets(line);
-    for secret in secrets {
-        // 短值误伤面太大（如 "1"），只掩码足够长的秘密值。
-        if secret.len() >= 4 && out.contains(secret.as_str()) {
-            out = out.replace(secret.as_str(), config::MASKED_VALUE);
-        }
-    }
-    out
 }
 
 #[cfg(test)]

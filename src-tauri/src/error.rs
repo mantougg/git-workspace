@@ -79,6 +79,16 @@ pub enum AppError {
         log_tail: String,
     },
 
+    #[error("failed to start runtime process for {runtime}: {reason}")]
+    ProcessStartFailed { runtime: String, reason: String },
+
+    #[error("runtime process for {runtime} crashed (pid {pid:?}, exit code {exit_code:?})")]
+    ProcessCrashed {
+        runtime: String,
+        pid: Option<u32>,
+        exit_code: Option<i32>,
+    },
+
     #[error("AI error: {0}")]
     Ai(String),
 
@@ -109,6 +119,8 @@ impl AppError {
             AppError::DependencyResolve(_) => "DependencyResolveFailed",
             AppError::SourceMapping(_) => "SourceMappingFailed",
             AppError::BuildFailed { .. } => "BuildFailed",
+            AppError::ProcessStartFailed { .. } => "ProcessStartFailed",
+            AppError::ProcessCrashed { .. } => "ProcessCrashed",
             AppError::Ai(_) => "AIError",
             AppError::Permission(_) => "PermissionError",
             AppError::Other(_) => "Other",
@@ -153,6 +165,26 @@ impl Serialize for AppError {
                     "module": module,
                     "exitCode": exit_code,
                     "logTail": log_tail,
+                })
+                .to_string(),
+            ),
+            // R-10 进程错误同样带结构化上下文（§79/§80 可行动提示）。
+            AppError::ProcessStartFailed { runtime, reason } => Some(
+                serde_json::json!({
+                    "runtime": runtime,
+                    "reason": reason,
+                })
+                .to_string(),
+            ),
+            AppError::ProcessCrashed {
+                runtime,
+                pid,
+                exit_code,
+            } => Some(
+                serde_json::json!({
+                    "runtime": runtime,
+                    "pid": pid,
+                    "exitCode": exit_code,
                 })
                 .to_string(),
             ),
@@ -220,5 +252,32 @@ mod tests {
         assert_eq!(details["module"], "com.example:app");
         assert_eq!(details["exitCode"], 1);
         assert_eq!(details["logTail"], "[ERROR] COMPILATION ERROR");
+    }
+
+    #[test]
+    fn process_errors_carry_structured_details() {
+        let start = AppError::ProcessStartFailed {
+            runtime: "app".into(),
+            reason: "java 可执行文件不存在".into(),
+        };
+        assert_eq!(start.code(), "ProcessStartFailed");
+        assert!(start.recoverable());
+        let payload = serde_json::to_value(&start).unwrap();
+        let details: serde_json::Value =
+            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        assert_eq!(details["runtime"], "app");
+        assert!(details["reason"].as_str().unwrap().contains("java"));
+
+        let crash = AppError::ProcessCrashed {
+            runtime: "app".into(),
+            pid: Some(4321),
+            exit_code: Some(137),
+        };
+        assert_eq!(crash.code(), "ProcessCrashed");
+        let payload = serde_json::to_value(&crash).unwrap();
+        let details: serde_json::Value =
+            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        assert_eq!(details["pid"], 4321);
+        assert_eq!(details["exitCode"], 137);
     }
 }
