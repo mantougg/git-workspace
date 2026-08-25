@@ -253,7 +253,6 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, MoreFilled, Plus, Refresh, Switch } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import {
   checkoutBranch,
   compareBranches,

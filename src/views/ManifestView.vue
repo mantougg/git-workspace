@@ -171,7 +171,6 @@ import {
   Search,
   Upload,
 } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";

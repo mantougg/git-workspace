@@ -216,7 +216,6 @@ import {
   Clock,
   Cpu,
 } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
 import { useRepositories } from "@/composables/useRepositories";

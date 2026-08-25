@@ -1,7 +1,7 @@
 <template>
   <el-table
     :data="data"
-    v-loading="loading"
+    v-loading="loading ?? false"
     stripe
     highlight-current-row
     @row-click="(row: any) => emit('row-click', row)"

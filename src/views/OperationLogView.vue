@@ -121,7 +121,7 @@
       <el-table-column prop="repoCount" label="仓库数" width="80" align="center" />
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
-          <el-tag :type="statusOf(row).type" size="small">{{ statusOf(row).label }}</el-tag>
+          <el-tag :type="statusOf(row as OperationLogSummary).type" size="small">{{ statusOf(row as OperationLogSummary).label }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="110">
@@ -132,7 +132,7 @@
             plain
             :disabled="!!row.undoneAt"
             :loading="undoingId === row.id"
-            @click="handleUndo(row)"
+            @click="handleUndo(row as OperationLogSummary)"
           >
             撤销
           </el-button>
@@ -156,7 +156,6 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { Back, Refresh } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import { useWorkspaceStore } from "@/stores/workspace";
 import {
   getOperationLogDetail,
@@ -258,7 +257,7 @@ async function reload() {
 }
 
 /** Lazy-load the per-repo ref snapshots when a row is expanded. */
-async function onExpand(row: OperationLogSummary, expanded: OperationLogSummary[]) {
+async function onExpand(row: OperationLogSummary, expanded: any) {
   if (!expanded.includes(row) || details.value[row.id]) return;
   detailLoading.value[row.id] = true;
   try {

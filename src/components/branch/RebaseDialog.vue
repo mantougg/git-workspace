@@ -68,7 +68,6 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { ElMessage } from "element-plus";
 import { listRebaseCommits, startRebase } from "@/api/rebase";
 import type { RebaseOp, RebaseOutcome } from "@/types/rebase";
 import { errMsg } from "@/utils/error";

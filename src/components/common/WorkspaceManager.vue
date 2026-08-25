@@ -38,7 +38,7 @@
 
 <script setup lang="ts">
 import { reactive, ref } from "vue";
-import { ElMessage, type FormInstance, type FormRules } from "element-plus";
+import type { FormInstance, FormRules } from "element-plus";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { errMsg } from "@/utils/error";

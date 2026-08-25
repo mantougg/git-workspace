@@ -544,10 +544,10 @@
         <el-table-column prop="createdAt" label="创建时间" min-width="170" />
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" text type="primary" @click="openWsStashRestore(row)">
+            <el-button size="small" text type="primary" @click="openWsStashRestore(row as WorkspaceStashSummary)">
               恢复
             </el-button>
-            <el-button size="small" text type="danger" @click="removeWsStash(row)">
+            <el-button size="small" text type="danger" @click="removeWsStash(row as WorkspaceStashSummary)">
               删除
             </el-button>
           </template>
@@ -777,7 +777,6 @@ import {
   Document,
   Clock,
 } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import { listen } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
@@ -1575,7 +1574,7 @@ async function saveWsStash() {
 }
 
 /** Lazy-load the per-repo items when a record row is expanded. */
-async function onWsStashExpand(row: WorkspaceStashSummary, expanded: WorkspaceStashSummary[]) {
+async function onWsStashExpand(row: WorkspaceStashSummary, expanded: any) {
   if (!expanded.includes(row) || wsStashDialog.value.items[row.id]) return;
   try {
     wsStashDialog.value.items[row.id] = await getWorkspaceStashItems(row.id);

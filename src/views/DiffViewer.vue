@@ -228,7 +228,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, MagicStick } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import {
   getStagedDiff,
   getUnstagedDiff,

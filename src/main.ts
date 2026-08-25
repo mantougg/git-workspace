@@ -1,12 +1,11 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
-import ElementPlus from "element-plus";
-import "element-plus/dist/index.css";
 import App from "./App.vue";
 import router from "./router";
 
 const app = createApp(App);
 app.use(createPinia());
 app.use(router);
-app.use(ElementPlus);
+// Element Plus 按需注册由 unplugin-vue-components 在编译期完成（含样式），
+// 不再全量 app.use(ElementPlus) / 引入全量 CSS。
 app.mount("#app");

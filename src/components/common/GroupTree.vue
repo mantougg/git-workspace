@@ -45,7 +45,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { Plus } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
 import * as groupApi from "@/api/group";
 import type { RepoGroup, CreateGroupRequest } from "@/types/group";
 import { errMsg } from "@/utils/error";

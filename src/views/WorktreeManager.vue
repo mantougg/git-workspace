@@ -56,9 +56,9 @@
         </el-table-column>
         <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" text @click="viewGraph(row)">Graph</el-button>
-            <el-button size="small" text @click="viewDiff(row)">Diff</el-button>
-            <el-button size="small" text @click="openFolder(row)">
+            <el-button size="small" text @click="viewGraph(row as WorktreeInfo)">Graph</el-button>
+            <el-button size="small" text @click="viewDiff(row as WorktreeInfo)">Diff</el-button>
+            <el-button size="small" text @click="openFolder(row as WorktreeInfo)">
               打开目录
             </el-button>
             <el-button
@@ -66,7 +66,7 @@
               size="small"
               text
               type="danger"
-              @click="handleRemove(row)"
+              @click="handleRemove(row as WorktreeInfo)"
             >
               移除
             </el-button>
@@ -124,7 +124,6 @@
 import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, Plus, Refresh } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import { open as openPath } from "@tauri-apps/plugin-shell";
 import { listWorktrees, createWorktree, removeWorktree } from "@/api/worktree";
 import { listBranches } from "@/api/branch";

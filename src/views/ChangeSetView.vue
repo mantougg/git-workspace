@@ -194,7 +194,7 @@
                   size="small"
                   text
                   :icon="Edit"
-                  @click="openBranchDialog(row)"
+                  @click="openBranchDialog(row as ChangeSetRepoSummary)"
                 />
               </template>
             </el-table-column>
@@ -230,7 +230,7 @@
                   text
                   type="danger"
                   :icon="Delete"
-                  @click="handleRemoveRepo(row)"
+                  @click="handleRemoveRepo(row as ChangeSetRepoSummary)"
                 />
               </template>
             </el-table-column>
@@ -301,7 +301,7 @@
         <el-table-column
           type="selection"
           width="40"
-          :selectable="(row: RepositoryWithStatus) => !isMember(row)"
+          :selectable="(row: RepositoryWithStatus) => !isMember(row as RepositoryWithStatus)"
         />
         <el-table-column label="仓库" min-width="170">
           <template #default="{ row }">
@@ -309,7 +309,7 @@
               <span class="repo-name">{{ row.repository.name }}</span>
               <span class="repo-rel">{{ row.repository.relativePath }}</span>
             </div>
-            <el-tag v-if="isMember(row)" size="small" type="info" effect="plain">
+            <el-tag v-if="isMember(row as RepositoryWithStatus)" size="small" type="info" effect="plain">
               已关联
             </el-tag>
           </template>
@@ -327,7 +327,7 @@
               v-model="addDialog.branches[row.repository.id ?? -1]"
               size="small"
               placeholder="feature/xxx"
-              :disabled="isMember(row)"
+              :disabled="isMember(row as RepositoryWithStatus)"
             />
           </template>
         </el-table-column>
@@ -581,7 +581,6 @@ import {
   Promotion,
   Select,
 } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
 import { useChangeSetStore } from "@/stores/changeSet";
@@ -872,7 +871,7 @@ async function applySelector() {
     if (!table) return;
     table.clearSelection();
     for (const row of addDialog.value.repos) {
-      if (matched.has(row.repository.path) && !isMember(row)) {
+      if (matched.has(row.repository.path) && !isMember(row as RepositoryWithStatus)) {
         table.toggleRowSelection(row, true);
       }
     }

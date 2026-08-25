@@ -152,7 +152,6 @@
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import { getCommitHistory, getBranches } from "@/api/graph";
 import {
   abortPick,

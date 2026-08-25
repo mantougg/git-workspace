@@ -53,7 +53,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { Download, Refresh, Upload, EditPen } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
 import * as gitOpsApi from "@/api/git_ops";
 import type { CommitRequest } from "@/types/task";
 import { errMsg } from "@/utils/error";

@@ -101,7 +101,7 @@
           <el-button
             size="small"
             :loading="validatingId === row.id"
-            @click="onValidate(row)"
+            @click="onValidate(row as JdkInstallation)"
           >
             复检
           </el-button>
@@ -109,7 +109,7 @@
             title="确定删除该 JDK 条目吗？"
             confirm-button-text="删除"
             cancel-button-text="取消"
-            @confirm="onRemove(row)"
+            @confirm="onRemove(row as JdkInstallation)"
           >
             <template #reference>
               <el-button size="small" type="danger" plain>删除</el-button>
@@ -140,7 +140,6 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { Back, Refresh, Delete, Plus } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
 import {
   addJdkManualByPicker,
   discoverJdks,

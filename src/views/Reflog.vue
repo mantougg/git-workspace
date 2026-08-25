@@ -94,7 +94,6 @@
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, MoreFilled, Refresh } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
 import { getReflog } from "@/api/reflog";
 import { listBranches, createBranch } from "@/api/branch";
 import { resetTo } from "@/api/history";

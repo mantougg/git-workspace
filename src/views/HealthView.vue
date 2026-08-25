@@ -156,7 +156,6 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { Back, Refresh, Search, Loading } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { getWorkspaceHealth, getHealthExtras } from "@/api/health";
 import type {
