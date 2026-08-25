@@ -58,7 +58,7 @@ export interface MavenProject {
   fileHash: string
 }
 
-interface MavenProjectNode {
+export interface MavenProjectNode {
   projectId: number
   repositoryId: number | null
   path: string
@@ -67,20 +67,20 @@ interface MavenProjectNode {
   pomHash: string
 }
 
-interface MavenModuleLink {
+export interface MavenModuleLink {
   parentProjectId: number
   moduleProjectId: number | null
   declaredPath: string
 }
 
-interface SourceMapping {
+export interface SourceMapping {
   coordinates: MavenCoordinates
   repositoryId: number | null
   projectId: number
   projectPath: string
 }
 
-interface DependencyEdge {
+export interface DependencyEdge {
   dependencyId: number
   fromProjectId: number
   dependency: MavenDependency

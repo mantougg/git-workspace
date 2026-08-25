@@ -2,8 +2,10 @@
 
 pub mod build;
 pub mod config;
+pub mod events;
 pub mod launch;
 pub mod logs;
+pub mod service;
 pub mod spring_boot;
 
 pub use config::{
@@ -16,6 +18,11 @@ pub use config::{
 pub use launch::{
     LifecycleStatus, RuntimeEvent, RuntimeEventSink, RuntimeProcessInfo, RuntimeProcessManager,
     StartOptions,
+};
+
+pub use service::{
+    DependencyGraphView, ProjectInspection, RuntimeLogQuery, RuntimeOperationRequest,
+    RuntimeService, SchedulerConfig,
 };
 
 pub use logs::{

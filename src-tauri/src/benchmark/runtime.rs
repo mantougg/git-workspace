@@ -848,6 +848,8 @@ pub fn run_build_benchmark(
 
     let scheduler = BuildScheduler::new(1);
     let runner = SpawningMavenRunner;
+    // execute_build（R-12 起）接共享连接，按阶段自行加锁。
+    let conn = std::sync::Arc::new(std::sync::Mutex::new(conn));
     let mut timings = Vec::with_capacity(2);
     let mut reactor_kind = String::new();
     let mut modules_built = 0usize;
@@ -867,7 +869,7 @@ pub fn run_build_benchmark(
         let mut sink = RingTail::new();
         let stage = Instant::now();
         let outcome = execute_build(
-            &mut conn,
+            &conn,
             &tmp,
             &graph_cache,
             &closure_cache,

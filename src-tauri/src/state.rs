@@ -7,6 +7,7 @@ use crate::core::diff::FileDiff;
 use crate::core::watcher::FileWatcher;
 use crate::maven::PomCache;
 use crate::models::repository::RepoStatus;
+use crate::runtime::service::RuntimeService;
 use crate::runtime::spring_boot::SpringBootDetectionCache;
 use crate::task::manager::TaskManager;
 
@@ -73,6 +74,10 @@ pub struct AppState {
     /// Runtime Spring Boot source detection cache. Keys include POM and source
     /// fingerprints, so watcher-driven content changes naturally refresh it.
     pub spring_boot_cache: Arc<SpringBootDetectionCache>,
+
+    /// Runtime 控制面（R-12）：§63 命令的读侧 + Runtime 任务的执行体
+    /// （同时作为 T-05 TaskManager 的 `RuntimeTaskHandler` 装配）。
+    pub runtime: Arc<RuntimeService>,
 }
 
 /// Build the bounded LRU status cache.
@@ -94,16 +99,23 @@ pub(crate) fn build_diff_cache() -> Cache<DiffCacheKey, Vec<FileDiff>> {
 }
 
 impl AppState {
-    /// Create a new AppState with the given database connection and task manager.
-    pub fn new(db: Arc<Mutex<Connection>>, task_manager: TaskManager) -> Self {
+    /// Create a new AppState with the given database connection, task manager,
+    /// Runtime service (R-12) and shared POM cache.
+    pub fn new(
+        db: Arc<Mutex<Connection>>,
+        task_manager: TaskManager,
+        runtime: Arc<RuntimeService>,
+        pom_cache: Arc<PomCache>,
+    ) -> Self {
         Self {
             db,
             status_cache: Arc::new(build_status_cache()),
             task_manager,
             watcher: Mutex::new(FileWatcher::new()),
             diff_cache: Arc::new(build_diff_cache()),
-            pom_cache: Arc::new(PomCache::new()),
+            pom_cache,
             spring_boot_cache: Arc::new(SpringBootDetectionCache::new()),
+            runtime,
         }
     }
 }

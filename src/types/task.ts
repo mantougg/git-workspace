@@ -1,3 +1,5 @@
+import type { RunStrategy, RuntimeOp } from "./runtime";
+
 export type TaskType =
   | { type: "fetch" }
   | { type: "pull" }
@@ -21,7 +23,25 @@ export type TaskType =
       force?: boolean;
     }
   | { type: "clone"; url: string; branch?: string | null }
-  | { type: "shellCommand"; command: string; timeoutSecs?: number | null };
+  | { type: "shellCommand"; command: string; timeoutSecs?: number | null }
+  | {
+      /** Runtime Workspace 操作（R-12）：build / start / stop / restart 一个
+       * Runtime 配置，或刷新 workspace 依赖索引。 */
+      type: "runtime";
+      op: RuntimeOp;
+      workspaceId: number;
+      runtimeName?: string;
+      options?: RuntimeTaskOptions;
+    };
+
+/** Runtime 任务的用户可调选项（R-12）；未指定项由后端跟随
+ * BuildOptions / StartOptions 默认（对齐 IDEA Build 语义）。 */
+export interface RuntimeTaskOptions {
+  strategy?: RunStrategy | null;
+  skipBuild?: boolean;
+  skipTests?: boolean | null;
+  offline?: boolean;
+}
 
 export type TaskStatus =
   | { type: "queued" }

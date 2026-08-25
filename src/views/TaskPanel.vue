@@ -359,6 +359,8 @@ function taskTypeLabel(task: Task): string {
       return "Clone";
     case "shellCommand":
       return "Shell";
+    case "runtime":
+      return "Runtime";
   }
 }
 

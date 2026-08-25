@@ -769,7 +769,7 @@ fn write_config_file(path: &Path, config: &RuntimeApplicationConfig) -> AppResul
     write_json_atomic(path, config)
 }
 
-fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> AppResult<()> {
+pub(crate) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> AppResult<()> {
     let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');
     write_bytes_atomic(path, &bytes)

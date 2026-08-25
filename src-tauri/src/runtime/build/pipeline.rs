@@ -9,6 +9,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
@@ -46,7 +47,7 @@ impl BuildEngine for MavenBuildEngine {
         cancel: Option<&AtomicBool>,
     ) -> AppResult<BuildOutcome> {
         execute_build(
-            cx.conn,
+            cx.db,
             cx.workspace_root,
             cx.graph_cache,
             cx.closure_cache,
@@ -64,9 +65,12 @@ impl BuildEngine for MavenBuildEngine {
 /// - 配置经内部未脱敏路径加载（`env` 含真实秘密，绝不外泄到 IPC）。
 /// - Maven 构建在 [`BuildScheduler`] 的 permit 内执行（全局约束 §6）。
 /// - 构建完成后 best-effort 刷新 `~/.m2` 依赖来源映射（失败只记日志）。
+/// - DB 访问按阶段短持锁（R-12）：Maven 子进程运行期间**不持有** SQLite
+///   单连接写锁，多个构建可以真正并行到 §66 上限，UI 查询也不被长构建
+///   阻塞（R-09 初版由调用方跨整个构建持锁）。
 #[allow(clippy::too_many_arguments)]
 pub fn execute_build(
-    conn: &mut Connection,
+    db: &Arc<Mutex<Connection>>,
     workspace_root: &Path,
     graph_cache: &DependencyGraphCache,
     closure_cache: &RuntimeClosureCache,
@@ -77,7 +81,10 @@ pub fn execute_build(
     cancel: Option<&AtomicBool>,
 ) -> AppResult<BuildOutcome> {
     // ---- 1. 加载未脱敏 Runtime 配置 + 校验 Build Engine id ----
-    let mut config = config::load_config_unredacted(conn, request.workspace_id, &request.runtime_name)?;
+    let mut config = {
+        let conn = db.lock().unwrap();
+        config::load_config_unredacted(&conn, request.workspace_id, &request.runtime_name)?
+    };
     // R-10 Launcher 的 R-06 推断回退：配置缺省 mainClass 时以推断值覆盖
     // （内存生效，不改用户配置文件）。
     if let Some(main_class) = &request.options.main_class_override {
@@ -94,12 +101,18 @@ pub fn execute_build(
 
     // ---- 2. Validate JDK（配置了才校验）----
     let jdk = match config.jdk.as_deref() {
-        Some(spec) => Some(crate::java::resolve::resolve_jdk_for_config(conn, spec)?),
+        Some(spec) => {
+            let conn = db.lock().unwrap();
+            Some(crate::java::resolve::resolve_jdk_for_config(&conn, spec)?)
+        }
         None => None,
     };
 
     // ---- 3. 依赖图 + 根项目匹配 ----
-    let graph = graph_cache.get_or_load(conn, request.workspace_id)?.graph;
+    let graph = {
+        let conn = db.lock().unwrap();
+        graph_cache.get_or_load(&conn, request.workspace_id)?.graph
+    };
     let root = find_root_project(&graph, &config.project)?;
 
     // ---- 4. Validate Maven（经 runner seam，可测试）----
@@ -113,10 +126,12 @@ pub fn execute_build(
     let reactor = prepare_runtime_reactor(&graph, &closure, workspace_root, &request.runtime_name)?;
 
     // ---- 6. 构建环境：五层合并环境 + JAVA_HOME（不强行改 PATH）----
-    let mut env: Vec<(String, String)> =
-        config::resolve_environment(conn, request.workspace_id, &request.runtime_name)?
+    let mut env: Vec<(String, String)> = {
+        let conn = db.lock().unwrap();
+        config::resolve_environment(&conn, request.workspace_id, &request.runtime_name)?
             .into_iter()
-            .collect();
+            .collect()
+    };
     if let Some(jdk) = &jdk {
         env.push(("JAVA_HOME".into(), jdk.home_path.clone()));
     }
@@ -134,7 +149,14 @@ pub fn execute_build(
         Some(resolved.local_repository.clone()),
     );
     let build_preview = executor::preview_command(&build_request);
-    let _permit = scheduler.acquire();
+    // R-12：等 permit 期间响应任务取消（排队取消），拿到 permit 后的构建
+    // 取消由 runner 的 50ms 轮询负责。
+    let _permit = match cancel {
+        Some(flag) => scheduler
+            .acquire_cancelable(flag)
+            .ok_or_else(|| AppError::Task("build cancelled by user（排队等待构建位时取消）".into()))?,
+        None => scheduler.acquire(),
+    };
     let start = Instant::now();
     let exit = runner.run(
         &build_request,
@@ -182,10 +204,15 @@ pub fn execute_build(
     )?;
 
     // 构建可能改变了 ~/.m2：best-effort 刷新，失败不影响构建结果。
-    if let Err(error) =
-        crate::maven::refresh_dependency_sources(conn, request.workspace_id, &resolved.local_repository)
     {
-        log::warn!("R-09: post-build refresh_dependency_sources failed: {error}");
+        let mut conn = db.lock().unwrap();
+        if let Err(error) = crate::maven::refresh_dependency_sources(
+            &mut conn,
+            request.workspace_id,
+            &resolved.local_repository,
+        ) {
+            log::warn!("R-09: post-build refresh_dependency_sources failed: {error}");
+        }
     }
 
     Ok(BuildOutcome {
@@ -388,7 +415,7 @@ mod tests {
     /// 单仓多模块 fixture：parent(pom) + lib(jar) + app(jar，依赖 lib)。
     struct Fixture {
         root: PathBuf,
-        conn: Connection,
+        db: Arc<Mutex<Connection>>,
         workspace_id: i64,
     }
 
@@ -458,7 +485,7 @@ mod tests {
         .unwrap();
         Fixture {
             root,
-            conn,
+            db: Arc::new(Mutex::new(conn)),
             workspace_id,
         }
     }
@@ -484,7 +511,7 @@ mod tests {
             };
             mutate(&mut config);
             create_config(
-                &self.conn,
+                &self.db.lock().unwrap(),
                 &CreateRuntimeConfigRequest {
                     workspace_id: self.workspace_id,
                     config,
@@ -519,7 +546,7 @@ mod tests {
         };
         let root = fixture.root.clone();
         execute_build(
-            &mut fixture.conn,
+            &fixture.db,
             &root,
             &graph_cache,
             &closure_cache,
@@ -799,7 +826,7 @@ mod tests {
     fn configured_jdk_injects_java_home_and_unknown_jdk_fails_fast() {
         let mut fixture = setup_fixture("jdk");
         crate::java::registry::upsert_jdk(
-            &fixture.conn,
+            &fixture.db.lock().unwrap(),
             &{
                 let mut jdk = crate::java::model::JdkInstallation::new(
                     "/jdk-21",
@@ -845,7 +872,7 @@ mod tests {
         let root = fixture.root.clone();
         let mut sink = VecSink(Vec::new());
         let error = execute_build(
-            &mut fixture.conn,
+            &fixture.db,
             &root,
             &graph_cache,
             &closure_cache,
@@ -879,7 +906,7 @@ mod tests {
         };
         let root = fixture.root.clone();
         let error = execute_build(
-            &mut fixture.conn,
+            &fixture.db,
             &root,
             &graph_cache,
             &closure_cache,
@@ -901,7 +928,7 @@ mod tests {
             options: BuildOptions::default(),
         };
         let error = execute_build(
-            &mut fixture.conn,
+            &fixture.db,
             &fixture.root.clone(),
             &graph_cache,
             &closure_cache,
@@ -1171,7 +1198,7 @@ mod tests {
         let (conn, workspace_id) = register_workspace(&root, &["repo"]);
         Fixture {
             root,
-            conn,
+            db: Arc::new(Mutex::new(conn)),
             workspace_id,
         }
     }
@@ -1192,7 +1219,7 @@ mod tests {
         let (conn, workspace_id) = register_workspace(&root, &["repo-lib", "repo-app"]);
         Fixture {
             root,
-            conn,
+            db: Arc::new(Mutex::new(conn)),
             workspace_id,
         }
     }

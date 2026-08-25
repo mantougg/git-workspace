@@ -94,12 +94,34 @@ pub fn run() {
             // Create GitOps with default SSH credentials
             let git_ops = Arc::new(GitOps::with_default_ssh());
 
-            // Create TaskManager with 8 workers
-            let task_manager = TaskManager::new(8, git_ops, app.handle().clone(), Arc::clone(&db));
+            // R-12：RuntimeService（§63 读侧 + §65 Runtime 任务执行体），
+            // 与 AppState 共享同一个 PomCache。
+            let pom_cache = Arc::new(crate::maven::PomCache::new());
+            let runtime_service = crate::runtime::service::RuntimeService::new(
+                app.handle().clone(),
+                Arc::clone(&db),
+                Arc::clone(&pom_cache),
+            );
+            let runtime_handler: Arc<dyn crate::task::runtime::RuntimeTaskHandler> =
+                runtime_service.clone();
+
+            // Create TaskManager with 8 workers (Runtime tasks dispatched to
+            // the RuntimeService handler, R-12).
+            let task_manager = TaskManager::new(
+                8,
+                git_ops,
+                app.handle().clone(),
+                Arc::clone(&db),
+                Some(runtime_handler),
+            );
 
             // Create and manage app state
-            let state = AppState::new(db, task_manager);
+            let state = AppState::new(db, task_manager, Arc::clone(&runtime_service), pom_cache);
             app.manage(state);
+
+            // R-10/R-12：启动对账——接管上次会话遗留的活跃 Runtime 进程、
+            // 死去的落终态。后台线程执行，不阻塞启动。
+            runtime_service.reconcile_on_startup();
 
             log::info!("GitWorkspace application started successfully");
             Ok(())
@@ -286,6 +308,23 @@ pub fn run() {
             commands::runtime::resolve_runtime_environment,
             commands::runtime::get_workspace_runtime_environment,
             commands::runtime::set_workspace_runtime_environment,
+            // Runtime 控制面（R-12，§63）
+            commands::runtime::runtime_list_projects,
+            commands::runtime::runtime_inspect_project,
+            commands::runtime::runtime_resolve_dependencies,
+            commands::runtime::runtime_get_dependency_graph,
+            commands::runtime::runtime_build,
+            commands::runtime::runtime_start,
+            commands::runtime::runtime_stop,
+            commands::runtime::runtime_restart,
+            commands::runtime::runtime_list_processes,
+            commands::runtime::runtime_process_status,
+            commands::runtime::runtime_get_logs,
+            commands::runtime::runtime_clear_logs,
+            commands::runtime::runtime_start_environment,
+            commands::runtime::runtime_stop_environment,
+            commands::runtime::runtime_get_scheduler_config,
+            commands::runtime::runtime_set_scheduler_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

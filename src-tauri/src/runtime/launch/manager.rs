@@ -97,6 +97,9 @@ struct CachedLaunch {
 /// 活跃进程句柄：monitor/stop/sampler 共享的同步原语。
 #[derive(Clone)]
 struct ActiveProcess {
+    /// 身份（R-12 `signal_build_cancel` 按 runtime 反查句柄，不经过 DB）。
+    workspace_id: i64,
+    runtime_name: String,
     /// spawn 后立即填充（streaming pid slot）。
     pid_slot: Arc<Mutex<Option<u32>>>,
     /// spawn 时记录的 OS start_time（防 PID 复用，adopted 行来自 DB）。
@@ -129,8 +132,10 @@ struct MonitorOutcome {
 }
 
 impl ActiveProcess {
-    fn new(adopted: bool) -> Self {
+    fn new(adopted: bool, workspace_id: i64, runtime_name: &str) -> Self {
         Self {
+            workspace_id,
+            runtime_name: runtime_name.to_string(),
             pid_slot: Arc::new(Mutex::new(None)),
             pid_start_time: Arc::new(Mutex::new(None)),
             build_cancel: Arc::new(AtomicBool::new(false)),
@@ -242,7 +247,7 @@ impl RuntimeProcessManager {
             let conn = self.db.lock().unwrap();
             store::insert_process(&conn, workspace_id, runtime_name)?
         };
-        let handle = ActiveProcess::new(false);
+        let handle = ActiveProcess::new(false, workspace_id, runtime_name);
         self.active
             .lock()
             .unwrap()
@@ -495,12 +500,13 @@ impl RuntimeProcessManager {
             options: build_options,
         };
         let outcome = {
-            let mut conn = self.db.lock().unwrap();
+            // R-12：不在整个构建期间持 DB 锁——execute_build 按阶段自行加锁，
+            // Maven 运行期间锁是空闲的（并发构建 / UI 查询不被阻塞）。
             let mut sink = BuildLogSink {
                 session: self.deps.logs.session(process_id),
             };
             execute_build(
-                &mut conn,
+                &self.db,
                 &workspace_root,
                 &self.deps.graph_cache,
                 &self.deps.closure_cache,
@@ -591,6 +597,21 @@ impl RuntimeProcessManager {
             Some(row) => self.stop(row.id, grace).map(Some),
             None => Ok(None),
         }
+    }
+
+    /// R-12 任务取消的快路径：仅凭内存句柄置 `build_cancel`（streaming
+    /// runner 50ms 轮询后杀 Maven 进程树），不经过 DB——构建期间 DB 写锁
+    /// 被 `execute_build` 持有，等锁会把取消延迟到构建自然结束。
+    /// 返回是否找到了活跃句柄；后续的 DB 状态迁移由 `stop_runtime` 完成。
+    pub fn signal_build_cancel(&self, workspace_id: i64, runtime_name: &str) -> bool {
+        let active = self.active.lock().unwrap();
+        for handle in active.values() {
+            if handle.workspace_id == workspace_id && handle.runtime_name == runtime_name {
+                handle.build_cancel.store(true, Ordering::Relaxed);
+                return true;
+            }
+        }
+        false
     }
 
     /// Force Kill（全局约束 §3 二次确认）：`confirmed=false` 直接拒绝。
@@ -716,7 +737,7 @@ impl RuntimeProcessManager {
                     } else if row.status == LifecycleStatus::Starting {
                         self.transit_lenient(row.id, &name, LifecycleStatus::Running)?;
                     }
-                    let handle = ActiveProcess::new(true);
+                    let handle = ActiveProcess::new(true, workspace_id, &name);
                     *handle.pid_slot.lock().unwrap() = Some(pid);
                     *handle.pid_start_time.lock().unwrap() = Some(start_time);
                     self.active

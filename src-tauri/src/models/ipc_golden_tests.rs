@@ -30,7 +30,10 @@ use crate::maven::{
     model as maven_model, reactor as maven_reactor, resolver as maven_resolver,
 };
 use crate::models::{commit, group, repository, task, workspace};
-use crate::runtime::{config as runtime_config, spring_boot as spring_boot_model};
+use crate::runtime::{
+    config as runtime_config, events as runtime_events, launch as runtime_launch,
+    logs as runtime_logs, service as runtime_service, spring_boot as spring_boot_model,
+};
 
 /// Representative sample of every IPC type, keyed by Rust type name.
 /// Enum (tagged-union) types serialize as an array of all variants.
@@ -361,6 +364,334 @@ fn samples() -> Map<String, Value> {
         }),
     );
 
+    // R-12 Runtime IPC / Event API（§63/§64/§66）
+    let sample_node = maven_index::MavenProjectNode {
+        project_id: 10,
+        repository_id: Some(2),
+        path: PathBuf::from("/ws/repo/pom.xml"),
+        coordinates: maven_model::PomCoordinates {
+            group_id: "com.example".into(),
+            artifact_id: "app".into(),
+            version: "1.0.0".into(),
+        },
+        packaging: "jar".into(),
+        pom_hash: "pom-hash".into(),
+    };
+    let sample_module_link = maven_index::MavenModuleLink {
+        parent_project_id: 10,
+        module_project_id: Some(11),
+        declared_path: "library".into(),
+    };
+    let sample_source_mapping = maven_index::SourceMapping {
+        coordinates: maven_model::PomCoordinates {
+            group_id: "com.example".into(),
+            artifact_id: "library".into(),
+            version: "1.0.0".into(),
+        },
+        repository_id: Some(3),
+        project_id: 11,
+        project_path: PathBuf::from("/ws/library"),
+    };
+    let sample_edge = maven_index::DependencyEdge {
+        dependency_id: 20,
+        from_project_id: 10,
+        dependency: maven_model::MavenDependency {
+            group_id: "com.example".into(),
+            artifact_id: "library".into(),
+            version: Some("1.0.0".into()),
+            scope: maven_model::DependencyScope::Compile,
+            optional: false,
+            dep_type: "jar".into(),
+            classifier: None,
+            exclusions: vec![],
+        },
+        source: maven_resolver::DependencySource::WorkspaceSource,
+        source_project_id: Some(11),
+        resolved_path: Some(PathBuf::from("/ws/library")),
+        reason: maven_resolver::ResolutionReason::WorkspaceExactMatch,
+    };
+    m.insert("MavenProjectNode".into(), json!(sample_node.clone()));
+    m.insert("MavenModuleLink".into(), json!(sample_module_link.clone()));
+    m.insert("SourceMapping".into(), json!(sample_source_mapping.clone()));
+    m.insert("DependencyEdge".into(), json!(sample_edge.clone()));
+    m.insert(
+        "LifecycleStatus".into(),
+        json!([
+            runtime_launch::LifecycleStatus::Created,
+            runtime_launch::LifecycleStatus::Preparing,
+            runtime_launch::LifecycleStatus::Resolving,
+            runtime_launch::LifecycleStatus::Building,
+            runtime_launch::LifecycleStatus::Starting,
+            runtime_launch::LifecycleStatus::Running,
+            runtime_launch::LifecycleStatus::Stopping,
+            runtime_launch::LifecycleStatus::Stopped,
+            runtime_launch::LifecycleStatus::Failed,
+        ]),
+    );
+    m.insert(
+        "RuntimeProcessInfo".into(),
+        json!(runtime_launch::RuntimeProcessInfo {
+            process_id: 31,
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            pid: Some(4242),
+            status: runtime_launch::LifecycleStatus::Running,
+            run_strategy: Some(crate::runtime::build::RunStrategy::ClasspathRun),
+            command_preview: Some("java -cp ... com.example.Application".into()),
+            working_dir: Some("/ws/repo/app".into()),
+            ports: vec![8080],
+            exit_code: None,
+            adopted: false,
+            started_at: "2026-08-25T00:00:00Z".into(),
+            stopped_at: None,
+            uptime_seconds: Some(42),
+            cpu_percent: Some(3.5),
+            memory_bytes: Some(268_435_456),
+        }),
+    );
+    m.insert(
+        "LogLevel".into(),
+        json!([
+            runtime_logs::LogLevel::Trace,
+            runtime_logs::LogLevel::Debug,
+            runtime_logs::LogLevel::Info,
+            runtime_logs::LogLevel::Warn,
+            runtime_logs::LogLevel::Error,
+        ]),
+    );
+    m.insert(
+        "LogPhase".into(),
+        json!([
+            runtime_logs::LogPhase::Build,
+            runtime_logs::LogPhase::Run,
+        ]),
+    );
+    m.insert(
+        "OutputStream".into(),
+        json!([
+            crate::process::streaming::OutputStream::Stdout,
+            crate::process::streaming::OutputStream::Stderr,
+        ]),
+    );
+    let sample_log_line = runtime_logs::LogLine {
+        seq: 1,
+        at: "2026-08-25T00:00:00Z".into(),
+        phase: runtime_logs::LogPhase::Run,
+        stream: crate::process::streaming::OutputStream::Stdout,
+        level: Some(runtime_logs::LogLevel::Info),
+        line: "Started Application in 3.2 seconds".into(),
+    };
+    m.insert("LogLine".into(), json!(sample_log_line.clone()));
+    m.insert(
+        "LogEntry".into(),
+        json!(runtime_logs::LogEntry {
+            line_number: 7,
+            level: Some(runtime_logs::LogLevel::Warn),
+            text: "slow query".into(),
+        }),
+    );
+    m.insert(
+        "LogFilter".into(),
+        json!(runtime_logs::LogFilter {
+            query: Some("error".into()),
+            min_level: Some(runtime_logs::LogLevel::Warn),
+            limit: Some(200),
+        }),
+    );
+    m.insert(
+        "RuntimeStage".into(),
+        json!([
+            runtime_events::RuntimeStage::Preparing,
+            runtime_events::RuntimeStage::Resolving,
+            runtime_events::RuntimeStage::Building,
+            runtime_events::RuntimeStage::Starting,
+        ]),
+    );
+    m.insert(
+        "HealthStatus".into(),
+        json!([
+            runtime_events::HealthStatus::Up,
+            runtime_events::HealthStatus::Down,
+        ]),
+    );
+    // §64 事件 payload（runtime.<event> 一一对应）
+    m.insert(
+        "ProjectDiscoveredPayload".into(),
+        json!(runtime_events::ProjectDiscoveredPayload {
+            workspace_id: 1,
+            path: "repo/app".into(),
+            coordinates: "com.example:app:1.0.0".into(),
+            packaging: "jar".into(),
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "DependencyResolvedPayload".into(),
+        json!(runtime_events::DependencyResolvedPayload {
+            workspace_id: 1,
+            projects: 3,
+            dependencies: 2,
+            source_mappings: 2,
+            inserted: 3,
+            updated: 0,
+            removed: 0,
+            elapsed_ms: 120,
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "BuildStartedPayload".into(),
+        json!(runtime_events::BuildStartedPayload {
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            op: task::RuntimeOp::Build,
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "BuildProgressPayload".into(),
+        json!(runtime_events::BuildProgressPayload {
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            process_id: Some(31),
+            stage: runtime_events::RuntimeStage::Building,
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "BuildCompletedPayload".into(),
+        json!(runtime_events::BuildCompletedPayload {
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            process_id: Some(31),
+            success: true,
+            duration_ms: Some(12_345),
+            error: None,
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "ProcessStartedPayload".into(),
+        json!(runtime_events::ProcessStartedPayload {
+            workspace_id: 1,
+            process_id: 31,
+            runtime_name: "app".into(),
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "ProcessOutputPayload".into(),
+        json!(runtime_events::ProcessOutputPayload {
+            process_id: 31,
+            runtime_name: "app".into(),
+            lines: vec![sample_log_line],
+        }),
+    );
+    m.insert(
+        "ProcessStoppedPayload".into(),
+        json!(runtime_events::ProcessStoppedPayload {
+            workspace_id: 1,
+            process_id: 31,
+            runtime_name: "app".into(),
+            exit_code: Some(0),
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "ProcessFailedPayload".into(),
+        json!(runtime_events::ProcessFailedPayload {
+            workspace_id: 1,
+            process_id: 31,
+            runtime_name: "app".into(),
+            exit_code: Some(1),
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "HealthChangedPayload".into(),
+        json!(runtime_events::HealthChangedPayload {
+            workspace_id: 1,
+            process_id: 31,
+            runtime_name: "app".into(),
+            health: runtime_events::HealthStatus::Up,
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "FileChangedPayload".into(),
+        json!(runtime_events::FileChangedPayload {
+            workspace_id: 1,
+            paths: vec!["repo/app/src/main/java/com/example/App.java".into()],
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "RestartStartedPayload".into(),
+        json!(runtime_events::RestartStartedPayload {
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "RestartCompletedPayload".into(),
+        json!(runtime_events::RestartCompletedPayload {
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            success: true,
+            error: None,
+            at: "2026-08-25T00:00:00Z".into(),
+        }),
+    );
+    // §63 请求 / 视图类型 + §66 调度配置
+    m.insert(
+        "RuntimeOperationRequest".into(),
+        json!(runtime_service::RuntimeOperationRequest {
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            options: task::RuntimeTaskOptions::default(),
+        }),
+    );
+    m.insert(
+        "RuntimeLogQuery".into(),
+        json!(runtime_service::RuntimeLogQuery {
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            process_id: 31,
+            filter: runtime_logs::LogFilter::default(),
+        }),
+    );
+    m.insert(
+        "ProjectInspection".into(),
+        json!(runtime_service::ProjectInspection {
+            project: sample_node.clone(),
+            modules: vec![sample_module_link.clone()],
+            parent_project_id: None,
+            dependencies: vec![sample_edge.clone()],
+            source_mappings: vec![sample_source_mapping.clone()],
+        }),
+    );
+    m.insert(
+        "DependencyGraphView".into(),
+        json!(runtime_service::DependencyGraphView {
+            workspace_id: 1,
+            fingerprint: "graph-hash".into(),
+            projects: vec![sample_node],
+            modules: vec![sample_module_link],
+            dependencies: vec![sample_edge],
+            source_mappings: vec![sample_source_mapping],
+            total_dependencies: 1,
+            truncated: false,
+        }),
+    );
+    m.insert(
+        "SchedulerConfig".into(),
+        json!(runtime_service::SchedulerConfig {
+            max_concurrent_builds: 2,
+            max_concurrent_resolves: 4,
+        }),
+    );
+
     // R-04 JDK Manager model
     m.insert(
         "JdkInstallation".into(),
@@ -522,6 +853,36 @@ fn samples() -> Map<String, Value> {
                 command: "make build".into(),
                 timeout_secs: Some(600),
             },
+            task::TaskType::Runtime {
+                op: task::RuntimeOp::Start,
+                workspace_id: 1,
+                runtime_name: "app".into(),
+                options: task::RuntimeTaskOptions {
+                    strategy: Some(crate::runtime::build::RunStrategy::MavenRun),
+                    skip_build: false,
+                    skip_tests: Some(true),
+                    offline: false,
+                },
+            },
+        ]),
+    );
+    m.insert(
+        "RuntimeTaskOptions".into(),
+        json!(task::RuntimeTaskOptions {
+            strategy: Some(crate::runtime::build::RunStrategy::PackageRun),
+            skip_build: true,
+            skip_tests: Some(false),
+            offline: true,
+        }),
+    );
+    m.insert(
+        "RuntimeOp".into(),
+        json!([
+            task::RuntimeOp::Build,
+            task::RuntimeOp::Start,
+            task::RuntimeOp::Stop,
+            task::RuntimeOp::Restart,
+            task::RuntimeOp::ResolveDependencies,
         ]),
     );
     m.insert(
@@ -1647,6 +2008,97 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ),
     // R-02 dependency graph
     ("DependencyGraph", "types/maven.ts", "DependencyGraph"),
+    ("MavenProjectNode", "types/maven.ts", "MavenProjectNode"),
+    ("MavenModuleLink", "types/maven.ts", "MavenModuleLink"),
+    ("SourceMapping", "types/maven.ts", "SourceMapping"),
+    ("DependencyEdge", "types/maven.ts", "DependencyEdge"),
+    // R-12 Runtime IPC / Event API（§63/§64/§66）
+    (
+        "RuntimeProcessInfo",
+        "types/runtime.ts",
+        "RuntimeProcessInfo",
+    ),
+    ("LogLine", "types/runtime.ts", "LogLine"),
+    ("LogEntry", "types/runtime.ts", "LogEntry"),
+    ("LogFilter", "types/runtime.ts", "LogFilter"),
+    (
+        "ProjectDiscoveredPayload",
+        "types/runtime.ts",
+        "ProjectDiscoveredPayload",
+    ),
+    (
+        "DependencyResolvedPayload",
+        "types/runtime.ts",
+        "DependencyResolvedPayload",
+    ),
+    (
+        "BuildStartedPayload",
+        "types/runtime.ts",
+        "BuildStartedPayload",
+    ),
+    (
+        "BuildProgressPayload",
+        "types/runtime.ts",
+        "BuildProgressPayload",
+    ),
+    (
+        "BuildCompletedPayload",
+        "types/runtime.ts",
+        "BuildCompletedPayload",
+    ),
+    (
+        "ProcessStartedPayload",
+        "types/runtime.ts",
+        "ProcessStartedPayload",
+    ),
+    (
+        "ProcessOutputPayload",
+        "types/runtime.ts",
+        "ProcessOutputPayload",
+    ),
+    (
+        "ProcessStoppedPayload",
+        "types/runtime.ts",
+        "ProcessStoppedPayload",
+    ),
+    (
+        "ProcessFailedPayload",
+        "types/runtime.ts",
+        "ProcessFailedPayload",
+    ),
+    (
+        "HealthChangedPayload",
+        "types/runtime.ts",
+        "HealthChangedPayload",
+    ),
+    (
+        "FileChangedPayload",
+        "types/runtime.ts",
+        "FileChangedPayload",
+    ),
+    (
+        "RestartStartedPayload",
+        "types/runtime.ts",
+        "RestartStartedPayload",
+    ),
+    (
+        "RestartCompletedPayload",
+        "types/runtime.ts",
+        "RestartCompletedPayload",
+    ),
+    (
+        "RuntimeOperationRequest",
+        "types/runtime.ts",
+        "RuntimeOperationRequest",
+    ),
+    ("RuntimeLogQuery", "types/runtime.ts", "RuntimeLogQuery"),
+    ("ProjectInspection", "types/runtime.ts", "ProjectInspection"),
+    (
+        "DependencyGraphView",
+        "types/runtime.ts",
+        "DependencyGraphView",
+    ),
+    ("SchedulerConfig", "types/runtime.ts", "SchedulerConfig"),
     // R-03 Runtime Closure and Reactor
     ("RuntimeScope", "types/maven.ts", "RuntimeScope"),
     ("RuntimeClosure", "types/maven.ts", "RuntimeClosure"),
@@ -1661,6 +2113,7 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("ResolvedMaven", "types/maven.ts", "ResolvedMaven"),
     ("MavenExecutionRequest", "types/maven.ts", "MavenExecutionRequest"),
     ("TaskType", "types/task.ts", "TaskType"),
+    ("RuntimeTaskOptions", "types/task.ts", "RuntimeTaskOptions"),
     ("TaskStatus", "types/task.ts", "TaskStatus"),
     ("Task", "types/task.ts", "Task"),
     ("TaskRequest", "types/task.ts", "TaskRequest"),

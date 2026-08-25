@@ -103,8 +103,9 @@ pub struct RuntimeTaskOptions {
     /// Start-only: reuse the latest build artifacts (R-10 skip-build).
     #[serde(default)]
     pub skip_build: bool,
+    /// `None` = follow `BuildOptions` default (skip tests, IDEA Build 语义)。
     #[serde(default)]
-    pub skip_tests: bool,
+    pub skip_tests: Option<bool>,
     #[serde(default)]
     pub offline: bool,
 }

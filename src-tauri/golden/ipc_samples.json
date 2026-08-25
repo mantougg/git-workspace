@@ -28,6 +28,15 @@
     "remotes": [],
     "tags": []
   },
+  "BuildCompletedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "durationMs": 12345,
+    "error": null,
+    "processId": 31,
+    "runtimeName": "app",
+    "success": true,
+    "workspaceId": 1
+  },
   "BuildFailedError": {
     "code": "BuildFailed",
     "details": "{\"exitCode\":1,\"logTail\":\"[ERROR] Failed to execute goal ... compile\",\"module\":\"com.example:app\"}",
@@ -35,6 +44,19 @@
     "operation": null,
     "recoverable": true,
     "repository": null
+  },
+  "BuildProgressPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "processId": 31,
+    "runtimeName": "app",
+    "stage": "building",
+    "workspaceId": 1
+  },
+  "BuildStartedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "op": "build",
+    "runtimeName": "app",
+    "workspaceId": 1
   },
   "ChangeSet": {
     "createdAt": "2026-01-01T00:00:00Z",
@@ -328,6 +350,24 @@
     ],
     "onFailure": "continue"
   },
+  "DependencyEdge": {
+    "dependency": {
+      "artifactId": "library",
+      "classifier": null,
+      "depType": "jar",
+      "exclusions": [],
+      "groupId": "com.example",
+      "optional": false,
+      "scope": "compile",
+      "version": "1.0.0"
+    },
+    "dependencyId": 20,
+    "fromProjectId": 10,
+    "reason": "workspaceExactMatch",
+    "resolvedPath": "/ws/library",
+    "source": "workspaceSource",
+    "sourceProjectId": 11
+  },
   "DependencyGraph": {
     "dependencies": [
       {
@@ -385,6 +425,65 @@
     ],
     "workspaceId": 1
   },
+  "DependencyGraphView": {
+    "dependencies": [
+      {
+        "dependency": {
+          "artifactId": "library",
+          "classifier": null,
+          "depType": "jar",
+          "exclusions": [],
+          "groupId": "com.example",
+          "optional": false,
+          "scope": "compile",
+          "version": "1.0.0"
+        },
+        "dependencyId": 20,
+        "fromProjectId": 10,
+        "reason": "workspaceExactMatch",
+        "resolvedPath": "/ws/library",
+        "source": "workspaceSource",
+        "sourceProjectId": 11
+      }
+    ],
+    "fingerprint": "graph-hash",
+    "modules": [
+      {
+        "declaredPath": "library",
+        "moduleProjectId": 11,
+        "parentProjectId": 10
+      }
+    ],
+    "projects": [
+      {
+        "coordinates": {
+          "artifactId": "app",
+          "groupId": "com.example",
+          "version": "1.0.0"
+        },
+        "packaging": "jar",
+        "path": "/ws/repo/pom.xml",
+        "pomHash": "pom-hash",
+        "projectId": 10,
+        "repositoryId": 2
+      }
+    ],
+    "sourceMappings": [
+      {
+        "coordinates": {
+          "artifactId": "library",
+          "groupId": "com.example",
+          "version": "1.0.0"
+        },
+        "projectId": 11,
+        "projectPath": "/ws/library",
+        "repositoryId": 3
+      }
+    ],
+    "totalDependencies": 1,
+    "truncated": false,
+    "workspaceId": 1
+  },
   "DependencyResolveFailedError": {
     "code": "DependencyResolveFailed",
     "details": null,
@@ -392,6 +491,17 @@
     "operation": null,
     "recoverable": true,
     "repository": null
+  },
+  "DependencyResolvedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "dependencies": 2,
+    "elapsedMs": 120,
+    "inserted": 3,
+    "projects": 3,
+    "removed": 0,
+    "sourceMappings": 2,
+    "updated": 0,
+    "workspaceId": 1
   },
   "DiffLine": {
     "content": "let x = 1;",
@@ -424,6 +534,13 @@
     "path": "src/a.rs",
     "status": "modified"
   },
+  "FileChangedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "paths": [
+      "repo/app/src/main/java/com/example/App.java"
+    ],
+    "workspaceId": 1
+  },
   "FileDiff": {
     "hunks": [],
     "newPath": "a.rs",
@@ -437,6 +554,17 @@
     "repoPath": "/ws/repo",
     "success": true
   },
+  "HealthChangedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "health": "up",
+    "processId": 31,
+    "runtimeName": "app",
+    "workspaceId": 1
+  },
+  "HealthStatus": [
+    "up",
+    "down"
+  ],
   "HealthWeights": {
     "ahead": 5,
     "behind": 8,
@@ -501,11 +629,51 @@
     "liberica",
     "other"
   ],
+  "LifecycleStatus": [
+    "created",
+    "preparing",
+    "resolving",
+    "building",
+    "starting",
+    "running",
+    "stopping",
+    "stopped",
+    "failed"
+  ],
+  "LogEntry": {
+    "level": "warn",
+    "lineNumber": 7,
+    "text": "slow query"
+  },
   "LogFileInfo": {
     "name": "app.log",
     "path": "/logs/app.log",
     "sizeBytes": 42
   },
+  "LogFilter": {
+    "limit": 200,
+    "minLevel": "warn",
+    "query": "error"
+  },
+  "LogLevel": [
+    "trace",
+    "debug",
+    "info",
+    "warn",
+    "error"
+  ],
+  "LogLine": {
+    "at": "2026-08-25T00:00:00Z",
+    "level": "info",
+    "line": "Started Application in 3.2 seconds",
+    "phase": "run",
+    "seq": 1,
+    "stream": "stdout"
+  },
+  "LogPhase": [
+    "build",
+    "run"
+  ],
   "ManifestRepo": {
     "defaultBranch": "main",
     "group": "前端",
@@ -541,6 +709,11 @@
     "localRepository": "/home/alice/.m2/repository",
     "viaCmdC": true,
     "workingDir": "/proj"
+  },
+  "MavenModuleLink": {
+    "declaredPath": "library",
+    "moduleProjectId": 11,
+    "parentProjectId": 10
   },
   "MavenNotFoundError": {
     "code": "MavenNotFound",
@@ -600,6 +773,18 @@
       "java.version": "21"
     },
     "version": "1.0.0"
+  },
+  "MavenProjectNode": {
+    "coordinates": {
+      "artifactId": "app",
+      "groupId": "com.example",
+      "version": "1.0.0"
+    },
+    "packaging": "jar",
+    "path": "/ws/repo/pom.xml",
+    "pomHash": "pom-hash",
+    "projectId": 10,
+    "repositoryId": 2
   },
   "MavenSource": [
     "projectWrapper",
@@ -701,6 +886,10 @@
     "rebase": null,
     "revert": false
   },
+  "OutputStream": [
+    "stdout",
+    "stderr"
+  ],
   "PickOutcome": [
     {
       "picked": 2,
@@ -795,6 +984,101 @@
     "name": "Build",
     "retries": 1,
     "timeoutSecs": 600
+  },
+  "ProcessFailedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "exitCode": 1,
+    "processId": 31,
+    "runtimeName": "app",
+    "workspaceId": 1
+  },
+  "ProcessOutputPayload": {
+    "lines": [
+      {
+        "at": "2026-08-25T00:00:00Z",
+        "level": "info",
+        "line": "Started Application in 3.2 seconds",
+        "phase": "run",
+        "seq": 1,
+        "stream": "stdout"
+      }
+    ],
+    "processId": 31,
+    "runtimeName": "app"
+  },
+  "ProcessStartedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "processId": 31,
+    "runtimeName": "app",
+    "workspaceId": 1
+  },
+  "ProcessStoppedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "exitCode": 0,
+    "processId": 31,
+    "runtimeName": "app",
+    "workspaceId": 1
+  },
+  "ProjectDiscoveredPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "coordinates": "com.example:app:1.0.0",
+    "packaging": "jar",
+    "path": "repo/app",
+    "workspaceId": 1
+  },
+  "ProjectInspection": {
+    "dependencies": [
+      {
+        "dependency": {
+          "artifactId": "library",
+          "classifier": null,
+          "depType": "jar",
+          "exclusions": [],
+          "groupId": "com.example",
+          "optional": false,
+          "scope": "compile",
+          "version": "1.0.0"
+        },
+        "dependencyId": 20,
+        "fromProjectId": 10,
+        "reason": "workspaceExactMatch",
+        "resolvedPath": "/ws/library",
+        "source": "workspaceSource",
+        "sourceProjectId": 11
+      }
+    ],
+    "modules": [
+      {
+        "declaredPath": "library",
+        "moduleProjectId": 11,
+        "parentProjectId": 10
+      }
+    ],
+    "parentProjectId": null,
+    "project": {
+      "coordinates": {
+        "artifactId": "app",
+        "groupId": "com.example",
+        "version": "1.0.0"
+      },
+      "packaging": "jar",
+      "path": "/ws/repo/pom.xml",
+      "pomHash": "pom-hash",
+      "projectId": 10,
+      "repositoryId": 2
+    },
+    "sourceMappings": [
+      {
+        "coordinates": {
+          "artifactId": "library",
+          "groupId": "com.example",
+          "version": "1.0.0"
+        },
+        "projectId": 11,
+        "projectPath": "/ws/library",
+        "repositoryId": 3
+      }
+    ]
   },
   "ProjectNotFoundError": {
     "code": "ProjectNotFound",
@@ -963,6 +1247,18 @@
     "localRepository": "/home/alice/.m2/repository",
     "usesWrapper": false
   },
+  "RestartCompletedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "error": null,
+    "runtimeName": "app",
+    "success": true,
+    "workspaceId": 1
+  },
+  "RestartStartedPayload": {
+    "at": "2026-08-25T00:00:00Z",
+    "runtimeName": "app",
+    "workspaceId": 1
+  },
   "RestoreRequest": {
     "files": [
       "a.rs"
@@ -1034,6 +1330,53 @@
     "updatedAt": "2026-08-18T00:00:00Z",
     "workspaceId": 2
   },
+  "RuntimeLogQuery": {
+    "filter": {
+      "limit": null,
+      "minLevel": null,
+      "query": null
+    },
+    "processId": 31,
+    "runtimeName": "app",
+    "workspaceId": 1
+  },
+  "RuntimeOp": [
+    "build",
+    "start",
+    "stop",
+    "restart",
+    "resolveDependencies"
+  ],
+  "RuntimeOperationRequest": {
+    "options": {
+      "offline": false,
+      "skipBuild": false,
+      "skipTests": null,
+      "strategy": null
+    },
+    "runtimeName": "app",
+    "workspaceId": 1
+  },
+  "RuntimeProcessInfo": {
+    "adopted": false,
+    "commandPreview": "java -cp ... com.example.Application",
+    "cpuPercent": 3.5,
+    "exitCode": null,
+    "memoryBytes": 268435456,
+    "pid": 4242,
+    "ports": [
+      8080
+    ],
+    "processId": 31,
+    "runStrategy": "classpathRun",
+    "runtimeName": "app",
+    "startedAt": "2026-08-25T00:00:00Z",
+    "status": "running",
+    "stoppedAt": null,
+    "uptimeSeconds": 42,
+    "workingDir": "/ws/repo/app",
+    "workspaceId": 1
+  },
   "RuntimeReactorPlan": {
     "arguments": [
       "-f",
@@ -1066,6 +1409,18 @@
       "mode": "hybrid"
     }
   ],
+  "RuntimeStage": [
+    "preparing",
+    "resolving",
+    "building",
+    "starting"
+  ],
+  "RuntimeTaskOptions": {
+    "offline": true,
+    "skipBuild": true,
+    "skipTests": false,
+    "strategy": "packageRun"
+  },
   "SaveWorkspaceStashResult": {
     "id": 1,
     "items": [
@@ -1085,11 +1440,25 @@
     "total": 10,
     "workspaceId": 1
   },
+  "SchedulerConfig": {
+    "maxConcurrentBuilds": 2,
+    "maxConcurrentResolves": 4
+  },
   "SearchResult": {
     "filePath": "a.rs",
     "rank": 0.5,
     "repoPath": "/ws/repo",
     "snippet": "let x"
+  },
+  "SourceMapping": {
+    "coordinates": {
+      "artifactId": "library",
+      "groupId": "com.example",
+      "version": "1.0.0"
+    },
+    "projectId": 11,
+    "projectPath": "/ws/library",
+    "repositoryId": 3
   },
   "SourceMappingFailedError": {
     "code": "SourceMappingFailed",
@@ -1296,6 +1665,18 @@
       "command": "make build",
       "timeoutSecs": 600,
       "type": "shellCommand"
+    },
+    {
+      "op": "start",
+      "options": {
+        "offline": false,
+        "skipBuild": false,
+        "skipTests": true,
+        "strategy": "mavenRun"
+      },
+      "runtimeName": "app",
+      "type": "runtime",
+      "workspaceId": 1
     }
   ],
   "UndoItemResult": {

@@ -221,8 +221,11 @@ impl BuildOutputSink for RingTail {
 }
 
 /// 引擎执行上下文：把流水线需要的共享设施打包，供 [`BuildEngine`] 使用。
+///
+/// `db` 是共享连接（Arc<Mutex>）：流水线按阶段短持锁（R-12），Maven 子
+/// 进程运行期间不占用 SQLite 写锁。
 pub struct BuildContext<'a> {
-    pub conn: &'a mut rusqlite::Connection,
+    pub db: &'a std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>,
     pub workspace_root: &'a std::path::Path,
     pub graph_cache: &'a crate::maven::DependencyGraphCache,
     pub closure_cache: &'a crate::maven::RuntimeClosureCache,

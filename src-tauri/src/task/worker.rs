@@ -37,7 +37,7 @@ pub fn spawn_worker_pool(
     receiver: mpsc::Receiver<super::queue::TaskMessage>,
     dag_sender: mpsc::Sender<super::queue::TaskMessage>,
     git_ops: Arc<GitOps>,
-    runtime_handler: Option<Arc<super::runtime::RuntimeTaskHandler>>,
+    runtime_handler: Option<Arc<dyn super::runtime::RuntimeTaskHandler>>,
     active_tasks: Arc<DashMap<String, Task>>,
     cancel_flags: Arc<DashMap<String, Arc<AtomicBool>>>,
     app_handle: AppHandle,
@@ -116,7 +116,7 @@ fn is_cancelled(flags: &DashMap<String, Arc<AtomicBool>>, task_id: &str) -> bool
 #[allow(clippy::too_many_arguments)]
 async fn execute_task(
     ops: &Arc<GitOps>,
-    runtime_handler: &Option<Arc<super::runtime::RuntimeTaskHandler>>,
+    runtime_handler: &Option<Arc<dyn super::runtime::RuntimeTaskHandler>>,
     tasks: &Arc<DashMap<String, Task>>,
     cancel_flags: &Arc<DashMap<String, Arc<AtomicBool>>>,
     app: &AppHandle,
