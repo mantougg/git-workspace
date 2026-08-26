@@ -1,53 +1,48 @@
 <template>
   <div class="group-tree">
-    <el-tree
-      :data="treeData"
-      node-key="id"
-      :props="treeProps"
+    <n-tree
+      :data="naiveTreeData"
+      key-field="id"
+      label-field="name"
+      children-field="children"
       default-expand-all
-      @node-click="onNodeClick"
-      :allow-drop="allowDrop"
-      :allow-drag="allowDrag"
-      draggable
-    >
-      <template #default="{ node, data }">
-        <span class="tree-node">
-          <span class="node-label">{{ node.label }}</span>
-          <span v-if="data.repoCount" class="node-count">
-            ({{ data.repoCount }})
-          </span>
-        </span>
-      </template>
-    </el-tree>
+      :selectable="true"
+      :render-label="renderLabel"
+      @update:selected-keys="onNodeSelect"
+    />
 
     <div class="tree-footer">
-      <el-button size="small" text @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon>
+      <n-button size="small" text @click="showCreateDialog = true">
+        <template #icon><n-icon><AddOutline /></n-icon></template>
         添加分组
-      </el-button>
+      </n-button>
     </div>
 
     <!-- Create group dialog -->
-    <el-dialog v-model="showCreateDialog" title="添加分组" width="400px">
-      <el-form :model="newGroup" label-width="80px">
-        <el-form-item label="分组名称">
-          <el-input v-model="newGroup.name" placeholder="请输入分组名称" />
-        </el-form-item>
-      </el-form>
+    <n-modal :show="showCreateDialog" preset="card" title="添加分组" style="width: 400px" @update:show="(v: boolean) => showCreateDialog = v">
+      <n-form :model="newGroup" label-width="80px">
+        <n-form-item label="分组名称">
+          <n-input v-model:value="newGroup.name" placeholder="请输入分组名称" />
+        </n-form-item>
+      </n-form>
       <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleCreate">创建</el-button>
+        <n-button @click="showCreateDialog = false">取消</n-button>
+        <n-button type="primary" @click="handleCreate">创建</n-button>
       </template>
-    </el-dialog>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { Plus } from "@element-plus/icons-vue";
+import { computed, ref, watch, h } from "vue";
+import { useMessage } from "naive-ui";
+import { AddOutline } from "@vicons/ionicons5";
+import type { TreeOption } from "naive-ui";
 import * as groupApi from "@/api/group";
 import type { RepoGroup, CreateGroupRequest } from "@/types/group";
 import { errMsg } from "@/utils/error";
+
+const message = useMessage();
 
 const props = defineProps<{
   workspaceId: number | null;
@@ -61,11 +56,6 @@ const emit = defineEmits<{
 const groups = ref<RepoGroup[]>([]);
 const showCreateDialog = ref(false);
 const newGroup = ref({ name: "" });
-
-const treeProps = {
-  label: "name",
-  children: "children",
-};
 
 interface TreeNode {
   id: number;
@@ -111,6 +101,18 @@ const treeData = computed<TreeNode[]>(() => {
   ];
 });
 
+const naiveTreeData = computed(() => treeData.value);
+
+function renderLabel({ option }: { option: TreeOption }) {
+  const node = option as unknown as TreeNode;
+  return h("span", { class: "tree-node" }, [
+    h("span", { class: "node-label" }, node.name),
+    node.repoCount
+      ? h("span", { class: "node-count" }, ` (${node.repoCount})`)
+      : null,
+  ]);
+}
+
 watch(
   () => props.workspaceId,
   async (newId) => {
@@ -130,18 +132,20 @@ async function loadGroups() {
   }
 }
 
-function onNodeClick(data: TreeNode) {
-  if (data.id === -1) {
+function onNodeSelect(keys: number[]) {
+  const id = keys[0];
+  if (id === undefined) return;
+  if (id === -1) {
     emit("select-group", null);
   } else {
-    emit("select-group", data.id);
+    emit("select-group", id);
   }
 }
 
 async function handleCreate() {
   if (!props.workspaceId) return;
   if (!newGroup.value.name.trim()) {
-    ElMessage.warning("请输入分组名称");
+    message.warning("请输入分组名称");
     return;
   }
 
@@ -152,21 +156,13 @@ async function handleCreate() {
       parentId: null,
     };
     await groupApi.createGroup(req);
-    ElMessage.success("分组创建成功");
+    message.success("分组创建成功");
     newGroup.value.name = "";
     showCreateDialog.value = false;
     await loadGroups();
   } catch (e) {
-    ElMessage.error("创建分组失败: " + errMsg(e));
+    message.error("创建分组失败: " + errMsg(e));
   }
-}
-
-function allowDrop(): boolean {
-  return true;
-}
-
-function allowDrag(): boolean {
-  return true;
 }
 </script>
 

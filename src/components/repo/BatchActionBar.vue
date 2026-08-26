@@ -3,59 +3,62 @@
     <span class="selection-info">
       已选 {{ selectedCount }} 个仓库
     </span>
-    <el-button-group>
-      <el-button size="small" :loading="loading" @click="handleAction('fetch')">
-        <el-icon><Download /></el-icon>
+    <n-space>
+      <n-button size="small" :loading="loading" @click="handleAction('fetch')">
+        <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
         Fetch
-      </el-button>
-      <el-button size="small" :loading="loading" @click="handleAction('pull')">
-        <el-icon><Refresh /></el-icon>
+      </n-button>
+      <n-button size="small" :loading="loading" @click="handleAction('pull')">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
         Pull
-      </el-button>
-      <el-button size="small" :loading="loading" @click="handleAction('push')">
-        <el-icon><Upload /></el-icon>
+      </n-button>
+      <n-button size="small" :loading="loading" @click="handleAction('push')">
+        <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
         Push
-      </el-button>
-    </el-button-group>
-    <el-button size="small" :loading="loading" @click="showCommitDialog = true">
-      <el-icon><EditPen /></el-icon>
+      </n-button>
+    </n-space>
+    <n-button size="small" :loading="loading" @click="showCommitDialog = true">
+      <template #icon><n-icon><CreateOutline /></n-icon></template>
       Commit
-    </el-button>
+    </n-button>
 
     <!-- Commit Dialog -->
-    <el-dialog v-model="showCommitDialog" title="批量提交" width="500px">
-      <el-form :model="commitForm" label-width="80px">
-        <el-form-item label="提交信息">
-          <el-input
-            v-model="commitForm.message"
+    <n-modal :show="showCommitDialog" preset="card" title="批量提交" style="width: 500px" @update:show="(v: boolean) => showCommitDialog = v">
+      <n-form :model="commitForm" label-width="80px">
+        <n-form-item label="提交信息">
+          <n-input
+            v-model:value="commitForm.message"
             type="textarea"
             :rows="3"
             placeholder="请输入 commit message"
           />
-        </el-form-item>
-        <el-form-item label="文件路径">
-          <el-input
-            v-model="commitForm.filesInput"
+        </n-form-item>
+        <n-form-item label="文件路径">
+          <n-input
+            v-model:value="commitForm.filesInput"
             type="textarea"
             :rows="4"
             placeholder="每行一个文件路径（留空则提交所有更改）"
           />
-        </el-form-item>
-      </el-form>
+        </n-form-item>
+      </n-form>
       <template #footer>
-        <el-button @click="showCommitDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleCommit">提交</el-button>
+        <n-button @click="showCommitDialog = false">取消</n-button>
+        <n-button type="primary" @click="handleCommit">提交</n-button>
       </template>
-    </el-dialog>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { Download, Refresh, Upload, EditPen } from "@element-plus/icons-vue";
+import { useMessage } from "naive-ui";
+import { CloudUploadOutline, RefreshOutline, CreateOutline } from "@vicons/ionicons5";
 import * as gitOpsApi from "@/api/git_ops";
 import type { CommitRequest } from "@/types/task";
 import { errMsg } from "@/utils/error";
+
+const message = useMessage();
 
 const props = defineProps<{
   selectedPaths: string[];
@@ -87,10 +90,10 @@ async function handleAction(action: "fetch" | "pull" | "push") {
     } else {
       taskIds = await gitOpsApi.batchPush(paths);
     }
-    ElMessage.success(`已提交 ${taskIds.length} 个${action}任务`);
+    message.success(`已提交 ${taskIds.length} 个${action}任务`);
     emit("action-completed");
   } catch (e) {
-    ElMessage.error(`操作失败: ${errMsg(e)}`);
+    message.error(`操作失败: ${errMsg(e)}`);
   } finally {
     loading.value = false;
   }
@@ -99,7 +102,7 @@ async function handleAction(action: "fetch" | "pull" | "push") {
 async function handleCommit() {
   if (props.selectedPaths.length === 0) return;
   if (!commitForm.value.message.trim()) {
-    ElMessage.warning("请输入提交信息");
+    message.warning("请输入提交信息");
     return;
   }
 
@@ -121,13 +124,13 @@ async function handleCommit() {
     });
 
     const taskIds = await gitOpsApi.batchCommit(commits);
-    ElMessage.success(`已提交 ${taskIds.length} 个 commit 任务`);
+    message.success(`已提交 ${taskIds.length} 个 commit 任务`);
     showCommitDialog.value = false;
     commitForm.value.message = "";
     commitForm.value.filesInput = "";
     emit("action-completed");
   } catch (e) {
-    ElMessage.error(`提交失败: ${errMsg(e)}`);
+    message.error(`提交失败: ${errMsg(e)}`);
   } finally {
     loading.value = false;
   }

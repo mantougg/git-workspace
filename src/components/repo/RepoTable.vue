@@ -1,88 +1,27 @@
 <template>
-  <el-table
+  <n-data-table
+    :columns="columns"
     :data="data"
-    v-loading="loading ?? false"
-    stripe
-    highlight-current-row
-    @row-click="(row: any) => emit('row-click', row)"
-    @selection-change="(sel: any[]) => emit('selection-change', sel)"
+    :loading="loading ?? false"
+    :row-key="(row: RepositoryWithStatus) => row.repository.path"
+    :checked-row-keys="checkedKeys"
+    :scroll-x="800"
+    :max-height="height ? Number(height) : undefined"
+    @update:checked-row-keys="onSelectionChange"
+    @row-click="(row: RepositoryWithStatus) => emit('row-click', row)"
     style="width: 100%"
-    :height="height"
-  >
-    <el-table-column type="selection" width="40" />
-    <el-table-column label="仓库" min-width="180" sortable>
-      <template #default="{ row }">
-        <div class="repo-name">
-          <el-icon v-if="row.repository.isFavorite" color="#e6a23c">
-            <Star />
-          </el-icon>
-          <span>{{ row.repository.name }}</span>
-        </div>
-        <div class="repo-path">{{ row.repository.relativePath }}</div>
-      </template>
-    </el-table-column>
-    <el-table-column label="分支" width="140">
-      <template #default="{ row }">
-        <el-tag v-if="row.status?.isDetached" type="warning" size="small">
-          {{ row.status?.branch }}
-        </el-tag>
-        <span v-else-if="row.status">{{ row.status.branch }}</span>
-        <span v-else class="text-muted">-</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="状态" min-width="160">
-      <template #default="{ row }">
-        <StatusBadge v-if="row.status" :status="row.status" />
-        <el-tag v-else-if="row.lastError" type="danger" size="small">
-          错误
-        </el-tag>
-        <span v-else class="text-muted">-</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="远程" width="120">
-      <template #default="{ row }">
-        <div v-if="row.status && (row.status.ahead > 0 || row.status.behind > 0)">
-          <span :class="{ 'text-success': row.status.ahead > 0 }">
-            ↑{{ row.status.ahead }}
-          </span>
-          <span class="separator">/</span>
-          <span :class="{ 'text-warning': row.status.behind > 0 }">
-            ↓{{ row.status.behind }}
-          </span>
-        </div>
-        <span v-else-if="row.status" class="text-muted">同步</span>
-      </template>
-    </el-table-column>
-    <el-table-column label="操作" width="160" align="center">
-      <template #default="{ row }">
-        <el-button
-          size="small"
-          link
-          type="primary"
-          :disabled="!row.status || row.status.isClean"
-          @click.stop="emit('view-diff', row.repository.path)"
-        >
-          Diff
-        </el-button>
-        <el-button
-          size="small"
-          link
-          type="success"
-          @click.stop="emit('view-graph', row.repository.path)"
-        >
-          Graph
-        </el-button>
-      </template>
-    </el-table-column>
-  </el-table>
+  />
 </template>
 
 <script setup lang="ts">
-import { Star } from "@element-plus/icons-vue";
+import { h, ref } from "vue";
+import { NButton, NIcon, NTag } from "naive-ui";
+import { StarOutline } from "@vicons/ionicons5";
+import type { DataTableColumns } from "naive-ui";
 import type { RepositoryWithStatus } from "@/types/repository";
 import StatusBadge from "./StatusBadge.vue";
 
-defineProps<{
+const props = defineProps<{
   data: RepositoryWithStatus[];
   loading?: boolean;
   height?: string;
@@ -94,6 +33,132 @@ const emit = defineEmits<{
   (e: "view-diff", repoPath: string): void;
   (e: "view-graph", repoPath: string): void;
 }>();
+
+const checkedKeys = ref<string[]>([]);
+
+function onSelectionChange(keys: string[]) {
+  checkedKeys.value = keys;
+  const selected = props.data.filter((row) =>
+    keys.includes(row.repository.path),
+  );
+  emit("selection-change", selected);
+}
+
+const columns: DataTableColumns<RepositoryWithStatus> = [
+  {
+    type: "selection",
+  },
+  {
+    title: "仓库",
+    key: "repository.name",
+    minWidth: 180,
+    sorter: true,
+    render(row) {
+      const parts = [];
+      if (row.repository.isFavorite) {
+        parts.push(
+          h(NIcon, { color: "#e6a23c", size: 14 }, () => h(StarOutline)),
+        );
+      }
+      parts.push(h("span", null, row.repository.name));
+      return h("div", [
+        h("div", { class: "repo-name" }, parts),
+        h("div", { class: "repo-path" }, row.repository.relativePath),
+      ]);
+    },
+  },
+  {
+    title: "分支",
+    key: "status.branch",
+    width: 140,
+    render(row) {
+      if (row.status?.isDetached) {
+        return h(NTag, { type: "warning", size: "small" }, () => row.status?.branch);
+      }
+      if (row.status) {
+        return h("span", null, row.status.branch);
+      }
+      return h("span", { class: "text-muted" }, "-");
+    },
+  },
+  {
+    title: "状态",
+    key: "status",
+    minWidth: 160,
+    render(row) {
+      if (row.status) {
+        return h(StatusBadge, { status: row.status });
+      }
+      if (row.lastError) {
+        return h(NTag, { type: "error", size: "small" }, () => "错误");
+      }
+      return h("span", { class: "text-muted" }, "-");
+    },
+  },
+  {
+    title: "远程",
+    key: "remote",
+    width: 120,
+    render(row) {
+      if (row.status && (row.status.ahead > 0 || row.status.behind > 0)) {
+        return h("div", null, [
+          h(
+            "span",
+            { class: row.status.ahead > 0 ? "text-success" : "" },
+            `↑${row.status.ahead}`,
+          ),
+          h("span", { class: "separator" }, "/"),
+          h(
+            "span",
+            { class: row.status.behind > 0 ? "text-warning" : "" },
+            `↓${row.status.behind}`,
+          ),
+        ]);
+      }
+      if (row.status) {
+        return h("span", { class: "text-muted" }, "同步");
+      }
+      return null;
+    },
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 160,
+    align: "center",
+    render(row) {
+      return h("div", { style: "display: flex; gap: 4px; justify-content: center" }, [
+        h(
+          NButton,
+          {
+            size: "small",
+            text: true,
+            type: "primary",
+            disabled: !row.status || row.status.isClean,
+            onClick: (e: Event) => {
+              e.stopPropagation();
+              emit("view-diff", row.repository.path);
+            },
+          },
+          () => "Diff",
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            text: true,
+            type: "success",
+            onClick: (e: Event) => {
+              e.stopPropagation();
+              emit("view-graph", row.repository.path);
+            },
+          },
+          () => "Graph",
+        ),
+      ]);
+    },
+  },
+];
 </script>
 
 <style scoped>
@@ -125,9 +190,5 @@ const emit = defineEmits<{
 .separator {
   margin: 0 4px;
   color: #dcdfe6;
-}
-
-:deep(.el-table__row) {
-  cursor: pointer;
 }
 </style>

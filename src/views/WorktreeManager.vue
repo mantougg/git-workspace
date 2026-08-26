@@ -2,141 +2,99 @@
   <div class="worktree-manager">
     <!-- Header -->
     <div class="wt-header">
-      <el-button @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
+      <n-button @click="goBack">
+        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
         返回
-      </el-button>
+      </n-button>
       <span class="repo-path">{{ repoPath }}</span>
       <div class="wt-header-actions">
-        <el-button size="small" :loading="loading" @click="load">
-          <el-icon><Refresh /></el-icon>
+        <n-button size="small" :loading="loading" @click="load">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
-        </el-button>
-        <el-button size="small" type="primary" @click="openCreateDialog">
-          <el-icon><Plus /></el-icon>
+        </n-button>
+        <n-button size="small" type="primary" @click="openCreateDialog">
+          <template #icon><n-icon><AddOutline /></n-icon></template>
           新建 Worktree
-        </el-button>
+        </n-button>
       </div>
     </div>
 
     <!-- Worktree list -->
-    <div class="wt-body" v-loading="loading">
-      <el-table v-if="worktrees.length > 0" :data="worktrees" style="width: 100%">
-        <el-table-column label="名称" min-width="160">
-          <template #default="{ row }">
-            <span class="wt-name">{{ row.name }}</span>
-            <el-tag v-if="row.isMain" size="small" type="success" effect="plain">
-              主仓库
-            </el-tag>
-            <el-tag v-if="row.isLocked" size="small" type="danger" effect="plain">
-              锁定
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="分支" min-width="140">
-          <template #default="{ row }">
-            <el-tag v-if="row.branch" size="small">{{ row.branch }}</el-tag>
-            <el-tag v-else size="small" type="info" effect="plain">
-              游离 HEAD
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="路径" min-width="260">
-          <template #default="{ row }">
-            <span class="wt-path">{{ row.path }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="110">
-          <template #default="{ row }">
-            <el-tag v-if="row.isDirty" size="small" type="warning" effect="plain">
-              有未提交变更
-            </el-tag>
-            <el-tag v-else size="small" type="success" effect="plain">干净</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" text @click="viewGraph(row as WorktreeInfo)">Graph</el-button>
-            <el-button size="small" text @click="viewDiff(row as WorktreeInfo)">Diff</el-button>
-            <el-button size="small" text @click="openFolder(row as WorktreeInfo)">
-              打开目录
-            </el-button>
-            <el-button
-              v-if="!row.isMain"
-              size="small"
-              text
-              type="danger"
-              @click="handleRemove(row as WorktreeInfo)"
-            >
-              移除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-else-if="!loading" description="暂无 worktree" />
+    <div class="wt-body">
+      <n-spin :show="loading">
+        <n-data-table
+          v-if="worktrees.length > 0"
+          :columns="columns"
+          :data="worktrees"
+          :bordered="false"
+          :single-line="false"
+        />
+        <n-empty v-else-if="!loading" description="暂无 worktree" />
+      </n-spin>
     </div>
 
     <!-- Create dialog -->
-    <el-dialog v-model="createDialog.show" title="新建 Worktree" width="560px">
-      <el-form label-width="90px">
-        <el-form-item label="目标路径">
-          <el-input v-model="createDialog.path" placeholder="worktree 目录路径" />
-        </el-form-item>
-        <el-form-item label="分支来源">
-          <el-radio-group v-model="createDialog.mode">
-            <el-radio value="new">新建分支</el-radio>
-            <el-radio value="existing">现有分支</el-radio>
-            <el-radio value="detached">游离 HEAD</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="createDialog.mode === 'new'" label="新分支名">
-          <el-input
-            v-model="createDialog.newBranch"
+    <n-modal v-model:show="createDialog.show" preset="card" title="新建 Worktree" style="width: 560px">
+      <n-form label-width="90">
+        <n-form-item label="目标路径">
+          <n-input v-model:value="createDialog.path" placeholder="worktree 目录路径" />
+        </n-form-item>
+        <n-form-item label="分支来源">
+          <n-radio-group v-model:value="createDialog.mode">
+            <n-radio value="new">新建分支</n-radio>
+            <n-radio value="existing">现有分支</n-radio>
+            <n-radio value="detached">游离 HEAD</n-radio>
+          </n-radio-group>
+        </n-form-item>
+        <n-form-item v-if="createDialog.mode === 'new'" label="新分支名">
+          <n-input
+            v-model:value="createDialog.newBranch"
             placeholder="基于当前 HEAD 创建"
           />
-        </el-form-item>
-        <el-form-item v-if="createDialog.mode === 'existing'" label="现有分支">
-          <el-select v-model="createDialog.branch" filterable placeholder="选择分支">
-            <el-option
-              v-for="b in localBranches"
-              :key="b"
-              :label="b"
-              :value="b"
-            />
-          </el-select>
-        </el-form-item>
-      </el-form>
+        </n-form-item>
+        <n-form-item v-if="createDialog.mode === 'existing'" label="现有分支">
+          <n-select v-model:value="createDialog.branch" filterable placeholder="选择分支" :options="branchOptions" />
+        </n-form-item>
+      </n-form>
       <template #footer>
-        <el-button @click="createDialog.show = false">取消</el-button>
-        <el-button
+        <n-button @click="createDialog.show = false">取消</n-button>
+        <n-button
           type="primary"
           :loading="createDialog.loading"
           @click="handleCreate"
         >
           创建
-        </el-button>
+        </n-button>
       </template>
-    </el-dialog>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, h, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, Plus, Refresh } from "@element-plus/icons-vue";
+import { ArrowBackOutline, AddOutline, RefreshOutline } from "@vicons/ionicons5";
 import { open as openPath } from "@tauri-apps/plugin-shell";
 import { listWorktrees, createWorktree, removeWorktree } from "@/api/worktree";
 import { listBranches } from "@/api/branch";
 import type { WorktreeInfo } from "@/types/worktree";
 import { errMsg } from "@/utils/error";
+import { useMessage, useDialog, NTag, NButton } from "naive-ui";
+import type { DataTableColumns } from "naive-ui";
 
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
 
 const repoPath = ref("");
 const worktrees = ref<WorktreeInfo[]>([]);
 const loading = ref(false);
 const localBranches = ref<string[]>([]);
+
+const branchOptions = computed(() =>
+  localBranches.value.map((b) => ({ label: b, value: b }))
+);
 
 const createDialog = ref({
   show: false,
@@ -147,10 +105,80 @@ const createDialog = ref({
   branch: "",
 });
 
+const columns = computed<DataTableColumns<WorktreeInfo>>(() => [
+  {
+    title: "名称",
+    key: "name",
+    minWidth: 160,
+    render(row) {
+      const tags = [];
+      if (row.isMain) {
+        tags.push(h(NTag, { size: "small", type: "success", bordered: false }, { default: () => "主仓库" }));
+      }
+      if (row.isLocked) {
+        tags.push(h(NTag, { size: "small", type: "error", bordered: false }, { default: () => "锁定" }));
+      }
+      return h("span", {}, [
+        h("span", { class: "wt-name" }, row.name),
+        ...tags,
+      ]);
+    },
+  },
+  {
+    title: "分支",
+    key: "branch",
+    minWidth: 140,
+    render(row) {
+      if (row.branch) {
+        return h(NTag, { size: "small" }, { default: () => row.branch });
+      }
+      return h(NTag, { size: "small", type: "info", bordered: false }, { default: () => "游离 HEAD" });
+    },
+  },
+  {
+    title: "路径",
+    key: "path",
+    minWidth: 260,
+    render(row) {
+      return h("span", { class: "wt-path" }, row.path);
+    },
+  },
+  {
+    title: "状态",
+    key: "isDirty",
+    width: 110,
+    render(row) {
+      if (row.isDirty) {
+        return h(NTag, { size: "small", type: "warning", bordered: false }, { default: () => "有未提交变更" });
+      }
+      return h(NTag, { size: "small", type: "success", bordered: false }, { default: () => "干净" });
+    },
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 300,
+    fixed: "right",
+    render(row) {
+      const buttons = [
+        h(NButton, { size: "small", text: true, onClick: () => viewGraph(row) }, { default: () => "Graph" }),
+        h(NButton, { size: "small", text: true, onClick: () => viewDiff(row) }, { default: () => "Diff" }),
+        h(NButton, { size: "small", text: true, onClick: () => openFolder(row) }, { default: () => "打开目录" }),
+      ];
+      if (!row.isMain) {
+        buttons.push(
+          h(NButton, { size: "small", text: true, type: "error", onClick: () => handleRemove(row) }, { default: () => "移除" })
+        );
+      }
+      return h("div", { style: "display: flex; gap: 4px;" }, buttons);
+    },
+  },
+]);
+
 onMounted(async () => {
   const repo = route.query.repo as string;
   if (!repo) {
-    ElMessage.warning("未指定仓库路径");
+    message.warning("未指定仓库路径");
     router.push({ name: "changes" });
     return;
   }
@@ -163,7 +191,7 @@ async function load() {
   try {
     worktrees.value = await listWorktrees(repoPath.value);
   } catch (e) {
-    ElMessage.error("获取 worktree 列表失败: " + errMsg(e));
+    message.error("获取 worktree 列表失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -197,15 +225,15 @@ async function openCreateDialog() {
 async function handleCreate() {
   const d = createDialog.value;
   if (!d.path.trim()) {
-    ElMessage.warning("请输入目标路径");
+    message.warning("请输入目标路径");
     return;
   }
   if (d.mode === "new" && !d.newBranch.trim()) {
-    ElMessage.warning("请输入新分支名");
+    message.warning("请输入新分支名");
     return;
   }
   if (d.mode === "existing" && !d.branch) {
-    ElMessage.warning("请选择分支");
+    message.warning("请选择分支");
     return;
   }
   d.loading = true;
@@ -216,11 +244,11 @@ async function handleCreate() {
       d.mode === "existing" ? d.branch : null,
       d.mode === "new" ? d.newBranch.trim() : null,
     );
-    ElMessage.success("Worktree 已创建");
+    message.success("Worktree 已创建");
     d.show = false;
     await load();
   } catch (e) {
-    ElMessage.error("创建失败: " + errMsg(e));
+    message.error("创建失败: " + errMsg(e));
   } finally {
     d.loading = false;
   }
@@ -229,40 +257,52 @@ async function handleCreate() {
 /** Remove with the §46 Warning flow: dirty worktrees need a second confirm. */
 async function handleRemove(row: WorktreeInfo) {
   try {
-    await ElMessageBox.confirm(
-      `确定移除 worktree「${row.name}」吗？\n目录：${row.path}`,
-      "移除 Worktree",
-      { type: "warning", confirmButtonText: "移除", cancelButtonText: "取消" },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.warning({
+        title: "移除 Worktree",
+        content: `确定移除 worktree「${row.name}」吗？\n目录：${row.path}`,
+        positiveText: "移除",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
   } catch {
     return;
   }
   try {
     await removeWorktree(repoPath.value, row.name, false);
-    ElMessage.success("已移除");
+    message.success("已移除");
     await load();
   } catch (e) {
     const msg = errMsg(e);
     if (!msg.includes("未提交变更")) {
-      ElMessage.error("移除失败: " + msg);
+      message.error("移除失败: " + msg);
       return;
     }
     // Dirty worktree: §46 Warning — explicit second confirmation, then force.
     try {
-      await ElMessageBox.confirm(
-        `${msg}\n\n确定要强制移除吗？未提交变更将丢失（可用 reflog/stash 保底）。`,
-        "警告：Worktree 含未提交变更",
-        { type: "error", confirmButtonText: "强制移除", cancelButtonText: "取消" },
-      );
+      await new Promise<void>((resolve, reject) => {
+        dialog.error({
+          title: "警告：Worktree 含未提交变更",
+          content: `${msg}\n\n确定要强制移除吗？未提交变更将丢失（可用 reflog/stash 保底）。`,
+          positiveText: "强制移除",
+          negativeText: "取消",
+          onPositiveClick: () => resolve(),
+          onNegativeClick: () => reject("cancel"),
+          onClose: () => reject("cancel"),
+        });
+      });
     } catch {
       return;
     }
     try {
       await removeWorktree(repoPath.value, row.name, true);
-      ElMessage.success("已强制移除");
+      message.success("已强制移除");
       await load();
     } catch (e2) {
-      ElMessage.error("移除失败: " + errMsg(e2));
+      message.error("移除失败: " + errMsg(e2));
     }
   }
 }
@@ -272,7 +312,7 @@ async function openFolder(row: WorktreeInfo) {
   try {
     await openPath(row.path);
   } catch (e) {
-    ElMessage.error("打开目录失败: " + errMsg(e));
+    message.error("打开目录失败: " + errMsg(e));
   }
 }
 

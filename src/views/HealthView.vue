@@ -3,65 +3,62 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-select
-          v-model="selectedWorkspaceId"
+        </n-button>
+        <n-select
+          v-model:value="selectedWorkspaceId"
+          :options="workspaceOptions"
           placeholder="选择工作区"
           style="width: 200px"
-          @change="onWorkspaceChange"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
-        <el-button
+          @update:value="onWorkspaceChange"
+        />
+        <n-button
           type="primary"
           :loading="loading"
           :disabled="!selectedWorkspaceId"
           @click="reload"
         >
-          <el-icon><Refresh /></el-icon>
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           重新检测
-        </el-button>
+        </n-button>
       </div>
       <div class="toolbar-right">
         <span v-if="extrasLoading" class="extras-hint">
-          <el-icon class="is-loading"><Loading /></el-icon>
+          <n-icon class="is-loading"><RefreshOutline /></n-icon>
           重项检测中（大文件 / LFS / 子模块）…
         </span>
       </div>
     </div>
 
     <!-- Score panel -->
-    <div class="score-panel" v-loading="loading">
-      <div class="score-main">
-        <div class="score-value" :class="scoreTone">
-          {{ score }}<span class="score-unit">%</span>
+    <n-spin :show="loading">
+      <div class="score-panel">
+        <div class="score-main">
+          <div class="score-value" :class="scoreTone">
+            {{ score }}<span class="score-unit">%</span>
+          </div>
+          <div class="score-label">Workspace Health</div>
         </div>
-        <div class="score-label">Workspace Health</div>
-      </div>
-      <div class="score-side">
-        <el-progress
-          :percentage="score"
-          :status="progressStatus"
-          :stroke-width="14"
-          :striped="extrasLoading"
-        />
-        <div class="score-meta">
-          {{ anomalousCount }} / {{ total }} 个仓库存在异常
+        <div class="score-side">
+          <n-progress
+            type="line"
+            :percentage="score"
+            :status="progressStatus"
+            :stroke-width="14"
+            :processing="extrasLoading"
+          />
+          <div class="score-meta">
+            {{ anomalousCount }} / {{ total }} 个仓库存在异常
+          </div>
         </div>
       </div>
-    </div>
+    </n-spin>
 
     <!-- Scoring rules (weights from health-weights.json or defaults) -->
-    <el-collapse class="weights-collapse">
-      <el-collapse-item
+    <n-collapse class="weights-collapse">
+      <n-collapse-item
         title="评分规则：每仓库 100 分起，按异常项扣权重分（下限 0），工作区取平均；权重配置于应用数据目录 health-weights.json"
         name="weights"
       >
@@ -70,92 +67,58 @@
             {{ w.label }} <b>-{{ w.value }}</b>
           </span>
         </div>
-      </el-collapse-item>
-    </el-collapse>
+      </n-collapse-item>
+    </n-collapse>
 
     <!-- Anomaly cards: click to drill down (filter the repo table) -->
-    <div class="anomaly-cards" v-loading="loading">
-      <div
-        v-for="a in anomalyCards"
-        :key="a.key"
-        class="anomaly-card"
-        :class="{ active: activeFilter === a.key, zero: a.count === 0 }"
-        @click="toggleFilter(a.key)"
-      >
-        <div class="anomaly-count">{{ a.count }}</div>
-        <div class="anomaly-label">{{ a.label }}</div>
+    <n-spin :show="loading">
+      <div class="anomaly-cards">
+        <div
+          v-for="a in anomalyCards"
+          :key="a.key"
+          class="anomaly-card"
+          :class="{ active: activeFilter === a.key, zero: a.count === 0 }"
+          @click="toggleFilter(a.key)"
+        >
+          <div class="anomaly-count">{{ a.count }}</div>
+          <div class="anomaly-label">{{ a.label }}</div>
+        </div>
       </div>
-    </div>
+    </n-spin>
 
     <!-- Repo table -->
     <div class="section">
       <div class="section-head">
-        <el-checkbox v-model="onlyAnomalous">仅显示异常仓库</el-checkbox>
-        <el-tag v-if="activeFilter" closable @close="activeFilter = ''">
+        <n-checkbox v-model:checked="onlyAnomalous">仅显示异常仓库</n-checkbox>
+        <n-tag v-if="activeFilter" closable @close="activeFilter = ''">
           {{ anomalyLabel(activeFilter) }}
-        </el-tag>
-        <el-input
-          v-model="searchQuery"
+        </n-tag>
+        <n-input
+          v-model:value="searchQuery"
           placeholder="按名称 / 路径筛选"
           style="width: 220px; margin-left: auto"
           clearable
-          :prefix-icon="Search"
-        />
-      </div>
-      <el-table
-        :data="tableRows"
-        v-loading="loading"
-        size="small"
-        :default-sort="{ prop: 'score', order: 'ascending' }"
-      >
-        <el-table-column label="仓库" min-width="180">
-          <template #default="{ row }">
-            <div class="repo-cell">
-              <span class="repo-name">{{ row.repoName }}</span>
-              <span class="repo-path">{{ row.repoPath }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="branch" label="分支" width="130">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain">{{ row.branch }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="异常项" min-width="240">
-          <template #default="{ row }">
-            <el-tag
-              v-for="a in row.anomalies"
-              :key="a"
-              size="small"
-              class="anomaly-tag"
-              :type="anomalyTagType(a)"
-              @click.stop="toggleFilter(a)"
-            >
-              {{ anomalyLabel(a) }}
-            </el-tag>
-            <span v-if="row.anomalies.length === 0" class="text-ok">健康</span>
-          </template>
-        </el-table-column>
-        <el-table-column
-          prop="score"
-          label="评分"
-          width="90"
-          align="right"
-          sortable
         >
-          <template #default="{ row }">
-            <span :class="scoreClass(row.score)">{{ row.score }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
+          <template #prefix><n-icon><SearchOutline /></n-icon></template>
+        </n-input>
+      </div>
+      <n-spin :show="loading">
+        <n-data-table
+          :columns="columns"
+          :data="tableRows"
+          size="small"
+          :default-sort="{ columnKey: 'score', order: 'ascend' }"
+        />
+      </n-spin>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { Back, Refresh, Search, Loading } from "@element-plus/icons-vue";
+import { NTag, NIcon, useMessage } from "naive-ui";
+import { ArrowBackOutline, RefreshOutline, SearchOutline } from "@vicons/ionicons5";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { getWorkspaceHealth, getHealthExtras } from "@/api/health";
 import type {
@@ -164,6 +127,8 @@ import type {
   RepoHealthExtra,
 } from "@/types/health";
 import { errMsg } from "@/utils/error";
+
+const message = useMessage();
 
 interface AnomalyMeta {
   key: string;
@@ -212,6 +177,13 @@ const activeFilter = ref("");
 const onlyAnomalous = ref(true);
 const searchQuery = ref("");
 
+const workspaceOptions = computed(() =>
+  workspaceStore.workspaces.map((ws) => ({
+    label: ws.name,
+    value: ws.id,
+  })),
+);
+
 const weightRows = computed(() =>
   ANOMALIES.map((a) => ({
     key: a.key,
@@ -237,8 +209,73 @@ const scoreTone = computed(() => {
 const progressStatus = computed(() => {
   if (score.value >= 90) return "success";
   if (score.value >= 70) return "warning";
-  return "exception";
+  return "error";
 });
+
+function anomalyTagType(key: string): "error" | "warning" | "info" {
+  if (key === "conflict" || key === "lfs_error" || key === "submodule_error") {
+    return "error";
+  }
+  if (key === "ahead" || key === "missing_remote") return "info";
+  return "warning";
+}
+
+const columns = computed(() => [
+  {
+    title: "仓库",
+    key: "repoName",
+    minWidth: 180,
+    render(row: RepoHealth) {
+      return h("div", { class: "repo-cell" }, [
+        h("span", { class: "repo-name" }, row.repoName),
+        h("span", { class: "repo-path" }, row.repoPath),
+      ]);
+    },
+  },
+  {
+    title: "分支",
+    key: "branch",
+    width: 130,
+    render(row: RepoHealth) {
+      return h(NTag, { size: "small", bordered: false }, { default: () => row.branch });
+    },
+  },
+  {
+    title: "异常项",
+    key: "anomalies",
+    minWidth: 240,
+    render(row: RepoHealth) {
+      if (row.anomalies.length === 0) {
+        return h("span", { class: "text-ok" }, "健康");
+      }
+      return row.anomalies.map((a) =>
+        h(
+          NTag,
+          {
+            size: "small",
+            class: "anomaly-tag",
+            type: anomalyTagType(a),
+            onClick: (e: MouseEvent) => {
+              e.stopPropagation();
+              toggleFilter(a);
+            },
+          },
+          { default: () => anomalyLabel(a) },
+        ),
+      );
+    },
+  },
+  {
+    title: "评分",
+    key: "score",
+    width: 90,
+    align: "right",
+    sorter: (a: RepoHealth, b: RepoHealth) => a.score - b.score,
+    render(row: RepoHealth) {
+      return h("span", { class: scoreClass(row.score) }, row.score);
+    },
+  },
+]);
 
 const tableRows = computed(() => {
   let rows = repos.value;
@@ -261,14 +298,6 @@ const tableRows = computed(() => {
 
 function anomalyLabel(key: string): string {
   return ANOMALIES.find((a) => a.key === key)?.label ?? key;
-}
-
-function anomalyTagType(key: string): "danger" | "warning" | "info" {
-  if (key === "conflict" || key === "lfs_error" || key === "submodule_error") {
-    return "danger";
-  }
-  if (key === "ahead" || key === "missing_remote") return "info";
-  return "warning";
 }
 
 function scoreClass(s: number): string {
@@ -334,7 +363,7 @@ async function reload() {
     total.value = health.total;
     anomalousCount.value = health.anomalous;
   } catch (e) {
-    ElMessage.error("健康检测失败: " + errMsg(e));
+    message.error("健康检测失败: " + errMsg(e));
     return;
   } finally {
     loading.value = false;
@@ -349,7 +378,7 @@ async function reload() {
     const extras = await getHealthExtras(paths);
     applyExtras(extras);
   } catch (e) {
-    ElMessage.warning("重项检测失败（大文件/LFS/子模块）: " + errMsg(e));
+    message.warning("重项检测失败（大文件/LFS/子模块）: " + errMsg(e));
   } finally {
     extrasLoading.value = false;
   }

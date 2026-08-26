@@ -1,18 +1,18 @@
 <template>
-  <el-card class="repo-card" shadow="hover" @click="emit('click', repo)">
+  <n-card class="repo-card" hoverable @click="emit('click', repo)">
     <div class="card-header">
-      <el-icon v-if="repo.repository.isFavorite" color="#e6a23c">
-        <Star />
-      </el-icon>
+      <n-icon v-if="repo.repository.isFavorite" color="#e6a23c">
+        <StarOutline />
+      </n-icon>
       <span class="card-title">{{ repo.repository.name }}</span>
       <StatusBadge v-if="repo.status" :status="repo.status" />
     </div>
     <div class="card-body">
       <div class="card-path">{{ repo.repository.relativePath }}</div>
       <div v-if="repo.status" class="card-meta">
-        <el-tag size="small" effect="plain">
+        <n-tag size="small" :bordered="false">
           {{ repo.status.branch }}
-        </el-tag>
+        </n-tag>
         <span v-if="repo.status.ahead > 0" class="text-success">
           ↑{{ repo.status.ahead }}
         </span>
@@ -21,11 +21,11 @@
         </span>
       </div>
     </div>
-  </el-card>
+  </n-card>
 </template>
 
 <script setup lang="ts">
-import { Star } from "@element-plus/icons-vue";
+import { StarOutline } from "@vicons/ionicons5";
 import type { RepositoryWithStatus } from "@/types/repository";
 import StatusBadge from "./StatusBadge.vue";
 

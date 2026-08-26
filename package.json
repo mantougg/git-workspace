@@ -11,12 +11,12 @@
     "build:signed": "dotenv -e .env -- tauri build"
   },
   "dependencies": {
-    "@element-plus/icons-vue": "^2.3.2",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-shell": "^2.0.0",
     "@tauri-apps/plugin-updater": "~2",
-    "element-plus": "^2.8.0",
+    "@vicons/ionicons5": "^0.12.0",
+    "naive-ui": "^2.40.0",
     "pinia": "^2.2.0",
     "vue": "^3.5.0",
     "vue-router": "^4.4.0"

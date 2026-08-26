@@ -1,76 +1,76 @@
 <template>
-  <el-dialog
-    v-model="visible"
+  <n-modal
+    :show="visible"
+    preset="card"
     title="Rebase"
-    width="760px"
+    style="width: 760px"
     :close-on-click-modal="false"
+    @update:show="(v: boolean) => { if (!v) visible = false }"
   >
     <div class="rebase-form">
       <span class="form-label">Onto（目标基点）：</span>
-      <el-select v-model="onto" filterable style="width: 240px" @change="loadOps">
-        <el-option v-for="r in revisions" :key="r" :label="r" :value="r" />
-      </el-select>
-      <el-radio-group v-model="mode" @change="loadOps">
-        <el-radio value="normal">普通</el-radio>
-        <el-radio value="interactive">Interactive</el-radio>
-      </el-radio-group>
+      <n-select v-model:value="onto" filterable style="width: 240px" :options="revisionOptions" @update:value="loadOps" />
+      <n-radio-group v-model:value="mode" @update:value="loadOps">
+        <n-radio value="normal">普通</n-radio>
+        <n-radio value="interactive">Interactive</n-radio>
+      </n-radio-group>
     </div>
 
-    <div v-if="mode === 'interactive'" class="op-editor" v-loading="opsLoading">
-      <div class="op-hint">
-        拖拽或 ↑↓ 调整顺序；pick 应用，reword 改消息，squash 并入上一条，drop 跳过。
-      </div>
-      <div
-        v-for="(op, i) in ops"
-        :key="op.oid"
-        :class="['op-row', { dropped: op.action === 'drop' }]"
-        draggable="true"
-        @dragstart="dragIndex = i"
-        @dragover.prevent
-        @drop="onDrop(i)"
-      >
-        <el-select
-          v-model="op.action"
-          size="small"
-          style="width: 104px"
-          @change="(v: string) => onActionChange(op, v)"
+    <div v-if="mode === 'interactive'" class="op-editor">
+      <n-spin :show="opsLoading">
+        <div class="op-hint">
+          拖拽或 ↑↓ 调整顺序；pick 应用，reword 改消息，squash 并入上一条，drop 跳过。
+        </div>
+        <div
+          v-for="(op, i) in ops"
+          :key="op.oid"
+          :class="['op-row', { dropped: op.action === 'drop' }]"
+          draggable="true"
+          @dragstart="dragIndex = i"
+          @dragover.prevent
+          @drop="onDrop(i)"
         >
-          <el-option label="pick" value="pick" />
-          <el-option label="reword" value="reword" />
-          <el-option label="squash" value="squash" />
-          <el-option label="drop" value="drop" />
-        </el-select>
-        <span class="op-oid">{{ op.oid.slice(0, 7) }}</span>
-        <el-input
-          v-if="op.action === 'reword'"
-          v-model="op.message"
-          size="small"
-          class="op-message"
-          :placeholder="op.subject"
+          <n-select
+            v-model:value="op.action"
+            size="small"
+            style="width: 104px"
+            :options="actionOptions"
+            @update:value="(v: string) => onActionChange(op, v)"
+          />
+          <span class="op-oid">{{ op.oid.slice(0, 7) }}</span>
+          <n-input
+            v-if="op.action === 'reword'"
+            v-model:value="op.message"
+            size="small"
+            class="op-message"
+            :placeholder="op.subject"
+          />
+          <span v-else class="op-subject">{{ op.subject }}</span>
+          <n-button size="small" text :disabled="i === 0" @click="move(i, -1)">↑</n-button>
+          <n-button size="small" text :disabled="i === ops.length - 1" @click="move(i, 1)">↓</n-button>
+        </div>
+        <n-empty
+          v-if="!opsLoading && ops.length === 0"
+          description="该基点之上没有需要 rebase 的提交"
         />
-        <span v-else class="op-subject">{{ op.subject }}</span>
-        <el-button size="small" text :disabled="i === 0" @click="move(i, -1)">↑</el-button>
-        <el-button size="small" text :disabled="i === ops.length - 1" @click="move(i, 1)">↓</el-button>
-      </div>
-      <el-empty
-        v-if="!opsLoading && ops.length === 0"
-        description="该基点之上没有需要 rebase 的提交"
-        :image-size="40"
-      />
+      </n-spin>
     </div>
 
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="running" @click="run">开始 Rebase</el-button>
+      <n-button @click="visible = false">取消</n-button>
+      <n-button type="primary" :loading="running" @click="run">开始 Rebase</n-button>
     </template>
-  </el-dialog>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
+import { useMessage } from "naive-ui";
 import { listRebaseCommits, startRebase } from "@/api/rebase";
 import type { RebaseOp, RebaseOutcome } from "@/types/rebase";
 import { errMsg } from "@/utils/error";
+
+const message = useMessage();
 
 const props = defineProps<{
   repoPath: string;
@@ -94,6 +94,17 @@ const opsLoading = ref(false);
 const running = ref(false);
 const dragIndex = ref<number | null>(null);
 
+const revisionOptions = computed(() =>
+  props.revisions.map((r) => ({ label: r, value: r })),
+);
+
+const actionOptions = [
+  { label: "pick", value: "pick" },
+  { label: "reword", value: "reword" },
+  { label: "squash", value: "squash" },
+  { label: "drop", value: "drop" },
+];
+
 // Reload the default todo whenever the dialog opens or onto/mode changes.
 watch(visible, (v) => {
   if (v) {
@@ -109,7 +120,7 @@ async function loadOps() {
   try {
     ops.value = await listRebaseCommits(props.repoPath, onto.value);
   } catch (e) {
-    ElMessage.error("加载 rebase 提交列表失败: " + errMsg(e));
+    message.error("加载 rebase 提交列表失败: " + errMsg(e));
   } finally {
     opsLoading.value = false;
   }
@@ -140,7 +151,7 @@ function onDrop(target: number) {
 
 async function run() {
   if (!onto.value) {
-    ElMessage.warning("请选择目标基点（onto）");
+    message.warning("请选择目标基点（onto）");
     return;
   }
   running.value = true;
@@ -154,7 +165,7 @@ async function run() {
     visible.value = false;
     emit("finished", outcome);
   } catch (e) {
-    ElMessage.error("Rebase 失败: " + errMsg(e));
+    message.error("Rebase 失败: " + errMsg(e));
     emit("finished", null);
   } finally {
     running.value = false;

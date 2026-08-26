@@ -2,78 +2,71 @@
   <div class="stash-manager">
     <!-- Header -->
     <div class="stash-header">
-      <el-button @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
+      <n-button @click="goBack">
+        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
         返回
-      </el-button>
+      </n-button>
       <span class="repo-path">{{ repoPath }}</span>
-      <el-button size="small" :loading="loading" @click="load">
-        <el-icon><Refresh /></el-icon>
+      <n-button size="small" :loading="loading" @click="load">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
         刷新
-      </el-button>
-      <el-button size="small" type="primary" @click="saveDialog.show = true">
-        <el-icon><Download /></el-icon>
+      </n-button>
+      <n-button size="small" type="primary" @click="saveDialog.show = true">
+        <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
         Stash Changes
-      </el-button>
-      <el-button
+      </n-button>
+      <n-button
         size="small"
-        type="danger"
-        plain
+        type="error"
         :disabled="entries.length === 0"
         @click="handleClear"
       >
         Clear All
-      </el-button>
+      </n-button>
     </div>
 
     <!-- Stash list -->
-    <div class="stash-body" v-loading="loading">
-      <div v-for="entry in entries" :key="entry.oid" class="stash-row">
-        <span class="stash-ref">stash@{{ "{" + entry.index + "}" }}</span>
-        <span class="stash-message" :title="entry.message">{{ entry.message }}</span>
-        <span class="stash-time">{{ entry.time }}</span>
-        <div class="stash-actions">
-          <el-button size="small" @click="handleApply(entry)">Apply</el-button>
-          <el-button size="small" @click="handlePop(entry)">Pop</el-button>
-          <el-button size="small" @click="openDiff(entry)">Show Diff</el-button>
-          <el-dropdown trigger="click" @command="(cmd: string) => onMore(cmd, entry)">
-            <el-button size="small" text>
-              <el-icon><MoreFilled /></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="branch">Create Branch From Stash</el-dropdown-item>
-                <el-dropdown-item command="drop" divided>
-                  <span class="danger-item">Drop</span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+    <n-spin :show="loading">
+      <div class="stash-body">
+        <div v-for="entry in entries" :key="entry.oid" class="stash-row">
+          <span class="stash-ref">stash@{{ "{" + entry.index + "}" }}</span>
+          <span class="stash-message" :title="entry.message">{{ entry.message }}</span>
+          <span class="stash-time">{{ entry.time }}</span>
+          <div class="stash-actions">
+            <n-button size="small" @click="handleApply(entry)">Apply</n-button>
+            <n-button size="small" @click="handlePop(entry)">Pop</n-button>
+            <n-button size="small" @click="openDiff(entry)">Show Diff</n-button>
+            <n-dropdown trigger="click" :options="moreDropdownOptions" @select="(key: string) => onMore(key, entry)">
+              <n-button size="small" text>
+                <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+              </n-button>
+            </n-dropdown>
+          </div>
         </div>
+        <n-empty v-if="!loading && entries.length === 0" description="暂无 stash" />
       </div>
-      <el-empty v-if="!loading && entries.length === 0" description="暂无 stash" :image-size="60" />
-    </div>
+    </n-spin>
 
     <!-- Stash save dialog -->
-    <el-dialog v-model="saveDialog.show" title="Stash Changes" width="480px">
-      <el-input
-        v-model="saveDialog.message"
+    <n-modal v-model:show="saveDialog.show" preset="card" title="Stash Changes" style="width: 480px">
+      <n-input
+        v-model:value="saveDialog.message"
         placeholder="Stash 描述（可选）"
         style="margin-bottom: 12px"
       />
-      <el-checkbox v-model="saveDialog.includeUntracked">
+      <n-checkbox v-model:checked="saveDialog.includeUntracked">
         包含未跟踪文件（include untracked）
-      </el-checkbox>
+      </n-checkbox>
       <template #footer>
-        <el-button @click="saveDialog.show = false">取消</el-button>
-        <el-button type="primary" :loading="saveDialog.loading" @click="handleSave">
+        <n-button @click="saveDialog.show = false">取消</n-button>
+        <n-button type="primary" :loading="saveDialog.loading" @click="handleSave">
           Stash
-        </el-button>
+        </n-button>
       </template>
-    </el-dialog>
+    </n-modal>
 
     <!-- Stash diff dialog -->
-    <el-dialog v-model="diffDialog.show" :title="`Stash Diff — stash@{${diffDialog.index}}`" width="80%" top="5vh">
+    <n-modal v-model:show="diffDialog.show" preset="card" :title="`Stash Diff — stash@{${diffDialog.index}}`" style="width: 80%">
       <div class="stash-diff">
         <div class="file-list">
           <div
@@ -85,21 +78,23 @@
             <span :class="['file-status-icon', f.status]">{{ statusIcon(f.status) }}</span>
             <span class="file-name">{{ f.newPath }}</span>
           </div>
-          <el-empty v-if="diffDialog.files.length === 0" description="无文件差异" :image-size="40" />
+          <n-empty v-if="diffDialog.files.length === 0" description="无文件差异" />
         </div>
         <div class="file-diff">
           <UnifiedDiff v-if="diffDialog.selected" :file="diffDialog.selected" />
-          <el-empty v-else description="选择文件查看 Diff" :image-size="40" />
+          <n-empty v-else description="选择文件查看 Diff" />
         </div>
       </div>
-    </el-dialog>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, Download, MoreFilled, Refresh } from "@element-plus/icons-vue";
+import { ArrowBackOutline, CloudUploadOutline, EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
+import { useMessage, useDialog } from "naive-ui";
+import { prompt } from "@/utils/prompt";
 import {
   applyStash,
   branchFromStash,
@@ -117,6 +112,8 @@ import { errMsg } from "@/utils/error";
 
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
 
 const repoPath = ref("");
 const entries = ref<StashEntry[]>([]);
@@ -130,10 +127,16 @@ const diffDialog = reactive<{
   selected: FileDiff | null;
 }>({ show: false, index: 0, files: [], selected: null });
 
+const moreDropdownOptions = [
+  { label: "Create Branch From Stash", key: "branch" },
+  { type: "divider", key: "d1" },
+  { label: "Drop", key: "drop" },
+];
+
 onMounted(async () => {
   const repo = route.query.repo as string;
   if (!repo) {
-    ElMessage.warning("未指定仓库路径");
+    message.warning("未指定仓库路径");
     router.push({ name: "changes" });
     return;
   }
@@ -146,7 +149,7 @@ async function load() {
   try {
     entries.value = await listStashes(repoPath.value);
   } catch (e) {
-    ElMessage.error("获取 stash 列表失败: " + errMsg(e));
+    message.error("获取 stash 列表失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -176,10 +179,10 @@ function statusIcon(status: string): string {
 async function runOp(successMsg: string, op: () => Promise<unknown>) {
   try {
     await op();
-    ElMessage.success(successMsg);
+    message.success(successMsg);
     await load();
   } catch (e) {
-    ElMessage.error(errMsg(e));
+    message.error(errMsg(e));
   }
 }
 
@@ -191,12 +194,12 @@ async function handleSave() {
       saveDialog.message || undefined,
       saveDialog.includeUntracked,
     );
-    ElMessage.success("已 Stash");
+    message.success("已 Stash");
     saveDialog.show = false;
     saveDialog.message = "";
     await load();
   } catch (e) {
-    ElMessage.error("Stash 失败: " + errMsg(e));
+    message.error("Stash 失败: " + errMsg(e));
   } finally {
     saveDialog.loading = false;
   }
@@ -213,11 +216,17 @@ async function handlePop(entry: StashEntry) {
 /** Drop / Clear are Warning-level (§46): confirm with impact + recovery hint. */
 async function handleDrop(entry: StashEntry) {
   try {
-    await ElMessageBox.confirm(
-      `仓库：${repoPath.value}\n将丢弃 stash@{${entry.index}}（${entry.message}）。\n该 stash 的更改将从 stash 栈移除（必要时可经 reflog 尝试找回）。`,
-      "Drop 确认（Warning）",
-      { confirmButtonText: "丢弃", cancelButtonText: "取消", type: "warning" },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.warning({
+        title: "Drop 确认（Warning）",
+        content: `仓库：${repoPath.value}\n将丢弃 stash@{${entry.index}}（${entry.message}）。\n该 stash 的更改将从 stash 栈移除（必要时可经 reflog 尝试找回）。`,
+        positiveText: "丢弃",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
   } catch {
     return;
   }
@@ -226,11 +235,17 @@ async function handleDrop(entry: StashEntry) {
 
 async function handleClear() {
   try {
-    await ElMessageBox.confirm(
-      `仓库：${repoPath.value}\n将清空全部 ${entries.value.length} 个 stash，不可批量撤销。`,
-      "Clear All 确认（Warning）",
-      { confirmButtonText: "全部清空", cancelButtonText: "取消", type: "warning" },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.warning({
+        title: "Clear All 确认（Warning）",
+        content: `仓库：${repoPath.value}\n将清空全部 ${entries.value.length} 个 stash，不可批量撤销。`,
+        positiveText: "全部清空",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
   } catch {
     return;
   }
@@ -246,22 +261,20 @@ async function onMore(cmd: string, entry: StashEntry) {
   }
   if (cmd === "branch") {
     try {
-      const { value: name } = await ElMessageBox.prompt(
-        `从 stash@{${entry.index}} 创建分支（基于 stash 的基提交，检出后应用该 stash）：`,
-        "Create Branch From Stash",
-        {
-          confirmButtonText: "创建",
-          cancelButtonText: "取消",
-          inputPattern: /^[^\s~^:?*[\]\\]+$/,
-          inputErrorMessage: "分支名不合法",
-        },
-      );
+      const name = await prompt(dialog, {
+        title: "Create Branch From Stash",
+        content: `从 stash@{${entry.index}} 创建分支（基于 stash 的基提交，检出后应用该 stash）：`,
+        confirmText: "创建",
+        cancelText: "取消",
+        pattern: /^[^\s~^:?*[\]\\]+$/,
+        patternError: "分支名不合法",
+      });
       if (!name) return;
       await runOp(`已从 stash 创建分支 ${name}`, () =>
         branchFromStash(repoPath.value, name, entry.index),
       );
     } catch (e) {
-      if (e !== "cancel") ElMessage.error("创建分支失败: " + errMsg(e));
+      if (e !== "cancel") message.error("创建分支失败: " + errMsg(e));
     }
   }
 }
@@ -274,7 +287,7 @@ async function openDiff(entry: StashEntry) {
     diffDialog.selected = files[0] ?? null;
     diffDialog.show = true;
   } catch (e) {
-    ElMessage.error("获取 stash diff 失败: " + errMsg(e));
+    message.error("获取 stash diff 失败: " + errMsg(e));
   }
 }
 </script>

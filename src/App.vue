@@ -1,11 +1,18 @@
 <template>
-  <div class="app-container">
-    <router-view />
-    <TaskPanel />
-  </div>
+  <n-config-provider :locale="zhCN" :date-locale="dateZhCN">
+    <n-message-provider>
+      <n-dialog-provider>
+        <div class="app-container">
+          <router-view />
+          <TaskPanel />
+        </div>
+      </n-dialog-provider>
+    </n-message-provider>
+  </n-config-provider>
 </template>
 
 <script setup lang="ts">
+import { zhCN, dateZhCN } from "naive-ui";
 import TaskPanel from "@/views/TaskPanel.vue";
 </script>
 

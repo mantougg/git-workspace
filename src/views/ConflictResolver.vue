@@ -2,50 +2,51 @@
   <div class="conflict-resolver">
     <!-- Header -->
     <div class="resolver-header">
-      <el-button @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
+      <n-button @click="goBack">
+        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
         返回
-      </el-button>
+      </n-button>
       <span v-if="queueMode" class="repo-path">冲突队列（{{ workspaceName }}）</span>
       <template v-else>
         <span class="repo-path">{{ repoPath }}</span>
-        <el-tag v-if="opLabel" size="small" type="warning">{{ opLabel }}</el-tag>
+        <n-tag v-if="opLabel" size="small" type="warning">{{ opLabel }}</n-tag>
       </template>
-      <el-button v-if="!queueMode" size="small" :loading="loading" @click="load">
-        <el-icon><Refresh /></el-icon>
+      <n-button v-if="!queueMode" size="small" :loading="loading" @click="load">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
         刷新
-      </el-button>
-      <el-button size="small" disabled title="AI 冲突建议将在 T-26 提供">
+      </n-button>
+      <n-button size="small" disabled title="AI 冲突建议将在 T-26 提供">
         AI 建议（T-26）
-      </el-button>
-      <el-button
+      </n-button>
+      <n-button
         v-if="queueMode && queue.length > 0"
         size="small"
-        type="danger"
-        plain
+        type="error"
+        dashed
         @click="handleAbortAll"
       >
         全部中止
-      </el-button>
+      </n-button>
     </div>
 
     <!-- Queue mode: all conflicted repos in the workspace -->
-    <div v-if="queueMode" class="queue-body" v-loading="queueLoading">
-      <div v-for="q in queue" :key="q.repoPath" class="queue-row">
-        <span class="queue-name">{{ q.repoName }}</span>
-        <span class="queue-path">{{ q.repoPath }}</span>
-        <el-tag size="small" type="danger">{{ q.conflictCount }} 个冲突</el-tag>
-        <el-tag size="small">{{ q.opLabel }}</el-tag>
-        <el-button size="small" type="primary" plain @click="openRepo(q.repoPath)">
-          去解决
-        </el-button>
+    <n-spin :show="queueLoading">
+      <div v-if="queueMode" class="queue-body">
+        <div v-for="q in queue" :key="q.repoPath" class="queue-row">
+          <span class="queue-name">{{ q.repoName }}</span>
+          <span class="queue-path">{{ q.repoPath }}</span>
+          <n-tag size="small" type="error">{{ q.conflictCount }} 个冲突</n-tag>
+          <n-tag size="small">{{ q.opLabel }}</n-tag>
+          <n-button size="small" type="primary" dashed @click="openRepo(q.repoPath)">
+            去解决
+          </n-button>
+        </div>
+        <n-empty
+          v-if="!queueLoading && queue.length === 0"
+          description="工作区内没有冲突中的仓库"
+        />
       </div>
-      <el-empty
-        v-if="!queueLoading && queue.length === 0"
-        description="工作区内没有冲突中的仓库"
-        :image-size="60"
-      />
-    </div>
+    </n-spin>
 
     <!-- Single-repo mode -->
     <template v-else>
@@ -55,70 +56,71 @@
           （Rebase 第 {{ state.rebase.position + 1 }}/{{ state.rebase.ops.length }} 步）
         </template>
       </div>
-      <div class="resolver-body" v-loading="loading">
-        <!-- Conflict file list -->
-        <div class="conflict-list">
-          <div
-            v-for="c in conflicts"
-            :key="c.path"
-            :class="['conflict-item', { active: selectedPath === c.path, resolved: isResolved(c.path) }]"
-            @click="selectFile(c.path)"
-          >
-            <span class="conflict-path">{{ c.path }}</span>
-            <el-tag size="small" effect="plain">{{ typeLabel(c.conflictType) }}</el-tag>
-            <el-icon v-if="isResolved(c.path)" class="resolved-icon"><Check /></el-icon>
+      <n-spin :show="loading">
+        <div class="resolver-body">
+          <!-- Conflict file list -->
+          <div class="conflict-list">
+            <div
+              v-for="c in conflicts"
+              :key="c.path"
+              :class="['conflict-item', { active: selectedPath === c.path, resolved: isResolved(c.path) }]"
+              @click="selectFile(c.path)"
+            >
+              <span class="conflict-path">{{ c.path }}</span>
+              <n-tag size="small">{{ typeLabel(c.conflictType) }}</n-tag>
+              <n-icon v-if="isResolved(c.path)" class="resolved-icon"><CheckmarkOutline /></n-icon>
+            </div>
+            <n-empty
+              v-if="!loading && conflicts.length === 0"
+              description="没有冲突文件"
+            />
           </div>
-          <el-empty
-            v-if="!loading && conflicts.length === 0"
-            description="没有冲突文件"
-            :image-size="50"
-          />
-        </div>
 
-        <!-- Three-way + result panes -->
-        <div v-if="selectedPath" class="panes">
-          <div class="pane-toolbar">
-            <span class="pane-file">{{ selectedPath }}</span>
-            <el-button size="small" @click="resolveWith('ours')">Use Ours</el-button>
-            <el-button size="small" @click="resolveWith('theirs')">Use Theirs</el-button>
-            <el-button size="small" @click="resolveWith('both')">Use Both</el-button>
-            <el-button size="small" type="primary" :disabled="isResolved(selectedPath)" @click="resolveManual">
-              应用 RESULT（Mark Resolved）
-            </el-button>
+          <!-- Three-way + result panes -->
+          <div v-if="selectedPath" class="panes">
+            <div class="pane-toolbar">
+              <span class="pane-file">{{ selectedPath }}</span>
+              <n-button size="small" @click="resolveWith('ours')">Use Ours</n-button>
+              <n-button size="small" @click="resolveWith('theirs')">Use Theirs</n-button>
+              <n-button size="small" @click="resolveWith('both')">Use Both</n-button>
+              <n-button size="small" type="primary" :disabled="isResolved(selectedPath)" @click="resolveManual">
+                应用 RESULT（Mark Resolved）
+              </n-button>
+            </div>
+            <div class="pane-grid">
+              <div class="pane">
+                <div class="pane-title">BASE</div>
+                <pre class="pane-content">{{ content?.base ?? "（无共同祖先）" }}</pre>
+              </div>
+              <div class="pane">
+                <div class="pane-title">OURS</div>
+                <pre class="pane-content">{{ content?.ours ?? "（本侧已删除）" }}</pre>
+              </div>
+              <div class="pane">
+                <div class="pane-title">THEIRS</div>
+                <pre class="pane-content">{{ content?.theirs ?? "（对侧已删除）" }}</pre>
+              </div>
+              <div class="pane">
+                <div class="pane-title">RESULT（可编辑）</div>
+                <textarea v-model="resultText" class="pane-editor" spellcheck="false" />
+              </div>
+            </div>
+            <div v-if="content?.truncated" class="truncate-hint">内容过大，部分侧已截断显示</div>
           </div>
-          <div class="pane-grid">
-            <div class="pane">
-              <div class="pane-title">BASE</div>
-              <pre class="pane-content">{{ content?.base ?? "（无共同祖先）" }}</pre>
-            </div>
-            <div class="pane">
-              <div class="pane-title">OURS</div>
-              <pre class="pane-content">{{ content?.ours ?? "（本侧已删除）" }}</pre>
-            </div>
-            <div class="pane">
-              <div class="pane-title">THEIRS</div>
-              <pre class="pane-content">{{ content?.theirs ?? "（对侧已删除）" }}</pre>
-            </div>
-            <div class="pane">
-              <div class="pane-title">RESULT（可编辑）</div>
-              <textarea v-model="resultText" class="pane-editor" spellcheck="false" />
-            </div>
-          </div>
-          <div v-if="content?.truncated" class="truncate-hint">内容过大，部分侧已截断显示</div>
+          <n-empty v-else description="选择左侧文件开始解决" class="panes-empty" />
         </div>
-        <el-empty v-else description="选择左侧文件开始解决" :image-size="60" class="panes-empty" />
-      </div>
+      </n-spin>
 
       <!-- Footer: continue / abort -->
       <div class="resolver-footer">
-        <el-button
+        <n-button
           type="primary"
           :disabled="conflicts.length === 0 ? false : resolvedCount < conflicts.length"
           @click="handleContinue"
         >
           {{ continueLabel }}
-        </el-button>
-        <el-button type="danger" plain @click="handleAbort">中止（Abort）</el-button>
+        </n-button>
+        <n-button type="error" dashed @click="handleAbort">中止（Abort）</n-button>
         <span v-if="conflicts.length > 0 && resolvedCount === conflicts.length" class="footer-hint">
           全部冲突已解决，可以继续
         </span>
@@ -130,7 +132,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, Check, Refresh } from "@element-plus/icons-vue";
+import { ArrowBackOutline, CheckmarkOutline, RefreshOutline } from "@vicons/ionicons5";
+import { useMessage, useDialog } from "naive-ui";
 import {
   getConflictContent,
   getOperationState,
@@ -147,6 +150,8 @@ import { errMsg } from "@/utils/error";
 
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
 
 const repoPath = ref("");
 const queueMode = ref(false);
@@ -195,7 +200,7 @@ onMounted(async () => {
   }
   const repo = route.query.repo as string;
   if (!repo) {
-    ElMessage.warning("未指定仓库或工作区");
+    message.warning("未指定仓库或工作区");
     router.push({ name: "changes" });
     return;
   }
@@ -230,7 +235,7 @@ async function loadQueue() {
     }
     queue.value = items;
   } catch (e) {
-    ElMessage.error("加载冲突队列失败: " + errMsg(e));
+    message.error("加载冲突队列失败: " + errMsg(e));
   } finally {
     queueLoading.value = false;
   }
@@ -251,16 +256,17 @@ function openRepo(path: string) {
 async function handleAbortAll() {
   const names = queue.value.map((q) => q.repoName).join("、");
   try {
-    await ElMessageBox.confirm(
-      `将对以下 ${queue.value.length} 个仓库全部执行中止（Abort）：${names}\n\n每个仓库都会 hard reset 回操作前状态，冲突中的修改将丢失。`,
-      "整体 Abort 确认（Dangerous）",
-      {
-        confirmButtonText: "全部中止",
-        cancelButtonText: "取消",
-        type: "error",
-        confirmButtonClass: "el-button--danger",
-      },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.error({
+        title: "整体 Abort 确认（Dangerous）",
+        content: `将对以下 ${queue.value.length} 个仓库全部执行中止（Abort）：${names}\n\n每个仓库都会 hard reset 回操作前状态，冲突中的修改将丢失。`,
+        positiveText: "全部中止",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject(new Error("cancelled")),
+        onClose: () => reject(new Error("cancelled")),
+      });
+    });
   } catch {
     return;
   }
@@ -276,9 +282,9 @@ async function handleAbortAll() {
     }
   }
   if (failed > 0) {
-    ElMessage.warning(`已中止 ${queue.value.length - failed} 个，${failed} 个失败`);
+    message.warning(`已中止 ${queue.value.length - failed} 个，${failed} 个失败`);
   } else {
-    ElMessage.success(`已中止全部 ${queue.value.length} 个仓库的冲突操作`);
+    message.success(`已中止全部 ${queue.value.length} 个仓库的冲突操作`);
   }
   await loadQueue();
 }
@@ -300,7 +306,7 @@ async function load() {
       await selectFile(conflicts.value[0].path);
     }
   } catch (e) {
-    ElMessage.error("加载冲突状态失败: " + errMsg(e));
+    message.error("加载冲突状态失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -329,7 +335,7 @@ async function selectFile(path: string) {
     resultText.value =
       content.value.worktree ?? content.value.ours ?? content.value.theirs ?? "";
   } catch (e) {
-    ElMessage.error("加载冲突内容失败: " + errMsg(e));
+    message.error("加载冲突内容失败: " + errMsg(e));
   }
 }
 
@@ -343,10 +349,10 @@ async function resolveWith(strategy: "ours" | "theirs" | "both") {
   if (!path) return;
   try {
     await resolveConflict(repoPath.value, path, strategy);
-    ElMessage.success(`已按 ${strategy} 解决 ${path}`);
+    message.success(`已按 ${strategy} 解决 ${path}`);
     await afterResolve(path);
   } catch (e) {
-    ElMessage.error("解决失败: " + errMsg(e));
+    message.error("解决失败: " + errMsg(e));
   }
 }
 
@@ -355,10 +361,10 @@ async function resolveManual() {
   if (!path) return;
   try {
     await resolveConflictWithContent(repoPath.value, path, resultText.value);
-    ElMessage.success(`已应用手动编辑：${path}`);
+    message.success(`已应用手动编辑：${path}`);
     await afterResolve(path);
   } catch (e) {
-    ElMessage.error("解决失败: " + errMsg(e));
+    message.error("解决失败: " + errMsg(e));
   }
 }
 
@@ -368,24 +374,24 @@ async function handleContinue() {
   try {
     if (s.merge) {
       const oid = await mergeContinue(repoPath.value);
-      ElMessage.success(`Merge 已完成（${oid.slice(0, 7)}）`);
+      message.success(`Merge 已完成（${oid.slice(0, 7)}）`);
     } else if (s.rebase) {
       const outcome: RebaseOutcome = await rebaseContinue(repoPath.value);
       if (outcome.status === "success") {
-        ElMessage.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
+        message.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
       } else {
-        ElMessage.warning(
+        message.warning(
           `Rebase 第 ${outcome.position + 1}/${outcome.total} 步再次冲突，请继续解决`,
         );
       }
     } else if (s.cherryPick || s.revert) {
       const oid = await pickContinue(repoPath.value);
-      ElMessage.success(`已继续并提交（${oid.slice(0, 7)}）`);
+      message.success(`已继续并提交（${oid.slice(0, 7)}）`);
     }
     resolvedPaths.value = new Set();
     await load();
   } catch (e) {
-    ElMessage.error(errMsg(e));
+    message.error(errMsg(e));
   }
 }
 
@@ -393,16 +399,17 @@ async function handleAbort() {
   const s = state.value;
   if (!s) return;
   try {
-    await ElMessageBox.confirm(
-      `仓库：${repoPath.value}\n将放弃当前 ${opLabel.value} 操作并恢复到操作前状态（hard reset），冲突中的修改将丢失。`,
-      "Abort 确认（Dangerous）",
-      {
-        confirmButtonText: "中止并恢复",
-        cancelButtonText: "取消",
-        type: "error",
-        confirmButtonClass: "el-button--danger",
-      },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.error({
+        title: "Abort 确认（Dangerous）",
+        content: `仓库：${repoPath.value}\n将放弃当前 ${opLabel.value} 操作并恢复到操作前状态（hard reset），冲突中的修改将丢失。`,
+        positiveText: "中止并恢复",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject(new Error("cancelled")),
+        onClose: () => reject(new Error("cancelled")),
+      });
+    });
   } catch {
     return;
   }
@@ -410,11 +417,11 @@ async function handleAbort() {
     if (s.merge) await mergeAbort(repoPath.value);
     else if (s.rebase) await rebaseAbort(repoPath.value);
     else await abortPick(repoPath.value);
-    ElMessage.success("已中止并恢复");
+    message.success("已中止并恢复");
     resolvedPaths.value = new Set();
     await load();
   } catch (e) {
-    ElMessage.error("Abort 失败: " + errMsg(e));
+    message.error("Abort 失败: " + errMsg(e));
   }
 }
 

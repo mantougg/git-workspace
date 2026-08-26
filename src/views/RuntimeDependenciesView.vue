@@ -3,37 +3,31 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-select
-          v-model="selectedWorkspaceId"
+        </n-button>
+        <n-select
+          v-model:value="selectedWorkspaceId"
           placeholder="选择工作区"
           style="width: 200px"
-          @change="selectWorkspace"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
-        <el-button :loading="loading" @click="reload">
-          <el-icon><RefreshRight /></el-icon>
+          :options="workspaceOptions"
+          @update:value="selectWorkspace"
+        />
+        <n-button :loading="loading" @click="reload">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
-        </el-button>
+        </n-button>
       </div>
       <div class="toolbar-right">
-        <el-button @click="router.push({ name: 'runtime-dashboard' })">
-          <el-icon><Odometer /></el-icon>
+        <n-button @click="router.push({ name: 'runtime-dashboard' })">
+          <template #icon><n-icon><SpeedometerOutline /></n-icon></template>
           Dashboard
-        </el-button>
-        <el-button @click="router.push({ name: 'runtime-scope' })">
-          <el-icon><SetUp /></el-icon>
+        </n-button>
+        <n-button @click="router.push({ name: 'runtime-scope' })">
+          <template #icon><n-icon><SettingsOutline /></n-icon></template>
           Scope
-        </el-button>
+        </n-button>
       </div>
     </div>
 
@@ -61,7 +55,7 @@
       <!-- Left: project list -->
       <div class="project-panel">
         <div class="panel-title">Maven 项目（{{ projects.length }}）</div>
-        <el-scrollbar class="project-scroll">
+        <n-scrollbar class="project-scroll">
           <div
             v-for="p in projects"
             :key="p.projectId"
@@ -73,14 +67,14 @@
             <div class="project-path mono">{{ p.path }}</div>
             <div class="project-meta">
               <span class="mono">{{ p.coordinates.groupId }}:{{ p.coordinates.version }}</span>
-              <el-tag size="small" type="info" effect="plain">{{ p.packaging }}</el-tag>
+              <n-tag size="small" :bordered="false">{{ p.packaging }}</n-tag>
             </div>
           </div>
           <div v-if="projects.length === 0" class="panel-empty">
             项目索引为空<br />
             请先在 Dashboard 执行「解析依赖」
           </div>
-        </el-scrollbar>
+        </n-scrollbar>
       </div>
 
       <!-- Right: edges / inspection -->
@@ -91,17 +85,17 @@
             {{ inspection.project.coordinates.artifactId }}
             <span class="muted mono">{{ inspection.project.path }}</span>
           </div>
-          <el-descriptions :column="3" border size="small" class="inspect-desc">
-            <el-descriptions-item label="父项目">
+          <n-descriptions :column="3" bordered size="small" class="inspect-desc">
+            <n-descriptions-item label="父项目">
               {{ inspection.parentProjectId ?? "—" }}
-            </el-descriptions-item>
-            <el-descriptions-item label="子模块">
+            </n-descriptions-item>
+            <n-descriptions-item label="子模块">
               {{ inspection.modules.length }}
-            </el-descriptions-item>
-            <el-descriptions-item label="源码映射">
+            </n-descriptions-item>
+            <n-descriptions-item label="源码映射">
               {{ inspection.sourceMappings.length }}
-            </el-descriptions-item>
-          </el-descriptions>
+            </n-descriptions-item>
+          </n-descriptions>
           <div v-if="inspection.sourceMappings.length > 0" class="mapping-list">
             <div v-for="m in inspection.sourceMappings" :key="m.projectId" class="mapping-row">
               <span class="mono">{{ m.coordinates.groupId }}:{{ m.coordinates.artifactId }}</span>
@@ -113,78 +107,45 @@
         <!-- Edge filter -->
         <div class="filter-row">
           <span class="filter-label">来源过滤</span>
-          <el-radio-group v-model="sourceFilter" size="small">
-            <el-radio-button value="">全部</el-radio-button>
-            <el-radio-button value="workspaceSource">源码</el-radio-button>
-            <el-radio-button value="localRepository">本地仓库</el-radio-button>
-            <el-radio-button value="remoteRepository">远程仓库</el-radio-button>
-          </el-radio-group>
+          <n-radio-group v-model:value="sourceFilter" size="small">
+            <n-radio-button value="">全部</n-radio-button>
+            <n-radio-button value="workspaceSource">源码</n-radio-button>
+            <n-radio-button value="localRepository">本地仓库</n-radio-button>
+            <n-radio-button value="remoteRepository">远程仓库</n-radio-button>
+          </n-radio-group>
           <span v-if="selectedProjectId" class="filter-project">
             仅看：<b>{{ selectedProjectName }}</b>
-            <el-button size="small" link type="primary" @click="clearProject">清除</el-button>
+            <n-button size="small" text type="primary" @click="clearProject">清除</n-button>
           </span>
         </div>
 
         <!-- Edges table -->
-        <el-table
-          :data="visibleEdges"
-          v-loading="loading"
-          size="small"
-          empty-text="无依赖边（尝试切换过滤条件）"
-          max-height="560"
-        >
-          <el-table-column label="来源" width="110">
-            <template #default="{ row }">
-              <el-tag
-                size="small"
-                effect="plain"
-                :type="sourceTagType(row.source)"
-              >
-                {{ sourceLabel(row.source) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="依赖" min-width="220">
-            <template #default="{ row }">
-              <span class="mono">{{ coords(row.dependency) }}</span>
-              <el-tag
-                v-if="row.dependency.optional"
-                size="small"
-                type="info"
-                effect="plain"
-                class="opt-tag"
-              >
-                optional
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="Scope" width="90">
-            <template #default="{ row }">
-              <span class="mono">{{ row.dependency.scope }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="解析路径 / 说明" min-width="260" show-overflow-tooltip>
-            <template #default="{ row }">
-              <span v-if="row.resolvedPath" class="mono">{{ row.resolvedPath }}</span>
-              <span v-else class="muted">{{ reasonLabel(row.reason) }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
+        <n-spin :show="loading">
+          <n-data-table
+            :columns="edgeColumns"
+            :data="visibleEdges"
+            size="small"
+            :max-height="560"
+            :row-key="(row: any) => `${row.fromProjectId}-${row.dependency.groupId}-${row.dependency.artifactId}`"
+          />
+        </n-spin>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { Back, RefreshRight, Odometer, SetUp } from "@element-plus/icons-vue";
+import { useMessage, NTag } from "naive-ui";
+import { ArrowBackOutline, RefreshOutline, SpeedometerOutline, SettingsOutline } from "@vicons/ionicons5";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import * as runtimeApi from "@/api/runtime";
 import type { MavenProjectNode } from "@/types/maven";
 import type { DependencyGraphView, ProjectInspection } from "@/types/runtime";
 
 const router = useRouter();
+const message = useMessage();
 const { workspaceStore, store, selectedWorkspaceId, selectWorkspace } =
   useRuntimeWorkspace();
 
@@ -203,6 +164,10 @@ const sourceMappingCount = computed(() => graph.value?.sourceMappings.length ?? 
 const sourceCount = computed(() => countBySource("workspaceSource"));
 const localCount = computed(() => countBySource("localRepository"));
 const remoteCount = computed(() => countBySource("remoteRepository"));
+
+const workspaceOptions = computed(() =>
+  workspaceStore.workspaces.map((ws: any) => ({ label: ws.name, value: ws.id })),
+);
 
 function countBySource(source: string): number {
   return allEdges.value.filter((e) => e.source === source).length;
@@ -264,13 +229,62 @@ function reasonLabel(reason: string): string {
   return map[reason] ?? reason;
 }
 
+const edgeColumns = [
+  {
+    title: "来源",
+    width: 110,
+    render(row: any) {
+      return h(
+        NTag,
+        { size: "small", bordered: false, type: sourceTagType(row.source) },
+        { default: () => sourceLabel(row.source) },
+      );
+    },
+  },
+  {
+    title: "依赖",
+    minWidth: 220,
+    render(row: any) {
+      const children: any[] = [h("span", { class: "mono" }, coords(row.dependency))];
+      if (row.dependency.optional) {
+        children.push(
+          h(
+            NTag,
+            { size: "small", bordered: false, type: "info", class: "opt-tag" },
+            { default: () => "optional" },
+          ),
+        );
+      }
+      return children;
+    },
+  },
+  {
+    title: "Scope",
+    width: 90,
+    render(row: any) {
+      return h("span", { class: "mono" }, row.dependency.scope);
+    },
+  },
+  {
+    title: "解析路径 / 说明",
+    minWidth: 260,
+    ellipsis: { tooltip: true },
+    render(row: any) {
+      if (row.resolvedPath) {
+        return h("span", { class: "mono" }, row.resolvedPath);
+      }
+      return h("span", { class: "muted" }, reasonLabel(row.reason));
+    },
+  },
+];
+
 async function reload() {
   if (store.workspaceId == null) return;
   loading.value = true;
   try {
     graph.value = await runtimeApi.runtimeGetDependencyGraph(store.workspaceId);
   } catch (e) {
-    ElMessage.error("加载依赖图失败：请先执行「解析依赖」");
+    message.error("加载依赖图失败：请先执行「解析依赖」");
     console.error("R-13: load dependency graph failed:", e);
   } finally {
     loading.value = false;

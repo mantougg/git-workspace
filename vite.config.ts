@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
-import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
+import { NaiveUiResolver } from "unplugin-vue-components/resolvers";
 import path from "path";
 
 const host = process.env.TAURI_DEV_HOST;
@@ -11,15 +11,15 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [
     vue(),
-    // Element Plus 按需引入（构建体积优化）：模板中的 el-* 组件与
-    // ElMessage/ElMessageBox 等 API 调用按需注册并自动引入对应样式；
+    // Naive UI 按需引入：模板中的 n-* 组件与 useMessage/useDialog 等
+    // composable 按需注册并自动引入对应样式；
     // 类型声明生成到 src/ 下（tsconfig include 范围内）。
     AutoImport({
-      resolvers: [ElementPlusResolver()],
+      resolvers: [NaiveUiResolver()],
       dts: "src/auto-imports.d.ts",
     }),
     Components({
-      resolvers: [ElementPlusResolver()],
+      resolvers: [NaiveUiResolver()],
       dts: "src/components.d.ts",
     }),
   ],
@@ -29,29 +29,14 @@ export default defineConfig(async () => ({
     },
   },
   build: {
-    // 按需化后的 element-plus vendor chunk ≈ 590 kB（Tauri 桌面本地加载，
-    // 属正常水位）；阈值从默认 500 kB 提到 700 kB，超出才告警。
-    chunkSizeWarningLimit: 700,
+    // Naive UI 按需导入体积更小，阈值恢复到合理水平。
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
-      // element-plus 的 es 主入口顶层对每个组件调用 withInstall()（无 PURE
-      // 注解），rollup 保守地将其视为副作用 → 全量打包。把安装函数标记为
-      // PURE 后，未用组件的模块整条移除（它们仅在 app.use 全量注册时有
-      // 副作用，本项目按需注册，不依赖该副作用）。
-      treeshake: {
-        manualPureFunctions: [
-          "withInstall",
-          "withNoopInstall",
-          "withInstallDirectives",
-          "withInstallDirective",
-        ],
-      },
       output: {
-        // vendor 分包：按模块路径归集，只打包实际被按需引入的子模块
-        //（对象形式的 manualChunks 会拉入包入口、抵消按需，勿用）。
+        // vendor 分包：按模块路径归集，只打包实际被按需引入的子模块。
         manualChunks(id: string) {
-          if (id.includes("node_modules/element-plus")) return "element-plus";
-          if (id.includes("node_modules/@element-plus/icons-vue"))
-            return "element-plus-icons";
+          if (id.includes("node_modules/naive-ui")) return "naive-ui";
+          if (id.includes("node_modules/@vicons")) return "vicons";
           if (
             id.includes("node_modules/vue/") ||
             id.includes("node_modules/vue-router") ||

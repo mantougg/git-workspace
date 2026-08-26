@@ -2,35 +2,35 @@
   <div class="git-graph-view">
     <!-- Header -->
     <div class="graph-header">
-      <el-button @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
+      <n-button @click="goBack">
+        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
         返回
-      </el-button>
+      </n-button>
       <span class="repo-path">{{ repoPath }}</span>
-      <el-button
+      <n-button
         type="primary"
         size="small"
         :loading="loading"
         @click="loadHistory"
       >
         刷新
-      </el-button>
-      <el-button size="small" @click="viewReflog">
+      </n-button>
+      <n-button size="small" @click="viewReflog">
         Reflog
-      </el-button>
+      </n-button>
     </div>
 
     <!-- Branch bar -->
     <div v-if="branches.length > 0" class="branch-bar">
-      <el-tag
+      <n-tag
         v-for="branch in branches.slice(0, 10)"
         :key="branch.name"
-        :type="branch.isCurrent ? 'success' : branch.isRemote ? 'warning' : 'info'"
+        :type="branch.isCurrent ? 'success' : branch.isRemote ? 'warning' : 'default'"
         size="small"
-        effect="plain"
+        :bordered="false"
       >
         {{ branch.name }}
-      </el-tag>
+      </n-tag>
     </div>
 
     <!-- In-progress conflict banner (T-13; the T-16 resolver hooks in here) -->
@@ -38,50 +38,52 @@
       <span class="conflict-text">
         存在未解决的冲突（{{ conflictFiles.length }} 个文件）：{{ conflictFiles.join("、") }}
       </span>
-      <el-button size="small" type="primary" plain @click="openResolver">
+      <n-button size="small" type="primary" dashed @click="openResolver">
         进入解决器
-      </el-button>
-      <el-button size="small" type="danger" plain @click="abortInProgress()">
+      </n-button>
+      <n-button size="small" type="error" dashed @click="abortInProgress()">
         中止并恢复（Abort）
-      </el-button>
+      </n-button>
       <span class="conflict-hint">可手动编辑解决后提交；三方解决器随 T-16 提供</span>
     </div>
 
     <!-- Commit graph -->
-    <div class="graph-body" v-loading="loading">
-      <CommitGraph
-        :commits="commits"
-        :loading="loading"
-        :has-more="hasMore"
-        @select="onCommitSelect"
-        @action="onCommitAction"
-        @load-more="loadMore"
-      />
-    </div>
+    <n-spin :show="loading">
+      <div class="graph-body">
+        <CommitGraph
+          :commits="commits"
+          :loading="loading"
+          :has-more="hasMore"
+          @select="onCommitSelect"
+          @action="onCommitAction"
+          @load-more="loadMore"
+        />
+      </div>
+    </n-spin>
 
     <!-- Reset dialog (T-13) -->
-    <el-dialog v-model="resetDialog.show" title="Reset 到此处" width="520px">
+    <n-modal v-model:show="resetDialog.show" preset="card" title="Reset 到此处" style="width: 520px">
       <div v-if="resetDialog.commit" class="reset-target">
         目标提交：{{ resetDialog.commit.shortOid }} {{ firstLine(resetDialog.commit.message) }}
       </div>
-      <el-radio-group v-model="resetDialog.mode" class="reset-modes">
-        <el-radio value="soft">soft — 仅移动 HEAD，保留暂存区与工作区</el-radio>
-        <el-radio value="mixed">mixed — 移动 HEAD + 重置暂存区，保留工作区</el-radio>
-        <el-radio value="hard">hard — 重置全部，丢弃未提交更改（危险）</el-radio>
-      </el-radio-group>
+      <n-radio-group v-model:value="resetDialog.mode" class="reset-modes">
+        <n-radio value="soft">soft — 仅移动 HEAD，保留暂存区与工作区</n-radio>
+        <n-radio value="mixed">mixed — 移动 HEAD + 重置暂存区，保留工作区</n-radio>
+        <n-radio value="hard">hard — 重置全部，丢弃未提交更改（危险）</n-radio>
+      </n-radio-group>
       <template #footer>
-        <el-button @click="resetDialog.show = false">取消</el-button>
-        <el-button
-          :type="resetDialog.mode === 'hard' ? 'danger' : 'primary'"
+        <n-button @click="resetDialog.show = false">取消</n-button>
+        <n-button
+          :type="resetDialog.mode === 'hard' ? 'error' : 'primary'"
           @click="confirmReset"
         >
           执行 Reset
-        </el-button>
+        </n-button>
       </template>
-    </el-dialog>
+    </n-modal>
 
     <!-- Conflict outcome dialog (T-13) -->
-    <el-dialog v-model="conflictDialog.show" title="操作冲突" width="560px">
+    <n-modal v-model:show="conflictDialog.show" preset="card" title="操作冲突" style="width: 560px">
       <div class="conflict-dialog-body">
         <p>
           {{ conflictDialog.opLabel }}在应用
@@ -97,61 +99,64 @@
         </p>
       </div>
       <template #footer>
-        <el-button @click="conflictDialog.show = false">稍后手动解决</el-button>
-        <el-button type="danger" @click="abortFromDialog">中止并恢复（Abort）</el-button>
+        <n-button @click="conflictDialog.show = false">稍后手动解决</n-button>
+        <n-button type="error" @click="abortFromDialog">中止并恢复（Abort）</n-button>
       </template>
-    </el-dialog>
+    </n-modal>
 
     <!-- Commit detail -->
-    <el-drawer
-      v-model="showDetail"
+    <n-drawer
+      v-model:show="showDetail"
       title="提交详情"
-      direction="rtl"
-      size="400px"
+      placement="right"
+      width="400px"
     >
-      <div v-if="selectedCommit" class="commit-detail">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="Hash">
-            {{ selectedCommit.oid }}
-          </el-descriptions-item>
-          <el-descriptions-item label="作者">
-            {{ selectedCommit.author }}
-            &lt;{{ selectedCommit.email }}&gt;
-          </el-descriptions-item>
-          <el-descriptions-item label="时间">
-            {{ selectedCommit.time }}
-          </el-descriptions-item>
-          <el-descriptions-item label="Refs">
-            <el-tag
-              v-for="ref in selectedCommit.refs"
-              :key="ref"
-              size="small"
-              style="margin-right: 4px"
-            >
-              {{ ref }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="提交信息">
-            <pre class="commit-message-full">{{ selectedCommit.message }}</pre>
-          </el-descriptions-item>
-        </el-descriptions>
-        <el-button
-          type="primary"
-          plain
-          style="margin-top: 12px"
-          @click="viewCommitDiff"
-        >
-          查看 Diff
-        </el-button>
-      </div>
-    </el-drawer>
+      <n-drawer-content>
+        <div v-if="selectedCommit" class="commit-detail">
+          <n-descriptions :column="1" bordered label-placement="left">
+            <n-descriptions-item label="Hash">
+              {{ selectedCommit.oid }}
+            </n-descriptions-item>
+            <n-descriptions-item label="作者">
+              {{ selectedCommit.author }}
+              &lt;{{ selectedCommit.email }}&gt;
+            </n-descriptions-item>
+            <n-descriptions-item label="时间">
+              {{ selectedCommit.time }}
+            </n-descriptions-item>
+            <n-descriptions-item label="Refs">
+              <n-tag
+                v-for="ref in selectedCommit.refs"
+                :key="ref"
+                size="small"
+                style="margin-right: 4px"
+              >
+                {{ ref }}
+              </n-tag>
+            </n-descriptions-item>
+            <n-descriptions-item label="提交信息">
+              <pre class="commit-message-full">{{ selectedCommit.message }}</pre>
+            </n-descriptions-item>
+          </n-descriptions>
+          <n-button
+            type="primary"
+            dashed
+            style="margin-top: 12px"
+            @click="viewCommitDiff"
+          >
+            查看 Diff
+          </n-button>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft } from "@element-plus/icons-vue";
+import { ArrowBackOutline } from "@vicons/ionicons5";
+import { useMessage, useDialog } from "naive-ui";
 import { getCommitHistory, getBranches } from "@/api/graph";
 import {
   abortPick,
@@ -167,6 +172,8 @@ import { errMsg } from "@/utils/error";
 
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
 
 const repoPath = ref("");
 const commits = ref<CommitInfo[]>([]);
@@ -198,7 +205,7 @@ const PAGE_SIZE = 100;
 onMounted(async () => {
   const repo = route.query.repo as string;
   if (!repo) {
-    ElMessage.warning("未指定仓库路径");
+    message.warning("未指定仓库路径");
     router.push({ name: "changes" });
     return;
   }
@@ -214,7 +221,7 @@ async function loadHistory() {
     commits.value = await getCommitHistory(repoPath.value, PAGE_SIZE);
     hasMore.value = commits.value.length >= PAGE_SIZE;
   } catch (e) {
-    ElMessage.error("加载提交历史失败: " + errMsg(e));
+    message.error("加载提交历史失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -242,7 +249,7 @@ async function loadMore() {
       hasMore.value = false;
     }
   } catch (e) {
-    ElMessage.error("加载更多失败: " + errMsg(e));
+    message.error("加载更多失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -289,21 +296,22 @@ function onCommitAction(action: string, commit: CommitInfo) {
 
 /** Warning-level confirm (§46) for history-modifying ops. */
 async function confirmOp(title: string, detail: string): Promise<boolean> {
-  try {
-    await ElMessageBox.confirm(detail, title, {
-      confirmButtonText: "执行",
-      cancelButtonText: "取消",
-      type: "warning",
+  return new Promise((resolve) => {
+    dialog.warning({
+      title,
+      content: detail,
+      positiveText: "执行",
+      negativeText: "取消",
+      onPositiveClick: () => resolve(true),
+      onNegativeClick: () => resolve(false),
+      onClose: () => resolve(false),
     });
-    return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
 function handleOutcome(outcome: PickOutcome, opLabel: string) {
   if (outcome.status === "success") {
-    ElMessage.success(`${opLabel}完成（${outcome.picked} 个提交）`);
+    message.success(`${opLabel}完成（${outcome.picked} 个提交）`);
   } else {
     conflictDialog.opLabel = opLabel;
     conflictDialog.files = outcome.files;
@@ -330,7 +338,7 @@ async function handleCherryPick(commit: CommitInfo) {
     handleOutcome(await cherryPick(repoPath.value, [commit.oid]), "Cherry-pick");
     await afterHistoryOp();
   } catch (e) {
-    ElMessage.error("Cherry-pick 失败: " + errMsg(e));
+    message.error("Cherry-pick 失败: " + errMsg(e));
   }
 }
 
@@ -344,7 +352,7 @@ async function handleRevert(commit: CommitInfo) {
     handleOutcome(await revertCommit(repoPath.value, commit.oid), "Revert");
     await afterHistoryOp();
   } catch (e) {
-    ElMessage.error("Revert 失败: " + errMsg(e));
+    message.error("Revert 失败: " + errMsg(e));
   }
 }
 
@@ -355,54 +363,50 @@ async function confirmReset() {
 
   if (mode === "hard") {
     // Dangerous (§46): impact scope + data-loss + recovery hint.
-    try {
-      await ElMessageBox.confirm(
-        `仓库：${repoPath.value}\n当前分支：${currentBranchName()}\n目标：${commit.shortOid}（${firstLine(commit.message)}）\n\n影响范围：HEAD、暂存区、工作区全部重置到该提交；未提交的更改将丢失，之后的提交将从分支上移除。\n保底：可先 Stash 保存现场；原 HEAD 位置会在执行结果中给出（可用 reflog 找回）。`,
-        "Reset --hard 确认（Dangerous）",
-        {
-          confirmButtonText: "确认 Hard Reset",
-          cancelButtonText: "取消",
-          type: "error",
-          confirmButtonClass: "el-button--danger",
-        },
-      );
-    } catch {
-      return;
-    }
+    const confirmed = await new Promise<boolean>((resolve) => {
+      dialog.error({
+        title: "Reset --hard 确认（Dangerous）",
+        content: `仓库：${repoPath.value}\n当前分支：${currentBranchName()}\n目标：${commit.shortOid}（${firstLine(commit.message)}）\n\n影响范围：HEAD、暂存区、工作区全部重置到该提交；未提交的更改将丢失，之后的提交将从分支上移除。\n保底：可先 Stash 保存现场；原 HEAD 位置会在执行结果中给出（可用 reflog 找回）。`,
+        positiveText: "确认 Hard Reset",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(true),
+        onNegativeClick: () => resolve(false),
+        onClose: () => resolve(false),
+      });
+    });
+    if (!confirmed) return;
   }
 
   resetDialog.show = false;
   try {
     const result = await resetTo(repoPath.value, commit.oid, mode);
     const prev = result.previousHead ? result.previousHead.slice(0, 7) : "无";
-    ElMessage.success(`Reset（${mode}）完成；原 HEAD：${prev}（可在 Reflog 视图恢复）`);
+    message.success(`Reset（${mode}）完成；原 HEAD：${prev}（可在 Reflog 视图恢复）`);
     await afterHistoryOp();
   } catch (e) {
-    ElMessage.error("Reset 失败: " + errMsg(e));
+    message.error("Reset 失败: " + errMsg(e));
   }
 }
 
 async function abortInProgress(baseOid?: string) {
-  try {
-    await ElMessageBox.confirm(
-      `仓库：${repoPath.value}\n将放弃当前冲突状态并恢复到操作前位置（hard reset）。冲突文件中的修改将丢失。`,
-      "中止确认（Dangerous）",
-      {
-        confirmButtonText: "中止并恢复",
-        cancelButtonText: "取消",
-        type: "error",
-        confirmButtonClass: "el-button--danger",
-      },
-    );
-  } catch {
-    return;
-  }
+  const confirmed = await new Promise<boolean>((resolve) => {
+    dialog.error({
+      title: "中止确认（Dangerous）",
+      content: `仓库：${repoPath.value}\n将放弃当前冲突状态并恢复到操作前位置（hard reset）。冲突文件中的修改将丢失。`,
+      positiveText: "中止并恢复",
+      negativeText: "取消",
+      onPositiveClick: () => resolve(true),
+      onNegativeClick: () => resolve(false),
+      onClose: () => resolve(false),
+    });
+  });
+  if (!confirmed) return;
   try {
     await abortPick(repoPath.value, baseOid);
-    ElMessage.success("已中止并恢复");
+    message.success("已中止并恢复");
     await afterHistoryOp();
   } catch (e) {
-    ElMessage.error("中止失败: " + errMsg(e));
+    message.error("中止失败: " + errMsg(e));
   }
 }
 
@@ -536,12 +540,5 @@ function goBack() {
 
 .conflict-note {
   color: #909399;
-}
-</style>
-
-<style>
-/* Confirm dialogs carry structured multi-line impact details (§46). */
-.el-message-box__message {
-  white-space: pre-line;
 }
 </style>

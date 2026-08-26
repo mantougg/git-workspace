@@ -1,9 +1,9 @@
 <template>
-  <el-drawer
-    v-model="visible"
-    direction="btt"
-    :size="panelHeight + 'px'"
-    :with-header="false"
+  <n-drawer
+    v-model:show="visible"
+    placement="bottom"
+    :height="panelHeight"
+    :show-header="false"
     class="task-drawer"
   >
     <div class="drawer-resize" @mousedown="startResize"></div>
@@ -15,14 +15,14 @@
         <span class="task-count">
           {{ activeCount }} 个进行中 / {{ finishedCount }} 个已完成
         </span>
-        <el-button size="small" text @click="handleClear">
+        <n-button size="small" text @click="handleClear">
           清除已完成
-        </el-button>
+        </n-button>
       </div>
 
-      <el-scrollbar class="task-scroll">
+      <n-scrollbar class="task-scroll">
         <div v-if="tasks.length === 0" class="empty-tasks">
-          <el-empty description="暂无任务" :image-size="60" />
+          <n-empty description="暂无任务" />
         </div>
         <div
           v-for="task in standaloneTasks"
@@ -36,60 +36,59 @@
             <span class="task-repo">{{ task.repoName }}</span>
           </div>
           <div class="task-status">
-            <el-tag
+            <n-tag
               v-if="task.status.type === 'queued'"
-              type="info"
+              type="default"
               size="small"
             >
               排队中
-            </el-tag>
-            <el-tag
+            </n-tag>
+            <n-tag
               v-else-if="task.status.type === 'running'"
               type="warning"
               size="small"
             >
-              <el-icon class="is-loading"><Loading /></el-icon>
-              执行中
-            </el-tag>
-            <el-tag
+              <n-spin :size="12" /> 执行中
+            </n-tag>
+            <n-tag
               v-else-if="task.status.type === 'success'"
               type="success"
               size="small"
             >
               成功
-            </el-tag>
-            <el-tag
+            </n-tag>
+            <n-tag
               v-else-if="task.status.type === 'failed'"
-              type="danger"
+              type="error"
               size="small"
             >
               失败
-            </el-tag>
-            <el-tag
+            </n-tag>
+            <n-tag
               v-else-if="task.status.type === 'partialSuccess'"
               type="warning"
               size="small"
             >
               部分成功
-            </el-tag>
-            <el-tag
+            </n-tag>
+            <n-tag
               v-else-if="task.status.type === 'cancelled'"
-              type="info"
+              type="default"
               size="small"
             >
               已取消
-            </el-tag>
+            </n-tag>
           </div>
           <div class="task-actions">
-            <el-button
+            <n-button
               v-if="task.status.type === 'queued'"
               size="small"
-              link
-              type="danger"
+              text
+              type="error"
               @click="handleCancel(task.id)"
             >
               取消
-            </el-button>
+            </n-button>
           </div>
           <div
             v-if="task.status.type === 'failed'"
@@ -111,22 +110,21 @@
             <span class="task-repo">{{ batch.repoName }}</span>
           </div>
           <div class="task-status">
-            <el-tag
+            <n-tag
               v-if="batch.status.type === 'running'"
               type="warning"
               size="small"
             >
-              <el-icon class="is-loading"><Loading /></el-icon>
-              执行中
-            </el-tag>
-            <el-tag
+              <n-spin :size="12" /> 执行中
+            </n-tag>
+            <n-tag
               v-else-if="batch.status.type === 'success'"
               type="success"
               size="small"
             >
               成功
-            </el-tag>
-            <el-tag
+            </n-tag>
+            <n-tag
               v-else-if="batch.status.type === 'partialSuccess'"
               type="warning"
               size="small"
@@ -134,19 +132,19 @@
               部分成功 {{ batch.status.succeeded }}/{{
                 batch.status.succeeded + batch.status.failed
               }}
-            </el-tag>
-            <el-tag
+            </n-tag>
+            <n-tag
               v-else-if="batch.status.type === 'failed'"
-              type="danger"
+              type="error"
               size="small"
             >
               失败
-            </el-tag>
+            </n-tag>
           </div>
           <div class="task-actions">
-            <el-button size="small" link @click="toggleBatch(batch.id)">
+            <n-button size="small" text @click="toggleBatch(batch.id)">
               {{ expandedBatches.has(batch.id) ? '收起' : '明细' }}
-            </el-button>
+            </n-button>
           </div>
           <div v-if="expandedBatches.has(batch.id)" class="batch-children">
             <div
@@ -167,22 +165,22 @@
             </div>
           </div>
         </div>
-      </el-scrollbar>
+      </n-scrollbar>
 
       <!-- Git command output (IDE-style console) -->
       <div class="git-console">
         <div class="git-console-header">
           <span class="git-console-title">Git 命令输出</span>
-          <el-button
+          <n-button
             v-if="gitLogs.length > 0"
             size="small"
             text
             @click="gitLogs = []"
           >
             清空
-          </el-button>
+          </n-button>
         </div>
-        <el-scrollbar height="160px">
+        <n-scrollbar height="160px">
           <div v-if="gitLogs.length === 0" class="empty-git-log">
             暂无命令输出
           </div>
@@ -196,27 +194,26 @@
               <span class="git-log-time">{{ log.time }}</span>
               <span class="git-log-repo">{{ log.repoName }}</span>
               <span class="git-log-cmd">{{ log.command }}</span>
-              <el-tag
-                :type="log.success ? 'success' : 'danger'"
+              <n-tag
+                :type="log.success ? 'success' : 'error'"
                 size="small"
-                effect="plain"
+                :bordered="false"
               >
                 {{ log.success ? "成功" : "失败" }}
-              </el-tag>
+              </n-tag>
             </div>
             <pre v-if="log.output" class="git-log-output">{{
               log.output
             }}</pre>
           </div>
-        </el-scrollbar>
+        </n-scrollbar>
       </div>
     </div>
-  </el-drawer>
+  </n-drawer>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { Loading } from "@element-plus/icons-vue";
 import { listen } from "@tauri-apps/api/event";
 import { useTaskStore } from "@/stores/task";
 import { useTaskProgress } from "@/composables/useTaskProgress";
@@ -382,7 +379,7 @@ async function handleClear() {
   /* Compact header/body spacing for the bottom task drawer. */
 }
 
-:deep(.el-drawer__body) {
+:deep(.n-drawer-body-content-wrapper) {
   padding: 0 12px 8px;
   display: flex;
   flex-direction: column;

@@ -3,106 +3,102 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-select
-          v-model="selectedWorkspaceId"
+        <n-select
+          v-model:value="selectedWorkspaceId"
           placeholder="选择工作区"
           style="width: 200px"
-          @change="onWorkspaceChange"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
-        <el-button @click="showAddWorkspace = true">
-          <el-icon><Plus /></el-icon>
+          :options="workspaceOptions"
+          @update:value="onWorkspaceChange"
+        />
+        <n-button @click="showAddWorkspace = true">
+          <template #icon><n-icon><AddOutline /></n-icon></template>
           添加工作区
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           type="primary"
           :loading="repoStore.scanning"
           :disabled="!selectedWorkspaceId"
           @click="handleScan"
         >
-          <el-icon><Refresh /></el-icon>
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           扫描仓库
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           :loading="repoStore.loading"
           :disabled="!selectedWorkspaceId"
           @click="reload"
         >
-          <el-icon><RefreshRight /></el-icon>
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
-        </el-button>
+        </n-button>
       </div>
       <div class="toolbar-right">
-        <el-button :disabled="!selectedWorkspaceId" @click="goHealth">
-          <el-icon><Odometer /></el-icon>
+        <n-button :disabled="!selectedWorkspaceId" @click="goHealth">
+          <template #icon><n-icon><SpeedometerOutline /></n-icon></template>
           健康检查
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           :disabled="!selectedWorkspaceId"
           @click="router.push({ name: 'change-sets' })"
         >
-          <el-icon><Collection /></el-icon>
+          <template #icon><n-icon><FolderOutline /></n-icon></template>
           Change Set
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           :disabled="!selectedWorkspaceId"
           @click="router.push({ name: 'pipeline' })"
         >
-          <el-icon><Connection /></el-icon>
+          <template #icon><n-icon><LinkOutline /></n-icon></template>
           Pipeline
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           :disabled="!selectedWorkspaceId"
           @click="router.push({ name: 'operation-log' })"
         >
-          <el-icon><Clock /></el-icon>
+          <template #icon><n-icon><TimeOutline /></n-icon></template>
           操作日志
-        </el-button>
-        <el-button @click="router.push({ name: 'jdk-manager' })">
-          <el-icon><Cpu /></el-icon>
+        </n-button>
+        <n-button @click="router.push({ name: 'jdk-manager' })">
+          <template #icon><n-icon><HardwareChipOutline /></n-icon></template>
           JDK 管理
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           type="primary"
-          plain
+          dashed
           @click="router.push({ name: 'runtime-dashboard' })"
         >
-          <el-icon><Monitor /></el-icon>
+          <template #icon><n-icon><DesktopOutline /></n-icon></template>
           Runtime
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           type="primary"
-          plain
+          dashed
           :disabled="!selectedWorkspaceId"
           @click="goChanges()"
         >
-          <el-icon><Files /></el-icon>
+          <template #icon><n-icon><DocumentsOutline /></n-icon></template>
           变更与批量操作
-        </el-button>
+        </n-button>
       </div>
     </div>
 
     <!-- Stat cards (T-18): aggregation is a pure O(n) computed over the
          T-02 status cache data already fetched by list_repositories. -->
-    <div class="cards" v-loading="repoStore.loading">
-      <div
-        v-for="card in cards"
-        :key="card.key"
-        class="stat-card"
-        :class="[`tone-${card.tone}`, { clickable: card.jumpable }]"
-        @click="openCard(card)"
-      >
-        <div class="stat-label">{{ card.label }}</div>
-        <div class="stat-value">{{ card.value }}</div>
-        <div class="stat-sub">{{ card.sub }}</div>
+    <n-spin :show="repoStore.loading">
+      <div class="cards">
+        <div
+          v-for="card in cards"
+          :key="card.key"
+          class="stat-card"
+          :class="[`tone-${card.tone}`, { clickable: card.jumpable }]"
+          @click="openCard(card)"
+        >
+          <div class="stat-label">{{ card.label }}</div>
+          <div class="stat-value">{{ card.value }}</div>
+          <div class="stat-sub">{{ card.sub }}</div>
+        </div>
       </div>
-    </div>
+    </n-spin>
 
     <!-- Status distribution -->
     <div class="section">
@@ -130,33 +126,13 @@
     <!-- Group breakdown -->
     <div v-if="groupRows.length > 0" class="section">
       <div class="section-title">分组视图</div>
-      <el-table
+      <n-data-table
+        :columns="groupColumns"
         :data="groupRows"
         size="small"
-        @row-click="onGroupClick"
+        :row-props="groupRowProps"
         class="group-table"
-      >
-        <el-table-column prop="name" label="分组" min-width="160" />
-        <el-table-column prop="total" label="仓库" width="70" align="right" />
-        <el-table-column label="有变更" width="80" align="right">
-          <template #default="{ row }">
-            <span :class="{ 'num-warn': row.dirty > 0 }">{{ row.dirty }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="冲突" width="70" align="right">
-          <template #default="{ row }">
-            <span :class="{ 'num-danger': row.conflict > 0 }">{{
-              row.conflict
-            }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="↑ Ahead" width="90" align="right">
-          <template #default="{ row }">{{ row.ahead }}</template>
-        </el-table-column>
-        <el-table-column label="↓ Behind" width="90" align="right">
-          <template #default="{ row }">{{ row.behind }}</template>
-        </el-table-column>
-      </el-table>
+      />
     </div>
 
     <!-- Quick actions: jump into the T-20 batch-ops view with a prefilled
@@ -164,37 +140,37 @@
     <div class="section">
       <div class="section-title">快捷操作</div>
       <div class="actions">
-        <el-button :disabled="total === 0" @click="quickAction('fetch')">
-          <el-icon><Download /></el-icon>
+        <n-button :disabled="total === 0" @click="quickAction('fetch')">
+          <template #icon><n-icon><DownloadOutline /></n-icon></template>
           Fetch All
-        </el-button>
-        <el-button :disabled="total === 0" @click="quickAction('pull')">
-          <el-icon><Refresh /></el-icon>
+        </n-button>
+        <n-button :disabled="total === 0" @click="quickAction('pull')">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           Pull Clean
-        </el-button>
-        <el-button :disabled="total === 0" @click="quickAction('push')">
-          <el-icon><Upload /></el-icon>
+        </n-button>
+        <n-button :disabled="total === 0" @click="quickAction('push')">
+          <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
           Push
-        </el-button>
-        <el-button :disabled="total === 0" @click="quickAction('commit')">
-          <el-icon><EditPen /></el-icon>
+        </n-button>
+        <n-button :disabled="total === 0" @click="quickAction('commit')">
+          <template #icon><n-icon><CreateOutline /></n-icon></template>
           Commit
-        </el-button>
-        <el-button :disabled="total === 0" @click="quickAction('branch-create')">
-          <el-icon><CirclePlus /></el-icon>
+        </n-button>
+        <n-button :disabled="total === 0" @click="quickAction('branch-create')">
+          <template #icon><n-icon><AddCircleOutline /></n-icon></template>
           Create Branch
-        </el-button>
-        <el-tooltip
-          content="批量 Stash 将随 T-21（Workspace Stash & Branch）提供"
-          placement="top"
-        >
-          <span>
-            <el-button disabled>
-              <el-icon><Box /></el-icon>
-              Stash
-            </el-button>
-          </span>
-        </el-tooltip>
+        </n-button>
+        <n-tooltip trigger="hover">
+          <template #trigger>
+            <span>
+              <n-button disabled>
+                <template #icon><n-icon><ArchiveOutline /></n-icon></template>
+                Stash
+              </n-button>
+            </span>
+          </template>
+          批量 Stash 将随 T-21（Workspace Stash & Branch）提供
+        </n-tooltip>
       </div>
       <div class="actions-hint">
         跳转到批量操作视图并预填选择，在那里确认后执行
@@ -206,25 +182,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { NTag } from "naive-ui";
 import {
-  Plus,
-  Refresh,
-  RefreshRight,
-  Download,
-  Upload,
-  EditPen,
-  CirclePlus,
-  Box,
-  Files,
-  Odometer,
-  Collection,
-  Connection,
-  Clock,
-  Cpu,
-  Monitor,
-} from "@element-plus/icons-vue";
+  AddOutline,
+  RefreshOutline,
+  DownloadOutline,
+  CloudUploadOutline,
+  CreateOutline,
+  AddCircleOutline,
+  ArchiveOutline,
+  DocumentsOutline,
+  SpeedometerOutline,
+  FolderOutline,
+  LinkOutline,
+  TimeOutline,
+  HardwareChipOutline,
+  DesktopOutline,
+} from "@vicons/ionicons5";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
 import { useRepositories } from "@/composables/useRepositories";
@@ -234,6 +210,7 @@ import type { RepoGroup } from "@/types/group";
 import type { RepoStatus } from "@/types/repository";
 import WorkspaceManager from "@/components/common/WorkspaceManager.vue";
 import { errMsg } from "@/utils/error";
+import { useMessage } from "naive-ui";
 
 interface StatCard {
   key: string;
@@ -257,6 +234,7 @@ interface DistSegment {
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
+const message = useMessage();
 
 // Live status updates from the file watcher (T-06 batch events): the store
 // is patched in place, so every computed below stays current (< 500 ms,
@@ -266,6 +244,69 @@ useRepositories();
 const selectedWorkspaceId = ref<number | null>(null);
 const showAddWorkspace = ref(false);
 const groups = ref<RepoGroup[]>([]);
+
+// Workspace options for n-select
+const workspaceOptions = computed(() =>
+  workspaceStore.workspaces.map((ws) => ({
+    label: ws.name,
+    value: ws.id,
+  }))
+);
+
+// Group table columns for n-data-table
+const groupColumns = [
+  {
+    title: "分组",
+    key: "name",
+    minWidth: 160,
+  },
+  {
+    title: "仓库",
+    key: "total",
+    width: 70,
+    align: "right" as const,
+  },
+  {
+    title: "有变更",
+    key: "dirty",
+    width: 80,
+    align: "right" as const,
+    render(row: { dirty: number }) {
+      return h("span", { class: row.dirty > 0 ? "num-warn" : "" }, row.dirty);
+    },
+  },
+  {
+    title: "冲突",
+    key: "conflict",
+    width: 70,
+    align: "right" as const,
+    render(row: { conflict: number }) {
+      return h(
+        "span",
+        { class: row.conflict > 0 ? "num-danger" : "" },
+        row.conflict
+      );
+    },
+  },
+  {
+    title: "↑ Ahead",
+    key: "ahead",
+    width: 90,
+    align: "right" as const,
+  },
+  {
+    title: "↓ Behind",
+    key: "behind",
+    width: 90,
+    align: "right" as const,
+  },
+];
+
+// Row click handler for group table
+const groupRowProps = (row: { name: string; id: number | null }) => ({
+  style: "cursor: pointer",
+  onClick: () => onGroupClick(row),
+});
 
 // --- Aggregation (O(n) over already-fetched statuses; no extra IPC) ---
 
@@ -511,10 +552,10 @@ async function handleScan() {
   if (!selectedWorkspaceId.value) return;
   try {
     await repoStore.scanRepositories(selectedWorkspaceId.value);
-    ElMessage.success(`发现 ${repoStore.totalCount} 个仓库`);
+    message.success(`发现 ${repoStore.totalCount} 个仓库`);
     await reload();
   } catch (e) {
-    ElMessage.error("扫描失败: " + errMsg(e));
+    message.error("扫描失败: " + errMsg(e));
   }
 }
 
@@ -697,8 +738,8 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.actions .el-button + .el-button,
-.actions span .el-button {
+.actions .n-button + .n-button,
+.actions span .n-button {
   margin-left: 0;
 }
 

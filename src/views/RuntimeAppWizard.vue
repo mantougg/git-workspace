@@ -3,158 +3,138 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button quaternary @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-select
-          v-model="selectedWorkspaceId"
+        </n-button>
+        <n-select
+          v-model:value="selectedWorkspaceId"
+          :options="workspaceStore.workspaces.map(ws => ({ label: ws.name, value: ws.id }))"
           placeholder="选择工作区"
           style="width: 200px"
-          @change="selectWorkspace"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
+          @update:value="selectWorkspace"
+        />
         <span class="page-title">{{ isEdit ? `编辑应用 · ${form.name}` : "新建 Runtime 应用" }}</span>
       </div>
       <div class="toolbar-right">
-        <el-button @click="goBack">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="onSave">
-          <el-icon><Check /></el-icon>
+        <n-button @click="goBack">取消</n-button>
+        <n-button type="primary" :loading="saving" @click="onSave">
+          <template #icon><n-icon><CheckmarkOutline /></n-icon></template>
           {{ isEdit ? "保存修改" : "创建应用" }}
-        </el-button>
+        </n-button>
       </div>
     </div>
 
-    <el-form
+    <n-form
       ref="formRef"
       :model="form"
       :rules="rules"
-      label-width="150px"
-      label-position="left"
+      label-placement="left"
+      label-width="150"
       class="wizard-form"
     >
-      <el-form-item label="名称" prop="name">
-        <el-input
-          v-model="form.name"
+      <n-form-item label="名称" path="name">
+        <n-input
+          v-model:value="form.name"
           :disabled="isEdit"
           placeholder="例如 boot-app（运行时唯一标识）"
           style="max-width: 320px"
         />
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="Maven 项目" prop="project">
+      <n-form-item label="Maven 项目" path="project">
         <div class="project-field">
-          <el-select
-            v-model="form.project"
+          <n-select
+            v-model:value="form.project"
+            :options="store.projects.map(p => ({ label: projectLabel(p), value: p.path }))"
             placeholder="选择 workspace 内的 Maven 项目"
             filterable
             :loading="store.loading"
             style="width: 100%; max-width: 560px"
-            @change="onProjectChange"
-          >
-            <el-option
-              v-for="p in store.projects"
-              :key="p.projectId"
-              :label="projectLabel(p)"
-              :value="p.path"
-            />
-          </el-select>
+            @update:value="onProjectChange"
+          />
           <!-- R-14 空态引导：索引为空（未解析依赖 / 仓库无 .git 标记）时给出
                明确动作，而不是裸 no data。 -->
-          <el-alert
+          <n-alert
             v-if="store.workspaceId && store.projects.length === 0 && !store.loading"
             type="info"
-            :closable="false"
-            show-icon
+            :show-icon="true"
+            :bordered="false"
             class="projects-empty-alert"
           >
-            <template #title>
-              尚未发现 Maven 项目。点击「解析依赖」建立索引（仅识别带 .git 标记的仓库内的 pom.xml；
-              也可在 Dashboard 执行，长任务进度见任务面板）。
-            </template>
-          </el-alert>
-          <el-button
+            尚未发现 Maven 项目。点击「解析依赖」建立索引（仅识别带 .git 标记的仓库内的 pom.xml；
+            也可在 Dashboard 执行，长任务进度见任务面板）。
+          </n-alert>
+          <n-button
             v-if="store.workspaceId && store.projects.length === 0"
             size="small"
             type="primary"
-            plain
+            dashed
             :loading="resolving"
             @click="onResolve"
           >
-            <el-icon><Refresh /></el-icon>
+            <template #icon><n-icon><RefreshOutline /></n-icon></template>
             解析依赖
-          </el-button>
+          </n-button>
         </div>
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="Main Class">
+      <n-form-item label="Main Class">
         <div class="main-class-row">
-          <el-input
-            v-model="form.mainClass"
+          <n-input
+            v-model:value="form.mainClass"
             placeholder="例如 com.example.Application（留空由 R-06 推断）"
             style="flex: 1"
           />
-          <el-button :loading="detecting" @click="onDetectMainClass">
-            <el-icon><MagicStick /></el-icon>
+          <n-button :loading="detecting" @click="onDetectMainClass">
+            <template #icon><n-icon><WandOutline /></n-icon></template>
             自动检测
-          </el-button>
+          </n-button>
         </div>
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="JDK">
-        <el-select
-          v-model="form.jdk"
+      <n-form-item label="JDK">
+        <n-select
+          v-model:value="form.jdk"
+          :options="jdkOptions"
           placeholder="默认（系统 JAVA_HOME）"
           clearable
           style="width: 100%; max-width: 560px"
-        >
-          <el-option
-            v-for="opt in jdkOptions"
-            :key="opt.value"
-            :label="opt.label"
-            :value="opt.value"
-          />
-        </el-select>
-      </el-form-item>
+        />
+      </n-form-item>
 
-      <el-form-item label="Profile">
-        <el-input
-          v-model="form.profile"
+      <n-form-item label="Profile">
+        <n-input
+          v-model:value="form.profile"
           placeholder="例如 dev（等价 --spring.profiles.active=dev）"
           style="max-width: 320px"
         />
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="VM Options">
-        <el-input
-          v-model="vmOptionsText"
+      <n-form-item label="VM Options">
+        <n-input
+          v-model:value="vmOptionsText"
           type="textarea"
           :rows="2"
           placeholder="每行一个，例如 -Xmx1g / -Dserver.port=8080"
           style="width: 100%; max-width: 560px"
         />
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="Program Arguments">
-        <el-input
-          v-model="programArgsText"
+      <n-form-item label="Program Arguments">
+        <n-input
+          v-model:value="programArgsText"
           type="textarea"
           :rows="2"
           placeholder="每行一个，例如 --server.port=8080"
           style="width: 100%; max-width: 560px"
         />
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="Pre-Build 脚本">
+      <n-form-item label="Pre-Build 脚本">
         <div class="script-field">
-          <el-input
-            v-model="preBuildScriptText"
+          <n-input
+            v-model:value="preBuildScriptText"
             type="textarea"
             :rows="3"
             placeholder="构建前执行的 shell 脚本（首次执行必须确认，默认禁止自动执行）"
@@ -164,81 +144,64 @@
             ⚠ 脚本在构建前于 workspace 根目录执行；首次执行需在 Dashboard 确认（确认状态持久化，内容变更后需重新确认）。
           </div>
         </div>
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="Post-Build 脚本">
+      <n-form-item label="Post-Build 脚本">
         <div class="script-field">
-          <el-input
-            v-model="postBuildScriptText"
+          <n-input
+            v-model:value="postBuildScriptText"
             type="textarea"
             :rows="3"
             placeholder="构建成功后执行的 shell 脚本（同上确认规则）"
             style="width: 100%; max-width: 560px"
           />
         </div>
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="环境变量">
+      <n-form-item label="环境变量">
         <div class="env-editor">
-          <el-table :data="envRows" size="small" empty-text="暂无环境变量">
-            <el-table-column label="Key" min-width="180">
-              <template #default="{ row }">
-                <el-input v-model="row.key" size="small" placeholder="KEY" />
-              </template>
-            </el-table-column>
-            <el-table-column label="Value" min-width="240">
-              <template #default="{ row }">
-                <el-input
-                  v-model="row.value"
-                  size="small"
-                  :type="isSensitiveKey(row.key) ? 'password' : 'text'"
-                  show-password
-                  :placeholder="isSensitiveKey(row.key) ? '敏感值（保存后掩码显示）' : 'value'"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="敏感" width="80" align="center">
-              <template #default="{ row }">
-                <el-tag v-if="isSensitiveKey(row.key)" size="small" type="danger" effect="plain">
-                  敏感
-                </el-tag>
-                <span v-else class="muted">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="" width="60" align="center">
-              <template #default="{ $index }">
-                <el-button size="small" link type="danger" @click="removeEnvRow($index)">
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-button size="small" @click="addEnvRow">
-            <el-icon><Plus /></el-icon>
+          <n-data-table
+            :columns="envColumns"
+            :data="envRows"
+            size="small"
+            :bordered="true"
+            max-height="300"
+          />
+          <n-button size="small" @click="addEnvRow">
+            <template #icon><n-icon><AddOutline /></n-icon></template>
             添加变量
-          </el-button>
+          </n-button>
           <div class="field-hint">
             敏感 key（PASSWORD / TOKEN / SECRET / PRIVATE_KEY / API_KEY 等）在 UI /
             日志 / IPC 三处统一掩码（全局约束 §4）。
           </div>
         </div>
-      </el-form-item>
+      </n-form-item>
 
-      <el-form-item label="构建引擎">
-        <el-select v-model="form.buildEngine" disabled style="width: 200px">
-          <el-option label="Maven" value="maven" />
-        </el-select>
+      <n-form-item label="构建引擎">
+        <n-select
+          v-model:value="form.buildEngine"
+          :options="[{ label: 'Maven', value: 'maven' }]"
+          disabled
+          style="width: 200px"
+        />
         <div class="field-hint">mvnd（R-18）/ Gradle（R-22）将在此扩展。</div>
-      </el-form-item>
-    </el-form>
+      </n-form-item>
+    </n-form>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, h, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Back, Check, Plus, MagicStick, Refresh } from "@element-plus/icons-vue";
-import type { FormInstance, FormRules } from "element-plus";
+import { NButton, NIcon, NInput, NTag, useMessage } from "naive-ui";
+import {
+  AddOutline,
+  ArrowBackOutline,
+  CheckmarkOutline,
+  RefreshOutline,
+  WandOutline,
+} from "@vicons/ionicons5";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import { listJdks } from "@/api/jdk";
 import { detectSpringBoot } from "@/api/springBoot";
@@ -247,6 +210,7 @@ import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
 import type { RuntimeApplicationConfig } from "@/types/runtime";
 import { errMsg } from "@/utils/error";
 
+const message = useMessage();
 const route = useRoute();
 const router = useRouter();
 // R-14 修复：向导此前未初始化 workspace（其他视图均走 useRuntimeWorkspace），
@@ -258,7 +222,7 @@ const isEdit = computed(() => !!route.query.edit);
 const saving = ref(false);
 const detecting = ref(false);
 const resolving = ref(false);
-const formRef = ref<FormInstance>();
+const formRef = ref<InstanceType<typeof import("naive-ui").NForm>>();
 
 const form = reactive({
   name: "",
@@ -284,7 +248,67 @@ interface EnvRow {
 }
 const envRows = ref<EnvRow[]>([]);
 
-const rules: FormRules = {
+const envColumns = [
+  {
+    title: "Key",
+    key: "key",
+    minWidth: 180,
+    render: (row: EnvRow) =>
+      h(NInput, {
+        value: row.key,
+        size: "small",
+        placeholder: "KEY",
+        onUpdateValue: (v: string) => {
+          row.key = v;
+        },
+      }),
+  },
+  {
+    title: "Value",
+    key: "value",
+    minWidth: 240,
+    render: (row: EnvRow) =>
+      h(NInput, {
+        value: row.value,
+        size: "small",
+        type: isSensitiveKey(row.key) ? "password" : "text",
+        showPasswordOn: "click",
+        placeholder: isSensitiveKey(row.key) ? "敏感值（保存后掩码显示）" : "value",
+        onUpdateValue: (v: string) => {
+          row.value = v;
+        },
+      }),
+  },
+  {
+    title: "敏感",
+    key: "sensitive",
+    width: 80,
+    align: "center" as const,
+    render: (row: EnvRow) =>
+      isSensitiveKey(row.key)
+        ? h(NTag, { size: "small", type: "error", bordered: false }, { default: () => "敏感" })
+        : h("span", { class: "muted" }, "—"),
+  },
+  {
+    title: "",
+    key: "actions",
+    width: 60,
+    align: "center" as const,
+    render: (_row: EnvRow, index: number) =>
+      h(
+        NButton,
+        {
+          size: "small",
+          text: true,
+          type: "error",
+          onClick: () => removeEnvRow(index),
+        },
+        { default: () => "删除" },
+      ),
+  },
+];
+
+const rules = {
   name: [{ required: true, message: "请输入应用名称", trigger: "blur" }],
   project: [{ required: true, message: "请选择 Maven 项目", trigger: "change" }],
 };
@@ -387,11 +411,11 @@ async function onProjectChange() {
 
 async function onDetectMainClass() {
   if (!form.project) {
-    ElMessage.warning("请先选择 Maven 项目");
+    message.warning("请先选择 Maven 项目");
     return;
   }
   if (!store.workspaceId) {
-    ElMessage.warning("未选择 workspace");
+    message.warning("未选择 workspace");
     return;
   }
   const ws = workspaceStore.workspaces.find((w) => w.id === store.workspaceId);
@@ -409,12 +433,12 @@ async function onDetectMainClass() {
     const candidate = project?.defaultMainClass || project?.candidates?.[0]?.className;
     if (candidate) {
       form.mainClass = candidate;
-      ElMessage.success(`已预填 Main Class：${candidate}`);
+      message.success(`已预填 Main Class：${candidate}`);
     } else {
-      ElMessage.info("该项目未检测到 Spring Boot Main Class，可手动填写");
+      message.info("该项目未检测到 Spring Boot Main Class，可手动填写");
     }
   } catch (e) {
-    ElMessage.error("检测失败：" + errMsg(e));
+    message.error("检测失败：" + errMsg(e));
   } finally {
     detecting.value = false;
   }
@@ -427,16 +451,16 @@ async function onSave() {
     return;
   }
   if (!store.workspaceId) {
-    ElMessage.warning("未选择 workspace");
+    message.warning("未选择 workspace");
     return;
   }
   saving.value = true;
   try {
     await store.saveConfig(toConfig());
-    ElMessage.success(isEdit.value ? "配置已保存" : "应用已创建");
+    message.success(isEdit.value ? "配置已保存" : "应用已创建");
     router.push({ name: "runtime-dashboard" });
   } catch (e) {
-    ElMessage.error("保存失败：" + errMsg(e));
+    message.error("保存失败：" + errMsg(e));
   } finally {
     saving.value = false;
   }
@@ -447,9 +471,9 @@ async function onResolve() {
   resolving.value = true;
   try {
     await store.resolveDependencies();
-    ElMessage.success("依赖解析任务已提交，完成后项目列表自动刷新");
+    message.success("依赖解析任务已提交，完成后项目列表自动刷新");
   } catch (e) {
-    ElMessage.error("解析失败：" + errMsg(e));
+    message.error("解析失败：" + errMsg(e));
   } finally {
     resolving.value = false;
   }
@@ -473,7 +497,7 @@ onMounted(async () => {
       const config = await store.loadConfigDetail(name);
       fillForm(config);
     } catch (e) {
-      ElMessage.error("加载配置失败：" + errMsg(e));
+      message.error("加载配置失败：" + errMsg(e));
       goBack();
     }
   }

@@ -3,24 +3,24 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-button type="primary" :loading="discovering" @click="onDiscover">
-          <el-icon><Refresh /></el-icon>
+        </n-button>
+        <n-button type="primary" :loading="discovering" @click="onDiscover">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           扫描本机 JDK
-        </el-button>
-        <el-button :loading="pruning" @click="onPrune">
-          <el-icon><Delete /></el-icon>
+        </n-button>
+        <n-button :loading="pruning" @click="onPrune">
+          <template #icon><n-icon><TrashOutline /></n-icon></template>
           清理失效条目
-        </el-button>
+        </n-button>
       </div>
       <div class="toolbar-right">
-        <el-button type="success" plain @click="onAddManual">
-          <el-icon><Plus /></el-icon>
+        <n-button type="success" dashed @click="onAddManual">
+          <template #icon><n-icon><AddOutline /></n-icon></template>
           手动添加 JDK
-        </el-button>
+        </n-button>
       </div>
     </div>
 
@@ -41,105 +41,37 @@
     </div>
 
     <!-- JDK table -->
-    <el-table
-      :data="jdks"
-      v-loading="loading"
-      empty-text="未发现 JDK，请点击「扫描本机 JDK」或手动添加"
-      row-key="id"
-    >
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-tag :type="row.isValid ? 'success' : 'danger'" size="small" effect="light">
-            {{ row.isValid ? "有效" : "失效" }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="Major" width="80" align="center">
-        <template #default="{ row }">
-          <span v-if="row.majorVersion != null" class="major-badge">{{ row.majorVersion }}</span>
-          <span v-else class="muted">—</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="厂商" width="110">
-        <template #default="{ row }">
-          <span v-if="row.vendor">{{ vendorLabel(row.vendor) }}</span>
-          <span v-else class="muted">—</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="完整版本" min-width="130">
-        <template #default="{ row }">
-          <span v-if="row.fullVersion">{{ row.fullVersion }}</span>
-          <span v-else class="muted">—</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="来源" width="100">
-        <template #default="{ row }">
-          <el-tag size="small" type="info" effect="plain">{{ sourceLabel(row.source) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="架构 / 位宽" width="120">
-        <template #default="{ row }">
-          <span v-if="row.architecture || row.bitness">
-            {{ row.architecture || "?" }} / {{ row.bitness || "?" }}bit
-          </span>
-          <span v-else class="muted">—</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="JDK 根目录" min-width="260" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span class="mono">{{ row.homePath }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="最近校验" width="170">
-        <template #default="{ row }">
-          <span v-if="row.lastChecked" class="muted">{{ formatTime(row.lastChecked) }}</span>
-          <span v-else class="muted">—</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
-        <template #default="{ row }">
-          <el-button
-            size="small"
-            :loading="validatingId === row.id"
-            @click="onValidate(row as JdkInstallation)"
-          >
-            复检
-          </el-button>
-          <el-popconfirm
-            title="确定删除该 JDK 条目吗？"
-            confirm-button-text="删除"
-            cancel-button-text="取消"
-            @confirm="onRemove(row as JdkInstallation)"
-          >
-            <template #reference>
-              <el-button size="small" type="danger" plain>删除</el-button>
-            </template>
-          </el-popconfirm>
-        </template>
-      </el-table-column>
-    </el-table>
+    <n-spin :show="loading">
+      <n-data-table
+        :columns="columns"
+        :data="jdks"
+        :row-key="(row: JdkInstallation) => row.id"
+        empty-text="未发现 JDK，请点击「扫描本机 JDK」或手动添加"
+      />
+    </n-spin>
 
     <!-- Raw version output (collapsible, for vendor discrepancy debugging) -->
-    <el-collapse v-if="jdks.some((j) => j.rawVersion)" class="raw-collapse">
-      <el-collapse-item title="原始 java -version 输出（排查厂商差异）" name="raw">
+    <n-collapse v-if="jdks.some((j) => j.rawVersion)" class="raw-collapse">
+      <n-collapse-item title="原始 java -version 输出（排查厂商差异）" name="raw">
         <div v-for="j in jdks.filter((x) => x.rawVersion)" :key="j.id" class="raw-row">
           <div class="raw-head">
             <span class="mono">{{ j.homePath }}</span>
-            <el-tag size="small" :type="j.isValid ? 'success' : 'danger'">
+            <n-tag :type="j.isValid ? 'success' : 'error'" size="small">
               {{ j.isValid ? "有效" : "失效" }}
-            </el-tag>
+            </n-tag>
           </div>
           <pre class="raw-pre">{{ j.rawVersion }}</pre>
         </div>
-      </el-collapse-item>
-    </el-collapse>
+      </n-collapse-item>
+    </n-collapse>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { Back, Refresh, Delete, Plus } from "@element-plus/icons-vue";
+import { NButton, NIcon, NTag, useMessage } from "naive-ui";
+import { ArrowBackOutline, RefreshOutline, TrashOutline, AddOutline } from "@vicons/ionicons5";
 import {
   addJdkManualByPicker,
   discoverJdks,
@@ -152,6 +84,7 @@ import type { JdkDiscoverySource, JdkInstallation, JdkVendor } from "@/types/jdk
 import { errMsg } from "@/utils/error";
 
 const router = useRouter();
+const message = useMessage();
 
 const jdks = ref<JdkInstallation[]>([]);
 const loading = ref(false);
@@ -162,12 +95,116 @@ const validatingId = ref<number | null>(null);
 const validCount = computed(() => jdks.value.filter((j) => j.isValid).length);
 const invalidCount = computed(() => jdks.value.filter((j) => !j.isValid).length);
 
+const columns = [
+  {
+    title: "状态",
+    width: 90,
+    render(row: JdkInstallation) {
+      return h(NTag, { type: row.isValid ? "success" : "error", size: "small", bordered: false }, { default: () => row.isValid ? "有效" : "失效" });
+    },
+  },
+  {
+    title: "Major",
+    width: 80,
+    align: "center" as const,
+    render(row: JdkInstallation) {
+      if (row.majorVersion != null) {
+        return h("span", { class: "major-badge" }, row.majorVersion);
+      }
+      return h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "厂商",
+    width: 110,
+    render(row: JdkInstallation) {
+      if (row.vendor) {
+        return h("span", null, vendorLabel(row.vendor));
+      }
+      return h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "完整版本",
+    minWidth: 130,
+    render(row: JdkInstallation) {
+      if (row.fullVersion) {
+        return h("span", null, row.fullVersion);
+      }
+      return h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "来源",
+    width: 100,
+    render(row: JdkInstallation) {
+      return h(NTag, { size: "small", type: "info", bordered: true }, { default: () => sourceLabel(row.source) });
+    },
+  },
+  {
+    title: "架构 / 位宽",
+    width: 120,
+    render(row: JdkInstallation) {
+      if (row.architecture || row.bitness) {
+        return h("span", null, `${row.architecture || "?"} / ${row.bitness || "?"}bit`);
+      }
+      return h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "JDK 根目录",
+    minWidth: 260,
+    ellipsis: { tooltip: true },
+    render(row: JdkInstallation) {
+      return h("span", { class: "mono" }, row.homePath);
+    },
+  },
+  {
+    title: "最近校验",
+    width: 170,
+    render(row: JdkInstallation) {
+      if (row.lastChecked) {
+        return h("span", { class: "muted" }, formatTime(row.lastChecked));
+      }
+      return h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "操作",
+    width: 180,
+    fixed: "right" as const,
+    render(row: JdkInstallation) {
+      return h("div", { style: "display: flex; gap: 8px;" }, [
+        h(
+          NButton,
+          {
+            size: "small",
+            loading: validatingId.value === row.id,
+            onClick: () => onValidate(row),
+          },
+          { default: () => "复检" }
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            type: "error",
+            dashed: true,
+            onClick: () => onRemove(row),
+          },
+          { default: () => "删除" }
+        ),
+      ]);
+    },
+  },
+];
+
 async function reload() {
   loading.value = true;
   try {
     jdks.value = await listJdks();
   } catch (e) {
-    ElMessage.error("加载 JDK 列表失败：" + errMsg(e));
+    message.error("加载 JDK 列表失败：" + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -177,10 +214,10 @@ async function onDiscover() {
   discovering.value = true;
   try {
     const count = await discoverJdks();
-    ElMessage.success(`发现并入库 ${count} 个 JDK`);
+    message.success(`发现并入库 ${count} 个 JDK`);
     await reload();
   } catch (e) {
-    ElMessage.error("扫描 JDK 失败：" + errMsg(e));
+    message.error("扫描 JDK 失败：" + errMsg(e));
   } finally {
     discovering.value = false;
   }
@@ -191,13 +228,13 @@ async function onPrune() {
   try {
     const n = await pruneInvalidJdks();
     if (n > 0) {
-      ElMessage.success(`已标记 ${n} 个失效条目（路径已不存在）`);
+      message.success(`已标记 ${n} 个失效条目（路径已不存在）`);
     } else {
-      ElMessage.info("无失效条目需要清理");
+      message.info("无失效条目需要清理");
     }
     await reload();
   } catch (e) {
-    ElMessage.error("清理失效条目失败：" + errMsg(e));
+    message.error("清理失效条目失败：" + errMsg(e));
   } finally {
     pruning.value = false;
   }
@@ -209,7 +246,7 @@ async function onAddManual() {
     if (!added) {
       return; // 用户取消选择
     }
-    ElMessage.success(
+    message.success(
       added.isValid
         ? `已添加 JDK ${added.majorVersion ?? "?"}（${added.fullVersion ?? ""}）`
         : `已添加但版本探测失败（is_valid=false），请查看原始输出排查`
@@ -217,7 +254,7 @@ async function onAddManual() {
     await reload();
   } catch (e) {
     // JdkNotFound 等可行动错误在此展示后端给出的提示。
-    ElMessage.error("添加 JDK 失败：" + errMsg(e));
+    message.error("添加 JDK 失败：" + errMsg(e));
   }
 }
 
@@ -228,13 +265,13 @@ async function onValidate(row: JdkInstallation) {
     const updated = await validateJdk(row.id);
     const idx = jdks.value.findIndex((j) => j.id === row.id);
     if (idx >= 0) jdks.value[idx] = updated;
-    ElMessage.success(
+    message.success(
       updated.isValid
         ? `复检通过：major=${updated.majorVersion ?? "?"}`
         : `复检失败，已标记失效`
     );
   } catch (e) {
-    ElMessage.error("复检失败：" + errMsg(e));
+    message.error("复检失败：" + errMsg(e));
   } finally {
     validatingId.value = null;
   }
@@ -245,9 +282,9 @@ async function onRemove(row: JdkInstallation) {
   try {
     await removeJdk(row.id);
     jdks.value = jdks.value.filter((j) => j.id !== row.id);
-    ElMessage.success("已删除");
+    message.success("已删除");
   } catch (e) {
-    ElMessage.error("删除失败：" + errMsg(e));
+    message.error("删除失败：" + errMsg(e));
   }
 }
 

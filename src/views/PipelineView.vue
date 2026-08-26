@@ -3,57 +3,45 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-select
-          v-model="selectedWorkspaceId"
+        </n-button>
+        <n-select
+          v-model:value="selectedWorkspaceId"
           placeholder="选择工作区"
           style="width: 180px"
-          @change="onWorkspaceChange"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
-        <el-input
-          v-model="pipeline.name"
+          :options="workspaceStore.workspaces.map(ws => ({ label: ws.name, value: ws.id }))"
+          @update:value="onWorkspaceChange"
+        />
+        <n-input
+          v-model:value="pipeline.name"
           placeholder="Pipeline 名称"
           style="width: 240px"
         />
       </div>
       <div class="toolbar-right">
-        <el-select
-          v-model="selectedTemplateId"
+        <n-select
+          v-model:value="selectedTemplateId"
           placeholder="加载模板…"
           style="width: 200px"
           clearable
-          @change="loadTemplate"
-        >
-          <el-option
-            v-for="t in templates"
-            :key="t.id"
-            :label="t.name"
-            :value="t.id"
-          />
-        </el-select>
-        <el-button size="small" @click="loadSample">示例模板</el-button>
-        <el-button size="small" type="primary" plain @click="saveTemplate">
+          :options="templates.map(t => ({ label: t.name, value: t.id }))"
+          @update:value="loadTemplate"
+        />
+        <n-button size="small" @click="loadSample">示例模板</n-button>
+        <n-button size="small" type="primary" dashed @click="saveTemplate">
           保存模板
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           v-if="pipeline.id"
           size="small"
-          type="danger"
-          plain
+          type="error"
+          dashed
           @click="removeTemplate"
         >
           删除模板
-        </el-button>
+        </n-button>
       </div>
     </div>
 
@@ -61,7 +49,7 @@
       <!-- Left: step editor -->
       <div class="editor-panel">
         <div class="panel-title">步骤编排（T-23）</div>
-        <el-scrollbar class="editor-scroll">
+        <n-scrollbar class="editor-scroll">
           <div
             v-for="(step, i) in pipeline.steps"
             :key="step.id"
@@ -69,78 +57,78 @@
           >
             <div class="step-head">
               <span class="step-order">{{ i + 1 }}</span>
-              <el-input v-model="step.name" size="small" class="step-name" />
-              <el-button-group class="step-moves">
-                <el-button
+              <n-input v-model:value="step.name" size="small" class="step-name" />
+              <n-button-group class="step-moves">
+                <n-button
                   size="small"
                   text
                   :disabled="i === 0"
                   @click="moveStep(i, -1)"
                 >
                   ↑
-                </el-button>
-                <el-button
+                </n-button>
+                <n-button
                   size="small"
                   text
                   :disabled="i === pipeline.steps.length - 1"
                   @click="moveStep(i, 1)"
                 >
                   ↓
-                </el-button>
-              </el-button-group>
-              <el-button
+                </n-button>
+              </n-button-group>
+              <n-button
                 size="small"
                 text
-                type="danger"
+                type="error"
                 @click="removeStep(i)"
               >
                 删除
-              </el-button>
+              </n-button>
             </div>
             <div class="step-body">
               <div class="step-row">
                 <span class="step-label">类型</span>
-                <el-select
-                  :model-value="step.kind.type"
+                <n-select
+                  :value="step.kind.type"
                   size="small"
                   style="width: 150px"
-                  @change="(v: string) => changeKind(step, v)"
-                >
-                  <el-option label="Fetch" value="fetch" />
-                  <el-option label="Check Status" value="checkStatus" />
-                  <el-option label="Pull" value="pull" />
-                  <el-option label="Build (Shell)" value="build" />
-                  <el-option label="Test (Shell)" value="test" />
-                  <el-option label="Report (汇聚)" value="report" />
-                </el-select>
+                  :options="[
+                    { label: 'Fetch', value: 'fetch' },
+                    { label: 'Check Status', value: 'checkStatus' },
+                    { label: 'Pull', value: 'pull' },
+                    { label: 'Build (Shell)', value: 'build' },
+                    { label: 'Test (Shell)', value: 'test' },
+                    { label: 'Report (汇聚)', value: 'report' },
+                  ]"
+                  @update:value="(v: string) => changeKind(step, v)"
+                />
               </div>
               <div
                 v-if="step.kind.type === 'build' || step.kind.type === 'test'"
                 class="step-row"
               >
                 <span class="step-label">命令</span>
-                <el-input
-                  :model-value="step.kind.command"
+                <n-input
+                  :value="step.kind.command"
                   size="small"
                   placeholder="如 cargo build"
-                  @update:model-value="(v: string) => setCommand(step, v)"
+                  @update:value="(v: string) => setCommand(step, v)"
                 />
               </div>
               <div class="step-row" v-if="step.kind.type !== 'report'">
                 <span class="step-label">条件</span>
-                <el-select
-                  :model-value="step.condition?.type ?? ''"
+                <n-select
+                  :value="step.condition?.type ?? ''"
                   size="small"
                   style="width: 150px"
                   clearable
                   placeholder="无条件"
-                  @change="(v: string) => setCondition(step, v)"
-                >
-                  <el-option label="仅干净仓库" value="repoClean" />
-                </el-select>
+                  :options="[{ label: '仅干净仓库', value: 'repoClean' }]"
+                  @update:value="(v: string) => setCondition(step, v)"
+                />
                 <span class="step-label">重试</span>
-                <el-input-number
-                  v-model="step.retries"
+                <n-input-number
+                  v-model:value="step.retries"
                   size="small"
                   :min="0"
                   :max="3"
@@ -152,82 +140,73 @@
                 v-if="step.kind.type === 'build' || step.kind.type === 'test'"
               >
                 <span class="step-label">超时(s)</span>
-                <el-input-number
-                  :model-value="step.timeoutSecs ?? undefined"
+                <n-input-number
+                  :value="step.timeoutSecs ?? undefined"
                   size="small"
                   :min="1"
                   :max="3600"
                   placeholder="600"
                   style="width: 110px"
-                  @update:model-value="(v: number | undefined) => setTimeoutSecs(step, v)"
+                  @update:value="(v: number | undefined) => setTimeoutSecs(step, v)"
                 />
               </div>
               <div class="step-row" v-if="step.kind.type !== 'report'">
                 <span class="step-label">依赖</span>
-                <el-select
-                  v-model="step.dependsOn"
+                <n-select
+                  v-model:value="step.dependsOn"
                   size="small"
                   multiple
-                  collapse-tags
                   placeholder="默认依赖上一步"
                   style="flex: 1"
-                >
-                  <el-option
-                    v-for="opt in upstreamOptions(step)"
-                    :key="opt.id"
-                    :label="opt.name"
-                    :value="opt.id"
-                  />
-                </el-select>
+                  :options="upstreamOptions(step).map(opt => ({ label: opt.name, value: opt.id }))"
+                />
               </div>
             </div>
           </div>
-          <el-button class="add-step" size="small" @click="addStep">
+          <n-button class="add-step" size="small" @click="addStep">
             + 添加步骤
-          </el-button>
-        </el-scrollbar>
+          </n-button>
+        </n-scrollbar>
       </div>
 
       <!-- Right: graph + run + report -->
       <div class="stage-panel">
         <!-- Run controls -->
         <div class="run-bar">
-          <el-select
-            v-model="selectedRepoPaths"
+          <n-select
+            v-model:value="selectedRepoPaths"
             multiple
-            collapse-tags
-            :max-collapse-tags="3"
+            :max-tag-count="3"
             placeholder="选择仓库（可多选）"
             style="flex: 1; min-width: 220px"
-          >
-            <el-option
-              v-for="r in repoOptions"
-              :key="r.repoPath"
-              :label="r.repoName"
-              :value="r.repoPath"
-            />
-          </el-select>
-          <el-button size="small" text @click="selectAllRepos">全选</el-button>
-          <el-select v-model="onFailure" style="width: 170px" size="small">
-            <el-option label="失败：继续独立分支" value="continue" />
-            <el-option label="失败：Fail-Fast" value="failFast" />
-          </el-select>
-          <el-button
+            :options="repoOptions.map(r => ({ label: r.repoName, value: r.repoPath }))"
+          />
+          <n-button size="small" text @click="selectAllRepos">全选</n-button>
+          <n-select
+            v-model:value="onFailure"
+            style="width: 170px"
+            size="small"
+            :options="[
+              { label: '失败：继续独立分支', value: 'continue' },
+              { label: '失败：Fail-Fast', value: 'failFast' },
+            ]"
+          />
+          <n-button
             type="primary"
             :loading="runStarting"
             :disabled="!canRun"
             @click="run"
           >
             运行 Pipeline
-          </el-button>
-          <el-button
+          </n-button>
+          <n-button
             v-if="runActive"
-            type="danger"
-            plain
+            type="error"
+            dashed
             @click="cancelRun"
           >
             取消运行
-          </el-button>
+          </n-button>
         </div>
 
         <!-- Graph visualization -->
@@ -236,9 +215,9 @@
             流程图
             <span v-if="report" class="run-summary">
               运行状态：
-              <el-tag :type="statusTagType(report.status)" size="small">
+              <n-tag :type="statusTagType(report.status)" size="small">
                 {{ statusLabel(report.status) }}
-              </el-tag>
+              </n-tag>
               成功 {{ report.succeeded }} / 失败 {{ report.failed }} / 跳过
               {{ report.skipped }} / 取消 {{ report.cancelled }} · 共
               {{ report.total }} 节点
@@ -282,16 +261,16 @@
         <!-- Execution report -->
         <div v-if="report" class="report-box">
           <div class="panel-title">执行报告</div>
-          <el-scrollbar class="report-scroll">
+          <n-scrollbar class="report-scroll">
             <div
               v-for="step in report.steps"
               :key="step.stepId"
               class="report-step"
             >
               <div class="report-step-head" @click="toggleStepDetail(step.stepId)">
-                <el-tag :type="statusTagType(step.status)" size="small">
+                <n-tag :type="statusTagType(step.status)" size="small">
                   {{ statusLabel(step.status) }}
-                </el-tag>
+                </n-tag>
                 <span class="report-step-name">{{ step.name }}</span>
                 <span class="report-step-kind">{{ step.kind }}</span>
                 <span class="report-step-stats">
@@ -336,7 +315,7 @@
                 </div>
               </div>
             </div>
-          </el-scrollbar>
+          </n-scrollbar>
         </div>
       </div>
     </div>
@@ -346,7 +325,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { Back } from "@element-plus/icons-vue";
+import { ArrowBackOutline } from "@vicons/ionicons5";
+import { useMessage } from "naive-ui";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
@@ -364,6 +344,7 @@ import type { TaskProgress } from "@/types/task";
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
+const message = useMessage();
 
 // ---------------------------------------------------------------------------
 // State
@@ -477,7 +458,7 @@ function loadTemplate(id: string | null) {
   const t = templates.value.find((x) => x.id === id);
   if (!t) return;
   pipeline.value = JSON.parse(JSON.stringify(t));
-  ElMessage.success(`已加载模板「${t.name}」`);
+  message.success(`已加载模板「${t.name}」`);
 }
 
 async function loadSample() {
@@ -486,9 +467,9 @@ async function loadSample() {
     sample.id = pipeline.value.id; // keep editing the same template if loaded
     pipeline.value = sample;
     selectedTemplateId.value = null;
-    ElMessage.success("已载入内置示例流（保存后可复用）");
+    message.success("已载入内置示例流（保存后可复用）");
   } catch (e) {
-    ElMessage.error(`加载示例失败: ${e}`);
+    message.error(`加载示例失败: ${e}`);
   }
 }
 
@@ -498,9 +479,9 @@ async function saveTemplate() {
     pipeline.value = JSON.parse(JSON.stringify(saved));
     selectedTemplateId.value = saved.id;
     await refreshTemplates();
-    ElMessage.success("模板已保存");
+    message.success("模板已保存");
   } catch (e) {
-    ElMessage.error(`保存失败: ${e}`);
+    message.error(`保存失败: ${e}`);
   }
 }
 
@@ -511,9 +492,9 @@ async function removeTemplate() {
     pipeline.value = emptyPipeline();
     selectedTemplateId.value = null;
     await refreshTemplates();
-    ElMessage.success("模板已删除");
+    message.success("模板已删除");
   } catch (e) {
-    ElMessage.error(`删除失败: ${e}`);
+    message.error(`删除失败: ${e}`);
   }
 }
 
@@ -696,9 +677,9 @@ async function run() {
     report.value = null;
     expandedSteps.value = new Set();
     await refreshReport();
-    ElMessage.success("Pipeline 已提交运行");
+    message.success("Pipeline 已提交运行");
   } catch (e) {
-    ElMessage.error(`运行失败: ${e}`);
+    message.error(`运行失败: ${e}`);
   } finally {
     runStarting.value = false;
   }
@@ -708,10 +689,10 @@ async function cancelRun() {
   if (!runId.value) return;
   try {
     await pipelineApi.cancelDag(runId.value);
-    ElMessage.info("已请求取消（运行中的节点将协作式停止）");
+    message.info("已请求取消（运行中的节点将协作式停止）");
     await refreshReport();
   } catch (e) {
-    ElMessage.error(`取消失败: ${e}`);
+    message.error(`取消失败: ${e}`);
   }
 }
 
@@ -777,7 +758,7 @@ function statusLabel(s: string): string {
 
 function statusTagType(
   s: string,
-): "success" | "warning" | "danger" | "info" | "primary" {
+): "success" | "warning" | "error" | "info" | "default" {
   switch (s) {
     case "success":
       return "success";
@@ -785,7 +766,7 @@ function statusTagType(
     case "running":
       return "warning";
     case "failed":
-      return "danger";
+      return "error";
     default:
       return "info";
   }

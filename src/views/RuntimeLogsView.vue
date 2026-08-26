@@ -3,97 +3,70 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-select
-          v-model="selectedWorkspaceId"
+        </n-button>
+        <n-select
+          v-model:value="selectedWorkspaceId"
           placeholder="选择工作区"
           style="width: 180px"
-          @change="selectWorkspace"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
-        <el-select
-          v-model="selectedApp"
+          :options="workspaceOptions"
+          @update:value="selectWorkspace"
+        />
+        <n-select
+          v-model:value="selectedApp"
           placeholder="选择 Runtime 应用"
           style="width: 180px"
-          @change="onAppChange"
-        >
-          <el-option
-            v-for="c in store.configs"
-            :key="c.name"
-            :label="c.name"
-            :value="c.name"
-          />
-        </el-select>
-        <el-select
-          v-model="selectedProcessId"
+          :options="appOptions"
+          @update:value="onAppChange"
+        />
+        <n-select
+          v-model:value="selectedProcessId"
           placeholder="选择进程"
           style="width: 180px"
-          @change="onProcessChange"
-        >
-          <el-option
-            v-for="p in appProcesses"
-            :key="p.processId"
-            :label="processLabel(p)"
-            :value="p.processId"
-          />
-        </el-select>
-        <el-button :disabled="!selectedProcessId" :loading="loading" @click="reload">
-          <el-icon><RefreshRight /></el-icon>
+          :options="processOptions"
+          @update:value="onProcessChange"
+        />
+        <n-button :disabled="!selectedProcessId" :loading="loading" @click="reload">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
-        </el-button>
+        </n-button>
       </div>
       <div class="toolbar-right">
-        <el-button
+        <n-button
           type="warning"
-          plain
           :disabled="!selectedProcessId"
           @click="onClear"
         >
-          <el-icon><Delete /></el-icon>
+          <template #icon><n-icon><TrashOutline /></n-icon></template>
           清空
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           type="primary"
-          plain
           :disabled="!selectedProcessId"
           :loading="exporting"
           @click="onExport"
         >
-          <el-icon><Download /></el-icon>
+          <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
           导出
-        </el-button>
+        </n-button>
       </div>
     </div>
 
     <!-- Controls -->
     <div class="controls">
-      <el-button size="small" :type="paused ? 'primary' : 'default'" @click="togglePause">
+      <n-button size="small" :type="paused ? 'primary' : 'default'" @click="togglePause">
         {{ paused ? "继续" : "暂停" }}
-      </el-button>
-      <el-switch
-        v-model="autoScroll"
-        active-text="自动滚动"
+      </n-button>
+      <n-switch
+        v-model:value="autoScroll"
+        checked-text="自动滚动"
         size="small"
       />
-      <el-select v-model="minLevel" size="small" style="width: 130px" placeholder="级别过滤">
-        <el-option label="全部级别" value="" />
-        <el-option label="TRACE 及以上" value="trace" />
-        <el-option label="DEBUG 及以上" value="debug" />
-        <el-option label="INFO 及以上" value="info" />
-        <el-option label="WARN 及以上" value="warn" />
-        <el-option label="仅 ERROR" value="error" />
-      </el-select>
-      <el-input
-        v-model="searchQuery"
+      <n-select v-model:value="minLevel" size="small" style="width: 130px" placeholder="级别过滤" :options="levelOptions" />
+      <n-input
+        v-model:value="searchQuery"
         size="small"
         placeholder="搜索日志内容..."
         clearable
@@ -128,7 +101,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { Back, RefreshRight, Delete, Download } from "@element-plus/icons-vue";
+import { ArrowBackOutline, RefreshOutline, TrashOutline, CloudUploadOutline } from "@vicons/ionicons5";
+import { useMessage, useDialog } from "naive-ui";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import * as runtimeApi from "@/api/runtime";
@@ -143,6 +117,8 @@ interface DisplayLine {
 }
 
 const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
 const { workspaceStore, store, selectedWorkspaceId, selectWorkspace } =
   useRuntimeWorkspace();
 
@@ -167,6 +143,27 @@ const LEVEL_ORDER: Record<string, number> = {
 
 /** 渲染预算：最多渲染最近 3000 行（全局约束 §5，高频输出下保流畅）。 */
 const DISPLAY_CAP = 3000;
+
+const workspaceOptions = computed(() =>
+  workspaceStore.workspaces.map((ws) => ({ label: ws.name, value: ws.id })),
+);
+
+const appOptions = computed(() =>
+  store.configs.map((c) => ({ label: c.name, value: c.name })),
+);
+
+const processOptions = computed(() =>
+  appProcesses.value.map((p) => ({ label: processLabel(p), value: p.processId })),
+);
+
+const levelOptions = [
+  { label: "全部级别", value: "" },
+  { label: "TRACE 及以上", value: "trace" },
+  { label: "DEBUG 及以上", value: "debug" },
+  { label: "INFO 及以上", value: "info" },
+  { label: "WARN 及以上", value: "warn" },
+  { label: "仅 ERROR", value: "error" },
+];
 
 const appProcesses = computed(() =>
   selectedApp.value
@@ -252,7 +249,7 @@ async function reload() {
       filter: { limit: 2000 },
     });
   } catch (e) {
-    ElMessage.error("加载日志失败：" + errMsg(e));
+    message.error("加载日志失败：" + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -276,10 +273,16 @@ async function onProcessChange() {
 async function onClear() {
   if (store.workspaceId == null || selectedProcessId.value == null) return;
   try {
-    await ElMessageBox.confirm("确定清空该进程的日志吗？此操作不可恢复。", "清空日志", {
-      confirmButtonText: "清空",
-      cancelButtonText: "取消",
-      type: "warning",
+    await new Promise<void>((resolve, reject) => {
+      dialog.warning({
+        title: "清空日志",
+        content: "确定清空该进程的日志吗？此操作不可恢复。",
+        positiveText: "清空",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject(new Error("cancelled")),
+        onClose: () => reject(new Error("cancelled")),
+      });
     });
   } catch {
     return;
@@ -292,9 +295,9 @@ async function onClear() {
     });
     store.logBuffers.delete(selectedApp.value!);
     await reload();
-    ElMessage.success("日志已清空");
+    message.success("日志已清空");
   } catch (e) {
-    ElMessage.error("清空失败：" + errMsg(e));
+    message.error("清空失败：" + errMsg(e));
   }
 }
 
@@ -321,9 +324,9 @@ async function onExport() {
       },
       dest,
     );
-    ElMessage.success(`已导出 ${outcome.lines} 行 → ${outcome.path}`);
+    message.success(`已导出 ${outcome.lines} 行 → ${outcome.path}`);
   } catch (e) {
-    ElMessage.error("导出失败：" + errMsg(e));
+    message.error("导出失败：" + errMsg(e));
   } finally {
     exporting.value = false;
   }

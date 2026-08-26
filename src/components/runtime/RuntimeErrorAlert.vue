@@ -1,6 +1,6 @@
 <template>
   <div v-if="parsed" class="runtime-error-alert">
-    <el-alert :title="title" type="error" :closable="closable" show-icon @close="emit('dismiss')">
+    <n-alert :title="title" type="error" :closable="closable" @close="emit('dismiss')">
       <div class="err-body">
         <div class="err-message">{{ parsed.message }}</div>
         <div v-if="contextLines.length" class="err-context">
@@ -9,19 +9,18 @@
           </div>
         </div>
         <div v-if="actions.length" class="err-actions">
-          <el-button
+          <n-button
             v-for="action in actions"
             :key="action.label"
             size="small"
             :type="action.type ?? 'primary'"
-            plain
             @click="action.onClick"
           >
             {{ action.label }}
-          </el-button>
+          </n-button>
         </div>
       </div>
-    </el-alert>
+    </n-alert>
   </div>
 </template>
 
@@ -142,7 +141,7 @@ const contextLines = computed<string[]>(() => {
 
 interface Action {
   label: string;
-  type?: "primary" | "success" | "warning" | "danger" | "info";
+  type?: "primary" | "success" | "warning" | "error" | "info";
   onClick: () => void;
 }
 
@@ -229,7 +228,7 @@ const actions = computed<Action[]>(() => {
 }
 .context-line {
   font-size: 12px;
-  color: var(--el-text-color-regular);
+  color: var(--n-text-color-regular, #666);
   word-break: break-all;
   white-space: pre-wrap;
 }

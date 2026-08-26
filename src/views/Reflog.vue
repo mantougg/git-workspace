@@ -2,98 +2,85 @@
   <div class="reflog-view">
     <!-- Header -->
     <div class="reflog-header">
-      <el-button @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
+      <n-button @click="goBack">
+        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
         返回
-      </el-button>
+      </n-button>
       <span class="repo-path">{{ repoPath }}</span>
-      <el-select
-        v-model="reference"
+      <n-select
+        v-model:value="reference"
+        :options="referenceOptions"
         style="width: 220px"
         size="small"
-        @change="load"
-      >
-        <el-option label="HEAD" value="HEAD" />
-        <el-option-group v-if="locals.length > 0" label="Local Branches">
-          <el-option v-for="b in locals" :key="b" :label="b" :value="b" />
-        </el-option-group>
-        <el-option-group v-if="remotes.length > 0" label="Remote Branches">
-          <el-option v-for="r in remotes" :key="r" :label="r" :value="r" />
-        </el-option-group>
-      </el-select>
-      <el-button size="small" :loading="loading" @click="load">
-        <el-icon><Refresh /></el-icon>
+        @update:value="load"
+      />
+      <n-button size="small" :loading="loading" @click="load">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
         刷新
-      </el-button>
+      </n-button>
     </div>
 
     <!-- Entry list -->
-    <div class="reflog-body" v-loading="loading">
-      <div v-for="entry in entries" :key="entry.selector" class="reflog-row">
-        <span class="selector">{{ entry.selector }}</span>
-        <span class="summary" :title="entry.summary">{{ entry.summary }}</span>
-        <span class="commit-message" :title="entry.newOid">
-          {{ entry.newOid.slice(0, 7) }} {{ entry.commitMessage }}
-        </span>
-        <span class="time">{{ entry.time }}</span>
-        <el-dropdown trigger="click" @command="(cmd: string) => onAction(cmd, entry)">
-          <el-button size="small" text @click.stop>
-            <el-icon><MoreFilled /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="view">View Commit</el-dropdown-item>
-              <el-dropdown-item command="branch">Create Branch Here</el-dropdown-item>
-              <el-dropdown-item command="reset" divided>Reset Here…</el-dropdown-item>
-              <el-dropdown-item command="restore">
-                <span class="danger-item">Restore State（hard）</span>
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+    <n-spin :show="loading">
+      <div class="reflog-body">
+        <div v-for="entry in entries" :key="entry.selector" class="reflog-row">
+          <span class="selector">{{ entry.selector }}</span>
+          <span class="summary" :title="entry.summary">{{ entry.summary }}</span>
+          <span class="commit-message" :title="entry.newOid">
+            {{ entry.newOid.slice(0, 7) }} {{ entry.commitMessage }}
+          </span>
+          <span class="time">{{ entry.time }}</span>
+          <n-dropdown trigger="click" :options="dropdownOptions" @select="(cmd: string) => onAction(cmd, entry)">
+            <n-button size="small" text @click.stop>
+              <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+            </n-button>
+          </n-dropdown>
+        </div>
+        <n-empty v-if="!loading && entries.length === 0" description="暂无 reflog 记录" />
       </div>
-      <el-empty v-if="!loading && entries.length === 0" description="暂无 reflog 记录" :image-size="60" />
-    </div>
+    </n-spin>
 
     <!-- View Commit dialog -->
-    <el-dialog v-model="viewDialog.show" title="提交详情" width="520px">
-      <el-descriptions v-if="viewDialog.entry" :column="1" border>
-        <el-descriptions-item label="位置">{{ viewDialog.entry.selector }}</el-descriptions-item>
-        <el-descriptions-item label="Hash">{{ viewDialog.entry.newOid }}</el-descriptions-item>
-        <el-descriptions-item label="提交信息">{{ viewDialog.entry.commitMessage }}</el-descriptions-item>
-        <el-descriptions-item label="时间">{{ viewDialog.entry.time }}</el-descriptions-item>
-        <el-descriptions-item label="Reflog 动作">{{ viewDialog.entry.summary }}</el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
+    <n-modal v-model:show="viewDialog.show" preset="card" title="提交详情" style="width: 520px">
+      <n-descriptions v-if="viewDialog.entry" :column="1" bordered label-placement="left">
+        <n-descriptions-item label="位置">{{ viewDialog.entry.selector }}</n-descriptions-item>
+        <n-descriptions-item label="Hash">{{ viewDialog.entry.newOid }}</n-descriptions-item>
+        <n-descriptions-item label="提交信息">{{ viewDialog.entry.commitMessage }}</n-descriptions-item>
+        <n-descriptions-item label="时间">{{ viewDialog.entry.time }}</n-descriptions-item>
+        <n-descriptions-item label="Reflog 动作">{{ viewDialog.entry.summary }}</n-descriptions-item>
+      </n-descriptions>
+    </n-modal>
 
     <!-- Reset Here dialog -->
-    <el-dialog v-model="resetDialog.show" title="Reset Here" width="520px">
+    <n-modal v-model:show="resetDialog.show" preset="card" title="Reset Here" style="width: 520px">
       <div v-if="resetDialog.entry" class="reset-target">
         目标：{{ resetDialog.entry.newOid.slice(0, 7) }} {{ resetDialog.entry.commitMessage }}
         （{{ resetDialog.entry.selector }}）
       </div>
-      <el-radio-group v-model="resetDialog.mode" class="reset-modes">
-        <el-radio value="soft">soft — 仅移动 HEAD，保留暂存区与工作区</el-radio>
-        <el-radio value="mixed">mixed — 移动 HEAD + 重置暂存区，保留工作区</el-radio>
-        <el-radio value="hard">hard — 重置全部，丢弃未提交更改（危险）</el-radio>
-      </el-radio-group>
+      <n-radio-group v-model:value="resetDialog.mode" class="reset-modes">
+        <n-radio value="soft">soft — 仅移动 HEAD，保留暂存区与工作区</n-radio>
+        <n-radio value="mixed">mixed — 移动 HEAD + 重置暂存区，保留工作区</n-radio>
+        <n-radio value="hard">hard — 重置全部，丢弃未提交更改（危险）</n-radio>
+      </n-radio-group>
       <template #footer>
-        <el-button @click="resetDialog.show = false">取消</el-button>
-        <el-button
-          :type="resetDialog.mode === 'hard' ? 'danger' : 'primary'"
+        <n-button @click="resetDialog.show = false">取消</n-button>
+        <n-button
+          :type="resetDialog.mode === 'hard' ? 'error' : 'primary'"
           @click="confirmReset"
         >
           执行 Reset
-        </el-button>
+        </n-button>
       </template>
-    </el-dialog>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, MoreFilled, Refresh } from "@element-plus/icons-vue";
+import { ArrowBackOutline, EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
+import { useMessage, useDialog } from "naive-ui";
+import { prompt } from "@/utils/prompt";
 import { getReflog } from "@/api/reflog";
 import { listBranches, createBranch } from "@/api/branch";
 import { resetTo } from "@/api/history";
@@ -102,6 +89,8 @@ import { errMsg } from "@/utils/error";
 
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
 
 const repoPath = ref("");
 const reference = ref("HEAD");
@@ -109,6 +98,27 @@ const locals = ref<string[]>([]);
 const remotes = ref<string[]>([]);
 const entries = ref<ReflogEntry[]>([]);
 const loading = ref(false);
+
+const referenceOptions = computed(() => {
+  const opts: { label: string; value: string; type?: string }[] = [{ label: "HEAD", value: "HEAD" }];
+  if (locals.value.length > 0) {
+    opts.push({ label: "Local Branches", value: "__locals_group__", type: "group" });
+    locals.value.forEach((b) => opts.push({ label: b, value: b }));
+  }
+  if (remotes.value.length > 0) {
+    opts.push({ label: "Remote Branches", value: "__remotes_group__", type: "group" });
+    remotes.value.forEach((r) => opts.push({ label: r, value: r }));
+  }
+  return opts;
+});
+
+const dropdownOptions = [
+  { label: "View Commit", key: "view" },
+  { label: "Create Branch Here", key: "branch" },
+  { type: "divider", key: "d1" },
+  { label: "Reset Here…", key: "reset" },
+  { label: "Restore State（hard）", key: "restore" },
+];
 
 const viewDialog = reactive<{ show: boolean; entry: ReflogEntry | null }>({
   show: false,
@@ -123,7 +133,7 @@ const resetDialog = reactive<{
 onMounted(async () => {
   const repo = route.query.repo as string;
   if (!repo) {
-    ElMessage.warning("未指定仓库路径");
+    message.warning("未指定仓库路径");
     router.push({ name: "changes" });
     return;
   }
@@ -144,7 +154,7 @@ async function load() {
     entries.value = await getReflog(repoPath.value, reference.value, 200);
   } catch (e) {
     entries.value = [];
-    ElMessage.error("读取 reflog 失败: " + errMsg(e));
+    message.error("读取 reflog 失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -176,21 +186,19 @@ function onAction(cmd: string, entry: ReflogEntry) {
 
 async function handleCreateBranch(entry: ReflogEntry) {
   try {
-    const { value: name } = await ElMessageBox.prompt(
-      `在 ${entry.selector}（${entry.newOid.slice(0, 7)} ${entry.commitMessage}）处创建分支：`,
-      "Create Branch Here",
-      {
-        confirmButtonText: "创建",
-        cancelButtonText: "取消",
-        inputPattern: /^[^\s~^:?*[\]\\]+$/,
-        inputErrorMessage: "分支名不合法",
-      },
-    );
+    const name = await prompt(dialog, {
+      title: "Create Branch Here",
+      content: `在 ${entry.selector}（${entry.newOid.slice(0, 7)} ${entry.commitMessage}）处创建分支：`,
+      confirmText: "创建",
+      cancelText: "取消",
+      pattern: /^[^\s~^:?*[\]\\]+$/,
+      patternError: "分支名不合法",
+    });
     if (!name) return;
     await createBranch(repoPath.value, name, entry.newOid);
-    ElMessage.success(`已创建分支 ${name}`);
+    message.success(`已创建分支 ${name}`);
   } catch (e) {
-    if (e !== "cancel") ElMessage.error("创建分支失败: " + errMsg(e));
+    if (e !== "cancel") message.error("创建分支失败: " + errMsg(e));
   }
 }
 
@@ -211,11 +219,16 @@ async function confirmReset() {
 
   if (mode === "hard") {
     try {
-      await ElMessageBox.confirm(dangerConfirmText(entry), "Reset --hard 确认（Dangerous）", {
-        confirmButtonText: "确认 Hard Reset",
-        cancelButtonText: "取消",
-        type: "error",
-        confirmButtonClass: "el-button--danger",
+      await new Promise<void>((resolve, reject) => {
+        dialog.error({
+          title: "Reset --hard 确认（Dangerous）",
+          content: dangerConfirmText(entry),
+          positiveText: "确认 Hard Reset",
+          negativeText: "取消",
+          onPositiveClick: () => resolve(),
+          onNegativeClick: () => reject("cancel"),
+          onClose: () => reject("cancel"),
+        });
       });
     } catch {
       return;
@@ -225,31 +238,36 @@ async function confirmReset() {
   resetDialog.show = false;
   try {
     await resetTo(repoPath.value, entry.newOid, mode);
-    ElMessage.success(`已 Reset 到 ${entry.selector}（${mode}）`);
+    message.success(`已 Reset 到 ${entry.selector}（${mode}）`);
     await load();
   } catch (e) {
-    ElMessage.error("Reset 失败: " + errMsg(e));
+    message.error("Reset 失败: " + errMsg(e));
   }
 }
 
 /** Restore State = hard reset shortcut with Dangerous confirm (§46). */
 async function handleRestore(entry: ReflogEntry) {
   try {
-    await ElMessageBox.confirm(dangerConfirmText(entry), "Restore State 确认（Dangerous）", {
-      confirmButtonText: "恢复到此状态",
-      cancelButtonText: "取消",
-      type: "error",
-      confirmButtonClass: "el-button--danger",
+    await new Promise<void>((resolve, reject) => {
+      dialog.error({
+        title: "Restore State 确认（Dangerous）",
+        content: dangerConfirmText(entry),
+        positiveText: "恢复到此状态",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
     });
   } catch {
     return;
   }
   try {
     await resetTo(repoPath.value, entry.newOid, "hard");
-    ElMessage.success(`已恢复到 ${entry.selector}`);
+    message.success(`已恢复到 ${entry.selector}`);
     await load();
   } catch (e) {
-    ElMessage.error("恢复失败: " + errMsg(e));
+    message.error("恢复失败: " + errMsg(e));
   }
 }
 </script>

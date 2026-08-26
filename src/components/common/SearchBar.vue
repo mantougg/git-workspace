@@ -1,19 +1,22 @@
 <template>
   <div class="search-bar">
-    <el-input
-      v-model="model"
+    <n-input
+      v-model:value="model"
       :placeholder="placeholder"
       style="width: 240px"
       clearable
-      :prefix-icon="Search"
       @keyup.enter="emit('search', model)"
-    />
+    >
+      <template #prefix>
+        <n-icon><SearchOutline /></n-icon>
+      </template>
+    </n-input>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { Search } from "@element-plus/icons-vue";
+import { SearchOutline } from "@vicons/ionicons5";
 
 const props = withDefaults(
   defineProps<{

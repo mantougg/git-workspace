@@ -2,47 +2,47 @@
   <div class="branch-manager">
     <!-- Header -->
     <div class="branch-header">
-      <el-button @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
+      <n-button @click="goBack">
+        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
         返回
-      </el-button>
+      </n-button>
       <div class="repo-info">
         <span class="repo-path">{{ repoPath }}</span>
-        <el-tag v-if="overview?.current" size="small" type="success">
+        <n-tag v-if="overview?.current" size="small" type="success">
           {{ overview.current }}
-        </el-tag>
-        <el-tag v-else-if="overview" size="small" type="warning">HEAD 游离</el-tag>
+        </n-tag>
+        <n-tag v-else-if="overview" size="small" type="warning">HEAD 游离</n-tag>
       </div>
-      <el-button size="small" :loading="loading" @click="load">
-        <el-icon><Refresh /></el-icon>
+      <n-button size="small" :loading="loading" @click="load">
+        <template #icon><n-icon><RefreshOutline /></n-icon></template>
         刷新
-      </el-button>
-      <el-button size="small" type="primary" @click="handleCreate">
-        <el-icon><Plus /></el-icon>
+      </n-button>
+      <n-button size="small" type="primary" @click="handleCreate">
+        <template #icon><n-icon><AddOutline /></n-icon></template>
         新建分支
-      </el-button>
-      <el-button size="small" @click="openCompare()">
-        <el-icon><Switch /></el-icon>
+      </n-button>
+      <n-button size="small" @click="openCompare()">
+        <template #icon><n-icon><SwapHorizontalOutline /></n-icon></template>
         Compare
-      </el-button>
-      <el-button size="small" @click="rebaseDialogVisible = true">
+      </n-button>
+      <n-button size="small" @click="rebaseDialogVisible = true">
         Rebase
-      </el-button>
+      </n-button>
     </div>
 
     <!-- Operation state banners (T-15): resume an interrupted merge/rebase
          after reload or restart -->
     <div v-if="mergeInProgress" class="state-banner merge">
       <span class="banner-text">Merge 进行中：存在冲突待解决（MERGE_HEAD 已置）。</span>
-      <el-button size="small" type="primary" plain @click="handleMergeContinue">
+      <n-button size="small" type="primary" dashed @click="handleMergeContinue">
         已解决，继续（Continue）
-      </el-button>
-      <el-button size="small" type="primary" plain @click="openResolver">
+      </n-button>
+      <n-button size="small" type="primary" dashed @click="openResolver">
         打开解决器
-      </el-button>
-      <el-button size="small" type="danger" plain @click="handleMergeAbort">
+      </n-button>
+      <n-button size="small" type="error" dashed @click="handleMergeAbort">
         中止（Abort）
-      </el-button>
+      </n-button>
       <span class="banner-hint">请先在变更视图解决冲突并暂存（三方解决器随 T-16 提供）</span>
     </div>
     <div v-if="rebaseState" class="state-banner rebase">
@@ -50,125 +50,107 @@
         Rebase 进行中：第 {{ rebaseState.position + 1 }}/{{ rebaseState.ops.length }} 步
         （onto {{ rebaseState.onto }}，当前 {{ currentOpLabel }}）。
       </span>
-      <el-button size="small" type="primary" plain @click="handleRebaseContinue">
+      <n-button size="small" type="primary" dashed @click="handleRebaseContinue">
         已解决，继续（Continue）
-      </el-button>
-      <el-button size="small" type="warning" plain @click="handleRebaseSkip">
+      </n-button>
+      <n-button size="small" type="warning" dashed @click="handleRebaseSkip">
         跳过（Skip）
-      </el-button>
-      <el-button size="small" type="primary" plain @click="openResolver">
+      </n-button>
+      <n-button size="small" type="primary" dashed @click="openResolver">
         打开解决器
-      </el-button>
-      <el-button size="small" type="danger" plain @click="handleRebaseAbort">
+      </n-button>
+      <n-button size="small" type="error" dashed @click="handleRebaseAbort">
         中止（Abort）
-      </el-button>
+      </n-button>
     </div>
 
-    <div class="branch-body" v-loading="loading">
-      <template v-if="overview">
-        <!-- Local branches -->
-        <div class="section">
-          <div class="section-title">Local Branches（{{ overview.locals.length }}）</div>
-          <div
-            v-for="b in overview.locals"
-            :key="b.name"
-            :class="['branch-row', { current: b.isCurrent }]"
-          >
-            <span class="branch-name">
-              {{ b.name }}
-              <el-tag v-if="b.isCurrent" size="small" type="success" effect="plain">当前</el-tag>
-            </span>
-            <span class="branch-track">
-              <template v-if="b.upstream">
-                <span class="upstream">{{ b.upstream }}</span>
-                <span v-if="b.ahead > 0" class="ahead">↑{{ b.ahead }}</span>
-                <span v-if="b.behind > 0" class="behind">↓{{ b.behind }}</span>
-              </template>
-              <span v-else class="no-upstream">无上游</span>
-            </span>
-            <span class="branch-commit" :title="b.lastCommitOid">
-              {{ shortOid(b.lastCommitOid) }} {{ b.lastCommitMessage }}
-            </span>
-            <el-dropdown trigger="click" @command="(cmd: string) => handleLocalCommand(cmd, b)">
-              <el-button size="small" text>
-                <el-icon><MoreFilled /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-if="!b.isCurrent" command="checkout">Checkout</el-dropdown-item>
-                  <el-dropdown-item command="rename">Rename</el-dropdown-item>
-                  <el-dropdown-item command="set-upstream">Set Upstream</el-dropdown-item>
-                  <el-dropdown-item v-if="b.isCurrent" command="pull">Pull（--ff-only）</el-dropdown-item>
-                  <el-dropdown-item command="push">Push</el-dropdown-item>
-                  <el-dropdown-item command="compare">Compare</el-dropdown-item>
-                  <el-dropdown-item command="merge">Merge 到当前分支…</el-dropdown-item>
-                  <el-dropdown-item v-if="!b.isCurrent" command="delete" divided>
-                    <span class="danger-item">Delete</span>
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+    <n-spin :show="loading">
+      <div class="branch-body">
+        <template v-if="overview">
+          <!-- Local branches -->
+          <div class="section">
+            <div class="section-title">Local Branches（{{ overview.locals.length }}）</div>
+            <div
+              v-for="b in overview.locals"
+              :key="b.name"
+              :class="['branch-row', { current: b.isCurrent }]"
+            >
+              <span class="branch-name">
+                {{ b.name }}
+                <n-tag v-if="b.isCurrent" size="small" type="success">当前</n-tag>
+              </span>
+              <span class="branch-track">
+                <template v-if="b.upstream">
+                  <span class="upstream">{{ b.upstream }}</span>
+                  <span v-if="b.ahead > 0" class="ahead">↑{{ b.ahead }}</span>
+                  <span v-if="b.behind > 0" class="behind">↓{{ b.behind }}</span>
+                </template>
+                <span v-else class="no-upstream">无上游</span>
+              </span>
+              <span class="branch-commit" :title="b.lastCommitOid">
+                {{ shortOid(b.lastCommitOid) }} {{ b.lastCommitMessage }}
+              </span>
+              <n-dropdown trigger="click" :options="localBranchOptions(b)" @select="(key: string) => handleLocalCommand(key, b)">
+                <n-button size="small" text>
+                  <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+                </n-button>
+              </n-dropdown>
+            </div>
+            <n-empty v-if="overview.locals.length === 0" description="无本地分支" />
           </div>
-          <el-empty v-if="overview.locals.length === 0" description="无本地分支" :image-size="40" />
-        </div>
 
-        <!-- Remote branches -->
-        <div class="section">
-          <div class="section-title">Remote Branches（{{ overview.remotes.length }}）</div>
-          <div v-for="r in overview.remotes" :key="r.name" class="branch-row">
-            <span class="branch-name">{{ r.name }}</span>
-            <span class="branch-track" />
-            <span class="branch-commit" :title="r.lastCommitOid">
-              {{ shortOid(r.lastCommitOid) }} {{ r.lastCommitMessage }}
-            </span>
-            <el-dropdown trigger="click" @command="(cmd: string) => handleRemoteCommand(cmd, r)">
-              <el-button size="small" text>
-                <el-icon><MoreFilled /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="track">Track（检出为本地分支）</el-dropdown-item>
-                  <el-dropdown-item command="compare">Compare</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+          <!-- Remote branches -->
+          <div class="section">
+            <div class="section-title">Remote Branches（{{ overview.remotes.length }}）</div>
+            <div v-for="r in overview.remotes" :key="r.name" class="branch-row">
+              <span class="branch-name">{{ r.name }}</span>
+              <span class="branch-track" />
+              <span class="branch-commit" :title="r.lastCommitOid">
+                {{ shortOid(r.lastCommitOid) }} {{ r.lastCommitMessage }}
+              </span>
+              <n-dropdown trigger="click" :options="remoteBranchOptions()" @select="(key: string) => handleRemoteCommand(key, r)">
+                <n-button size="small" text>
+                  <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+                </n-button>
+              </n-dropdown>
+            </div>
+            <n-empty v-if="overview.remotes.length === 0" description="无远程分支" />
           </div>
-          <el-empty v-if="overview.remotes.length === 0" description="无远程分支" :image-size="40" />
-        </div>
 
-        <!-- Tags -->
-        <div class="section">
-          <div class="section-title">Tags（{{ overview.tags.length }}）</div>
-          <div v-for="t in overview.tags" :key="t.name" class="branch-row">
-            <span class="branch-name">{{ t.name }}</span>
-            <span class="branch-track tag-message" :title="t.message ?? ''">{{ t.message ?? "" }}</span>
-            <span class="branch-commit" :title="t.targetOid">{{ shortOid(t.targetOid) }}</span>
-            <span />
+          <!-- Tags -->
+          <div class="section">
+            <div class="section-title">Tags（{{ overview.tags.length }}）</div>
+            <div v-for="t in overview.tags" :key="t.name" class="branch-row">
+              <span class="branch-name">{{ t.name }}</span>
+              <span class="branch-track tag-message" :title="t.message ?? ''">{{ t.message ?? "" }}</span>
+              <span class="branch-commit" :title="t.targetOid">{{ shortOid(t.targetOid) }}</span>
+              <span />
+            </div>
+            <n-empty v-if="overview.tags.length === 0" description="无标签" />
           </div>
-          <el-empty v-if="overview.tags.length === 0" description="无标签" :image-size="40" />
-        </div>
-      </template>
-    </div>
+        </template>
+      </div>
+    </n-spin>
 
     <!-- Merge dialog (T-15) -->
-    <el-dialog v-model="mergeDialog.show" title="Merge 到当前分支" width="520px">
+    <n-modal v-model:show="mergeDialog.show" preset="card" title="Merge 到当前分支" style="width: 520px">
       <div class="merge-form">
         <div class="merge-line">
           源分支：<strong>{{ mergeDialog.branch }}</strong> → 当前分支：<strong>{{ overview?.current }}</strong>
         </div>
-        <el-radio-group v-model="mergeDialog.mode" class="merge-modes">
-          <el-radio value="normal">普通（可快进则快进）</el-radio>
-          <el-radio value="no-ff">--no-ff（始终生成合并提交）</el-radio>
-          <el-radio value="squash">--squash（压成暂存更改，不产生合并提交）</el-radio>
-        </el-radio-group>
+        <n-radio-group v-model:value="mergeDialog.mode" class="merge-modes">
+          <n-radio value="normal">普通（可快进则快进）</n-radio>
+          <n-radio value="no-ff">--no-ff（始终生成合并提交）</n-radio>
+          <n-radio value="squash">--squash（压成暂存更改，不产生合并提交）</n-radio>
+        </n-radio-group>
       </div>
       <template #footer>
-        <el-button @click="mergeDialog.show = false">取消</el-button>
-        <el-button type="primary" :loading="mergeDialog.loading" @click="runMerge">
+        <n-button @click="mergeDialog.show = false">取消</n-button>
+        <n-button type="primary" :loading="mergeDialog.loading" @click="runMerge">
           执行 Merge
-        </el-button>
+        </n-button>
       </template>
-    </el-dialog>
+    </n-modal>
 
     <!-- Interactive Rebase dialog (T-15) -->
     <RebaseDialog
@@ -180,50 +162,46 @@
     />
 
     <!-- Compare dialog -->
-    <el-dialog v-model="compare.show" title="Branch Compare" width="80%" top="5vh">
+    <n-modal v-model:show="compare.show" preset="card" title="Branch Compare" style="width: 80%; margin-top: 5vh">
       <div class="compare-form">
-        <el-select v-model="compare.base" filterable placeholder="Base（基准）" style="width: 240px">
-          <el-option v-for="o in revisionOptions" :key="o" :label="o" :value="o" />
-        </el-select>
+        <n-select v-model:value="compare.base" filterable placeholder="Base（基准）" style="width: 240px" :options="revisionSelectOptions" />
         <span class="compare-arrow">⇄</span>
-        <el-select v-model="compare.other" filterable placeholder="Other（对比）" style="width: 240px">
-          <el-option v-for="o in revisionOptions" :key="o" :label="o" :value="o" />
-        </el-select>
-        <el-button
+        <n-select v-model:value="compare.other" filterable placeholder="Other（对比）" style="width: 240px" :options="revisionSelectOptions" />
+        <n-button
           type="primary"
           :loading="compare.loading"
           :disabled="!compare.base || !compare.other"
           @click="runCompare"
         >
           比较
-        </el-button>
+        </n-button>
       </div>
 
       <div v-if="compare.result" class="compare-result">
         <div class="compare-summary">
-          <el-tag type="success">领先 {{ compare.result.ahead.length }}</el-tag>
+          <n-tag type="success">领先 {{ compare.result.ahead.length }}</n-tag>
           <span class="summary-text">{{ compare.result.other }} 领先 {{ compare.result.base }}</span>
-          <el-tag type="warning">落后 {{ compare.result.behind.length }}</el-tag>
+          <n-tag type="warning">落后 {{ compare.result.behind.length }}</n-tag>
           <span class="summary-text">{{ compare.result.other }} 落后 {{ compare.result.base }}</span>
         </div>
-        <el-tabs v-model="compare.tab">
-          <el-tab-pane :label="`领先 Commits（${compare.result.ahead.length}）`" name="ahead">
+        <n-tabs v-model:value="compare.tab">
+          <n-tab-pane :tab="`领先 Commits（${compare.result.ahead.length}）`" name="ahead">
             <div v-for="c in compare.result.ahead" :key="c.oid" class="commit-row">
               <span class="commit-oid">{{ c.shortOid }}</span>
               <span class="commit-msg">{{ c.message }}</span>
               <span class="commit-meta">{{ c.author }} · {{ c.time }}</span>
             </div>
-            <el-empty v-if="compare.result.ahead.length === 0" description="无" :image-size="40" />
-          </el-tab-pane>
-          <el-tab-pane :label="`落后 Commits（${compare.result.behind.length}）`" name="behind">
+            <n-empty v-if="compare.result.ahead.length === 0" description="无" />
+          </n-tab-pane>
+          <n-tab-pane :tab="`落后 Commits（${compare.result.behind.length}）`" name="behind">
             <div v-for="c in compare.result.behind" :key="c.oid" class="commit-row">
               <span class="commit-oid">{{ c.shortOid }}</span>
               <span class="commit-msg">{{ c.message }}</span>
               <span class="commit-meta">{{ c.author }} · {{ c.time }}</span>
             </div>
-            <el-empty v-if="compare.result.behind.length === 0" description="无" :image-size="40" />
-          </el-tab-pane>
-          <el-tab-pane :label="`文件差异（${compare.result.files.length}）`" name="files">
+            <n-empty v-if="compare.result.behind.length === 0" description="无" />
+          </n-tab-pane>
+          <n-tab-pane :tab="`文件差异（${compare.result.files.length}）`" name="files">
             <div class="compare-files">
               <div class="file-list">
                 <div
@@ -235,24 +213,26 @@
                   <span :class="['file-status-icon', f.status]">{{ statusIcon(f.status) }}</span>
                   <span class="file-name">{{ f.newPath }}</span>
                 </div>
-                <el-empty v-if="compare.result.files.length === 0" description="无文件差异" :image-size="40" />
+                <n-empty v-if="compare.result.files.length === 0" description="无文件差异" />
               </div>
               <div class="file-diff">
                 <UnifiedDiff v-if="compare.selectedFile" :file="compare.selectedFile" />
-                <el-empty v-else description="选择文件查看 Diff" :image-size="40" />
+                <n-empty v-else description="选择文件查看 Diff" />
               </div>
             </div>
-          </el-tab-pane>
-        </el-tabs>
+          </n-tab-pane>
+        </n-tabs>
       </div>
-    </el-dialog>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, MoreFilled, Plus, Refresh, Switch } from "@element-plus/icons-vue";
+import { ArrowBackOutline, EllipsisVerticalOutline, AddOutline, RefreshOutline, SwapHorizontalOutline } from "@vicons/ionicons5";
+import { useMessage, useDialog } from "naive-ui";
+import { prompt } from "@/utils/prompt";
 import {
   checkoutBranch,
   compareBranches,
@@ -277,6 +257,8 @@ import { errMsg } from "@/utils/error";
 
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
 
 const repoPath = ref("");
 const overview = ref<BranchOverview | null>(null);
@@ -342,10 +324,40 @@ const revisionOptions = computed<string[]>(() => {
   ];
 });
 
+/** n-select compatible options array for revision selectors. */
+const revisionSelectOptions = computed(() =>
+  revisionOptions.value.map((o) => ({ label: o, value: o })),
+);
+
+/** n-dropdown options for local branch rows. */
+function localBranchOptions(b: BranchEntry) {
+  const opts: { label: string; key: string; props?: Record<string, unknown> }[] = [];
+  if (!b.isCurrent) opts.push({ label: "Checkout", key: "checkout" });
+  opts.push({ label: "Rename", key: "rename" });
+  opts.push({ label: "Set Upstream", key: "set-upstream" });
+  if (b.isCurrent) opts.push({ label: "Pull（--ff-only）", key: "pull" });
+  opts.push({ label: "Push", key: "push" });
+  opts.push({ label: "Compare", key: "compare" });
+  opts.push({ label: "Merge 到当前分支…", key: "merge" });
+  if (!b.isCurrent) {
+    opts.push({ type: "divider", key: "d1" } as never);
+    opts.push({ label: "Delete", key: "delete", props: { style: "color: #d03050" } });
+  }
+  return opts;
+}
+
+/** n-dropdown options for remote branch rows. */
+function remoteBranchOptions() {
+  return [
+    { label: "Track（检出为本地分支）", key: "track" },
+    { label: "Compare", key: "compare" },
+  ];
+}
+
 onMounted(async () => {
   const repo = route.query.repo as string;
   if (!repo) {
-    ElMessage.warning("未指定仓库路径");
+    message.warning("未指定仓库路径");
     router.push({ name: "changes" });
     return;
   }
@@ -361,7 +373,7 @@ async function load() {
     mergeInProgress.value = await getMergeInProgress(repoPath.value);
     rebaseState.value = await getRebaseState(repoPath.value);
   } catch (e) {
-    ElMessage.error("获取分支列表失败: " + errMsg(e));
+    message.error("获取分支列表失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
@@ -448,51 +460,47 @@ async function handleRemoteCommand(cmd: string, r: RemoteBranchEntry) {
 async function runOp(successMsg: string, op: () => Promise<unknown>) {
   try {
     await op();
-    ElMessage.success(successMsg);
+    message.success(successMsg);
     await load();
   } catch (e) {
-    ElMessage.error(errMsg(e));
+    message.error(errMsg(e));
   }
 }
 
 async function handleCreate() {
   try {
-    const { value: name } = await ElMessageBox.prompt(
-      "新分支名称（基于当前 HEAD；可在下方输入框留空目标）",
-      "新建分支",
-      {
-        confirmButtonText: "创建",
-        cancelButtonText: "取消",
-        inputPattern: /^[^\s~^:?*[\]\\]+$/,
-        inputErrorMessage: "分支名不合法",
-      },
-    );
+    const name = await prompt(dialog, {
+      title: "新建分支",
+      content: "新分支名称（基于当前 HEAD；可在下方输入框留空目标）",
+      confirmText: "创建",
+      cancelText: "取消",
+      pattern: /^[^\s~^:?*[\]\\]+$/,
+      patternError: "分支名不合法",
+    });
     if (!name) return;
     await runOp(`已创建分支 ${name}`, () => createBranch(repoPath.value, name));
   } catch (e) {
-    if (e !== "cancel") ElMessage.error("创建分支失败: " + errMsg(e));
+    if (e !== "cancel") message.error("创建分支失败: " + errMsg(e));
   }
 }
 
 async function handleRename(b: BranchEntry) {
   try {
-    const { value: newName } = await ElMessageBox.prompt(
-      `将分支 ${b.name} 重命名为：`,
-      "Rename Branch",
-      {
-        confirmButtonText: "重命名",
-        cancelButtonText: "取消",
-        inputValue: b.name,
-        inputPattern: /^[^\s~^:?*[\]\\]+$/,
-        inputErrorMessage: "分支名不合法",
-      },
-    );
+    const newName = await prompt(dialog, {
+      title: "Rename Branch",
+      content: `将分支 ${b.name} 重命名为：`,
+      confirmText: "重命名",
+      cancelText: "取消",
+      defaultValue: b.name,
+      pattern: /^[^\s~^:?*[\]\\]+$/,
+      patternError: "分支名不合法",
+    });
     if (!newName || newName === b.name) return;
     await runOp(`已重命名为 ${newName}`, () =>
       renameBranch(repoPath.value, b.name, newName),
     );
   } catch (e) {
-    if (e !== "cancel") ElMessage.error("重命名失败: " + errMsg(e));
+    if (e !== "cancel") message.error("重命名失败: " + errMsg(e));
   }
 }
 
@@ -500,81 +508,92 @@ async function handleSetUpstream(b: BranchEntry) {
   if (!overview.value) return;
   const options = overview.value.remotes.map((r) => r.name);
   try {
-    const { value } = await ElMessageBox.prompt(
-      `设置 ${b.name} 的上游（输入远程分支名，如 origin/main；输入 "-" 清除上游）：`,
-      "Set Upstream",
-      {
-        confirmButtonText: "确定",
-        cancelButtonText: "取消",
-        inputValue: b.upstream ?? (options.length === 1 ? options[0] : ""),
-        inputValidator: (v: string) =>
-          v === "-" || options.includes(v) || "必须是现有远程分支名，或 - 清除",
-      },
-    );
+    const value = await prompt(dialog, {
+      title: "Set Upstream",
+      content: `设置 ${b.name} 的上游（输入远程分支名，如 origin/main；输入 "-" 清除上游）：`,
+      confirmText: "确定",
+      cancelText: "取消",
+      defaultValue: b.upstream ?? (options.length === 1 ? options[0] : ""),
+      pattern: /^.+$/,
+      patternError: "必须是现有远程分支名，或 - 清除",
+    });
+    // Manual validation for custom logic
+    if (value !== "-" && !options.includes(value)) {
+      message.error("必须是现有远程分支名，或 - 清除");
+      return;
+    }
     const upstream = value === "-" ? undefined : value;
     await runOp(
       upstream ? `已设置上游 ${upstream}` : "已清除上游",
       () => setUpstream(repoPath.value, b.name, upstream),
     );
   } catch (e) {
-    if (e !== "cancel") ElMessage.error("设置上游失败: " + errMsg(e));
+    if (e !== "cancel") message.error("设置上游失败: " + errMsg(e));
   }
 }
 
 async function handlePush(b: BranchEntry) {
   try {
-    await ElMessageBox.confirm(
-      `推送本地分支 ${b.name} 到 ${b.upstream ?? "默认远程"}？（不启用 force）`,
-      "Push 确认",
-      { confirmButtonText: "Push", cancelButtonText: "取消", type: "warning" },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.warning({
+        title: "Push 确认",
+        content: `推送本地分支 ${b.name} 到 ${b.upstream ?? "默认远程"}？（不启用 force）`,
+        positiveText: "Push",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
   } catch {
     return;
   }
   try {
     const output = await pushBranch(repoPath.value, b.name);
-    ElMessage.success(output ? `Push 完成：${output}` : "Push 完成");
+    message.success(output ? `Push 完成：${output}` : "Push 完成");
     await load();
   } catch (e) {
-    ElMessage.error("Push 失败: " + errMsg(e));
+    message.error("Push 失败: " + errMsg(e));
   }
 }
 
 /** Dangerous op (§46): 二次确认；未合入时升级为强制删除确认。 */
 async function handleDelete(b: BranchEntry) {
   try {
-    await ElMessageBox.confirm(
-      `确认删除本地分支 ${b.name}？此操作不可撤销（可用 reflog 尝试找回）。`,
-      "Delete 确认（Dangerous）",
-      {
-        confirmButtonText: "删除",
-        cancelButtonText: "取消",
-        type: "error",
-        confirmButtonClass: "el-button--danger",
-      },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.error({
+        title: "Delete 确认（Dangerous）",
+        content: `确认删除本地分支 ${b.name}？此操作不可撤销（可用 reflog 尝试找回）。`,
+        positiveText: "删除",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
   } catch {
     return;
   }
   try {
     await deleteBranch(repoPath.value, b.name);
-    ElMessage.success(`已删除分支 ${b.name}`);
+    message.success(`已删除分支 ${b.name}`);
     await load();
   } catch (e) {
     const msg = errMsg(e);
     if (msg.includes("not fully merged")) {
       // Second gate: force-delete confirmation for unmerged branches.
       try {
-        await ElMessageBox.confirm(
-          `分支 ${b.name} 未完全合入当前 HEAD，删除可能丢失提交。确认强制删除？`,
-          "强制删除确认（Dangerous）",
-          {
-            confirmButtonText: "强制删除",
-            cancelButtonText: "取消",
-            type: "error",
-            confirmButtonClass: "el-button--danger",
-          },
-        );
+        await new Promise<void>((resolve, reject) => {
+          dialog.error({
+            title: "强制删除确认（Dangerous）",
+            content: `分支 ${b.name} 未完全合入当前 HEAD，删除可能丢失提交。确认强制删除？`,
+            positiveText: "强制删除",
+            negativeText: "取消",
+            onPositiveClick: () => resolve(),
+            onNegativeClick: () => reject("cancel"),
+            onClose: () => reject("cancel"),
+          });
+        });
       } catch {
         return;
       }
@@ -582,7 +601,7 @@ async function handleDelete(b: BranchEntry) {
         deleteBranch(repoPath.value, b.name, true),
       );
     } else {
-      ElMessage.error("删除失败: " + msg);
+      message.error("删除失败: " + msg);
     }
   }
 }
@@ -595,11 +614,17 @@ async function runMerge() {
   const { branch, mode } = mergeDialog;
   // Warning-level confirm (§46): history-changing op with impact scope.
   try {
-    await ElMessageBox.confirm(
-      `仓库：${repoPath.value}\n将把分支 ${branch} 合并到当前分支 ${overview.value?.current ?? "HEAD"}（模式：${mode}）。\n若产生冲突，仓库会进入 Merge 状态，可解决后继续或中止恢复。`,
-      "Merge 确认（Warning）",
-      { confirmButtonText: "执行 Merge", cancelButtonText: "取消", type: "warning" },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.warning({
+        title: "Merge 确认（Warning）",
+        content: `仓库：${repoPath.value}\n将把分支 ${branch} 合并到当前分支 ${overview.value?.current ?? "HEAD"}（模式：${mode}）。\n若产生冲突，仓库会进入 Merge 状态，可解决后继续或中止恢复。`,
+        positiveText: "执行 Merge",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
   } catch {
     return;
   }
@@ -611,7 +636,7 @@ async function runMerge() {
     handleMergeOutcome(outcome);
     await load();
   } catch (e) {
-    ElMessage.error("Merge 失败: " + errMsg(e));
+    message.error("Merge 失败: " + errMsg(e));
   } finally {
     mergeDialog.loading = false;
   }
@@ -620,19 +645,19 @@ async function runMerge() {
 function handleMergeOutcome(outcome: MergeOutcome) {
   switch (outcome.status) {
     case "upToDate":
-      ElMessage.info("已是最新，无需合并");
+      message.info("已是最新，无需合并");
       break;
     case "fastForward":
-      ElMessage.success(`已快进到 ${outcome.to.slice(0, 7)}`);
+      message.success(`已快进到 ${outcome.to.slice(0, 7)}`);
       break;
     case "merged":
-      ElMessage.success(`合并完成（${outcome.commitOid.slice(0, 7)}）`);
+      message.success(`合并完成（${outcome.commitOid.slice(0, 7)}）`);
       break;
     case "squashed":
-      ElMessage.success("Squash 结果已暂存，请在变更视图提交");
+      message.success("Squash 结果已暂存，请在变更视图提交");
       break;
     case "conflict":
-      ElMessage.warning(
+      message.warning(
         `合并冲突（${outcome.files.length} 个文件）：${outcome.files.join("、")}。请在变更视图解决后回来 Continue，或 Abort 恢复。`,
       );
       break;
@@ -642,43 +667,44 @@ function handleMergeOutcome(outcome: MergeOutcome) {
 async function handleMergeContinue() {
   try {
     const oid = await mergeContinue(repoPath.value);
-    ElMessage.success(`Merge 已完成（${oid.slice(0, 7)}）`);
+    message.success(`Merge 已完成（${oid.slice(0, 7)}）`);
     await load();
   } catch (e) {
-    ElMessage.error(errMsg(e));
+    message.error(errMsg(e));
   }
 }
 
 async function handleMergeAbort() {
   try {
-    await ElMessageBox.confirm(
-      `仓库：${repoPath.value}\n将放弃本次合并并恢复到合并前状态（hard reset），冲突中的修改将丢失。`,
-      "Merge Abort 确认（Dangerous）",
-      {
-        confirmButtonText: "中止并恢复",
-        cancelButtonText: "取消",
-        type: "error",
-        confirmButtonClass: "el-button--danger",
-      },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.error({
+        title: "Merge Abort 确认（Dangerous）",
+        content: `仓库：${repoPath.value}\n将放弃本次合并并恢复到合并前状态（hard reset），冲突中的修改将丢失。`,
+        positiveText: "中止并恢复",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
   } catch {
     return;
   }
   try {
     await mergeAbort(repoPath.value);
-    ElMessage.success("已中止 Merge 并恢复");
+    message.success("已中止 Merge 并恢复");
     await load();
   } catch (e) {
-    ElMessage.error("Abort 失败: " + errMsg(e));
+    message.error("Abort 失败: " + errMsg(e));
   }
 }
 
 async function onRebaseFinished(outcome: RebaseOutcome | null) {
   if (!outcome) return;
   if (outcome.status === "success") {
-    ElMessage.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
+    message.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
   } else {
-    ElMessage.warning(
+    message.warning(
       `Rebase 在第 ${outcome.position + 1}/${outcome.total} 步冲突（${outcome.files.join("、")}）。解决后可 Continue / Skip / Abort。`,
     );
   }
@@ -689,15 +715,15 @@ async function handleRebaseContinue() {
   try {
     const outcome = await rebaseContinue(repoPath.value);
     if (outcome.status === "success") {
-      ElMessage.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
+      message.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
     } else {
-      ElMessage.warning(
+      message.warning(
         `第 ${outcome.position + 1}/${outcome.total} 步再次冲突：${outcome.files.join("、")}`,
       );
     }
     await load();
   } catch (e) {
-    ElMessage.error(errMsg(e));
+    message.error(errMsg(e));
   }
 }
 
@@ -705,39 +731,40 @@ async function handleRebaseSkip() {
   try {
     const outcome = await rebaseSkip(repoPath.value);
     if (outcome.status === "success") {
-      ElMessage.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
+      message.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
     } else {
-      ElMessage.warning(
+      message.warning(
         `第 ${outcome.position + 1}/${outcome.total} 步再次冲突：${outcome.files.join("、")}`,
       );
     }
     await load();
   } catch (e) {
-    ElMessage.error("Skip 失败: " + errMsg(e));
+    message.error("Skip 失败: " + errMsg(e));
   }
 }
 
 async function handleRebaseAbort() {
   try {
-    await ElMessageBox.confirm(
-      `仓库：${repoPath.value}\n将放弃本次 Rebase 并恢复到 rebase 前位置（hard reset 到 ${rebaseState.value?.originalHead.slice(0, 7) ?? "?"}），进行中的修改将丢失。`,
-      "Rebase Abort 确认（Dangerous）",
-      {
-        confirmButtonText: "中止并恢复",
-        cancelButtonText: "取消",
-        type: "error",
-        confirmButtonClass: "el-button--danger",
-      },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.error({
+        title: "Rebase Abort 确认（Dangerous）",
+        content: `仓库：${repoPath.value}\n将放弃本次 Rebase 并恢复到 rebase 前位置（hard reset 到 ${rebaseState.value?.originalHead.slice(0, 7) ?? "?"}），进行中的修改将丢失。`,
+        positiveText: "中止并恢复",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
   } catch {
     return;
   }
   try {
     await rebaseAbort(repoPath.value);
-    ElMessage.success("已中止 Rebase 并恢复");
+    message.success("已中止 Rebase 并恢复");
     await load();
   } catch (e) {
-    ElMessage.error("Abort 失败: " + errMsg(e));
+    message.error("Abort 失败: " + errMsg(e));
   }
 }
 
@@ -761,7 +788,7 @@ async function runCompare() {
     compare.result = await compareBranches(repoPath.value, compare.base, compare.other);
     compare.tab = "ahead";
   } catch (e) {
-    ElMessage.error("Compare 失败: " + errMsg(e));
+    message.error("Compare 失败: " + errMsg(e));
   } finally {
     compare.loading = false;
   }

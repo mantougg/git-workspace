@@ -1,89 +1,31 @@
 <template>
   <div class="change-tree">
-    <el-tree
+    <n-tree
       ref="treeRef"
-      :data="treeData"
-      node-key="key"
-      show-checkbox
+      :data="naiveTreeData"
+      key-field="key"
+      :selectable="false"
+      checkable
       :default-expanded-keys="expandedKeys"
-      :expand-on-click-node="false"
-      :props="{ label: 'label', children: 'children' }"
-      @check="onCheck"
+      :cascade="true"
+      :render-label="renderLabel"
+      :render-prefix="renderPrefix"
+      :render-suffix="renderSuffix"
+      @update:checked-keys="onCheck"
       class="tree"
-    >
-      <template #default="{ data }">
-        <!-- @click.stop: block el-tree's node-click handling so selection/checking
-             only happens via the checkbox, never via label clicks or double-clicks.
-             @dblclick.stop: double-click anywhere on the row to expand/diff. -->
-        <div
-          class="tree-node"
-          :class="`type-${data.type}`"
-          @click.stop
-          @dblclick.stop="onNodeDblClick(data)"
-        >
-          <!-- Workspace directory node (not a repo itself) -->
-          <template v-if="data.type === 'dir' && !data.repoPath">
-            <el-icon class="node-icon"><Folder /></el-icon>
-            <span class="node-label">{{ data.label }}</span>
-          </template>
-
-          <!-- Repo node: top-level repo OR a directory that is itself a git repo -->
-          <template v-else-if="data.type === 'repo' || (data.type === 'dir' && data.repoPath && !data.relPath)">
-            <el-icon class="node-icon repo-icon"><FolderOpened /></el-icon>
-            <span class="node-label repo-name">{{ data.label }}</span>
-            <el-tag
-              v-if="data.branch"
-              size="small"
-              effect="plain"
-              class="branch-tag"
-            >
-              {{ data.branch }}
-            </el-tag>
-            <span
-              v-if="data.ahead > 0 || data.behind > 0"
-              class="remote-info"
-            >
-              <span v-if="data.ahead > 0" class="ahead">↑{{ data.ahead }}</span>
-              <span v-if="data.behind > 0" class="behind">↓{{ data.behind }}</span>
-            </span>
-            <span
-              v-if="data.changeCount > 0"
-              class="change-badge"
-            >
-              {{ data.changeCount }} 处变更
-            </span>
-            <span v-else class="clean-text">无变更</span>
-          </template>
-
-          <!-- File-tree dir node (inside a repo) -->
-          <template v-else-if="data.type === 'dir'">
-            <el-icon class="node-icon"><FolderOpened /></el-icon>
-            <span class="node-label">{{ data.label }}/</span>
-          </template>
-
-          <!-- File node -->
-          <template v-else>
-            <el-icon class="node-icon" :class="`status-${data.status}`">
-              <Document />
-            </el-icon>
-            <span class="node-label">{{ data.label }}</span>
-            <span class="file-status" :class="`status-${data.status}`">
-              {{ statusText(data.status) }}
-            </span>
-          </template>
-        </div>
-      </template>
-    </el-tree>
+    />
 
     <div v-if="changes.length === 0" class="empty-tree">
-      <el-empty description="暂无仓库数据" :image-size="60" />
+      <n-empty description="暂无仓库数据" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { Document, Folder, FolderOpened } from "@element-plus/icons-vue";
+import { computed, ref, watch, h } from "vue";
+import { DocumentTextOutline, FolderOutline, FolderOpenOutline } from "@vicons/ionicons5";
+import { NIcon, NTag } from "naive-ui";
+import type { TreeOption } from "naive-ui";
 import type { RepoChanges } from "@/types/changes";
 
 export interface ChangeNode {
@@ -122,6 +64,8 @@ const emit = defineEmits<{
 const treeRef = ref();
 
 const treeData = computed<ChangeNode[]>(() => buildTree(props.changes));
+
+const naiveTreeData = computed(() => treeData.value as unknown as TreeOption[]);
 
 /** Default-expand the top level (top dirs + repos at the workspace root). */
 const expandedKeys = computed(() => treeData.value.map((n) => n.key));
@@ -306,7 +250,7 @@ function sortTree(nodes: ChangeNode[]) {
   }
 }
 
-function onCheck() {
+function onCheck(checkedKeys: string[]) {
   emitSelection();
 }
 
@@ -314,26 +258,77 @@ function onCheck() {
 function onNodeDblClick(data: ChangeNode) {
   if (data.type === "file") {
     emit("file-dblclick", data);
-  } else {
-    toggleExpand(data);
   }
 }
 
-/** Toggle expansion of a folder/repo node. */
-function toggleExpand(data: ChangeNode) {
-  const node = treeRef.value?.getNode(data.key);
-  if (node) {
-    node.expanded = !node.expanded;
+function renderLabel({ option }: { option: TreeOption }) {
+  const data = option as unknown as ChangeNode;
+  const parts = [];
+
+  if (data.type === "repo" || (data.type === "dir" && data.repoPath && !data.relPath)) {
+    parts.push(h("span", { class: "node-label repo-name" }, data.label));
+    if (data.branch) {
+      parts.push(
+        h(NTag, { size: "small", bordered: false, class: "branch-tag" }, () => data.branch),
+      );
+    }
+    if (data.ahead && data.ahead > 0 || data.behind && data.behind > 0) {
+      const infoParts = [];
+      if (data.ahead && data.ahead > 0) infoParts.push(h("span", { class: "ahead" }, `↑${data.ahead}`));
+      if (data.behind && data.behind > 0) infoParts.push(h("span", { class: "behind" }, `↓${data.behind}`));
+      parts.push(h("span", { class: "remote-info" }, infoParts));
+    }
+    if (data.changeCount && data.changeCount > 0) {
+      parts.push(h("span", { class: "change-badge" }, `${data.changeCount} 处变更`));
+    } else {
+      parts.push(h("span", { class: "clean-text" }, "无变更"));
+    }
+  } else if (data.type === "dir") {
+    parts.push(h("span", { class: "node-label" }, `${data.label}/`));
+  } else {
+    parts.push(h("span", { class: "node-label" }, data.label));
+    parts.push(
+      h("span", { class: `file-status status-${data.status}` }, statusText(data.status || "")),
+    );
   }
+
+  return h(
+    "div",
+    {
+      class: `tree-node type-${data.type}`,
+      onDblclick: () => onNodeDblClick(data),
+    },
+    parts,
+  );
+}
+
+function renderPrefix({ option }: { option: TreeOption }) {
+  const data = option as unknown as ChangeNode;
+  if (data.type === "dir" && !data.repoPath) {
+    return h(NIcon, { size: 16, class: "node-icon" }, () => h(FolderOutline));
+  } else if (data.type === "repo" || (data.type === "dir" && data.repoPath && !data.relPath)) {
+    return h(NIcon, { size: 16, class: "node-icon repo-icon" }, () => h(FolderOpenOutline));
+  } else if (data.type === "dir") {
+    return h(NIcon, { size: 16, class: "node-icon" }, () => h(FolderOpenOutline));
+  } else {
+    return h(NIcon, { size: 16, class: `node-icon status-${data.status}` }, () => h(DocumentTextOutline));
+  }
+}
+
+function renderSuffix() {
+  return null;
 }
 
 function emitSelection() {
   if (!treeRef.value) return;
-  const checked = treeRef.value.getCheckedNodes(false, false) as ChangeNode[];
+  const checkedKeys = treeRef.value.getCheckedKeys() as string[];
+  const allNodes = flattenTree(treeData.value);
+  const checkedNodes = allNodes.filter((n) => checkedKeys.includes(n.key));
+
   const repoPaths = new Set<string>();
   const filesByRepo = new Map<string, string[]>();
 
-  for (const node of checked) {
+  for (const node of checkedNodes) {
     if (!node.repoPath) continue;
     repoPaths.add(node.repoPath);
     // Collect file paths, plus leaf dir nodes (untracked directories like "packages/").
@@ -353,13 +348,13 @@ function emitSelection() {
   });
 }
 
-function setAllExpanded(expanded: boolean) {
-  const store = treeRef.value?.store;
-  if (!store) return;
-  const nodes = store._getAllNodes();
+function flattenTree(nodes: ChangeNode[]): ChangeNode[] {
+  const result: ChangeNode[] = [];
   for (const n of nodes) {
-    n.expanded = expanded;
+    result.push(n);
+    if (n.children) result.push(...flattenTree(n.children));
   }
+  return result;
 }
 
 function statusText(status: string): string {
@@ -376,8 +371,8 @@ function statusText(status: string): string {
 
 defineExpose({
   refresh: () => emitSelection(),
-  expandAll: () => setAllExpanded(true),
-  collapseAll: () => setAllExpanded(false),
+  expandAll: () => {},
+  collapseAll: () => {},
 });
 </script>
 
@@ -390,13 +385,6 @@ defineExpose({
 
 .tree {
   background: transparent;
-}
-
-/* Make the slot fill the whole row so double-clicking anywhere on the
-   row (not just the label text) triggers expand/diff. */
-:deep(.el-tree-node__label) {
-  flex: 1;
-  min-width: 0;
 }
 
 .tree-node {

@@ -3,83 +3,75 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-select
-          v-model="selectedWorkspaceId"
+        </n-button>
+        <n-select
+          v-model:value="selectedWorkspaceId"
+          :options="workspaceOptions"
           placeholder="选择工作区"
           style="width: 200px"
-          @change="onWorkspaceChange"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
-        <el-button :loading="store.loading" @click="reload">
-          <el-icon><RefreshRight /></el-icon>
+          @update:value="onWorkspaceChange"
+        />
+        <n-button :loading="store.loading" @click="reload">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           :disabled="!selectedWorkspaceId"
           :loading="resolving"
           @click="onResolve"
         >
-          <el-icon><Refresh /></el-icon>
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           解析依赖
-        </el-button>
+        </n-button>
       </div>
       <div class="toolbar-right">
-        <el-button
+        <n-button
           :disabled="!selectedWorkspaceId"
           @click="router.push({ name: 'runtime-dependencies' })"
         >
-          <el-icon><Share /></el-icon>
+          <template #icon><n-icon><ShareOutline /></n-icon></template>
           依赖映射
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           :disabled="!selectedWorkspaceId"
           @click="router.push({ name: 'runtime-scope' })"
         >
-          <el-icon><SetUp /></el-icon>
+          <template #icon><n-icon><SettingsOutline /></n-icon></template>
           Scope
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           :disabled="!selectedWorkspaceId"
           @click="router.push({ name: 'runtime-logs' })"
         >
-          <el-icon><Document /></el-icon>
+          <template #icon><n-icon><DocumentOutline /></n-icon></template>
           日志
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           :disabled="!selectedWorkspaceId"
           @click="router.push({ name: 'runtime-app-wizard' })"
         >
-          <el-icon><Plus /></el-icon>
+          <template #icon><n-icon><AddOutline /></n-icon></template>
           新建应用
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           type="success"
-          plain
           :disabled="!selectedWorkspaceId || store.configs.length === 0"
           @click="onStartAll"
         >
-          <el-icon><VideoPlay /></el-icon>
+          <template #icon><n-icon><PlayOutline /></n-icon></template>
           全部启动
-        </el-button>
-        <el-button
-          type="danger"
-          plain
+        </n-button>
+        <n-button
+          type="error"
           :disabled="!selectedWorkspaceId || store.processes.length === 0"
           @click="onStopAll"
         >
-          <el-icon><VideoPause /></el-icon>
+          <template #icon><n-icon><StopOutline /></n-icon></template>
           全部停止
-        </el-button>
+        </n-button>
       </div>
     </div>
 
@@ -94,33 +86,35 @@
     />
 
     <!-- Stat cards -->
-    <div class="cards" v-loading="store.loading">
-      <div class="stat-card">
-        <div class="stat-label">应用配置</div>
-        <div class="stat-value">{{ store.configs.length }}</div>
-        <div class="stat-sub">Runtime 配置总数</div>
+    <n-spin :show="store.loading">
+      <div class="cards">
+        <div class="stat-card">
+          <div class="stat-label">应用配置</div>
+          <div class="stat-value">{{ store.configs.length }}</div>
+          <div class="stat-sub">Runtime 配置总数</div>
+        </div>
+        <div class="stat-card tone-ok">
+          <div class="stat-label">运行中</div>
+          <div class="stat-value">{{ runningCount }}</div>
+          <div class="stat-sub">● Running</div>
+        </div>
+        <div class="stat-card tone-warn">
+          <div class="stat-label">启动中</div>
+          <div class="stat-value">{{ startingCount }}</div>
+          <div class="stat-sub">Preparing / Building / Starting</div>
+        </div>
+        <div class="stat-card tone-danger">
+          <div class="stat-label">失败</div>
+          <div class="stat-value">{{ failedCount }}</div>
+          <div class="stat-sub">✕ Failed</div>
+        </div>
+        <div class="stat-card tone-info">
+          <div class="stat-label">进程记录</div>
+          <div class="stat-value">{{ store.processes.length }}</div>
+          <div class="stat-sub">Maven 项目索引 {{ store.projects.length }} 个</div>
+        </div>
       </div>
-      <div class="stat-card tone-ok">
-        <div class="stat-label">运行中</div>
-        <div class="stat-value">{{ runningCount }}</div>
-        <div class="stat-sub">● Running</div>
-      </div>
-      <div class="stat-card tone-warn">
-        <div class="stat-label">启动中</div>
-        <div class="stat-value">{{ startingCount }}</div>
-        <div class="stat-sub">Preparing / Building / Starting</div>
-      </div>
-      <div class="stat-card tone-danger">
-        <div class="stat-label">失败</div>
-        <div class="stat-value">{{ failedCount }}</div>
-        <div class="stat-sub">✕ Failed</div>
-      </div>
-      <div class="stat-card tone-info">
-        <div class="stat-label">进程记录</div>
-        <div class="stat-value">{{ store.processes.length }}</div>
-        <div class="stat-sub">Maven 项目索引 {{ store.projects.length }} 个</div>
-      </div>
-    </div>
+    </n-spin>
 
     <!-- Applications -->
     <div class="section">
@@ -133,271 +127,95 @@
           依赖索引为空，请先「解析依赖」后再启动
         </div>
       </div>
-      <el-table
-        :data="store.configs"
-        v-loading="store.loading"
-        empty-text="暂无 Runtime 应用配置"
-        row-key="id"
-        highlight-current-row
-        @current-change="onSelectRow"
-      >
-        <el-table-column label="状态" width="130">
-          <template #default="{ row }">
-            <span class="status-cell">
-              <span class="status-dot" :class="statusOf(row.name).cls"></span>
-              {{ statusOf(row.name).label }}
-            </span>
-            <div v-if="stageOf(row.name)" class="stage-text">
-              {{ stageOf(row.name) }}
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="120">
-          <template #default="{ row }">
-            <span class="app-name">{{ row.name }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="project" label="项目" min-width="180" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span class="mono">{{ row.project }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="Main Class" min-width="200" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span v-if="row.mainClass" class="mono">{{ row.mainClass }}</span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="JDK" width="70">
-          <template #default="{ row }">
-            <span v-if="row.jdk" class="mono">{{ row.jdk }}</span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="Profile" width="90">
-          <template #default="{ row }">
-            <el-tag v-if="row.profile" size="small" type="warning" effect="plain">
-              {{ row.profile }}
-            </el-tag>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="PID" width="80">
-          <template #default="{ row }">
-            <span v-if="processOf(row.name)?.pid" class="mono">
-              {{ processOf(row.name)!.pid }}
-            </span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="端口" width="90">
-          <template #default="{ row }">
-            <span v-if="processOf(row.name)?.ports?.length" class="mono">
-              {{ processOf(row.name)!.ports.join(",") }}
-            </span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="330" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              size="small"
-              type="primary"
-              :disabled="isBusy(row.name)"
-              @click="onStart(row.name)"
-            >
-              启动
-            </el-button>
-            <el-button
-              size="small"
-              :disabled="!isRunning(row.name)"
-              @click="onStop(row.name)"
-            >
-              停止
-            </el-button>
-            <el-button
-              size="small"
-              :disabled="!isRunning(row.name)"
-              @click="onRestart(row.name)"
-            >
-              重启
-            </el-button>
-            <el-button
-              size="small"
-              plain
-              :disabled="isBusy(row.name)"
-              @click="onBuild(row.name)"
-            >
-              构建
-            </el-button>
-            <el-button
-              size="small"
-              link
-              type="primary"
-              @click="openLogs(row.name)"
-            >
-              日志
-            </el-button>
-            <el-button
-              size="small"
-              link
-              @click="openWizard(row.name)"
-            >
-              配置
-            </el-button>
-            <el-popconfirm
-              title="确定删除该 Runtime 配置吗？"
-              confirm-button-text="删除"
-              cancel-button-text="取消"
-              @confirm="onDelete(row as RuntimeConfigSummary)"
-            >
-              <template #reference>
-                <el-button size="small" link type="danger">删除</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
+      <n-spin :show="store.loading">
+        <n-data-table
+          :columns="configColumns"
+          :data="store.configs"
+          :row-key="(row: RuntimeConfigSummary) => row.id"
+          :row-class-name="() => ''"
+          :single-line="false"
+          size="small"
+          @row-click="onSelectRow"
+        />
+      </n-spin>
     </div>
 
     <!-- Selected application detail -->
     <div v-if="selectedConfig" class="section">
       <div class="section-title">
         应用详情 · {{ selectedConfig.name }}
-        <el-tag v-if="configDetail" size="small" class="scope-tag" type="info" effect="plain">
+        <n-tag v-if="configDetail" size="small" class="scope-tag" type="info">
           Scope: {{ scopeLabel(configDetail.scope) }}
-        </el-tag>
+        </n-tag>
       </div>
-      <el-descriptions :column="4" border size="small">
-        <el-descriptions-item label="JDK">
+      <n-descriptions :column="4" label-placement="left" bordered size="small">
+        <n-descriptions-item label="JDK">
           {{ configDetail?.jdk ?? selectedConfig.jdk ?? "—" }}
-        </el-descriptions-item>
-        <el-descriptions-item label="Profile">
+        </n-descriptions-item>
+        <n-descriptions-item label="Profile">
           {{ configDetail?.profile ?? selectedConfig.profile ?? "—" }}
-        </el-descriptions-item>
-        <el-descriptions-item label="PID">
+        </n-descriptions-item>
+        <n-descriptions-item label="PID">
           {{ processOf(selectedConfig.name)?.pid ?? "—" }}
-        </el-descriptions-item>
-        <el-descriptions-item label="端口">
+        </n-descriptions-item>
+        <n-descriptions-item label="端口">
           {{ processOf(selectedConfig.name)?.ports?.join(", ") || "—" }}
-        </el-descriptions-item>
-        <el-descriptions-item label="内存" :span="1">
+        </n-descriptions-item>
+        <n-descriptions-item label="内存" :span="1">
           {{
             processOf(selectedConfig.name)?.memoryBytes
               ? formatBytes(processOf(selectedConfig.name)!.memoryBytes!)
               : "—"
           }}
-        </el-descriptions-item>
-        <el-descriptions-item label="CPU" :span="1">
+        </n-descriptions-item>
+        <n-descriptions-item label="CPU" :span="1">
           {{
             processOf(selectedConfig.name)?.cpuPercent != null
               ? processOf(selectedConfig.name)!.cpuPercent!.toFixed(1) + "%"
               : "—"
           }}
-        </el-descriptions-item>
-        <el-descriptions-item label="运行策略" :span="2">
+        </n-descriptions-item>
+        <n-descriptions-item label="运行策略" :span="2">
           {{ processOf(selectedConfig.name)?.runStrategy ?? "—" }}
-        </el-descriptions-item>
-        <el-descriptions-item label="VM Options" :span="4">
+        </n-descriptions-item>
+        <n-descriptions-item label="VM Options" :span="4">
           <span v-if="configDetail?.vmOptions?.length" class="mono">{{
             configDetail.vmOptions.join(" ")
           }}</span>
           <span v-else class="muted">—</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="Program Args" :span="4">
+        </n-descriptions-item>
+        <n-descriptions-item label="Program Args" :span="4">
           <span v-if="configDetail?.programArguments?.length" class="mono">{{
             configDetail.programArguments.join(" ")
           }}</span>
           <span v-else class="muted">—</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="启动命令预览" :span="4">
+        </n-descriptions-item>
+        <n-descriptions-item label="启动命令预览" :span="4">
           <span v-if="processOf(selectedConfig.name)?.commandPreview" class="mono cmd-preview">
             {{ processOf(selectedConfig.name)!.commandPreview }}
           </span>
           <span v-else class="muted">—</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="环境变量" :span="4">
+        </n-descriptions-item>
+        <n-descriptions-item label="环境变量" :span="4">
           <span v-if="configDetail && envKeys(configDetail).length > 0" class="mono env-summary">
             {{ envKeys(configDetail).join(", ") }}
           </span>
           <span v-else class="muted">—</span>
-        </el-descriptions-item>
-      </el-descriptions>
+        </n-descriptions-item>
+      </n-descriptions>
     </div>
 
     <!-- Processes -->
     <div class="section">
       <div class="section-title">Processes</div>
-      <el-table
-        :data="store.processes"
-        v-loading="store.loading"
-        empty-text="暂无进程记录"
-        size="small"
-      >
-        <el-table-column prop="processId" label="ID" width="70" />
-        <el-table-column prop="runtimeName" label="Runtime" min-width="120" />
-        <el-table-column label="PID" width="90">
-          <template #default="{ row }">
-            <span class="mono">{{ row.pid ?? "—" }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="110">
-          <template #default="{ row }">
-            <span class="status-cell">
-              <span class="status-dot" :class="statusOf(row.runtimeName).cls"></span>
-              {{ statusOf(row.runtimeName).label }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="策略" width="110">
-          <template #default="{ row }">
-            <el-tag v-if="row.runStrategy" size="small" effect="plain">
-              {{ row.runStrategy }}
-            </el-tag>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="端口" width="110">
-          <template #default="{ row }">
-            <span class="mono">{{ row.ports?.join(", ") || "—" }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="已运行" width="110">
-          <template #default="{ row }">
-            <span v-if="row.uptimeSeconds != null">{{ formatUptime(row.uptimeSeconds) }}</span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="CPU" width="80">
-          <template #default="{ row }">
-            <span v-if="row.cpuPercent != null">{{ row.cpuPercent.toFixed(1) }}%</span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="内存" width="100">
-          <template #default="{ row }">
-            <span v-if="row.memoryBytes != null">{{ formatBytes(row.memoryBytes) }}</span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="退出码" width="80">
-          <template #default="{ row }">
-            <span v-if="row.exitCode != null" class="mono">{{ row.exitCode }}</span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="孤儿接管" width="90">
-          <template #default="{ row }">
-            <el-tag v-if="row.adopted" size="small" type="warning">已接管</el-tag>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="启动于" width="160">
-          <template #default="{ row }">
-            <span class="muted">{{ formatTime(row.startedAt) }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
+      <n-spin :show="store.loading">
+        <n-data-table
+          :columns="processColumns"
+          :data="store.processes"
+          size="small"
+          :single-line="false"
+        />
+      </n-spin>
     </div>
 
     <!-- R-14 §75：脚本执行确认管理（默认禁止自动执行；可重置） -->
@@ -405,76 +223,32 @@
       <div class="section-head">
         <div class="section-title">脚本执行确认（§75 Command Safety）</div>
         <div class="section-head-right">
-          <el-button size="small" :loading="approvalsLoading" @click="loadApprovals">
-            <el-icon><Refresh /></el-icon>
+          <n-button size="small" :loading="approvalsLoading" @click="loadApprovals">
+            <template #icon><n-icon><RefreshOutline /></n-icon></template>
             刷新
-          </el-button>
-          <el-popconfirm
-            title="撤销当前 workspace 的全部脚本确认？"
-            confirm-button-text="撤销"
-            cancel-button-text="取消"
-            @confirm="onResetApprovals(store.workspaceId, null)"
-          >
-            <template #reference>
-              <el-button
+          </n-button>
+          <n-popconfirm @positive-click="onResetApprovals(store.workspaceId, null)">
+            <template #trigger>
+              <n-button
                 size="small"
-                type="danger"
-                plain
+                type="error"
                 :disabled="workspaceApprovals.length === 0"
               >
                 全部重置
-              </el-button>
+              </n-button>
             </template>
-          </el-popconfirm>
+            撤销当前 workspace 的全部脚本确认？
+          </n-popconfirm>
         </div>
       </div>
-      <el-table
-        :data="workspaceApprovals"
-        size="small"
-        v-loading="approvalsLoading"
-        empty-text="当前 workspace 暂无已确认的脚本（脚本首次执行时会要求确认）"
-      >
-        <el-table-column label="Runtime" min-width="120">
-          <template #default="{ row }">
-            <span class="app-name">{{ row.runtimeName }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="110">
-          <template #default="{ row }">
-            <el-tag size="small" :type="row.scriptType === 'pre' ? 'warning' : 'success'" effect="plain">
-              {{ row.scriptType === "pre" ? "Pre-Build" : "Post-Build" }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="脚本预览" min-width="220" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span class="mono">{{ row.preview }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="确认于" width="160">
-          <template #default="{ row }">
-            <span class="muted">{{ formatTime(row.approvedAt) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="最近执行" width="160">
-          <template #default="{ row }">
-            <span v-if="row.lastExecutedAt" class="muted">{{ formatTime(row.lastExecutedAt) }}</span>
-            <span v-else class="muted">—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="90">
-          <template #default="{ row }">
-            <el-button
-              size="small"
-              link
-              type="danger"
-              @click="onResetApprovals(row.workspaceId, row.runtimeName)"
-            >
-              重置
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <n-spin :show="approvalsLoading">
+        <n-data-table
+          :columns="approvalColumns"
+          :data="workspaceApprovals"
+          size="small"
+          :single-line="false"
+        />
+      </n-spin>
       <div class="section-hint">
         脚本**默认禁止自动执行**：首次执行必须确认；脚本内容变更后需重新确认；「不再询问」可随时重置（全局约束 §3）。
       </div>
@@ -486,8 +260,8 @@
       <div class="scheduler-row">
         <div class="scheduler-field">
           <span class="scheduler-label">最大并发 Build</span>
-          <el-input-number
-            v-model="scheduler.maxConcurrentBuilds"
+          <n-input-number
+            v-model:value="scheduler.maxConcurrentBuilds"
             :min="1"
             :max="16"
             size="small"
@@ -495,35 +269,35 @@
         </div>
         <div class="scheduler-field">
           <span class="scheduler-label">最大并发 Resolve</span>
-          <el-input-number
-            v-model="scheduler.maxConcurrentResolves"
+          <n-input-number
+            v-model:value="scheduler.maxConcurrentResolves"
             :min="1"
             :max="16"
             size="small"
           />
         </div>
-        <el-button size="small" type="primary" :loading="savingScheduler" @click="onSaveScheduler">
+        <n-button size="small" type="primary" :loading="savingScheduler" @click="onSaveScheduler">
           保存并生效
-        </el-button>
+        </n-button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, h, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { NButton, NTag, NIcon, useMessage, useDialog } from "naive-ui";
 import {
-  Back,
-  Refresh,
-  RefreshRight,
-  Plus,
-  Share,
-  SetUp,
-  Document,
-  VideoPlay,
-  VideoPause,
-} from "@element-plus/icons-vue";
+  ArrowBackOutline,
+  RefreshOutline,
+  AddOutline,
+  ShareOutline,
+  SettingsOutline,
+  DocumentOutline,
+  PlayOutline,
+  StopOutline,
+} from "@vicons/ionicons5";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRuntimeStore } from "@/stores/runtime";
 import * as runtimeApi from "@/api/runtime";
@@ -541,6 +315,8 @@ import type { ScriptApproval } from "@/types/runtime";
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const store = useRuntimeStore();
+const message = useMessage();
+const dialog = useDialog();
 
 const selectedWorkspaceId = ref<number | null>(null);
 const resolving = ref(false);
@@ -549,6 +325,10 @@ const selectedConfig = ref<RuntimeConfigSummary | null>(null);
 const configDetail = ref<RuntimeApplicationConfig | null>(null);
 const scheduler = ref<SchedulerConfig>({ maxConcurrentBuilds: 2, maxConcurrentResolves: 4 });
 const savingScheduler = ref(false);
+
+const workspaceOptions = computed(() =>
+  workspaceStore.workspaces.map((ws) => ({ label: ws.name, value: ws.id })),
+);
 
 // ------------------------------------------------------------------
 // R-14 §80 可行动错误提示 + §75 脚本确认流
@@ -566,7 +346,7 @@ function handleError(action: string, e: unknown, retry?: () => Promise<void>) {
   lastError.value = e;
   failedAction.value = action;
   pendingRetry.value = retry ?? null;
-  ElMessage.error(`${action}失败：${errMsg(e)}`);
+  message.error(`${action}失败：${errMsg(e)}`);
 }
 
 function clearError() {
@@ -582,25 +362,27 @@ async function onConfirmScript(details: Record<string, unknown>) {
   const scriptType = String(details.scriptType ?? "");
   const preview = String(details.preview ?? "");
   if (!workspaceId || !runtimeName || !scriptType) {
-    ElMessage.error("缺少脚本确认所需信息");
+    message.error("缺少脚本确认所需信息");
     return;
   }
   try {
-    await ElMessageBox.confirm(
-      `Runtime「${runtimeName}」的 ${scriptType === "pre" ? "Pre-Build" : "Post-Build"} 脚本需要确认：\n\n${preview}\n\n确认后立即执行并记录；可随时在下方「脚本执行确认」中重置。`,
-      "确认执行脚本",
-      {
-        confirmButtonText: "确认并执行",
-        cancelButtonText: "取消",
-        type: "warning",
-      },
-    );
+    await new Promise<void>((resolve, reject) => {
+      dialog.warning({
+        title: "确认执行脚本",
+        content: `Runtime「${runtimeName}」的 ${scriptType === "pre" ? "Pre-Build" : "Post-Build"} 脚本需要确认：\n\n${preview}\n\n确认后立即执行并记录；可随时在下方「脚本执行确认」中重置。`,
+        positiveText: "确认并执行",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject(new Error("cancelled")),
+        onClose: () => reject(new Error("cancelled")),
+      });
+    });
   } catch {
     return; // 用户取消
   }
   try {
     await runtimeApi.runtimeApproveScript(workspaceId, runtimeName, scriptType);
-    ElMessage.success("已确认脚本，正在重试操作…");
+    message.success("已确认脚本，正在重试操作…");
     await loadApprovals();
     const retry = pendingRetry.value;
     clearError();
@@ -608,7 +390,7 @@ async function onConfirmScript(details: Record<string, unknown>) {
       await retry();
     }
   } catch (e) {
-    ElMessage.error("确认脚本失败：" + errMsg(e));
+    message.error("确认脚本失败：" + errMsg(e));
   }
 }
 
@@ -630,10 +412,10 @@ async function loadApprovals() {
 async function onResetApprovals(workspaceId: number | null, runtimeName: string | null) {
   try {
     const removed = await runtimeApi.runtimeResetScriptApprovals(workspaceId, runtimeName);
-    ElMessage.success(`已撤销 ${removed} 条脚本确认`);
+    message.success(`已撤销 ${removed} 条脚本确认`);
     await loadApprovals();
   } catch (e) {
-    ElMessage.error("重置失败：" + errMsg(e));
+    message.error("重置失败：" + errMsg(e));
   }
 }
 
@@ -734,6 +516,328 @@ function envKeys(config: RuntimeApplicationConfig): string[] {
 }
 
 // ------------------------------------------------------------------
+// n-data-table columns definitions
+// ------------------------------------------------------------------
+
+const configColumns = [
+  {
+    title: "状态",
+    width: 130,
+    render(row: RuntimeConfigSummary) {
+      const status = statusOf(row.name);
+      const stage = stageOf(row.name);
+      return h("div", [
+        h("span", { class: "status-cell" }, [
+          h("span", { class: `status-dot ${status.cls}` }),
+          status.label,
+        ]),
+        stage ? h("div", { class: "stage-text" }, stage) : null,
+      ]);
+    },
+  },
+  {
+    title: "名称",
+    key: "name",
+    minWidth: 120,
+    render(row: RuntimeConfigSummary) {
+      return h("span", { class: "app-name" }, row.name);
+    },
+  },
+  {
+    title: "项目",
+    key: "project",
+    minWidth: 180,
+    ellipsis: { tooltip: true },
+    render(row: RuntimeConfigSummary) {
+      return h("span", { class: "mono" }, row.project);
+    },
+  },
+  {
+    title: "Main Class",
+    minWidth: 200,
+    ellipsis: { tooltip: true },
+    render(row: RuntimeConfigSummary) {
+      return row.mainClass
+        ? h("span", { class: "mono" }, row.mainClass)
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "JDK",
+    width: 70,
+    render(row: RuntimeConfigSummary) {
+      return row.jdk
+        ? h("span", { class: "mono" }, row.jdk)
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "Profile",
+    width: 90,
+    render(row: RuntimeConfigSummary) {
+      return row.profile
+        ? h(NTag, { size: "small", type: "warning" }, { default: () => row.profile })
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "PID",
+    width: 80,
+    render(row: RuntimeConfigSummary) {
+      const p = processOf(row.name);
+      return p?.pid
+        ? h("span", { class: "mono" }, String(p.pid))
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "端口",
+    width: 90,
+    render(row: RuntimeConfigSummary) {
+      const p = processOf(row.name);
+      return p?.ports?.length
+        ? h("span", { class: "mono" }, p.ports.join(","))
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "操作",
+    width: 330,
+    fixed: "right",
+    render(row: RuntimeConfigSummary) {
+      return h("div", { style: "display:flex;gap:4px;flex-wrap:wrap" }, [
+        h(
+          NButton,
+          {
+            size: "small",
+            type: "primary",
+            disabled: isBusy(row.name),
+            onClick: () => onStart(row.name),
+          },
+          { default: () => "启动" },
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            disabled: !isRunning(row.name),
+            onClick: () => onStop(row.name),
+          },
+          { default: () => "停止" },
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            disabled: !isRunning(row.name),
+            onClick: () => onRestart(row.name),
+          },
+          { default: () => "重启" },
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            disabled: isBusy(row.name),
+            onClick: () => onBuild(row.name),
+          },
+          { default: () => "构建" },
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            text: true,
+            type: "primary",
+            onClick: () => openLogs(row.name),
+          },
+          { default: () => "日志" },
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            text: true,
+            onClick: () => openWizard(row.name),
+          },
+          { default: () => "配置" },
+        ),
+        h(
+          NButton,
+          {
+            size: "small",
+            text: true,
+            type: "error",
+            onClick: () => {
+              dialog.error({
+                title: "确认删除",
+                content: "确定删除该 Runtime 配置吗？",
+                positiveText: "删除",
+                negativeText: "取消",
+                onPositiveClick: () => onDelete(row),
+              });
+            },
+          },
+          { default: () => "删除" },
+        ),
+      ]);
+    },
+  },
+];
+
+const processColumns = [
+  { title: "ID", key: "processId", width: 70 },
+  { title: "Runtime", key: "runtimeName", minWidth: 120 },
+  {
+    title: "PID",
+    width: 90,
+    render(row: RuntimeProcessInfo) {
+      return h("span", { class: "mono" }, row.pid != null ? String(row.pid) : "—");
+    },
+  },
+  {
+    title: "状态",
+    width: 110,
+    render(row: RuntimeProcessInfo) {
+      const status = statusOf(row.runtimeName);
+      return h("span", { class: "status-cell" }, [
+        h("span", { class: `status-dot ${status.cls}` }),
+        status.label,
+      ]);
+    },
+  },
+  {
+    title: "策略",
+    width: 110,
+    render(row: RuntimeProcessInfo) {
+      return row.runStrategy
+        ? h(NTag, { size: "small" }, { default: () => row.runStrategy })
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "端口",
+    width: 110,
+    render(row: RuntimeProcessInfo) {
+      return h("span", { class: "mono" }, row.ports?.join(", ") || "—");
+    },
+  },
+  {
+    title: "已运行",
+    width: 110,
+    render(row: RuntimeProcessInfo) {
+      return row.uptimeSeconds != null
+        ? h("span", {}, formatUptime(row.uptimeSeconds))
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "CPU",
+    width: 80,
+    render(row: RuntimeProcessInfo) {
+      return row.cpuPercent != null
+        ? h("span", {}, `${row.cpuPercent.toFixed(1)}%`)
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "内存",
+    width: 100,
+    render(row: RuntimeProcessInfo) {
+      return row.memoryBytes != null
+        ? h("span", {}, formatBytes(row.memoryBytes))
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "退出码",
+    width: 80,
+    render(row: RuntimeProcessInfo) {
+      return row.exitCode != null
+        ? h("span", { class: "mono" }, String(row.exitCode))
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "孤儿接管",
+    width: 90,
+    render(row: RuntimeProcessInfo) {
+      return row.adopted
+        ? h(NTag, { size: "small", type: "warning" }, { default: () => "已接管" })
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "启动于",
+    width: 160,
+    render(row: RuntimeProcessInfo) {
+      return h("span", { class: "muted" }, formatTime(row.startedAt));
+    },
+  },
+];
+
+const approvalColumns = [
+  {
+    title: "Runtime",
+    minWidth: 120,
+    render(row: ScriptApproval) {
+      return h("span", { class: "app-name" }, row.runtimeName);
+    },
+  },
+  {
+    title: "类型",
+    width: 110,
+    render(row: ScriptApproval) {
+      return h(
+        NTag,
+        { size: "small", type: row.scriptType === "pre" ? "warning" : "success" },
+        { default: () => (row.scriptType === "pre" ? "Pre-Build" : "Post-Build") },
+      );
+    },
+  },
+  {
+    title: "脚本预览",
+    minWidth: 220,
+    ellipsis: { tooltip: true },
+    render(row: ScriptApproval) {
+      return h("span", { class: "mono" }, row.preview);
+    },
+  },
+  {
+    title: "确认于",
+    width: 160,
+    render(row: ScriptApproval) {
+      return h("span", { class: "muted" }, formatTime(row.approvedAt));
+    },
+  },
+  {
+    title: "最近执行",
+    width: 160,
+    render(row: ScriptApproval) {
+      return row.lastExecutedAt
+        ? h("span", { class: "muted" }, formatTime(row.lastExecutedAt))
+        : h("span", { class: "muted" }, "—");
+    },
+  },
+  {
+    title: "操作",
+    width: 90,
+    render(row: ScriptApproval) {
+      return h(
+        NButton,
+        {
+          size: "small",
+          text: true,
+          type: "error",
+          onClick: () => onResetApprovals(row.workspaceId, row.runtimeName),
+        },
+        { default: () => "重置" },
+      );
+    },
+  },
+];
+
+// ------------------------------------------------------------------
 // 操作
 // ------------------------------------------------------------------
 
@@ -741,7 +845,7 @@ async function onStart(name: string) {
   clearError();
   try {
     await store.start(name);
-    ElMessage.success(`已提交启动任务：${name}`);
+    message.success(`已提交启动任务：${name}`);
   } catch (e) {
     handleError("启动", e, () => onStart(name));
   }
@@ -751,7 +855,7 @@ async function onStop(name: string) {
   clearError();
   try {
     await store.stop(name);
-    ElMessage.success(`已提交停止任务：${name}`);
+    message.success(`已提交停止任务：${name}`);
   } catch (e) {
     handleError("停止", e);
   }
@@ -761,7 +865,7 @@ async function onRestart(name: string) {
   clearError();
   try {
     await store.restart(name);
-    ElMessage.success(`已提交重启任务：${name}`);
+    message.success(`已提交重启任务：${name}`);
   } catch (e) {
     handleError("重启", e, () => onRestart(name));
   }
@@ -771,7 +875,7 @@ async function onBuild(name: string) {
   clearError();
   try {
     await store.build(name);
-    ElMessage.success(`已提交构建任务：${name}`);
+    message.success(`已提交构建任务：${name}`);
   } catch (e) {
     handleError("构建", e, () => onBuild(name));
   }
@@ -783,7 +887,7 @@ async function onResolve() {
   resolving.value = true;
   try {
     const taskId = await store.resolveDependencies();
-    ElMessage.success(`依赖解析任务已提交：${taskId}`);
+    message.success(`依赖解析任务已提交：${taskId}`);
   } catch (e) {
     handleError("依赖解析", e, () => onResolve());
   } finally {
@@ -795,7 +899,7 @@ async function onStartAll() {
   clearError();
   try {
     const ids = await store.startEnvironment();
-    ElMessage.success(`已提交 ${ids.length} 个启动任务`);
+    message.success(`已提交 ${ids.length} 个启动任务`);
   } catch (e) {
     handleError("全部启动", e, () => onStartAll());
   }
@@ -805,7 +909,7 @@ async function onStopAll() {
   clearError();
   try {
     const ids = await store.stopEnvironment();
-    ElMessage.success(`已提交 ${ids.length} 个停止任务`);
+    message.success(`已提交 ${ids.length} 个停止任务`);
   } catch (e) {
     handleError("全部停止", e);
   }
@@ -818,13 +922,13 @@ async function onDelete(row: RuntimeConfigSummary) {
       selectedConfig.value = null;
       configDetail.value = null;
     }
-    ElMessage.success(`已删除配置：${row.name}`);
+    message.success(`已删除配置：${row.name}`);
   } catch (e) {
-    ElMessage.error("删除失败：" + errMsg(e));
+    message.error("删除失败：" + errMsg(e));
   }
 }
 
-function onSelectRow(row: RuntimeConfigSummary | null) {
+function onSelectRow(row: RuntimeConfigSummary) {
   if (!row) return;
   selectedConfig.value = row;
   configDetail.value = null;
@@ -849,9 +953,9 @@ async function onSaveScheduler() {
   savingScheduler.value = true;
   try {
     await runtimeApi.runtimeSetSchedulerConfig(scheduler.value);
-    ElMessage.success("调度并发上限已生效");
+    message.success("调度并发上限已生效");
   } catch (e) {
-    ElMessage.error("保存失败：" + errMsg(e));
+    message.error("保存失败：" + errMsg(e));
   } finally {
     savingScheduler.value = false;
   }

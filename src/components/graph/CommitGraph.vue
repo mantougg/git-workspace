@@ -1,7 +1,7 @@
 <template>
   <div class="commit-graph">
     <div v-if="rows.length === 0 && !loading" class="empty-graph">
-      <el-empty description="暂无提交记录" :image-size="80" />
+      <n-empty description="暂无提交记录" />
     </div>
     <div v-else class="graph-list">
       <div
@@ -65,15 +65,15 @@
 
         <!-- Refs (branches/tags) -->
         <div class="commit-refs" v-if="row.commit.refs.length > 0">
-          <el-tag
+          <n-tag
             v-for="ref in row.commit.refs"
             :key="ref"
             :type="refType(ref)"
             size="small"
-            effect="plain"
+            :bordered="false"
           >
             {{ ref }}
-          </el-tag>
+          </n-tag>
         </div>
 
         <!-- Commit message -->
@@ -86,21 +86,14 @@
         </span>
 
         <!-- Row actions (T-13 history operations) -->
-        <el-dropdown trigger="click" @command="onAction($event, row.commit)">
-          <el-button size="small" text class="row-action-btn" @click.stop>
-            <el-icon><MoreFilled /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="cherry-pick">Cherry-pick</el-dropdown-item>
-              <el-dropdown-item command="revert">Revert</el-dropdown-item>
-              <el-dropdown-item command="reset" divided>Reset 到此处…</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <n-dropdown trigger="click" :options="actionOptions" @select="(key: string) => onAction(key, row.commit)">
+          <n-button size="small" text class="row-action-btn" @click.stop>
+            <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+          </n-button>
+        </n-dropdown>
       </div>
       <div v-if="loading" class="loading-more">
-        <el-icon class="is-loading"><Loading /></el-icon>
+        <n-spin :show="true" :size="14" />
         加载中...
       </div>
       <div
@@ -116,7 +109,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Loading, MoreFilled } from "@element-plus/icons-vue";
+import { EllipsisVerticalOutline } from "@vicons/ionicons5";
 import type { CommitInfo } from "@/types/graph";
 
 const props = defineProps<{
@@ -147,6 +140,13 @@ const LANE_COLORS = [
   "#5c7cfa",
   "#2f9e44",
   "#f03e3e",
+];
+
+const actionOptions = [
+  { label: "Cherry-pick", key: "cherry-pick" },
+  { label: "Revert", key: "revert" },
+  { type: "divider", key: "d1" },
+  { label: "Reset 到此处…", key: "reset" },
 ];
 
 interface ParentLane {
@@ -253,8 +253,8 @@ function selectCommit(commit: CommitInfo) {
   emit("select", commit);
 }
 
-function onAction(cmd: string | number | object, commit: CommitInfo) {
-  emit("action", String(cmd), commit);
+function onAction(key: string, commit: CommitInfo) {
+  emit("action", key, commit);
 }
 
 function commitMessage(commit: CommitInfo): string {

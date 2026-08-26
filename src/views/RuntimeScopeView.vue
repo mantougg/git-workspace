@@ -3,59 +3,47 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-select
-          v-model="selectedWorkspaceId"
+        </n-button>
+        <n-select
+          v-model:value="selectedWorkspaceId"
+          :options="workspaceOptions"
           placeholder="选择工作区"
           style="width: 200px"
-          @change="selectWorkspace"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
-        <el-select
-          v-model="selectedApp"
+          @update:value="selectWorkspace"
+        />
+        <n-select
+          v-model:value="selectedApp"
+          :options="appOptions"
           placeholder="选择 Runtime 应用"
           style="width: 220px"
-          @change="onAppChange"
-        >
-          <el-option
-            v-for="c in store.configs"
-            :key="c.name"
-            :label="c.name"
-            :value="c.name"
-          />
-        </el-select>
-        <el-button
+          @update:value="onAppChange"
+        />
+        <n-button
           :disabled="!selectedApp"
           :loading="previewing"
           @click="onPreview"
         >
-          <el-icon><View /></el-icon>
+          <template #icon><n-icon><EyeOutline /></n-icon></template>
           预览闭包
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           type="primary"
           :disabled="!selectedApp"
           :loading="saving"
           @click="onSave"
         >
-          <el-icon><Check /></el-icon>
+          <template #icon><n-icon><CheckmarkOutline /></n-icon></template>
           保存 Scope
-        </el-button>
+        </n-button>
       </div>
       <div class="toolbar-right">
-        <el-button @click="router.push({ name: 'runtime-dashboard' })">
-          <el-icon><Odometer /></el-icon>
+        <n-button @click="router.push({ name: 'runtime-dashboard' })">
+          <template #icon><n-icon><SpeedometerOutline /></n-icon></template>
           Dashboard
-        </el-button>
+        </n-button>
       </div>
     </div>
 
@@ -67,11 +55,11 @@
       <!-- Mode selection (§15) -->
       <div class="section">
         <div class="section-title">Scope 模式</div>
-        <el-radio-group v-model="mode" @change="onModeChange">
-          <el-radio value="auto" border>Auto</el-radio>
-          <el-radio value="manual" border>Manual</el-radio>
-          <el-radio value="hybrid" border>Hybrid</el-radio>
-        </el-radio-group>
+        <n-radio-group v-model:value="mode" @update:value="onModeChange">
+          <n-radio-button value="auto">Auto</n-radio-button>
+          <n-radio-button value="manual">Manual</n-radio-button>
+          <n-radio-button value="hybrid">Hybrid</n-radio-button>
+        </n-radio-group>
         <div class="mode-desc">
           {{
             mode === "auto"
@@ -82,12 +70,12 @@
           }}
         </div>
         <div class="closure-summary" v-if="preview">
-          <el-tag size="small" type="info" effect="plain">
+          <n-tag size="small" :bordered="false">
             闭包 {{ preview.closure.projects.length }} 个模块
-          </el-tag>
-          <el-tag size="small" :type="preview.cacheHit ? 'success' : 'warning'" effect="plain">
+          </n-tag>
+          <n-tag size="small" :type="preview.cacheHit ? 'success' : 'warning'" :bordered="false">
             {{ preview.cacheHit ? "fingerprint 缓存命中" : "本次计算" }}
-          </el-tag>
+          </n-tag>
           <span class="mono fingerprint">graph fingerprint: {{ preview.closure.graphFingerprint }}</span>
         </div>
       </div>
@@ -99,11 +87,11 @@
             模块（{{ store.projects.length }} 个 workspace 源码项目 · 已勾选 {{ checkedCount }}）
           </div>
           <div class="check-actions" v-if="mode !== 'auto'">
-            <el-button size="small" @click="checkAll">全选</el-button>
-            <el-button size="small" @click="checkNone">全不选</el-button>
+            <n-button size="small" @click="checkAll">全选</n-button>
+            <n-button size="small" @click="checkNone">全不选</n-button>
           </div>
         </div>
-        <el-scrollbar class="module-scroll">
+        <n-scrollbar class="module-scroll">
           <div class="module-list">
             <div
               v-for="p in store.projects"
@@ -111,14 +99,14 @@
               class="module-item"
               :class="{ 'in-closure': !modeDisabled && isChecked(p.projectId) }"
             >
-              <el-checkbox
-                :model-value="isChecked(p.projectId)"
+              <n-checkbox
+                :checked="isChecked(p.projectId)"
                 :disabled="modeDisabled"
-                @change="(val: boolean | string | number) => onToggle(p.projectId, !!val)"
+                @update:checked="(val: boolean) => onToggle(p.projectId, val)"
               >
                 <span class="module-name">{{ p.coordinates.artifactId }}</span>
                 <span class="module-path mono">{{ p.path }}</span>
-              </el-checkbox>
+              </n-checkbox>
               <span class="module-coords mono">
                 {{ p.coordinates.groupId }}:{{ p.coordinates.version }}
               </span>
@@ -127,7 +115,7 @@
               项目索引为空，请先在 Dashboard 执行「解析依赖」。
             </div>
           </div>
-        </el-scrollbar>
+        </n-scrollbar>
       </div>
     </template>
   </div>
@@ -136,7 +124,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { Back, Check, View, Odometer } from "@element-plus/icons-vue";
+import { useMessage } from "naive-ui";
+import { ArrowBackOutline, CheckmarkOutline, EyeOutline, SpeedometerOutline } from "@vicons/ionicons5";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import * as runtimeApi from "@/api/runtime";
 import type { ClosurePreview, RuntimeApplicationConfig } from "@/types/runtime";
@@ -146,6 +135,7 @@ import { errMsg } from "@/utils/error";
 type ScopeMode = "auto" | "manual" | "hybrid";
 
 const router = useRouter();
+const message = useMessage();
 const { workspaceStore, store, selectedWorkspaceId, selectWorkspace } =
   useRuntimeWorkspace();
 
@@ -161,6 +151,13 @@ const saving = ref(false);
 
 const modeDisabled = computed(() => mode.value === "auto");
 const checkedCount = computed(() => checkedIds.value.size);
+
+const workspaceOptions = computed(() =>
+  workspaceStore.workspaces.map((ws) => ({ label: ws.name, value: ws.id })),
+);
+const appOptions = computed(() =>
+  store.configs.map((c) => ({ label: c.name, value: c.name })),
+);
 
 function isChecked(id: number): boolean {
   return checkedIds.value.has(id);
@@ -246,7 +243,7 @@ async function onAppChange() {
     await loadAutoBase();
     initFromConfig(configDetail.value);
   } catch (e) {
-    ElMessage.error("加载配置失败：" + errMsg(e));
+    message.error("加载配置失败：" + errMsg(e));
   }
 }
 
@@ -279,7 +276,7 @@ async function onPreview() {
       scopeFromState(),
     );
   } catch (e) {
-    ElMessage.error("预览失败：" + errMsg(e));
+    message.error("预览失败：" + errMsg(e));
   } finally {
     previewing.value = false;
   }
@@ -295,9 +292,9 @@ async function onSave() {
     };
     await store.saveConfig(next);
     configDetail.value = next;
-    ElMessage.success("Scope 已保存，下次构建/启动生效");
+    message.success("Scope 已保存，下次构建/启动生效");
   } catch (e) {
-    ElMessage.error("保存失败：" + errMsg(e));
+    message.error("保存失败：" + errMsg(e));
   } finally {
     saving.value = false;
   }

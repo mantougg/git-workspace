@@ -3,159 +3,90 @@
     <!-- Top toolbar: filters (workspace / op type / repo / date range) -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">
-          <el-icon><Back /></el-icon>
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
           返回
-        </el-button>
-        <el-select
-          v-model="filterWorkspaceId"
+        </n-button>
+        <n-select
+          v-model:value="filterWorkspaceId"
           placeholder="全部工作区"
           clearable
           style="width: 160px"
-          @change="reload"
-        >
-          <el-option
-            v-for="ws in workspaceStore.workspaces"
-            :key="ws.id"
-            :label="ws.name"
-            :value="ws.id"
-          />
-        </el-select>
-        <el-select
-          v-model="filterOpType"
+          :options="workspaceOptions"
+          @update:value="reload"
+        />
+        <n-select
+          v-model:value="filterOpType"
           placeholder="全部操作类型"
           clearable
           style="width: 170px"
-          @change="reload"
-        >
-          <el-option
-            v-for="o in opTypeOptions"
-            :key="o.value"
-            :label="o.label"
-            :value="o.value"
-          />
-        </el-select>
-        <el-input
-          v-model="filterRepo"
+          :options="opTypeOptions"
+          @update:value="reload"
+        />
+        <n-input
+          v-model:value="filterRepo"
           placeholder="按仓库路径筛选"
           clearable
           style="width: 200px"
           @change="reload"
           @clear="reload"
         />
-        <el-date-picker
-          v-model="dateRange"
+        <n-date-picker
+          v-model:formatted-value="dateRange"
           type="daterange"
-          value-format="YYYY-MM-DD"
+          value-format="yyyy-MM-DD"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           style="width: 240px"
-          @change="reload"
+          @update:formatted-value="reload"
         />
-        <el-button :loading="loading" @click="reload">
-          <el-icon><Refresh /></el-icon>
+        <n-button :loading="loading" @click="reload">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
-        </el-button>
+        </n-button>
       </div>
     </div>
 
     <!-- Log table; expanding a row lazy-loads its per-repo ref snapshots -->
-    <el-table
-      :data="logs"
-      v-loading="loading"
-      size="small"
-      row-key="id"
-      @expand-change="onExpand"
-    >
-      <el-table-column type="expand">
-        <template #default="{ row }">
-          <div class="items-wrap" v-loading="detailLoading[row.id]">
-            <el-table :data="details[row.id] ?? []" size="small">
-              <el-table-column label="仓库" min-width="200">
-                <template #default="{ row: item }">
-                  <div class="repo-cell">
-                    <span class="repo-name">{{ repoName(item.repoPath) }}</span>
-                    <span class="repo-path">{{ item.repoPath }}</span>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="Ref" width="140">
-                <template #default="{ row: item }">
-                  {{ item.refName || "（分离 HEAD）" }}
-                </template>
-              </el-table-column>
-              <el-table-column label="Before → After" min-width="180">
-                <template #default="{ row: item }">
-                  <code>{{ shortOid(item.beforeOid) }}</code>
-                  <span class="arrow">→</span>
-                  <code v-if="item.afterOid">{{ shortOid(item.afterOid) }}</code>
-                  <span v-else class="after-none">—（未记录 / 已删除）</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="备注" min-width="140">
-                <template #default="{ row: item }">
-                  {{ formatDetail(item.detail) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="状态" width="90">
-                <template #default="{ row: item }">
-                  <el-tag v-if="item.undoneAt" type="info" size="small">已撤销</el-tag>
-                  <span v-else>—</span>
-                </template>
-              </el-table-column>
-            </el-table>
+    <n-spin :show="loading">
+      <n-data-table
+        :columns="columns"
+        :data="logs"
+        size="small"
+        :row-key="(row: any) => row.id"
+        :expanded-row-keys="expandedRowKeys"
+        @update:expanded-keys="onExpandChange"
+      >
+        <template #expanded-row="{ row }">
+          <div class="items-wrap">
+            <n-spin :show="detailLoading[row.id]">
+              <n-data-table
+                :columns="detailColumns"
+                :data="details[row.id] ?? []"
+                size="small"
+              />
+            </n-spin>
           </div>
         </template>
-      </el-table-column>
-      <el-table-column label="时间" width="170">
-        <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="130">
-        <template #default="{ row }">
-          <el-tag :type="opTypeMeta(row.opType).tag" size="small">
-            {{ opTypeMeta(row.opType).label }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="summary" label="摘要" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="repoCount" label="仓库数" width="80" align="center" />
-      <el-table-column label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="statusOf(row as OperationLogSummary).type" size="small">{{ statusOf(row as OperationLogSummary).label }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="110">
-        <template #default="{ row }">
-          <el-button
-            size="small"
-            type="danger"
-            plain
-            :disabled="!!row.undoneAt"
-            :loading="undoingId === row.id"
-            @click="handleUndo(row as OperationLogSummary)"
-          >
-            撤销
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+      </n-data-table>
+    </n-spin>
 
     <div class="pager">
-      <el-pagination
-        v-model:current-page="page"
-        layout="total, prev, pager, next"
-        :total="total"
+      <n-pagination
+        v-model:page="page"
+        :item-count="total"
         :page-size="pageSize"
-        @current-change="reload"
+        @update:page="reload"
       />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { h, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { Back, Refresh } from "@element-plus/icons-vue";
+import { ArrowBackOutline, RefreshOutline } from "@vicons/ionicons5";
+import { NButton, NIcon, NTag, useMessage, useDialog } from "naive-ui";
 import { useWorkspaceStore } from "@/stores/workspace";
 import {
   getOperationLogDetail,
@@ -173,6 +104,8 @@ import { formatDate } from "@/utils/format";
 
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
+const message = useMessage();
+const dialog = useDialog();
 
 // --- Filters / paging ---
 const filterWorkspaceId = ref<number | null>(null);
@@ -188,14 +121,20 @@ const loading = ref(false);
 // --- Expanded-row details (lazy loaded per log id) ---
 const details = ref<Record<number, OperationLogItem[]>>({});
 const detailLoading = ref<Record<number, boolean>>({});
+const expandedRowKeys = ref<number[]>([]);
 
 const undoingId = ref<number | null>(null);
 
+const workspaceOptions = workspaceStore.workspaces.map((ws) => ({
+  label: ws.name,
+  value: ws.id,
+}));
+
 /** op_type → display meta (all four logged kinds are reversible). */
-const OP_TYPE_META: Record<string, { label: string; tag: "warning" | "danger" | "info" }> = {
+const OP_TYPE_META: Record<string, { label: string; tag: "warning" | "error" | "info" }> = {
   checkout_all: { label: "批量检出", tag: "warning" },
-  delete_branch_all: { label: "批量删除分支", tag: "danger" },
-  reset: { label: "Reset", tag: "danger" },
+  delete_branch_all: { label: "批量删除分支", tag: "error" },
+  reset: { label: "Reset", tag: "error" },
   rebase: { label: "Rebase", tag: "warning" },
 };
 const opTypeOptions = Object.entries(OP_TYPE_META).map(([value, m]) => ({
@@ -250,23 +189,30 @@ async function reload() {
     // Snapshots may have changed (undo writes back) — drop cached details.
     details.value = {};
   } catch (e) {
-    ElMessage.error("加载操作日志失败: " + errMsg(e));
+    message.error("加载操作日志失败: " + errMsg(e));
   } finally {
     loading.value = false;
   }
 }
 
 /** Lazy-load the per-repo ref snapshots when a row is expanded. */
-async function onExpand(row: OperationLogSummary, expanded: any) {
-  if (!expanded.includes(row) || details.value[row.id]) return;
-  detailLoading.value[row.id] = true;
+function onExpandChange(keys: number[]) {
+  const newKey = keys.find((k) => !expandedRowKeys.value.includes(k));
+  expandedRowKeys.value = keys;
+  if (newKey != null && !details.value[newKey]) {
+    loadDetail(newKey);
+  }
+}
+
+async function loadDetail(id: number) {
+  detailLoading.value[id] = true;
   try {
-    const d = await getOperationLogDetail(row.id);
-    details.value[row.id] = d.items;
+    const d = await getOperationLogDetail(id);
+    details.value[id] = d.items;
   } catch (e) {
-    ElMessage.error("加载快照明细失败: " + errMsg(e));
+    message.error("加载快照明细失败: " + errMsg(e));
   } finally {
-    detailLoading.value[row.id] = false;
+    detailLoading.value[id] = false;
   }
 }
 
@@ -282,12 +228,12 @@ async function handleUndo(row: OperationLogSummary) {
     try {
       preview = await previewUndoOperation(row.id);
     } catch (e) {
-      ElMessage.error("生成撤销预览失败: " + errMsg(e));
+      message.error("生成撤销预览失败: " + errMsg(e));
       return;
     }
     const runnable = preview.filter((p) => p.ok && !p.undone);
     if (runnable.length === 0) {
-      ElMessage.warning("没有可安全撤销的仓库（全部已撤销或安全检查未通过）");
+      message.warning("没有可安全撤销的仓库（全部已撤销或安全检查未通过）");
       return;
     }
     const lines = preview.map((p) => {
@@ -300,16 +246,17 @@ async function handleUndo(row: OperationLogSummary) {
       return `${mark} ${p.repoName}：${text}`;
     });
     try {
-      await ElMessageBox.confirm(
-        `将撤销「${row.summary}」，对 ${runnable.length}/${preview.length} 个仓库执行反向操作；安全检查未通过的仓库会被跳过。\n\n${lines.join("\n")}`,
-        "撤销确认（Dangerous）",
-        {
-          confirmButtonText: "执行撤销",
-          cancelButtonText: "取消",
-          type: "error",
-          confirmButtonClass: "el-button--danger",
-        },
-      );
+      await new Promise<void>((resolve, reject) => {
+        dialog.error({
+          title: "撤销确认（Dangerous）",
+          content: `将撤销「${row.summary}」，对 ${runnable.length}/${preview.length} 个仓库执行反向操作；安全检查未通过的仓库会被跳过。\n\n${lines.join("\n")}`,
+          positiveText: "执行撤销",
+          negativeText: "取消",
+          onPositiveClick: () => resolve(),
+          onNegativeClick: () => reject(new Error("cancelled")),
+          onClose: () => reject(new Error("cancelled")),
+        });
+      });
     } catch {
       return; // cancelled
     }
@@ -318,21 +265,111 @@ async function handleUndo(row: OperationLogSummary) {
     const failed = outcome.results.filter((r) => !r.success);
     const okCount = outcome.results.length - failed.length;
     if (failed.length === 0) {
-      ElMessage.success(`撤销完成（${okCount} 个仓库）`);
+      message.success(`撤销完成（${okCount} 个仓库）`);
     } else {
-      ElMessageBox.alert(
-        failed.map((f) => `${f.repoName}：${f.message}`).join("\n"),
-        `${okCount} 个仓库已撤销，${failed.length} 个被跳过 / 失败`,
-        { type: "warning" },
-      );
+      dialog.warning({
+        title: `${okCount} 个仓库已撤销，${failed.length} 个被跳过 / 失败`,
+        content: failed.map((f) => `${f.repoName}：${f.message}`).join("\n"),
+      });
     }
     await reload();
   } catch (e) {
-    ElMessage.error("撤销失败: " + errMsg(e));
+    message.error("撤销失败: " + errMsg(e));
   } finally {
     undoingId.value = null;
   }
 }
+
+// --- Main table columns ---
+const columns = [
+  { title: "时间", key: "createdAt", width: 170, render: (row: any) => formatDate(row.createdAt) },
+  {
+    title: "操作",
+    key: "opType",
+    width: 130,
+    render: (row: any) => {
+      const meta = opTypeMeta(row.opType);
+      return h(NTag, { type: meta.tag, size: "small" }, { default: () => meta.label });
+    },
+  },
+  { title: "摘要", key: "summary", minWidth: 220, ellipsis: { tooltip: true } },
+  { title: "仓库数", key: "repoCount", width: 80, align: "center" },
+  {
+    title: "状态",
+    key: "status",
+    width: 100,
+    render: (row: any) => {
+      const s = statusOf(row as OperationLogSummary);
+      return h(NTag, { type: s.type, size: "small" }, { default: () => s.label });
+    },
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 110,
+    render: (row: any) =>
+      h(
+        NButton,
+        {
+          size: "small",
+          type: "error",
+          secondary: true,
+          disabled: !!row.undoneAt,
+          loading: undoingId.value === row.id,
+          onClick: () => handleUndo(row as OperationLogSummary),
+        },
+        { default: () => "撤销" },
+      ),
+  },
+];
+
+// --- Detail table columns (expanded row) ---
+const detailColumns = [
+  {
+    title: "仓库",
+    key: "repoPath",
+    minWidth: 200,
+    render: (row: any) =>
+      h("div", { class: "repo-cell" }, [
+        h("span", { class: "repo-name" }, repoName(row.repoPath)),
+        h("span", { class: "repo-path" }, row.repoPath),
+      ]),
+  },
+  {
+    title: "Ref",
+    key: "refName",
+    width: 140,
+    render: (row: any) => row.refName || "（分离 HEAD）",
+  },
+  {
+    title: "Before → After",
+    key: "beforeOid",
+    minWidth: 180,
+    render: (row: any) =>
+      h("span", {}, [
+        h("code", {}, shortOid(row.beforeOid)),
+        h("span", { class: "arrow" }, "→"),
+        row.afterOid
+          ? h("code", {}, shortOid(row.afterOid))
+          : h("span", { class: "after-none" }, "—（未记录 / 已删除）"),
+      ]),
+  },
+  {
+    title: "备注",
+    key: "detail",
+    minWidth: 140,
+    render: (row: any) => formatDetail(row.detail),
+  },
+  {
+    title: "状态",
+    key: "undoneAt",
+    width: 90,
+    render: (row: any) =>
+      row.undoneAt
+        ? h(NTag, { type: "info", size: "small" }, { default: () => "已撤销" })
+        : "—",
+  },
+];
 
 onMounted(async () => {
   if (workspaceStore.workspaces.length === 0) {

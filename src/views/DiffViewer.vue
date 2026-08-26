@@ -2,143 +2,144 @@
   <div class="diff-viewer">
     <!-- Header -->
     <div class="diff-header">
-      <el-button @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
+      <n-button @click="goBack">
+        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
         返回
-      </el-button>
+      </n-button>
       <div class="repo-info">
         <span class="repo-path">{{ repoPath }}</span>
-        <el-tag v-if="files.length > 0" size="small">
+        <n-tag v-if="files.length > 0" size="small">
           {{ files.length }} 个文件变更
-        </el-tag>
+        </n-tag>
       </div>
-      <el-radio-group v-model="source" size="small">
-        <el-radio-button value="unstaged">未暂存</el-radio-button>
-        <el-radio-button value="staged">已暂存</el-radio-button>
-        <el-radio-button value="compare">比较</el-radio-button>
-      </el-radio-group>
-      <el-tag v-if="source === 'commit'" size="small" type="warning">
+      <n-radio-group v-model:value="source" size="small">
+        <n-radio-button value="unstaged">未暂存</n-radio-button>
+        <n-radio-button value="staged">已暂存</n-radio-button>
+        <n-radio-button value="compare">比较</n-radio-button>
+      </n-radio-group>
+      <n-tag v-if="source === 'commit'" size="small" type="warning">
         提交 {{ commitOid.slice(0, 7) }}
-      </el-tag>
+      </n-tag>
       <div class="diff-options">
-        <el-checkbox v-model="diffOptions.ignoreWhitespace">
+        <n-checkbox v-model:checked="diffOptions.ignoreWhitespace">
           Ignore Whitespace
-        </el-checkbox>
-        <el-checkbox v-model="diffOptions.ignoreWhitespaceEol">
+        </n-checkbox>
+        <n-checkbox v-model:checked="diffOptions.ignoreWhitespaceEol">
           Ignore EOL
-        </el-checkbox>
-        <el-checkbox v-model="diffOptions.ignoreCase">
+        </n-checkbox>
+        <n-checkbox v-model:checked="diffOptions.ignoreCase">
           Ignore Case
-        </el-checkbox>
+        </n-checkbox>
       </div>
-      <el-radio-group v-model="diffMode" size="small">
-        <el-radio-button value="unified">Unified</el-radio-button>
-        <el-radio-button value="side-by-side">Side by Side</el-radio-button>
-      </el-radio-group>
-      <el-button
+      <n-radio-group v-model:value="diffMode" size="small">
+        <n-radio-button value="unified">Unified</n-radio-button>
+        <n-radio-button value="side-by-side">Side by Side</n-radio-button>
+      </n-radio-group>
+      <n-button
         v-if="source === 'staged' && files.length > 0"
         type="success"
         size="small"
         @click="stagedCommitDialog.show = true"
       >
         提交暂存区
-      </el-button>
-      <el-button
+      </n-button>
+      <n-button
         v-if="files.length > 0"
         type="primary"
         size="small"
         :loading="reviewLoading"
         @click="handleAiReview"
       >
-        <el-icon><MagicStick /></el-icon>
+        <template #icon><n-icon><SparklesOutline /></n-icon></template>
         AI Review
-      </el-button>
+      </n-button>
     </div>
 
     <!-- Commit staged area dialog (T-11 + T-12) -->
-    <el-dialog v-model="stagedCommitDialog.show" title="提交暂存区" width="480px">
-      <el-input
-        v-model="stagedCommitDialog.message"
+    <n-modal v-model:show="stagedCommitDialog.show" preset="card" title="提交暂存区" style="width: 480px">
+      <n-input
+        v-model:value="stagedCommitDialog.message"
         type="textarea"
         :rows="3"
         placeholder="请输入 commit message（Amend 可留空 = --no-edit）"
       />
       <div class="staged-commit-options">
-        <el-checkbox v-model="stagedCommitDialog.amend" size="small">
+        <n-checkbox v-model:checked="stagedCommitDialog.amend" size="small">
           Amend 上次提交
-        </el-checkbox>
-        <el-checkbox v-model="stagedCommitDialog.thenPush" size="small">
+        </n-checkbox>
+        <n-checkbox v-model:checked="stagedCommitDialog.thenPush" size="small">
           提交后 Push
-        </el-checkbox>
+        </n-checkbox>
       </div>
       <template #footer>
-        <el-button @click="stagedCommitDialog.show = false">取消</el-button>
-        <el-button
+        <n-button @click="stagedCommitDialog.show = false">取消</n-button>
+        <n-button
           type="primary"
           :loading="stagedCommitDialog.loading"
           @click="handleStagedCommit"
         >
           提交
-        </el-button>
+        </n-button>
       </template>
-    </el-dialog>
+    </n-modal>
 
     <!-- Pre-commit safety findings dialog (T-11 §5) -->
-    <el-dialog v-model="stagedScanDialog.show" title="提交安全检查" width="560px">
-      <el-alert
+    <n-modal v-model:show="stagedScanDialog.show" preset="card" title="提交安全检查" style="width: 560px">
+      <n-alert
         type="warning"
         :closable="false"
-        show-icon
+        :show-icon="true"
         title="发现以下风险项，确认无误后可放行提交："
       />
       <ul class="scan-finding-list">
         <li v-for="(f, i) in stagedScanDialog.findings" :key="i">
-          <el-tag
+          <n-tag
             size="small"
-            :type="f.kind === 'forbidden' ? 'danger' : 'warning'"
+            :type="f.kind === 'forbidden' ? 'error' : 'warning'"
           >
             {{ f.kind }}
-          </el-tag>
+          </n-tag>
           <span class="scan-path">{{ f.path }}</span>
           <span class="scan-detail">{{ f.detail }}</span>
         </li>
       </ul>
       <template #footer>
-        <el-button @click="stagedScanDialog.show = false">取消</el-button>
-        <el-button type="danger" @click="handleStagedCommitOverride">
+        <n-button @click="stagedScanDialog.show = false">取消</n-button>
+        <n-button type="error" @click="handleStagedCommitOverride">
           仍要提交
-        </el-button>
+        </n-button>
       </template>
-    </el-dialog>
+    </n-modal>
 
     <!-- Compare bar (T-12 revision diff) -->
     <div v-if="source === 'compare'" class="compare-bar">
-      <el-input
-        v-model="compareBase"
+      <n-input
+        v-model:value="compareBase"
         size="small"
         placeholder="base（分支 / 标签 / 提交）"
         style="width: 240px"
         @keyup.enter="loadDiff"
       />
       <span class="compare-sep">↔</span>
-      <el-input
-        v-model="compareOther"
+      <n-input
+        v-model:value="compareOther"
         size="small"
         placeholder="other（分支 / 标签 / 提交）"
         style="width: 240px"
         @keyup.enter="loadDiff"
       />
-      <el-button size="small" type="primary" @click="loadDiff">
+      <n-button size="small" type="primary" @click="loadDiff">
         对比
-      </el-button>
+      </n-button>
     </div>
 
     <!-- AI Review result dialog -->
-    <el-dialog
-      v-model="showReview"
+    <n-modal
+      v-model:show="showReview"
+      preset="card"
       title="AI Code Review"
-      width="600px"
-      :close-on-click-modal="false"
+      style="width: 600px"
+      :mask-closable="false"
     >
       <div v-if="reviewResult" class="review-result">
         <div class="review-summary">
@@ -150,84 +151,103 @@
             :key="i"
             class="review-issue"
           >
-            <el-tag
-              :type="issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'info'"
+            <n-tag
+              :type="issue.severity === 'high' ? 'error' : issue.severity === 'medium' ? 'warning' : 'info'"
               size="small"
             >
               {{ issue.severity }}
-            </el-tag>
-            <el-tag size="small" effect="plain">
+            </n-tag>
+            <n-tag size="small" :bordered="false">
               {{ issue.category }}
-            </el-tag>
+            </n-tag>
             <span class="issue-file">{{ issue.file }}</span>
             <div class="issue-desc">{{ issue.description }}</div>
           </div>
         </div>
-        <el-empty v-else description="No issues found" :image-size="60" />
+        <n-empty v-else description="No issues found" />
       </div>
-    </el-dialog>
+    </n-modal>
 
-    <!-- Body -->
-    <div class="diff-body" v-loading="loading">
-      <template v-if="files.length > 0">
-        <!-- File list -->
-        <div class="file-list">
-          <div
-            v-for="file in files"
-            :key="file.newPath"
-            :class="['file-item', { active: selectedFile?.newPath === file.newPath }]"
-            @click="selectedFile = file"
-          >
-            <span :class="['file-status-icon', file.status]">
-              {{ statusIcon(file.status) }}
-            </span>
-            <span class="file-name">{{ file.newPath }}</span>
-          </div>
-        </div>
-
-        <!-- Diff content -->
-        <div class="diff-content">
-          <div v-if="selectedFile" class="file-diff">
-            <div class="file-diff-header">
-              <span class="file-diff-path">{{ selectedFile.newPath }}</span>
-              <el-button
-                v-if="source === 'unstaged' && selectedFile.status === 'untracked'"
-                size="small"
-                :loading="stageLoading"
-                @click="stageWholeFile"
-              >
-                暂存整个文件
-              </el-button>
-              <el-tag
-                v-if="ignoreOptionsActive && (source === 'unstaged' || source === 'staged')"
-                size="small"
-                type="info"
-              >
-                Ignore 选项开启时暂存操作不可用
-              </el-tag>
-            </div>
-            <div class="file-diff-body">
-              <UnifiedDiff
-                v-if="diffMode === 'unified'"
-                :file="selectedFile"
-                :mode="interactiveMode"
-                @op="handleStageOp"
-              />
-              <SideBySideDiff v-else :file="selectedFile" />
-            </div>
-          </div>
-          <el-empty v-else description="选择文件查看 Diff" />
+    <!-- API Key input dialog (replaces ElMessageBox.prompt) -->
+    <n-modal v-model:show="showApiKeyDialog" preset="card" title="AI Code Review" style="width: 400px">
+      <n-input
+        v-model:value="apiKeyValue"
+        type="password"
+        placeholder="OpenAI API Key"
+        show-password-on="click"
+      />
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <n-button @click="showApiKeyDialog = false">取消</n-button>
+          <n-button type="primary" @click="handleApiKeyConfirm">开始审查</n-button>
         </div>
       </template>
-      <el-empty v-else-if="!loading" :description="emptyText" />
-    </div>
+    </n-modal>
+
+    <!-- Body -->
+    <n-spin :show="loading">
+      <div class="diff-body">
+        <template v-if="files.length > 0">
+          <!-- File list -->
+          <div class="file-list">
+            <div
+              v-for="file in files"
+              :key="file.newPath"
+              :class="['file-item', { active: selectedFile?.newPath === file.newPath }]"
+              @click="selectedFile = file"
+            >
+              <span :class="['file-status-icon', file.status]">
+                {{ statusIcon(file.status) }}
+              </span>
+              <span class="file-name">{{ file.newPath }}</span>
+            </div>
+          </div>
+
+          <!-- Diff content -->
+          <div class="diff-content">
+            <div v-if="selectedFile" class="file-diff">
+              <div class="file-diff-header">
+                <span class="file-diff-path">{{ selectedFile.newPath }}</span>
+                <n-button
+                  v-if="source === 'unstaged' && selectedFile.status === 'untracked'"
+                  size="small"
+                  :loading="stageLoading"
+                  @click="stageWholeFile"
+                >
+                  暂存整个文件
+                </n-button>
+                <n-tag
+                  v-if="ignoreOptionsActive && (source === 'unstaged' || source === 'staged')"
+                  size="small"
+                  type="info"
+                >
+                  Ignore 选项开启时暂存操作不可用
+                </n-tag>
+              </div>
+              <div class="file-diff-body">
+                <UnifiedDiff
+                  v-if="diffMode === 'unified'"
+                  :file="selectedFile"
+                  :mode="interactiveMode"
+                  @op="handleStageOp"
+                />
+                <SideBySideDiff v-else :file="selectedFile" />
+              </div>
+            </div>
+            <n-empty v-else description="选择文件查看 Diff" />
+          </div>
+        </template>
+        <n-empty v-else-if="!loading" :description="emptyText" />
+      </div>
+    </n-spin>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft, MagicStick } from "@element-plus/icons-vue";
+import { ArrowBackOutline, SparklesOutline } from "@vicons/ionicons5";
+import { useMessage } from "naive-ui";
 import {
   getStagedDiff,
   getUnstagedDiff,
@@ -254,6 +274,7 @@ import { startFrameMeter, type FrameStats } from "@/utils/frameTime";
 
 const route = useRoute();
 const router = useRouter();
+const message = useMessage();
 
 const repoPath = ref("");
 const files = ref<FileDiff[]>([]);
@@ -285,12 +306,14 @@ const diffOptions = ref<DiffOptions>({
 const reviewLoading = ref(false);
 const showReview = ref(false);
 const reviewResult = ref<ReviewResult | null>(null);
+const showApiKeyDialog = ref(false);
+const apiKeyValue = ref("");
 
 onMounted(async () => {
   stopFrameMeter = startFrameMeter("diff-viewer");
   const repo = route.query.repo as string;
   if (!repo) {
-    ElMessage.warning("未指定仓库路径");
+    message.warning("未指定仓库路径");
     router.push({ name: "changes" });
     return;
   }
@@ -346,7 +369,7 @@ async function loadDiff() {
       next.find((f) => f.newPath === currentPath) ?? next[0] ?? null;
   } catch (e) {
     if (seq !== loadSeq) return;
-    ElMessage.error("获取 Diff 失败: " + errMsg(e));
+    message.error("获取 Diff 失败: " + errMsg(e));
   } finally {
     if (seq === loadSeq) loading.value = false;
   }
@@ -422,7 +445,7 @@ async function handleStageOp(op: StageOp) {
           op.lineIndices ?? [],
         );
       }
-      ElMessage.success("已暂存");
+      message.success("已暂存");
     } else if (source.value === "staged") {
       if (op.kind === "hunk") {
         await unstageHunk(repoPath.value, filePath, op.hunkIndex);
@@ -434,11 +457,11 @@ async function handleStageOp(op: StageOp) {
           op.lineIndices ?? [],
         );
       }
-      ElMessage.success("已取消暂存");
+      message.success("已取消暂存");
     }
     await loadDiff();
   } catch (e) {
-    ElMessage.error("暂存操作失败: " + errMsg(e));
+    message.error("暂存操作失败: " + errMsg(e));
   } finally {
     stageLoading.value = false;
   }
@@ -455,10 +478,10 @@ async function stageWholeFile() {
     await batchAdd([
       { repoPath: repoPath.value, repoName: name, files: [file.newPath] },
     ]);
-    ElMessage.success("已暂存整个文件");
+    message.success("已暂存整个文件");
     await loadDiff();
   } catch (e) {
-    ElMessage.error("暂存失败: " + errMsg(e));
+    message.error("暂存失败: " + errMsg(e));
   } finally {
     stageLoading.value = false;
   }
@@ -467,9 +490,9 @@ async function stageWholeFile() {
 /** Commit the staged area (index as-is), preserving hunk/line staging. */
 async function handleStagedCommit() {
   const d = stagedCommitDialog.value;
-  const message = d.message.trim();
-  if (!message && !d.amend) {
-    ElMessage.warning("请输入提交信息（Amend 可留空 = --no-edit）");
+  const commitMessage = d.message.trim();
+  if (!commitMessage && !d.amend) {
+    message.warning("请输入提交信息（Amend 可留空 = --no-edit）");
     return;
   }
   d.loading = true;
@@ -481,7 +504,7 @@ async function handleStagedCommit() {
     }
     await submitStagedCommit(false);
   } catch (e) {
-    ElMessage.error("安全检查失败: " + errMsg(e));
+    message.error("安全检查失败: " + errMsg(e));
   } finally {
     d.loading = false;
   }
@@ -494,7 +517,7 @@ async function handleStagedCommitOverride() {
 
 async function submitStagedCommit(allowUnsafe: boolean) {
   const d = stagedCommitDialog.value;
-  const message = d.message.trim();
+  const commitMessage = d.message.trim();
   d.loading = true;
   try {
     const segments = repoPath.value.split(/[/\\]/);
@@ -503,21 +526,21 @@ async function submitStagedCommit(allowUnsafe: boolean) {
       {
         repoPath: repoPath.value,
         repoName: name,
-        message,
+        message: commitMessage,
         files: [],
         amend: d.amend,
-        noEdit: d.amend && !message,
+        noEdit: d.amend && !commitMessage,
         indexOnly: true,
         thenPush: d.thenPush,
         allowUnsafe,
       },
     ]);
-    ElMessage.success("已提交 commit 任务");
+    message.success("已提交 commit 任务");
     d.show = false;
     d.message = "";
     await loadDiff();
   } catch (e) {
-    ElMessage.error("提交失败: " + errMsg(e));
+    message.error("提交失败: " + errMsg(e));
   } finally {
     d.loading = false;
   }
@@ -527,28 +550,21 @@ function goBack() {
   router.push({ name: "changes" });
 }
 
-async function handleAiReview() {
+function handleAiReview() {
+  apiKeyValue.value = "";
+  showApiKeyDialog.value = true;
+}
+
+async function handleApiKeyConfirm() {
+  const key = apiKeyValue.value.trim();
+  if (!key) return;
+  showApiKeyDialog.value = false;
+  reviewLoading.value = true;
   try {
-    const { value: apiKey } = await ElMessageBox.prompt(
-      "请输入您的 AI API Key",
-      "AI Code Review",
-      {
-        confirmButtonText: "开始审查",
-        cancelButtonText: "取消",
-        inputType: "password",
-        inputPlaceholder: "OpenAI API Key",
-      },
-    );
-
-    if (!apiKey) return;
-
-    reviewLoading.value = true;
-    reviewResult.value = await aiReview(repoPath.value, apiKey);
+    reviewResult.value = await aiReview(repoPath.value, key);
     showReview.value = true;
   } catch (e) {
-    if (e !== "cancel") {
-      ElMessage.error("AI Review 失败: " + errMsg(e));
-    }
+    message.error("AI Review 失败: " + errMsg(e));
   } finally {
     reviewLoading.value = false;
   }
