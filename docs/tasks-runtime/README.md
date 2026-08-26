@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**12** · 进行中：**0** · 未开始：**14**
-- 完成度：**12 / 26（46%）**
+- 已完成：**14** · 进行中：**0** · 未开始：**12**
+- 完成度：**14 / 26（54%）**
 
 ## MVP 口径（源文档 §91 / §92）
 
@@ -59,8 +59,8 @@
 | R-10 | Runtime Launcher 与 Process Manager | P0 | ✅ | R-09, R-04, R-06 | [R-10-launcher-process-manager.md](./R-10-launcher-process-manager.md) |
 | R-11 | Runtime 日志引擎 | P0 | ✅ | R-10 | [R-11-log-engine.md](./R-11-log-engine.md) |
 | R-12 | Runtime IPC / Event API 与 Task Engine 集成 | P0 | ✅ | R-09, R-10, R-11, T-05 | [R-12-ipc-task-integration.md](./R-12-ipc-task-integration.md) |
-| R-13 | Runtime UI（Dashboard / 依赖映射 / Scope / 配置 / 日志） | P0 | ⬜ | R-12, R-02, R-03 | [R-13-runtime-ui.md](./R-13-runtime-ui.md) |
-| R-14 | Runtime 安全与错误处理 | P0 | ⬜ | R-10, R-11, T-08 | [R-14-security-errors.md](./R-14-security-errors.md) |
+| R-13 | Runtime UI（Dashboard / 依赖映射 / Scope / 配置 / 日志） | P0 | ✅ | R-12, R-02, R-03 | [R-13-runtime-ui.md](./R-13-runtime-ui.md) |
+| R-14 | Runtime 安全与错误处理 | P0 | ✅ | R-10, R-11, T-08 | [R-14-security-errors.md](./R-14-security-errors.md) |
 
 ### Phase 2 · 多服务与效率（P1，7 个）
 

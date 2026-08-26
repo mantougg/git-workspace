@@ -41,3 +41,74 @@ This project is indexed by GitNexus as **git-workspace** (5365 symbols, 12028 re
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+<!-- platform:start -->
+# 平台兼容性开发规范（Windows / macOS / Linux）
+
+> 本项目的目标平台包含 Windows、macOS、Linux。下面每条都是真实踩坑后的硬规则
+> （R-14 修复了 5 处 Windows 平台 bug，模式全部沉淀于此）。**新增/修改任何涉及
+> 路径、进程、可执行文件检测的代码前，先对照本节。**
+
+## 1. 文件路径
+
+- **禁止字符串相等比较路径**。Windows 上 `PathBuf::join` 会保留 push 部分的分隔符：
+  `Path::new(r"C:\a").join("b/c")` 的结果是 `C:\a\b/c`（**混合分隔符**）。而 R-02 的
+  SQLite 索引（`path_key`）统一把路径存为**正斜杠**。因此「DB 路径 vs 用户配置/发现路径」
+  的匹配必须两侧归一化：`p.replace('\\', "/")` 后再比较或做 `ends_with`。
+  - 参照实现：`src-tauri/src/runtime/build/pipeline.rs::find_root_project`、
+    `src-tauri/src/runtime/service.rs::find_project`、
+    `src-tauri/src/runtime/launch/manager.rs::infer_main_class`、
+    `exec_resolve` 的 `known_paths` 增量 diff。
+  - 新增路径匹配点时，直接复用/仿写归一化，不要手写裸 `==`。
+- **拼接用 `Path::join`，不要字符串拼接**；向用户/日志展示路径用 `display()`，
+  展示与比较分离（显示可用原始形式，比较必须归一化）。
+- Windows 的 `to_string_lossy()` 结果可能是 `\\?\` 前缀（verbatim 路径），
+  需要展示/比较前经 `strip_windows_verbatim_prefix`（见 `index.rs::path_key`）。
+- 大小写：Windows 与 macOS（默认）文件系统大小写不敏感。路径**相等比较**建议
+  归一化分隔符即可；如做集合/去重语义，可考虑小写化（当前实现以分隔符归一化为主，
+  改动需在任务文档说明边界）。
+
+## 2. 可执行文件检测（PATH / PATHEXT）
+
+- **Windows 可执行扩展名：`.exe` / `.cmd` / `.bat`**（PATHEXT 语义）。mise、sdkman
+  等工具链会把 Unix shell 脚本（无扩展名）与 `mvn.cmd` 放在同一目录——**必须先命中
+  扩展名候选**，否则会选中不可执行的 sh 脚本（CreateProcess 报 os error 193）。
+  - 参照实现：`src-tauri/src/java/detect.rs::find_in_path`（目录内按
+    `.exe` → `.cmd` → `.bat` → 裸名 顺序）。
+  - 检测 mvn / java / 任意 CLI 一律走 `find_in_path`，不要直接 `Command::new(裸名)`
+    后靠错误码兜底。
+- **执行 `.cmd` / `.bat` 必须经 `cmd /C`**（`needs_cmd_c`，见
+  `maven/detect_exec.rs`）；Unix 用 `sh -c`。脚本执行器按平台分支
+  （参照 `runtime/build/pipeline.rs::user_script_command`）。
+- PATH 分隔符：Windows `;`，Unix `:`（`find_in_path` 已处理，新增遍历 PATH 的代码
+  不得硬编码）。
+
+## 3. 进程与系统命令
+
+- **端口占用检测**：Windows `netstat -ano` + `tasklist`；Unix `lsof` + `/proc/<pid>/comm`
+  （`process/port.rs`）。解析函数保持纯函数（输入输出样例可单测），系统调用只留
+  `detect_port_occupier` 一个入口。
+- **进程树终止 / 优雅停止**：统一走 `process/kill_tree.rs`（sysinfo 跨平台）；
+  Windows 无 SIGTERM 语义，优雅停止用 `terminate_process`，超时升级整树终止。
+- **子进程 spawn**：Windows 必须设 `CREATE_NO_WINDOW`（`process/streaming.rs` 已有）；
+  禁止依赖 shell 特定行为（`ls`、`pgrep` 等）编写业务逻辑。
+- 长命令预览/追溯时，路径分隔符保持平台原生展示即可，不要为「统一」重写路径。
+
+## 4. 环境与工具链
+
+- **构建与运行必须同源 JDK**：真实集成测试（Spring Boot 3.x 需要 JDK 17+）应把
+  当前 `JAVA_HOME` 注册进 R-04 注册表并绑定到配置，否则会出现「构建用 17、启动用
+  系统默认 8」的版本错配（参照 `manager.rs::boot_fixture`）。
+- 环境相关测试（mvn / JDK / 网络下载）**探测不到就 skip 并打印原因**，不要硬失败；
+  但产品逻辑（如 MavenNotFound）必须返回可行动错误。
+
+## 5. 测试断言
+
+- 断言含路径的命令预览/输出时，先 `replace('\\', "/")` 归一化再断言（参照
+  `manager.rs` 的 `bound_jdk_is_used_for_launch_command`）。
+- 涉及 temp 目录的断言不要依赖具体盘符/前缀；测试 fixture 目录用
+  `std::env::temp_dir()` 而非硬编码 `/tmp` 或 `C:\`。
+- 平台差异用 `#[cfg(windows)]` / `#[cfg(not(windows))]` 分支，注释说明另一平台行为；
+  不要用运行时字符串探测代替编译期分支（除非确有必要）。
+
+<!-- platform:end -->
