@@ -71,6 +71,14 @@
         <el-button
           type="primary"
           plain
+          @click="router.push({ name: 'runtime-dashboard' })"
+        >
+          <el-icon><Monitor /></el-icon>
+          Runtime
+        </el-button>
+        <el-button
+          type="primary"
+          plain
           :disabled="!selectedWorkspaceId"
           @click="goChanges()"
         >
@@ -215,6 +223,7 @@ import {
   Connection,
   Clock,
   Cpu,
+  Monitor,
 } from "@element-plus/icons-vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";

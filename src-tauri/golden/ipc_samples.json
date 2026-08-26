@@ -161,6 +161,29 @@
       "vue"
     ]
   },
+  "ClosurePreview": {
+    "cacheHit": true,
+    "closure": {
+      "graphFingerprint": "graph-hash",
+      "mode": "auto",
+      "projects": [
+        {
+          "coordinates": {
+            "artifactId": "app",
+            "groupId": "com.example",
+            "version": "1.0.0"
+          },
+          "packaging": "jar",
+          "path": "/ws/repo/pom.xml",
+          "pomHash": "pom-hash",
+          "projectId": 10,
+          "repositoryId": 2
+        }
+      ],
+      "rootProjectId": 10,
+      "workspaceId": 1
+    }
+  },
   "CommitIdentity": {
     "email": "alice@example.com",
     "name": "alice",
@@ -241,6 +264,8 @@
       "jdk": "21",
       "mainClass": "com.example.Application",
       "name": "boot",
+      "postBuildScript": null,
+      "preBuildScript": null,
       "profile": "dev",
       "programArguments": [
         "--server.port=8080"
@@ -250,6 +275,9 @@
         "RUNTIME_FLAG": "on"
       },
       "schemaVersion": 1,
+      "scope": {
+        "mode": "auto"
+      },
       "vmOptions": [
         "-Xmx1g"
       ]
@@ -644,6 +672,10 @@
     "level": "warn",
     "lineNumber": 7,
     "text": "slow query"
+  },
+  "LogExportOutcome": {
+    "lines": 42,
+    "path": "/ws/.gitworkspace/logs/app/export.txt"
   },
   "LogFileInfo": {
     "name": "app.log",
@@ -1284,6 +1316,8 @@
     "jdk": "21",
     "mainClass": "com.example.Application",
     "name": "boot",
+    "postBuildScript": null,
+    "preBuildScript": null,
     "profile": "dev",
     "programArguments": [
       "--server.port=8080"
@@ -1293,6 +1327,9 @@
       "RUNTIME_FLAG": "on"
     },
     "schemaVersion": 1,
+    "scope": {
+      "mode": "auto"
+    },
     "vmOptions": [
       "-Xmx1g"
     ]
@@ -1443,6 +1480,15 @@
   "SchedulerConfig": {
     "maxConcurrentBuilds": 2,
     "maxConcurrentResolves": 4
+  },
+  "ScriptApproval": {
+    "approvedAt": "2026-08-26T00:00:00Z",
+    "lastExecutedAt": "2026-08-26T00:01:00Z",
+    "preview": "#!/bin/sh",
+    "runtimeName": "boot",
+    "scriptHash": "abc123",
+    "scriptType": "pre",
+    "workspaceId": 2
   },
   "SearchResult": {
     "filePath": "a.rs",
@@ -1722,6 +1768,8 @@
       "jdk": "21",
       "mainClass": "com.example.Application",
       "name": "boot",
+      "postBuildScript": null,
+      "preBuildScript": null,
       "profile": "dev",
       "programArguments": [
         "--server.port=8080"
@@ -1731,6 +1779,9 @@
         "RUNTIME_FLAG": "on"
       },
       "schemaVersion": 1,
+      "scope": {
+        "mode": "auto"
+      },
       "vmOptions": [
         "-Xmx1g"
       ]

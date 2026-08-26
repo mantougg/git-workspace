@@ -876,6 +876,9 @@ pub fn run_build_benchmark(
             &scheduler,
             &runner,
             &request,
+            &crate::runtime::script_approval::ScriptApprovalStore::new(
+                tmp.join("approvals.json"),
+            ),
             &mut sink,
             None,
         )

@@ -3,8 +3,10 @@
 pub mod build;
 pub mod config;
 pub mod events;
+pub mod guard;
 pub mod launch;
 pub mod logs;
+pub mod script_approval;
 pub mod service;
 pub mod spring_boot;
 
@@ -21,13 +23,15 @@ pub use launch::{
 };
 
 pub use service::{
-    DependencyGraphView, ProjectInspection, RuntimeLogQuery, RuntimeOperationRequest,
+    ClosurePreview, DependencyGraphView, ProjectInspection, RuntimeLogQuery, RuntimeOperationRequest,
     RuntimeService, SchedulerConfig,
 };
 
 pub use logs::{
     LogEntry, LogExportOutcome, LogFilter, LogLevel, LogLine, LogPhase, RuntimeLogEngine,
 };
+
+pub use script_approval::{script_approvals_path, ScriptApproval, ScriptApprovalStore};
 
 pub use spring_boot::{
     detect_spring_boot_workspace, SpringBootCandidate, SpringBootDetectionCache, SpringBootProject,

@@ -231,6 +231,8 @@ pub struct BuildContext<'a> {
     pub closure_cache: &'a crate::maven::RuntimeClosureCache,
     pub scheduler: &'a scheduler::BuildScheduler,
     pub runner: &'a dyn runner::MavenRunner,
+    /// R-14 §75：Pre/Post Build Script 确认状态。
+    pub script_approvals: &'a crate::runtime::script_approval::ScriptApprovalStore,
 }
 
 /// Build Engine 抽象（§29）。Maven 先行实现；mvnd（R-18）/ Gradle（R-22）

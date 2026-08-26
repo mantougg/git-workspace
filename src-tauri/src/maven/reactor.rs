@@ -274,15 +274,12 @@ fn generate_synthetic_reactor(
         .join(".gitworkspace")
         .join("runtime")
         .join(runtime_name);
+    // R-14 §78 只读护栏：运行时生成物只落 workspace/.gitworkspace（含
+    // 符号链接解析后的逃逸检查，替换原 starts_with 弱校验）。
+    crate::runtime::guard::assert_workspace_write_path(&reactor_dir, &workspace_root, "Synthetic Reactor 生成")?;
     fs::create_dir_all(&reactor_dir)?;
     let reactor_dir = fs::canonicalize(&reactor_dir)?;
-    if !reactor_dir.starts_with(&workspace_root) {
-        return Err(AppError::Permission(format!(
-            "Synthetic Reactor path {} escapes workspace {}",
-            reactor_dir.display(),
-            workspace_root.display()
-        )));
-    }
+    crate::runtime::guard::assert_workspace_write_path(&reactor_dir, &workspace_root, "Synthetic Reactor 生成（canonical）")?;
 
     let mut module_paths = Vec::with_capacity(closure.projects.len());
     let mut module_entries = Vec::with_capacity(closure.projects.len());

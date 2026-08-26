@@ -9,7 +9,9 @@
 //!   `spawn_streaming_ext` 额外在 spawn 后发布 pid（R-10 进程托管）。
 
 pub mod kill_tree;
+pub mod port;
 pub mod streaming;
 
 pub use kill_tree::{kill_process_tree, process_alive, process_start_time, terminate_process};
+pub use port::{detect_port_occupier, PortOccupier};
 pub use streaming::{spawn_streaming, spawn_streaming_ext, OutputStream, StreamingExit};

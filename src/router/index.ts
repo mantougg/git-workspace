@@ -83,6 +83,32 @@ const router = createRouter({
       name: "maven-settings",
       component: () => import("@/views/MavenSettingsView.vue"),
     },
+    // ── R-13 Runtime Workspace ──────────────────────────────────────
+    {
+      path: "/runtime",
+      name: "runtime-dashboard",
+      component: () => import("@/views/RuntimeDashboard.vue"),
+    },
+    {
+      path: "/runtime/app-wizard",
+      name: "runtime-app-wizard",
+      component: () => import("@/views/RuntimeAppWizard.vue"),
+    },
+    {
+      path: "/runtime/dependencies",
+      name: "runtime-dependencies",
+      component: () => import("@/views/RuntimeDependenciesView.vue"),
+    },
+    {
+      path: "/runtime/scope",
+      name: "runtime-scope",
+      component: () => import("@/views/RuntimeScopeView.vue"),
+    },
+    {
+      path: "/runtime/logs",
+      name: "runtime-logs",
+      component: () => import("@/views/RuntimeLogsView.vue"),
+    },
   ],
 });
 

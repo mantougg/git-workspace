@@ -20,7 +20,7 @@
 //! - §64 的 `file_changed` 只定类型与快照，发射由 R-17 File Watch 接入。
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -34,7 +34,7 @@ use crate::db::dao;
 use crate::error::{AppError, AppResult};
 use crate::maven::{
     self, DependencyEdge, DependencyGraphCache, MavenModuleLink, MavenProjectNode, PomCache,
-    RuntimeClosureCache, SourceMapping,
+    RuntimeClosure, RuntimeClosureCache, RuntimeScope, SourceMapping,
 };
 use crate::models::task::{RuntimeOp, RuntimeTaskOptions, TaskRequest, TaskType};
 use crate::runtime::build::pipeline::execute_build;
@@ -56,7 +56,8 @@ use crate::runtime::launch::manager::{
     RuntimeProcessDeps, RuntimeProcessManager, DEFAULT_SAMPLE_INTERVAL,
 };
 use crate::runtime::launch::{RuntimeProcessInfo, StartOptions};
-use crate::runtime::logs::{LogEntry, LogFilter, RuntimeLogEngine};
+use crate::runtime::logs::{LogEntry, LogExportOutcome, LogFilter, RuntimeLogEngine};
+use crate::runtime::script_approval::{self, ScriptApproval, ScriptApprovalStore};
 use crate::task::runtime::RuntimeTaskHandler;
 
 /// `project_discovered` 单次同步的爆发上限：增量同步按项目逐个发射；
@@ -200,6 +201,31 @@ pub struct DependencyGraphView {
 /// 依赖边默认返回上限（约 500 模块工作区的全量边数倍余量）。
 const DEFAULT_MAX_GRAPH_EDGES: usize = 5000;
 
+/// `runtime_get_closure`（R-13）的返回：给定 Scope 下的 Runtime Closure
+/// 预览（R-03 §14/§15），`cache_hit` 标记是否命中 graph fingerprint 缓存。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClosurePreview {
+    pub closure: RuntimeClosure,
+    pub cache_hit: bool,
+}
+
+/// 按 path / artifactId / groupId:artifactId 匹配项目（与 R-09
+/// `find_root_project` 同口径；R-13 供 closure_preview 复用）。
+///
+/// 路径匹配对 Windows 分隔符不敏感（R-14 修复：R-02 索引路径统一为正斜杠，
+/// 配置/查询参数可能是反斜杠）。
+fn find_project<'a>(projects: &'a [MavenProjectNode], project: &str) -> Option<&'a MavenProjectNode> {
+    let needle = project.replace('\\', "/");
+    projects.iter().find(|p| {
+        let path = p.path.to_string_lossy().replace('\\', "/");
+        path == needle
+            || path.ends_with(&needle)
+            || p.coordinates.artifact_id == project
+            || format!("{}:{}", p.coordinates.group_id, p.coordinates.artifact_id) == project
+    })
+}
+
 // ---------------------------------------------------------------------------
 // RuntimeService
 // ---------------------------------------------------------------------------
@@ -238,6 +264,7 @@ pub struct RuntimeService {
     maven_runner: Arc<dyn MavenRunner>,
     pom_cache: Arc<PomCache>,
     scheduler_config_path: PathBuf,
+    script_approvals: ScriptApprovalStore,
 }
 
 impl RuntimeService {
@@ -251,6 +278,7 @@ impl RuntimeService {
             pom_cache,
             config,
             path,
+            script_approval::script_approvals_path(),
             RuntimeServiceOverrides::default(),
         )
     }
@@ -262,6 +290,7 @@ impl RuntimeService {
         pom_cache: Arc<PomCache>,
         scheduler_config: SchedulerConfig,
         scheduler_config_path: PathBuf,
+        script_approvals_path: PathBuf,
         overrides: RuntimeServiceOverrides,
     ) -> Arc<Self> {
         let build_scheduler = Arc::new(BuildScheduler::new(scheduler_config.max_concurrent_builds));
@@ -282,6 +311,7 @@ impl RuntimeService {
                 events: bridge,
                 logs: Arc::clone(&overrides.logs),
                 sample_interval: overrides.sample_interval,
+                script_approvals: ScriptApprovalStore::new(script_approvals_path.clone()),
             },
         ));
 
@@ -297,6 +327,7 @@ impl RuntimeService {
             maven_runner: overrides.maven_runner,
             pom_cache,
             scheduler_config_path,
+            script_approvals: ScriptApprovalStore::new(script_approvals_path),
         })
     }
 
@@ -333,25 +364,12 @@ impl RuntimeService {
     ) -> AppResult<ProjectInspection> {
         let conn = self.db.lock().unwrap();
         let graph = maven::query_dependency_graph(&conn, workspace_id)?;
-        let node = graph
-            .projects
-            .iter()
-            .find(|p| {
-                let path = p.path.to_string_lossy();
-                path == project
-                    || path.ends_with(project)
-                    || p.coordinates.artifact_id == project
-                    || format!(
-                        "{}:{}",
-                        p.coordinates.group_id, p.coordinates.artifact_id
-                    ) == project
-            })
-            .ok_or_else(|| {
-                AppError::ProjectNotFound(format!(
-                    "项目 '{project}' 不在 workspace #{workspace_id} 的 Maven 索引中；\
-                     请先执行依赖解析（runtime.resolve_dependencies）"
-                ))
-            })?;
+        let node = find_project(&graph.projects, project).ok_or_else(|| {
+            AppError::ProjectNotFound(format!(
+                "项目 '{project}' 不在 workspace #{workspace_id} 的 Maven 索引中；\
+                 请先执行依赖解析（runtime.resolve_dependencies）"
+            ))
+        })?;
         let project_id = node.project_id;
         Ok(ProjectInspection {
             project: node.clone(),
@@ -416,6 +434,31 @@ impl RuntimeService {
         })
     }
 
+    /// `runtime_get_closure`（R-13）：按给定 Scope 计算闭包预览，供
+    /// Runtime Scope 视图使用（R-03 fingerprint 缓存热路径）。
+    pub fn closure_preview(
+        &self,
+        workspace_id: i64,
+        project: &str,
+        scope: &RuntimeScope,
+    ) -> AppResult<ClosurePreview> {
+        let conn = self.db.lock().unwrap();
+        let graph = self.graph_cache.get_or_load(&conn, workspace_id)?.graph;
+        let node = find_project(&graph.projects, project).ok_or_else(|| {
+            AppError::ProjectNotFound(format!(
+                "项目 '{project}' 不在 workspace #{workspace_id} 的 Maven 索引中；\
+                 请先执行依赖解析（runtime.resolve_dependencies）"
+            ))
+        })?;
+        let lookup = self
+            .closure_cache
+            .get_or_compute(&graph, node.project_id, scope)?;
+        Ok(ClosurePreview {
+            closure: lookup.closure,
+            cache_hit: lookup.cache_hit,
+        })
+    }
+
     /// `runtime_list_processes`。
     pub fn list_processes(&self, workspace_id: i64) -> AppResult<Vec<RuntimeProcessInfo>> {
         self.processes.list_processes(workspace_id)
@@ -444,6 +487,23 @@ impl RuntimeService {
             .clear(&root, &query.runtime_name, query.process_id)
     }
 
+    /// R-13 `runtime_export_logs`：导出到用户选择的目标文件（R-11 §36，
+    /// 与 `search` 同一过滤管道，导出内容与显示一致）。
+    pub fn export_logs(
+        &self,
+        query: &RuntimeLogQuery,
+        dest: &str,
+    ) -> AppResult<LogExportOutcome> {
+        let root = self.workspace_root(query.workspace_id)?;
+        self.logs.export(
+            &root,
+            &query.runtime_name,
+            query.process_id,
+            &query.filter,
+            Path::new(dest),
+        )
+    }
+
     /// 当前生效的调度并发上限（§66 可配置的读侧）。
     pub fn scheduler_config(&self) -> SchedulerConfig {
         SchedulerConfig {
@@ -461,6 +521,67 @@ impl RuntimeService {
         config.save(&self.scheduler_config_path)?;
         log::info!("R-12: scheduler config updated: {:?}", config);
         Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // R-14 §75 Command Safety：Pre/Post Build Script 确认状态
+    // ------------------------------------------------------------------
+
+    /// `runtime_get_script_approvals`：全部脚本确认记录（UI 管理列表）。
+    pub fn script_approval_list(&self) -> Vec<ScriptApproval> {
+        self.script_approvals.list()
+    }
+
+    /// `runtime_approve_script`：确认一条脚本。后端从配置读脚本内容、
+    /// 计算内容哈希并生成预览——哈希必然与流水线校验的一致。
+    /// 返回确认记录（`is_new` 语义由调用方按需忽略）。
+    pub fn approve_script(
+        &self,
+        workspace_id: i64,
+        runtime_name: &str,
+        script_type: &str,
+    ) -> AppResult<ScriptApproval> {
+        if script_type != "pre" && script_type != "post" {
+            return Err(AppError::RuntimeConfig(format!(
+                "script_type 必须是 pre / post，收到 '{script_type}'"
+            )));
+        }
+        let config = {
+            let conn = self.db.lock().unwrap();
+            config::get_config(&conn, workspace_id, runtime_name)?
+        };
+        let script = match script_type {
+            "pre" => config.pre_build_script.as_deref(),
+            _ => config.post_build_script.as_deref(),
+        }
+        .ok_or_else(|| {
+            AppError::RuntimeConfig(format!(
+                "Runtime '{runtime_name}' 没有配置 {script_type}_build_script"
+            ))
+        })?;
+        let hash = script_approval::script_hash(script);
+        let preview = script_approval::script_preview(script);
+        self.script_approvals
+            .approve(workspace_id, runtime_name, script_type, &hash, &preview)?;
+        Ok(ScriptApproval {
+            workspace_id,
+            runtime_name: runtime_name.to_string(),
+            script_type: script_type.to_string(),
+            script_hash: hash,
+            preview,
+            approved_at: chrono::Utc::now().to_rfc3339(),
+            last_executed_at: None,
+        })
+    }
+
+    /// `runtime_reset_script_approvals`：按范围撤销确认（「不再询问」可重置）。
+    /// 返回删除条数。
+    pub fn reset_script_approvals(
+        &self,
+        workspace_id: Option<i64>,
+        runtime_name: Option<&str>,
+    ) -> AppResult<usize> {
+        self.script_approvals.reset(workspace_id, runtime_name)
     }
 
     // ------------------------------------------------------------------
@@ -688,6 +809,7 @@ impl RuntimeService {
             &self.build_scheduler,
             &*self.maven_runner,
             &request,
+            &self.script_approvals,
             &mut sink,
             Some(cancel),
         )
@@ -820,10 +942,14 @@ impl RuntimeService {
         };
 
         // project_discovered：增量发现的项目逐个发（有上限，见常量注释）。
+        // 路径比较对 Windows 分隔符不敏感（DB 索引为正斜杠，discovery 为
+        // 原生路径，R-14 修复）。
         let new_projects: Vec<_> = discovery
             .projects
             .iter()
-            .filter(|p| !known_paths.contains(&p.path.to_string_lossy().to_string()))
+            .filter(|p| {
+                !known_paths.contains(&p.path.to_string_lossy().replace('\\', "/"))
+            })
             .collect();
         if !known_paths.is_empty() && new_projects.len() <= MAX_PROJECT_DISCOVERED_EVENTS {
             for project in new_projects {
@@ -1110,6 +1236,7 @@ mod tests {
             Arc::new(PomCache::new()),
             SchedulerConfig::default(),
             fixture.root.join("scheduler.json"),
+            fixture.root.join("approvals.json"),
             RuntimeServiceOverrides {
                 maven_runner,
                 launch_runner,
@@ -1482,6 +1609,83 @@ mod tests {
         assert_eq!(loaded.max_concurrent_resolves, 8);
     }
 
+    /// R-13 `closure_preview`：给定 Scope 返回闭包预览，Manual 剔除模块后
+    /// 收缩；缓存命中标记正确。
+    #[test]
+    fn closure_preview_computes_scope_and_reports_cache_hit() {
+        let fixture = maven_fixture("closure");
+        let emitter = Arc::new(VecEmitter::default());
+        let service = test_service(
+            &fixture,
+            emitter,
+            Arc::new(FakeMavenRunner::successful()),
+            Arc::new(FakeLaunchRunner::staying_alive()),
+        );
+        let project = fixture
+            .root
+            .join("repo/app/pom.xml")
+            .to_string_lossy()
+            .to_string();
+        let lib_project = fixture.root.join("repo/lib/pom.xml").to_string_lossy().to_string();
+
+        // Auto：闭包 = app + lib（lib 是 app 的源码依赖，parent 不进闭包）。
+        let auto = service
+            .closure_preview(fixture.workspace_id, &project, &RuntimeScope::Auto)
+            .unwrap();
+        let auto_ids: Vec<i64> = auto.closure.projects.iter().map(|p| p.project_id).collect();
+        assert!(
+            auto_ids.contains(&auto.closure.root_project_id),
+            "root must be inside the auto closure"
+        );
+        assert!(
+            auto.closure.projects.len() >= 2,
+            "app + lib expected in closure, got {:?}",
+            auto_ids
+        );
+
+        // 二次计算（同 fingerprint + 同 scope）应命中缓存。
+        let cached = service
+            .closure_preview(fixture.workspace_id, &project, &RuntimeScope::Auto)
+            .unwrap();
+        assert!(cached.cache_hit, "second auto preview must hit the closure cache");
+
+        // Manual 空集：闭包收缩为仅 root（root 不可被排除，R-03 语义）。
+        let empty = service
+            .closure_preview(
+                fixture.workspace_id,
+                &project,
+                &RuntimeScope::Manual { project_ids: vec![] },
+            )
+            .unwrap();
+        assert_eq!(empty.closure.projects.len(), 1);
+        assert_eq!(empty.closure.projects[0].project_id, auto.closure.root_project_id);
+
+        // Hybrid：include=[root]，排除 lib → 闭包仅 app。
+        let lib_id = service
+            .closure_preview(fixture.workspace_id, &lib_project, &RuntimeScope::Auto)
+            .unwrap()
+            .closure
+            .root_project_id;
+        let hybrid = service
+            .closure_preview(
+                fixture.workspace_id,
+                &project,
+                &RuntimeScope::Hybrid {
+                    include_project_ids: vec![auto.closure.root_project_id],
+                    exclude_project_ids: vec![lib_id],
+                },
+            )
+            .unwrap();
+        assert_eq!(hybrid.closure.projects.len(), 1);
+        assert_eq!(hybrid.closure.projects[0].project_id, auto.closure.root_project_id);
+
+        // 未知项目 → ProjectNotFound 可行动错误。
+        let err = service
+            .closure_preview(fixture.workspace_id, "no/such/project", &RuntimeScope::Auto)
+            .unwrap_err();
+        assert_eq!(err.code(), "ProjectNotFound");
+    }
+
     /// environment 任务组装：start 覆盖全部配置；stop 只覆盖有活跃进程的。
     #[test]
     fn environment_requests_cover_configs() {
@@ -1787,6 +1991,7 @@ mod tests {
             Arc::new(PomCache::new()),
             SchedulerConfig::default(),
             fixture.root.join("scheduler.json"),
+            fixture.root.join("approvals.json"),
             RuntimeServiceOverrides::default(),
         );
 

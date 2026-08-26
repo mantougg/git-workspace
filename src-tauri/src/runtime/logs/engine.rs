@@ -716,6 +716,8 @@ fn logs_dir(workspace_root: &Path, runtime_name: &str) -> AppResult<PathBuf> {
 fn ensure_logs_dir(workspace_root: &Path, runtime_name: &str) -> AppResult<PathBuf> {
     validate_runtime_name(runtime_name)?;
     let gitworkspace = workspace_root.join(".gitworkspace");
+    // R-14 §78 只读护栏：日志目录必须在 workspace/.gitworkspace 下。
+    crate::runtime::guard::assert_workspace_write_path(&gitworkspace, workspace_root, "日志落盘")?;
     reject_symlink(&gitworkspace)?;
     let logs = gitworkspace.join(LOGS_DIR);
     reject_symlink(&logs)?;

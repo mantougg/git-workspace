@@ -32,7 +32,8 @@ use crate::maven::{
 use crate::models::{commit, group, repository, task, workspace};
 use crate::runtime::{
     config as runtime_config, events as runtime_events, launch as runtime_launch,
-    logs as runtime_logs, service as runtime_service, spring_boot as spring_boot_model,
+    logs as runtime_logs, script_approval as runtime_script_approval, service as runtime_service,
+    spring_boot as spring_boot_model,
 };
 
 /// Representative sample of every IPC type, keyed by Rust type name.
@@ -232,6 +233,9 @@ fn samples() -> Map<String, Value> {
         environment: BTreeMap::from([("SERVER_PORT".into(), "8080".into())]),
         runtime_environment: BTreeMap::from([("RUNTIME_FLAG".into(), "on".into())]),
         build_engine: Some("maven".into()),
+        scope: maven_closure::RuntimeScope::Auto,
+        pre_build_script: None,
+        post_build_script: None,
     };
     m.insert(
         "RuntimeApplicationConfig".into(),
@@ -361,6 +365,52 @@ fn samples() -> Map<String, Value> {
             pom_path: PathBuf::from("/ws/.gitworkspace/runtime/app/pom.xml"),
             module_paths: vec![PathBuf::from("/ws/repo")],
             arguments: vec!["-f".into(), "/ws/.gitworkspace/runtime/app/pom.xml".into(),],
+        }),
+    );
+    // R-13 Runtime Scope 预览（runtime_get_closure）
+    m.insert(
+        "ClosurePreview".into(),
+        json!(runtime_service::ClosurePreview {
+            closure: maven_closure::RuntimeClosure {
+                workspace_id: 1,
+                root_project_id: 10,
+                graph_fingerprint: "graph-hash".into(),
+                mode: maven_closure::RuntimeScopeMode::Auto,
+                projects: vec![maven_index::MavenProjectNode {
+                    project_id: 10,
+                    repository_id: Some(2),
+                    path: PathBuf::from("/ws/repo/pom.xml"),
+                    coordinates: maven_model::PomCoordinates {
+                        group_id: "com.example".into(),
+                        artifact_id: "app".into(),
+                        version: "1.0.0".into(),
+                    },
+                    packaging: "jar".into(),
+                    pom_hash: "pom-hash".into(),
+                }],
+            },
+            cache_hit: true,
+        }),
+    );
+    // R-13 日志导出（runtime_export_logs）
+    m.insert(
+        "LogExportOutcome".into(),
+        json!(runtime_logs::LogExportOutcome {
+            path: "/ws/.gitworkspace/logs/app/export.txt".into(),
+            lines: 42,
+        }),
+    );
+    // R-14 §75 Command Safety：脚本确认记录（runtime_script_approvals IPC）
+    m.insert(
+        "ScriptApproval".into(),
+        json!(runtime_script_approval::ScriptApproval {
+            workspace_id: 2,
+            runtime_name: "boot".into(),
+            script_type: "pre".into(),
+            script_hash: "abc123".into(),
+            preview: "#!/bin/sh".into(),
+            approved_at: "2026-08-26T00:00:00Z".into(),
+            last_executed_at: Some("2026-08-26T00:01:00Z".into()),
         }),
     );
 
@@ -2020,6 +2070,7 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ),
     ("LogLine", "types/runtime.ts", "LogLine"),
     ("LogEntry", "types/runtime.ts", "LogEntry"),
+    ("LogExportOutcome", "types/runtime.ts", "LogExportOutcome"),
     ("LogFilter", "types/runtime.ts", "LogFilter"),
     (
         "ProjectDiscoveredPayload",
@@ -2099,6 +2150,10 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "DependencyGraphView",
     ),
     ("SchedulerConfig", "types/runtime.ts", "SchedulerConfig"),
+    // R-13 Runtime Scope 预览
+    ("ClosurePreview", "types/runtime.ts", "ClosurePreview"),
+    // R-14 §75 Command Safety 脚本确认
+    ("ScriptApproval", "types/runtime.ts", "ScriptApproval"),
     // R-03 Runtime Closure and Reactor
     ("RuntimeScope", "types/maven.ts", "RuntimeScope"),
     ("RuntimeClosure", "types/maven.ts", "RuntimeClosure"),

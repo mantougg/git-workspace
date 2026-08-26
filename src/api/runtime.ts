@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  ClosurePreview,
   CreateRuntimeConfigRequest,
   DependencyGraphView,
   LogEntry,
+  LogExportOutcome,
   ProjectInspection,
   RuntimeApplicationConfig,
   RuntimeConfigSummary,
@@ -10,9 +12,10 @@ import type {
   RuntimeOperationRequest,
   RuntimeProcessInfo,
   SchedulerConfig,
+  ScriptApproval,
   UpdateRuntimeConfigRequest,
 } from "@/types/runtime";
-import type { MavenProjectNode } from "@/types/maven";
+import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
 
 /** §64 Runtime 事件名（Tauri event）。 */
 export const RUNTIME_EVENTS = {
@@ -132,6 +135,19 @@ export function runtimeGetDependencyGraph(
   });
 }
 
+/** R-13：按给定 Scope 计算闭包预览（R-03 fingerprint 缓存热路径）。 */
+export function runtimeGetClosure(
+  workspaceId: number,
+  project: string,
+  scope: RuntimeScope,
+): Promise<ClosurePreview> {
+  return invoke<ClosurePreview>("runtime_get_closure", {
+    workspaceId,
+    project,
+    scope,
+  });
+}
+
 export function runtimeBuild(req: RuntimeOperationRequest): Promise<string> {
   return invoke<string>("runtime_build", { req });
 }
@@ -171,6 +187,17 @@ export function runtimeClearLogs(query: RuntimeLogQuery): Promise<void> {
   return invoke<void>("runtime_clear_logs", { query });
 }
 
+/** R-13：按过滤条件全量导出日志到目标文件（R-11 §36 同管道）。 */
+export function runtimeExportLogs(
+  query: RuntimeLogQuery,
+  destPath: string,
+): Promise<LogExportOutcome> {
+  return invoke<LogExportOutcome>("runtime_export_logs", {
+    query,
+    destPath,
+  });
+}
+
 export function runtimeStartEnvironment(workspaceId: number): Promise<string[]> {
   return invoke<string[]>("runtime_start_environment", { workspaceId });
 }
@@ -185,4 +212,36 @@ export function runtimeGetSchedulerConfig(): Promise<SchedulerConfig> {
 
 export function runtimeSetSchedulerConfig(config: SchedulerConfig): Promise<void> {
   return invoke<void>("runtime_set_scheduler_config", { config });
+}
+
+// ---------------------------------------------------------------------------
+// R-14 §75 Command Safety：Pre/Post Build Script 确认状态
+// ---------------------------------------------------------------------------
+
+export function runtimeGetScriptApprovals(): Promise<ScriptApproval[]> {
+  return invoke<ScriptApproval[]>("runtime_get_script_approvals");
+}
+
+/** 确认一条脚本（后端从配置读内容计算哈希，与流水线校验口径一致）。 */
+export function runtimeApproveScript(
+  workspaceId: number,
+  runtimeName: string,
+  scriptType: string,
+): Promise<ScriptApproval> {
+  return invoke<ScriptApproval>("runtime_approve_script", {
+    workspaceId,
+    runtimeName,
+    scriptType,
+  });
+}
+
+/** 按范围撤销确认（workspace / runtime 可空 = 匹配任意；返回删除条数）。 */
+export function runtimeResetScriptApprovals(
+  workspaceId?: number | null,
+  runtimeName?: string | null,
+): Promise<number> {
+  return invoke<number>("runtime_reset_script_approvals", {
+    workspaceId: workspaceId ?? null,
+    runtimeName: runtimeName ?? null,
+  });
 }

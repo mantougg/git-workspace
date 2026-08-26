@@ -4,6 +4,8 @@ import type {
   DependencyEdge,
   MavenModuleLink,
   MavenProjectNode,
+  RuntimeClosure,
+  RuntimeScope,
   SourceMapping,
 } from "./maven";
 import type { RuntimeTaskOptions } from "./task";
@@ -20,6 +22,12 @@ export interface RuntimeApplicationConfig {
   environment: Record<string, string>;
   runtimeEnvironment: Record<string, string>;
   buildEngine: string | null;
+  /** Runtime Scope（R-03 §15）；缺省 Auto，R-13 Scope 视图可调。 */
+  scope: RuntimeScope;
+  /** R-14 §75：构建前执行的用户脚本（首次执行必须确认）。 */
+  preBuildScript: string | null;
+  /** R-14 §75：构建成功后执行的用户脚本（同上确认规则）。 */
+  postBuildScript: string | null;
 }
 
 export interface RuntimeConfigSummary {
@@ -121,6 +129,14 @@ export interface LogEntry {
   lineNumber: number;
   level: LogLevel | null;
   text: string;
+}
+
+/** `runtime_export_logs` 返回（R-13，R-11 §36）。 */
+export interface LogExportOutcome {
+  /** 实际写入的文件路径。 */
+  path: string;
+  /** 实际导出的行数（与同条件 search 一致）。 */
+  lines: number;
 }
 
 /** 日志查询过滤器。 */
@@ -274,8 +290,30 @@ export interface DependencyGraphView {
   truncated: boolean;
 }
 
+/** `runtime_get_closure` 返回（R-13）：给定 Scope 下的闭包预览。 */
+export interface ClosurePreview {
+  closure: RuntimeClosure;
+  /** 是否命中 graph fingerprint 闭包缓存。 */
+  cacheHit: boolean;
+}
+
 /** §66 调度并发上限（`runtime-scheduler.json` 持久化）。 */
 export interface SchedulerConfig {
   maxConcurrentBuilds: number;
   maxConcurrentResolves: number;
+}
+
+/** R-14 §75：Pre/Post Build Script 确认记录（`script-approvals.json`）。 */
+export interface ScriptApproval {
+  workspaceId: number;
+  runtimeName: string;
+  /** "pre" | "post"。 */
+  scriptType: string;
+  /** 脚本内容哈希：内容变更后需重新确认。 */
+  scriptHash: string;
+  /** 脚本首行预览。 */
+  preview: string;
+  approvedAt: string;
+  /** 最近一次实际执行时间（确认后执行且记录）。 */
+  lastExecutedAt: string | null;
 }

@@ -313,6 +313,7 @@ pub fn run() {
             commands::runtime::runtime_inspect_project,
             commands::runtime::runtime_resolve_dependencies,
             commands::runtime::runtime_get_dependency_graph,
+            commands::runtime::runtime_get_closure,
             commands::runtime::runtime_build,
             commands::runtime::runtime_start,
             commands::runtime::runtime_stop,
@@ -321,10 +322,15 @@ pub fn run() {
             commands::runtime::runtime_process_status,
             commands::runtime::runtime_get_logs,
             commands::runtime::runtime_clear_logs,
+            commands::runtime::runtime_export_logs,
             commands::runtime::runtime_start_environment,
             commands::runtime::runtime_stop_environment,
             commands::runtime::runtime_get_scheduler_config,
             commands::runtime::runtime_set_scheduler_config,
+            // R-14 §75 Command Safety：脚本确认状态
+            commands::runtime::runtime_get_script_approvals,
+            commands::runtime::runtime_approve_script,
+            commands::runtime::runtime_reset_script_approvals,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

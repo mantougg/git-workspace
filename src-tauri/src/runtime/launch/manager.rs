@@ -53,6 +53,7 @@ use crate::runtime::launch::{
     LifecycleStatus, LoggingEventSink, RuntimeEvent, RuntimeEventSink, RuntimeProcessInfo,
 };
 use crate::runtime::logs::redact::sensitive_env_values;
+use crate::runtime::script_approval::ScriptApprovalStore;
 use crate::runtime::logs::{LogPhase, LogSession, RuntimeLogEngine};
 
 /// spawn 后判定 `Running` 的默认宽限（启动横幅命中可提前翻转）。
@@ -168,6 +169,8 @@ pub struct RuntimeProcessDeps {
     /// R-11 日志引擎：构建/运行输出统一接管（会话在 Start 时开启）。
     pub logs: Arc<RuntimeLogEngine>,
     pub sample_interval: Duration,
+    /// R-14 §75：Pre/Post Build Script 确认状态（传给 R-09 流水线）。
+    pub script_approvals: ScriptApprovalStore,
 }
 
 impl Default for RuntimeProcessDeps {
@@ -181,6 +184,9 @@ impl Default for RuntimeProcessDeps {
             events: Arc::new(LoggingEventSink),
             logs: Arc::new(RuntimeLogEngine::new()),
             sample_interval: DEFAULT_SAMPLE_INTERVAL,
+            script_approvals: ScriptApprovalStore::new(
+                crate::runtime::script_approval::script_approvals_path(),
+            ),
         }
     }
 }
@@ -400,6 +406,10 @@ impl RuntimeProcessManager {
             (config, root)
         };
 
+        // R-14 §79：启动前端口预检——显式端口被占用直接返回 PortOccupied
+        // （带占用方 PID / 进程名，§80 可行动提示），避免启动后崩溃。
+        super::port_preflight::preflight(&config)?;
+
         let mut build_options = options.build_options.clone();
         if config.main_class.is_none() {
             // R-06 回退：检测候选并取默认推断；找不到时不硬失败——
@@ -437,6 +447,7 @@ impl RuntimeProcessManager {
     }
 
     /// R-06 自动推断默认 mainClass：按 Runtime 配置的 project 匹配检测结果。
+    /// 路径比较对 Windows 分隔符不敏感（配置可能是 `\`、`/` 或混合，R-14 修复）。
     fn infer_main_class(
         &self,
         workspace_root: &std::path::Path,
@@ -448,8 +459,10 @@ impl RuntimeProcessManager {
             &discovery.effective,
             None,
         );
+        let needle = project.replace('\\', "/");
         let found = result.projects.iter().find(|candidate| {
-            candidate.project_path.to_string_lossy() == project || candidate.module == project
+            let path = candidate.project_path.to_string_lossy().replace('\\', "/");
+            path == needle || candidate.module == project
         });
         Ok(found.and_then(|candidate| candidate.default_main_class.clone()))
     }
@@ -513,6 +526,7 @@ impl RuntimeProcessManager {
                 &self.deps.scheduler,
                 &*self.deps.maven_runner,
                 &request,
+                &self.deps.script_approvals,
                 &mut sink,
                 Some(&handle.build_cancel),
             )?
@@ -2107,8 +2121,8 @@ mod tests {
         assert_eq!(info.status, LifecycleStatus::Running);
         let preview = info.command_preview.unwrap();
         assert!(
-            preview.starts_with("/jdk-21/bin/java "),
-            "绑定 JDK 的 java 可执行路径应出现在启动命令开头: {preview}"
+            preview.replace('\\', "/").starts_with("/jdk-21/bin/java"),
+            "绑定 JDK 的 java 可执行路径应出现在启动命令开头（Windows 分隔符不敏感）: {preview}"
         );
 
         manager.stop(info.process_id, None).unwrap();
@@ -2445,6 +2459,21 @@ mod tests {
             assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
             crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
                 .unwrap();
+            // 真实集成测试前提：JDK 17+（Spring Boot 3.2.5 class 61）。把
+            // 当前 JAVA_HOME 注册为 JDK 并绑定到配置——启动 JVM 与构建
+            // 同源，避免「构建 17、运行 8」的版本错配（R-14 修复）。
+            let bound_jdk = std::env::var("JAVA_HOME")
+                .ok()
+                .filter(|home| !home.is_empty())
+                .map(|home| {
+                    let mut jdk = crate::java::model::JdkInstallation::new(
+                        home.clone(),
+                        crate::java::model::JdkDiscoverySource::System,
+                    );
+                    jdk.is_valid = true;
+                    crate::java::registry::upsert_jdk(&conn, &jdk).unwrap();
+                    home
+                });
             create_config(
                 &conn,
                 &CreateRuntimeConfigRequest {
@@ -2453,6 +2482,7 @@ mod tests {
                         name: "app".into(),
                         project: root.join("repo/app/pom.xml").to_string_lossy().to_string(),
                         main_class: Some("com.r10.app.Application".into()),
+                        jdk: bound_jdk.clone(),
                         program_arguments: program_arguments
                             .iter()
                             .map(|arg| arg.to_string())

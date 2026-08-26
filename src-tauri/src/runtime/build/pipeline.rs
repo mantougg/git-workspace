@@ -15,11 +15,11 @@ use std::time::{Duration, Instant};
 use rusqlite::Connection;
 
 use crate::error::{AppError, AppResult};
-use crate::maven::closure::{RuntimeClosureCache, RuntimeScope};
+use crate::maven::closure::RuntimeClosureCache;
 use crate::maven::executor;
 use crate::maven::index::{DependencyGraph, DependencyGraphCache, MavenProjectNode};
 use crate::maven::reactor::prepare_runtime_reactor;
-use crate::process::streaming::{OutputStream, StreamingExit};
+use crate::process::streaming::{spawn_streaming, OutputStream, StreamingExit};
 use crate::runtime::build::classpath;
 use crate::runtime::build::runner::MavenRunner;
 use crate::runtime::build::scheduler::BuildScheduler;
@@ -30,6 +30,7 @@ use crate::runtime::build::{
 };
 use crate::runtime::config;
 use crate::runtime::logs::redact::{sensitive_env_values, LogRedactor};
+use crate::runtime::script_approval::ScriptApprovalStore;
 
 /// Maven Build Engine：[`engine_for("maven")`][engine_for] 返回的实现。
 pub struct MavenBuildEngine;
@@ -54,6 +55,7 @@ impl BuildEngine for MavenBuildEngine {
             cx.scheduler,
             cx.runner,
             request,
+            cx.script_approvals,
             sink,
             cancel,
         )
@@ -77,6 +79,7 @@ pub fn execute_build(
     scheduler: &BuildScheduler,
     runner: &dyn MavenRunner,
     request: &BuildRequest,
+    script_approvals: &ScriptApprovalStore,
     sink: &mut dyn BuildOutputSink,
     cancel: Option<&AtomicBool>,
 ) -> AppResult<BuildOutcome> {
@@ -120,8 +123,9 @@ pub fn execute_build(
     let resolved = runner.resolve_maven(&strategy::module_directory(root), &local_repository)?;
 
     // ---- 5. Runtime Closure + Reactor ----
+    // Scope 来自 Runtime 配置（R-03 §15，缺省 Auto；R-13 起 UI 可调）。
     let closure = closure_cache
-        .get_or_compute(&graph, root.project_id, &RuntimeScope::Auto)?
+        .get_or_compute(&graph, root.project_id, &config.scope)?
         .closure;
     let reactor = prepare_runtime_reactor(&graph, &closure, workspace_root, &request.runtime_name)?;
 
@@ -138,6 +142,19 @@ pub fn execute_build(
 
     // 脱敏转发 sink + 内部 RingTail（BuildFailed 上下文）。
     let mut redacting = RedactingSink::new(sensitive_env_values(&env), sink);
+
+    // ---- 6.5 R-14 §75 Command Safety：Pre-Build Script（确认后执行）----
+    if let Some(script) = config.pre_build_script.as_deref() {
+        run_user_script(
+            script,
+            "pre",
+            workspace_root,
+            script_approvals,
+            request,
+            &mut redacting,
+            cancel,
+        )?;
+    }
 
     // ---- 7. Maven Build（限流闸内）----
     let build_request = strategy::build_maven_request(
@@ -187,6 +204,19 @@ pub fn execute_build(
     }
     let build_duration_ms = start.elapsed().as_millis();
 
+    // ---- 8.5 R-14 §75 Command Safety：Post-Build Script（确认后执行）----
+    if let Some(script) = config.post_build_script.as_deref() {
+        run_user_script(
+            script,
+            "post",
+            workspace_root,
+            script_approvals,
+            request,
+            &mut redacting,
+            cancel,
+        )?;
+    }
+
     // ---- 9. LaunchPlan + 结果 ----
     let launch = strategy::launch_plan(
         strategy,
@@ -226,15 +256,93 @@ pub fn execute_build(
     })
 }
 
+/// R-14 §75 Command Safety：执行用户 Pre/Post Build Script。
+///
+/// 规则：**默认禁止自动执行 shell script**——未确认（含脚本内容变更后）
+/// 直接返回 [`AppError::ScriptConfirmationRequired`]，UI 弹出确认对话框；
+/// 确认后执行并把输出（脱敏后）经 sink 转发，行首带 `[pre-build]` /
+/// `[post-build]` 前缀；5 分钟超时 + 可取消；执行后记录 `last_executed_at`
+/// （「确认后执行且记录」）。脚本失败 → [`AppError::ScriptFailed`]。
+fn run_user_script(
+    script: &str,
+    script_type: &str,
+    workspace_root: &Path,
+    approvals: &ScriptApprovalStore,
+    request: &BuildRequest,
+    sink: &mut RedactingSink<'_>,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<()> {
+    const SCRIPT_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
+    let hash = crate::runtime::script_approval::script_hash(script);
+    if !approvals.is_approved(
+        request.workspace_id,
+        &request.runtime_name,
+        script_type,
+        &hash,
+    ) {
+        return Err(AppError::ScriptConfirmationRequired {
+            workspace_id: request.workspace_id,
+            runtime_name: request.runtime_name.clone(),
+            script_type: script_type.to_string(),
+            script_hash: hash,
+            preview: crate::runtime::script_approval::script_preview(script),
+        });
+    }
+
+    let mut command = user_script_command(script);
+    command.current_dir(workspace_root);
+    let prefix = format!("[{script_type}-build] ");
+    let exit = spawn_streaming(&mut command, cancel, Some(SCRIPT_TIMEOUT), &mut |stream, line| {
+        sink.on_line(stream, &format!("{prefix}{line}"));
+    })?;
+    approvals.record_execution(
+        request.workspace_id,
+        &request.runtime_name,
+        script_type,
+        &hash,
+    )?;
+    if exit.exit_code != Some(0) {
+        return Err(AppError::ScriptFailed {
+            script_type: script_type.to_string(),
+            runtime: request.runtime_name.clone(),
+            exit_code: exit.exit_code,
+            log_tail: sink.tail(),
+        });
+    }
+    Ok(())
+}
+
+/// 平台对应的 shell 执行器：Windows `cmd /C`，其他 `sh -c`。
+fn user_script_command(script: &str) -> std::process::Command {
+    #[cfg(windows)]
+    {
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/C", script]);
+        command
+    }
+    #[cfg(not(windows))]
+    {
+        let mut command = std::process::Command::new("sh");
+        command.args(["-c", script]);
+        command
+    }
+}
+
 /// 在依赖图中定位 Runtime 配置的根项目：path → artifactId → groupId:artifactId。
+///
+/// 路径匹配对 Windows 分隔符不敏感：R-02 索引把路径统一存为正斜杠
+/// （`path_key`），而用户配置里的 project 可能是反斜杠——相等比较前
+/// 两侧都归一化（Windows 真实 bug 修复，R-14）。
 fn find_root_project<'a>(
     graph: &'a DependencyGraph,
     project: &str,
 ) -> AppResult<&'a MavenProjectNode> {
+    let needle = project.replace('\\', "/");
     graph
         .projects
         .iter()
-        .find(|node| node.path.to_string_lossy() == project)
+        .find(|node| normalize_path(&node.path.to_string_lossy()) == needle)
         .or_else(|| {
             graph
                 .projects
@@ -253,6 +361,11 @@ fn find_root_project<'a>(
                  请重新选择 Runtime 的根项目"
             ))
         })
+}
+
+/// 路径归一化：Windows 反斜杠 → 正斜杠（与 R-02 `path_key` 一致）。
+fn normalize_path(path: &str) -> String {
+    path.replace('\\', "/")
 }
 
 /// Classpath Run 的 classpath 生成：缓存命中直接复用，否则驱动
@@ -283,6 +396,8 @@ fn resolve_classpath(
     }
 
     let dir = classpath::classpath_cache_dir(workspace_root, runtime_name);
+    // R-14 §78 只读护栏：classpath 缓存只落 workspace/.gitworkspace。
+    crate::runtime::guard::assert_workspace_write_path(&dir, workspace_root, "Classpath 缓存")?;
     let key = classpath::classpath_cache_key(root, graph_fingerprint, local_repository);
     let output_file =
         classpath::prepare_cache_write(&dir, &root.coordinates.artifact_id, &key)?;
@@ -553,6 +668,7 @@ mod tests {
             &scheduler,
             runner,
             &request,
+            &ScriptApprovalStore::new(fixture.root.join("approvals.json")),
             sink,
             cancel,
         )
@@ -879,6 +995,7 @@ mod tests {
             &scheduler,
             &runner,
             &request,
+            &ScriptApprovalStore::new(fixture.root.join("approvals.json")),
             &mut sink,
             None,
         )
@@ -913,6 +1030,7 @@ mod tests {
             &scheduler,
             &runner,
             &request,
+            &ScriptApprovalStore::new(fixture.root.join("approvals.json")),
             &mut sink,
             None,
         )
@@ -935,12 +1053,138 @@ mod tests {
             &scheduler,
             &runner,
             &request,
+            &ScriptApprovalStore::new(fixture.root.join("approvals.json")),
             &mut sink,
             None,
         )
         .unwrap_err();
         assert_eq!(error.code(), "ProjectNotFound");
         let _ = fs::remove_dir_all(fixture.root);
+    }
+
+    // ------------------------------------------------------------------
+    // R-14 §75 Command Safety：Pre/Post Script 确认流（不依赖 fixture，
+    // 平台 shell 直测：Windows `cmd /C`，其他 `sh -c`）
+    // ------------------------------------------------------------------
+
+    fn temp_approvals(tag: &str) -> (ScriptApprovalStore, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_r14_script_{tag}_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        (ScriptApprovalStore::new(dir.join("approvals.json")), dir)
+    }
+
+    fn dummy_request(workspace_id: i64, runtime_name: &str) -> BuildRequest {
+        BuildRequest {
+            workspace_id,
+            runtime_name: runtime_name.into(),
+            options: BuildOptions::default(),
+        }
+    }
+
+    fn run_script_via(
+        script: &str,
+        script_type: &str,
+        root: &Path,
+        store: &ScriptApprovalStore,
+        request: &BuildRequest,
+        sink: &mut VecSink,
+    ) -> AppResult<()> {
+        run_user_script(
+            script,
+            script_type,
+            root,
+            store,
+            request,
+            &mut RedactingSink::new(vec![], sink),
+            None,
+        )
+    }
+
+    #[test]
+    fn unapproved_script_blocks_with_confirmation_error_and_does_not_run() {
+        let (store, dir) = temp_approvals("unapproved");
+        let mut sink = VecSink(Vec::new());
+        let error = run_script_via(
+            "echo must-not-run",
+            "pre",
+            &dir,
+            &store,
+            &dummy_request(1, "app"),
+            &mut sink,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "ScriptConfirmationRequired");
+        assert!(sink.0.is_empty(), "unapproved script must not execute");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn approved_script_executes_forwarding_marked_output_and_records() {
+        let (store, dir) = temp_approvals("approved");
+        let hash = crate::runtime::script_approval::script_hash("echo pre-build-ran");
+        store
+            .approve(1, "app", "pre", &hash, "echo pre-build-ran")
+            .unwrap();
+        let mut sink = VecSink(Vec::new());
+        run_script_via(
+            "echo pre-build-ran",
+            "pre",
+            &dir,
+            &store,
+            &dummy_request(1, "app"),
+            &mut sink,
+        )
+        .expect("approved script must run");
+        assert!(
+            sink.0
+                .iter()
+                .any(|(_, line)| line.contains("[pre-build]") && line.contains("pre-build-ran")),
+            "script output must be forwarded with the [pre-build] prefix: {:?}",
+            sink.0
+        );
+        // 「确认后执行且记录」。
+        let entry = store
+            .list()
+            .into_iter()
+            .find(|a| a.script_hash == hash)
+            .expect("approval entry exists");
+        assert!(entry.last_executed_at.is_some(), "execution must be recorded");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn failing_script_maps_to_script_failed() {
+        let (store, dir) = temp_approvals("failing");
+        let hash = crate::runtime::script_approval::script_hash("exit 3");
+        store.approve(1, "app", "post", &hash, "exit 3").unwrap();
+        let mut sink = VecSink(Vec::new());
+        let error = run_script_via(
+            "exit 3",
+            "post",
+            &dir,
+            &store,
+            &dummy_request(1, "app"),
+            &mut sink,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "ScriptFailed");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn script_content_change_requires_reapproval() {
+        let (store, dir) = temp_approvals("reapprove");
+        let h1 = crate::runtime::script_approval::script_hash("echo v1");
+        store.approve(1, "app", "pre", &h1, "echo v1").unwrap();
+        assert!(store.is_approved(1, "app", "pre", &h1));
+        assert!(
+            !store.is_approved(1, "app", "pre", &crate::runtime::script_approval::script_hash("echo v2")),
+            "script content change must invalidate the approval"
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 
     // ------------------------------------------------------------------

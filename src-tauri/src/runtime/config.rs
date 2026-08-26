@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
+use crate::maven::RuntimeScope;
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 pub const MASKED_VALUE: &str = "••••••••";
@@ -48,6 +49,17 @@ pub struct RuntimeApplicationConfig {
     pub runtime_environment: BTreeMap<String, String>,
     #[serde(default = "default_build_engine")]
     pub build_engine: Option<String>,
+    /// Runtime Scope（R-03 §15）：Auto / Manual / Hybrid。缺省 Auto；
+    /// R-09 构建流水线按此限定 Runtime Closure 范围。
+    #[serde(default)]
+    pub scope: RuntimeScope,
+    /// R-14 §75 Command Safety：构建前执行的用户脚本。**默认禁止自动执行**；
+    /// 首次执行必须用户确认（确认状态持久化于 app data，内容变更后需重新确认）。
+    #[serde(default)]
+    pub pre_build_script: Option<String>,
+    /// R-14 §75 Command Safety：构建成功后执行的用户脚本（同上确认规则）。
+    #[serde(default)]
+    pub post_build_script: Option<String>,
 }
 
 fn default_schema_version() -> u32 {
@@ -72,6 +84,9 @@ impl Default for RuntimeApplicationConfig {
             environment: BTreeMap::new(),
             runtime_environment: BTreeMap::new(),
             build_engine: default_build_engine(),
+            scope: RuntimeScope::Auto,
+            pre_build_script: None,
+            post_build_script: None,
         }
     }
 }
@@ -435,6 +450,8 @@ fn default_runtime_dir(root: &Path) -> PathBuf {
 fn ensure_runtime_dir(root: &Path) -> AppResult<PathBuf> {
     let gitworkspace = root.join(".gitworkspace");
     reject_symlink(&gitworkspace)?;
+    // R-14 §78 只读护栏：配置目录必须在 workspace/.gitworkspace 下。
+    crate::runtime::guard::assert_workspace_write_path(&gitworkspace, root, "Runtime 配置目录")?;
     fs::create_dir_all(&gitworkspace)?;
     let runtimes = gitworkspace.join("runtimes");
     reject_symlink(&runtimes)?;

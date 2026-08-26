@@ -21,6 +21,7 @@
 pub mod launcher;
 pub mod lifecycle;
 pub mod manager;
+pub mod port_preflight;
 pub mod store;
 
 pub use launcher::{launch_command, LaunchRunner, SystemLaunchRunner};

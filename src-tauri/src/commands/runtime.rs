@@ -7,14 +7,14 @@ use rusqlite::Connection;
 use tauri::{command, State};
 
 use crate::error::{AppError, AppResult};
-use crate::maven::MavenProjectNode;
+use crate::maven::{MavenProjectNode, RuntimeScope};
 use crate::models::task::RuntimeOp;
 use crate::runtime::{
     create_config, delete_config, get_config, get_workspace_environment, list_configs,
-    resolve_environment, set_workspace_environment, update_config, CreateRuntimeConfigRequest,
-    DependencyGraphView, ProjectInspection, RuntimeApplicationConfig, RuntimeConfigSummary,
-    RuntimeLogQuery, RuntimeOperationRequest, RuntimeProcessInfo, SchedulerConfig,
-    UpdateRuntimeConfigRequest,
+    resolve_environment, set_workspace_environment, update_config, ClosurePreview,
+    CreateRuntimeConfigRequest, DependencyGraphView, LogExportOutcome, ProjectInspection,
+    RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeLogQuery, RuntimeOperationRequest,
+    RuntimeProcessInfo, SchedulerConfig, ScriptApproval, UpdateRuntimeConfigRequest,
 };
 use crate::runtime::logs::LogEntry;
 use crate::state::AppState;
@@ -176,6 +176,18 @@ pub fn runtime_get_dependency_graph(
         .dependency_graph(workspace_id, project_id, max_edges)
 }
 
+/// R-13：`runtime.get_closure`——按给定 Scope 计算闭包预览（R-03 §15，
+/// fingerprint 缓存热路径），供 Runtime Scope 视图展示模块勾选结果。
+#[command]
+pub fn runtime_get_closure(
+    workspace_id: i64,
+    project: String,
+    scope: RuntimeScope,
+    state: State<'_, AppState>,
+) -> AppResult<ClosurePreview> {
+    state.runtime.closure_preview(workspace_id, &project, &scope)
+}
+
 /// §63 `runtime.build`：提交 Build 任务（§66 限流 2，排队可取消）。
 #[command]
 pub fn runtime_build(
@@ -258,6 +270,17 @@ pub fn runtime_clear_logs(query: RuntimeLogQuery, state: State<'_, AppState>) ->
     state.runtime.clear_logs(&query)
 }
 
+/// R-13 `runtime.export_logs`：按当前过滤条件全量导出到 `dest_path`
+/// （R-11 §36，与 `search` 同管道；`filter.limit` 被忽略）。
+#[command]
+pub fn runtime_export_logs(
+    query: RuntimeLogQuery,
+    dest_path: String,
+    state: State<'_, AppState>,
+) -> AppResult<LogExportOutcome> {
+    state.runtime.export_logs(&query, &dest_path)
+}
+
 /// §63 `runtime.start_environment`：启动 workspace 下全部 Runtime 配置
 /// （Phase 1 口径；依赖排序 / 并行编排由 R-15 引入）。返回任务 id 列表
 /// （>1 个配置时共享 T-20 批量聚合行）。
@@ -293,4 +316,42 @@ pub fn runtime_set_scheduler_config(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     state.runtime.set_scheduler_config(&config)
+}
+
+// ---------------------------------------------------------------------------
+// R-14 §75 Command Safety：Pre/Post Build Script 确认状态
+// ---------------------------------------------------------------------------
+
+/// 列出全部脚本确认记录（UI 管理列表；「不再询问」可重置）。
+#[command]
+pub fn runtime_get_script_approvals(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<ScriptApproval>> {
+    Ok(state.runtime.script_approval_list())
+}
+
+/// 确认一条脚本（pre / post）。后端从配置读脚本内容计算哈希与预览，
+/// 与流水线校验口径一致；脚本内容变更后需重新确认。
+#[command]
+pub fn runtime_approve_script(
+    workspace_id: i64,
+    runtime_name: String,
+    script_type: String,
+    state: State<'_, AppState>,
+) -> AppResult<ScriptApproval> {
+    state
+        .runtime
+        .approve_script(workspace_id, &runtime_name, &script_type)
+}
+
+/// 按范围撤销脚本确认（workspace / runtime 可空 = 匹配任意）。
+#[command]
+pub fn runtime_reset_script_approvals(
+    workspace_id: Option<i64>,
+    runtime_name: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<usize> {
+    state
+        .runtime
+        .reset_script_approvals(workspace_id, runtime_name.as_deref())
 }

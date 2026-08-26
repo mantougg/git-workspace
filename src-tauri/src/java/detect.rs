@@ -146,15 +146,20 @@ pub(crate) fn find_in_path(name: &str) -> Option<PathBuf> {
         if dir.is_empty() {
             continue;
         }
+        if cfg!(windows) {
+            // PATHEXT 语义：目录内优先可执行扩展名。mise 等工具会把 Unix
+            // shell 脚本（无扩展名，Windows 不可执行，error 193）与
+            // `mvn.cmd` 放在同一 bin 目录——必须先命中 `.cmd`（R-14 修复）。
+            for extension in [".exe", ".cmd", ".bat"] {
+                let exe = Path::new(dir).join(format!("{name}{extension}"));
+                if exe.is_file() {
+                    return Some(exe);
+                }
+            }
+        }
         let candidate = Path::new(dir).join(name);
         if candidate.is_file() {
             return Some(candidate);
-        }
-        if cfg!(windows) {
-            let exe = Path::new(dir).join(format!("{name}.exe"));
-            if exe.is_file() {
-                return Some(exe);
-            }
         }
     }
     None
