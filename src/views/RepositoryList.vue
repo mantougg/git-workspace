@@ -826,7 +826,7 @@ const treeSelection = ref<TreeSelection>({ repoPaths: [], filesByRepo: new Map()
 const changeTreeRef = ref<InstanceType<typeof ChangeTree> | null>(null);
 const showPushDialog = ref(false);
 const pushSelection = ref<string[]>([]);
-const pushTableRef = ref();
+
 const diffWidth = ref<number | null>(null);
 const diffPaneEl = ref<HTMLElement | null>(null);
 const expandedWsStashKeys = ref<number[]>([]);

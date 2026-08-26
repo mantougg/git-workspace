@@ -184,7 +184,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { NTag } from "naive-ui";
+
 import {
   AddOutline,
   RefreshOutline,

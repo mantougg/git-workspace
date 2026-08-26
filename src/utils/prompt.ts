@@ -33,7 +33,7 @@ export function prompt(
     const inputValue = ref(options.defaultValue ?? "");
     const errorText = ref("");
 
-    const d = (dialog as ReturnType<typeof import("naive-ui").useDialog>).create({
+    (dialog as ReturnType<typeof import("naive-ui").useDialog>).create({
       title: options.title,
       content: () =>
         h("div", [

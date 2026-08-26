@@ -87,7 +87,7 @@
             style="flex: 1"
           />
           <n-button :loading="detecting" @click="onDetectMainClass">
-            <template #icon><n-icon><WandOutline /></n-icon></template>
+            <template #icon><n-icon><SparklesOutline /></n-icon></template>
             自动检测
           </n-button>
         </div>
@@ -200,7 +200,7 @@ import {
   ArrowBackOutline,
   CheckmarkOutline,
   RefreshOutline,
-  WandOutline,
+  SparklesOutline,
 } from "@vicons/ionicons5";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import { listJdks } from "@/api/jdk";

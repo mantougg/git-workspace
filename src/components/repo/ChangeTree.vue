@@ -250,7 +250,7 @@ function sortTree(nodes: ChangeNode[]) {
   }
 }
 
-function onCheck(checkedKeys: string[]) {
+function onCheck(_checkedKeys: string[]) {
   emitSelection();
 }
 

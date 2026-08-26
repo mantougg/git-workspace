@@ -610,6 +610,7 @@ const pushSkipped = computed(() =>
 const repoColumns: DataTableColumns<ChangeSetRepoSummary> = [
   {
     title: "仓库",
+    key: "repo",
     minWidth: 160,
     render(row) {
       return h("div", { class: "repo-cell" }, [
@@ -620,6 +621,7 @@ const repoColumns: DataTableColumns<ChangeSetRepoSummary> = [
   },
   {
     title: "当前分支",
+    key: "currentBranch",
     width: 130,
     render(row) {
       return h(NTag, { size: "small", bordered: false }, { default: () => row.currentBranch ?? "—" });
@@ -627,6 +629,7 @@ const repoColumns: DataTableColumns<ChangeSetRepoSummary> = [
   },
   {
     title: "目标分支",
+    key: "targetBranch",
     width: 170,
     render(row) {
       return h("span", {}, [
@@ -641,6 +644,7 @@ const repoColumns: DataTableColumns<ChangeSetRepoSummary> = [
   },
   {
     title: "前/后",
+    key: "aheadBehind",
     width: 80,
     align: "center",
     render(row) {
@@ -654,6 +658,7 @@ const repoColumns: DataTableColumns<ChangeSetRepoSummary> = [
   { title: "Files", key: "files", width: 70, align: "center" },
   {
     title: "+/-",
+    key: "changes",
     width: 110,
     align: "center",
     render(row) {
@@ -665,6 +670,7 @@ const repoColumns: DataTableColumns<ChangeSetRepoSummary> = [
   },
   {
     title: "状态",
+    key: "status",
     minWidth: 120,
     render(row) {
       if (row.error) {
@@ -677,6 +683,7 @@ const repoColumns: DataTableColumns<ChangeSetRepoSummary> = [
     },
   },
   {
+    key: "actions",
     width: 70,
     align: "center",
     render(row) {
@@ -699,6 +706,7 @@ const addColumns: DataTableColumns<RepositoryWithStatus> = [
   { type: "selection", disabled(row: RepositoryWithStatus) { return isMember(row); } },
   {
     title: "仓库",
+    key: "repo",
     minWidth: 170,
     render(row) {
       const children = [
@@ -715,6 +723,7 @@ const addColumns: DataTableColumns<RepositoryWithStatus> = [
   },
   {
     title: "当前分支",
+    key: "branch",
     width: 120,
     render(row) {
       return h(NTag, { size: "small", bordered: false }, { default: () => row.status?.branch ?? "—" });
@@ -722,6 +731,7 @@ const addColumns: DataTableColumns<RepositoryWithStatus> = [
   },
   {
     title: "目标分支（默认当前分支）",
+    key: "targetBranch",
     minWidth: 180,
     render(row) {
       return h(NInput, {
