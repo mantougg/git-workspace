@@ -7,6 +7,19 @@
           <el-icon><Back /></el-icon>
           返回
         </el-button>
+        <el-select
+          v-model="selectedWorkspaceId"
+          placeholder="选择工作区"
+          style="width: 200px"
+          @change="selectWorkspace"
+        >
+          <el-option
+            v-for="ws in workspaceStore.workspaces"
+            :key="ws.id"
+            :label="ws.name"
+            :value="ws.id"
+          />
+        </el-select>
         <span class="page-title">{{ isEdit ? `编辑应用 · ${form.name}` : "新建 Runtime 应用" }}</span>
       </div>
       <div class="toolbar-right">
@@ -36,22 +49,47 @@
       </el-form-item>
 
       <el-form-item label="Maven 项目" prop="project">
-        <el-select
-          v-model="form.project"
-          placeholder="选择 workspace 内的 Maven 项目"
-          filterable
-          style="width: 100%; max-width: 560px"
-          @change="onProjectChange"
-        >
-          <el-option
-            v-for="p in store.projects"
-            :key="p.projectId"
-            :label="projectLabel(p)"
-            :value="p.path"
-          />
-        </el-select>
-        <div class="field-hint">
-          项目索引为空时请先在 Dashboard 点击「解析依赖」。
+        <div class="project-field">
+          <el-select
+            v-model="form.project"
+            placeholder="选择 workspace 内的 Maven 项目"
+            filterable
+            :loading="store.loading"
+            style="width: 100%; max-width: 560px"
+            @change="onProjectChange"
+          >
+            <el-option
+              v-for="p in store.projects"
+              :key="p.projectId"
+              :label="projectLabel(p)"
+              :value="p.path"
+            />
+          </el-select>
+          <!-- R-14 空态引导：索引为空（未解析依赖 / 仓库无 .git 标记）时给出
+               明确动作，而不是裸 no data。 -->
+          <el-alert
+            v-if="store.workspaceId && store.projects.length === 0 && !store.loading"
+            type="info"
+            :closable="false"
+            show-icon
+            class="projects-empty-alert"
+          >
+            <template #title>
+              尚未发现 Maven 项目。点击「解析依赖」建立索引（仅识别带 .git 标记的仓库内的 pom.xml；
+              也可在 Dashboard 执行，长任务进度见任务面板）。
+            </template>
+          </el-alert>
+          <el-button
+            v-if="store.workspaceId && store.projects.length === 0"
+            size="small"
+            type="primary"
+            plain
+            :loading="resolving"
+            @click="onResolve"
+          >
+            <el-icon><Refresh /></el-icon>
+            解析依赖
+          </el-button>
         </div>
       </el-form-item>
 
@@ -199,10 +237,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Back, Check, Plus, MagicStick } from "@element-plus/icons-vue";
+import { Back, Check, Plus, MagicStick, Refresh } from "@element-plus/icons-vue";
 import type { FormInstance, FormRules } from "element-plus";
-import { useWorkspaceStore } from "@/stores/workspace";
-import { useRuntimeStore } from "@/stores/runtime";
+import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import { listJdks } from "@/api/jdk";
 import { detectSpringBoot } from "@/api/springBoot";
 import type { JdkInstallation } from "@/types/jdk";
@@ -212,12 +249,15 @@ import { errMsg } from "@/utils/error";
 
 const route = useRoute();
 const router = useRouter();
-const workspaceStore = useWorkspaceStore();
-const store = useRuntimeStore();
+// R-14 修复：向导此前未初始化 workspace（其他视图均走 useRuntimeWorkspace），
+// 直接进入向导时 workspaceId 为空 → 项目列表恒为 no data。
+const { workspaceStore, store, selectedWorkspaceId, ensureWorkspace, selectWorkspace } =
+  useRuntimeWorkspace();
 
 const isEdit = computed(() => !!route.query.edit);
 const saving = ref(false);
 const detecting = ref(false);
+const resolving = ref(false);
 const formRef = ref<FormInstance>();
 
 const form = reactive({
@@ -402,11 +442,26 @@ async function onSave() {
   }
 }
 
+async function onResolve() {
+  if (!store.workspaceId) return;
+  resolving.value = true;
+  try {
+    await store.resolveDependencies();
+    ElMessage.success("依赖解析任务已提交，完成后项目列表自动刷新");
+  } catch (e) {
+    ElMessage.error("解析失败：" + errMsg(e));
+  } finally {
+    resolving.value = false;
+  }
+}
+
 function goBack() {
   router.push({ name: "runtime-dashboard" });
 }
 
 onMounted(async () => {
+  // 先确保 workspace 就绪（含事件订阅），再加载 JDK / 编辑配置。
+  await ensureWorkspace();
   try {
     jdks.value = await listJdks();
   } catch (e) {
@@ -466,6 +521,17 @@ onMounted(async () => {
 }
 .script-field {
   width: 100%;
+}
+.project-field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.projects-empty-alert {
+  width: 100%;
+  max-width: 560px;
 }
 .main-class-row {
   display: flex;

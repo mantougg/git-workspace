@@ -45,5 +45,12 @@ export function useRuntimeWorkspace() {
     store.unsubscribe();
   });
 
-  return { workspaceStore, store, selectedWorkspaceId, ready, selectWorkspace };
+  return {
+    workspaceStore,
+    store,
+    selectedWorkspaceId,
+    ready,
+    ensureWorkspace,
+    selectWorkspace,
+  };
 }
