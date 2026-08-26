@@ -45,7 +45,7 @@
       <n-data-table
         :columns="columns"
         :data="jdks"
-        :row-key="(row: JdkInstallation) => row.id"
+        :row-key="(row: JdkInstallation) => row.id ?? ''"
         empty-text="未发现 JDK，请点击「扫描本机 JDK」或手动添加"
       />
     </n-spin>
@@ -98,6 +98,7 @@ const invalidCount = computed(() => jdks.value.filter((j) => !j.isValid).length)
 const columns = [
   {
     title: "状态",
+    key: "status",
     width: 90,
     render(row: JdkInstallation) {
       return h(NTag, { type: row.isValid ? "success" : "error", size: "small", bordered: false }, { default: () => row.isValid ? "有效" : "失效" });
@@ -105,6 +106,7 @@ const columns = [
   },
   {
     title: "Major",
+    key: "major",
     width: 80,
     align: "center" as const,
     render(row: JdkInstallation) {
@@ -116,6 +118,7 @@ const columns = [
   },
   {
     title: "厂商",
+    key: "vendor",
     width: 110,
     render(row: JdkInstallation) {
       if (row.vendor) {
@@ -126,6 +129,7 @@ const columns = [
   },
   {
     title: "完整版本",
+    key: "fullVersion",
     minWidth: 130,
     render(row: JdkInstallation) {
       if (row.fullVersion) {
@@ -136,6 +140,7 @@ const columns = [
   },
   {
     title: "来源",
+    key: "source",
     width: 100,
     render(row: JdkInstallation) {
       return h(NTag, { size: "small", type: "info", bordered: true }, { default: () => sourceLabel(row.source) });
@@ -143,6 +148,7 @@ const columns = [
   },
   {
     title: "架构 / 位宽",
+    key: "arch",
     width: 120,
     render(row: JdkInstallation) {
       if (row.architecture || row.bitness) {
@@ -153,6 +159,7 @@ const columns = [
   },
   {
     title: "JDK 根目录",
+    key: "homePath",
     minWidth: 260,
     ellipsis: { tooltip: true },
     render(row: JdkInstallation) {
@@ -161,6 +168,7 @@ const columns = [
   },
   {
     title: "最近校验",
+    key: "lastChecked",
     width: 170,
     render(row: JdkInstallation) {
       if (row.lastChecked) {
@@ -171,6 +179,7 @@ const columns = [
   },
   {
     title: "操作",
+    key: "actions",
     width: 180,
     fixed: "right" as const,
     render(row: JdkInstallation) {

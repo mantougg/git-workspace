@@ -34,9 +34,9 @@ const emit = defineEmits<{
   (e: "view-graph", repoPath: string): void;
 }>();
 
-const checkedKeys = ref<string[]>([]);
+const checkedKeys = ref<(string | number)[]>([]);
 
-function onSelectionChange(keys: string[]) {
+function onSelectionChange(keys: (string | number)[]) {
   checkedKeys.value = keys;
   const selected = props.data.filter((row) =>
     keys.includes(row.repository.path),

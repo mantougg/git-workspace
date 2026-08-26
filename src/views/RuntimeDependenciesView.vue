@@ -232,6 +232,7 @@ function reasonLabel(reason: string): string {
 const edgeColumns = [
   {
     title: "来源",
+    key: "source",
     width: 110,
     render(row: any) {
       return h(
@@ -243,6 +244,7 @@ const edgeColumns = [
   },
   {
     title: "依赖",
+    key: "dependency",
     minWidth: 220,
     render(row: any) {
       const children: any[] = [h("span", { class: "mono" }, coords(row.dependency))];
@@ -260,6 +262,7 @@ const edgeColumns = [
   },
   {
     title: "Scope",
+    key: "scope",
     width: 90,
     render(row: any) {
       return h("span", { class: "mono" }, row.dependency.scope);
@@ -267,6 +270,7 @@ const edgeColumns = [
   },
   {
     title: "解析路径 / 说明",
+    key: "resolvedPath",
     minWidth: 260,
     ellipsis: { tooltip: true },
     render(row: any) {

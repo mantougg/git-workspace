@@ -101,7 +101,7 @@ const treeData = computed<TreeNode[]>(() => {
   ];
 });
 
-const naiveTreeData = computed(() => treeData.value);
+const naiveTreeData = computed(() => treeData.value as unknown as TreeOption[]);
 
 function renderLabel({ option }: { option: TreeOption }) {
   const node = option as unknown as TreeNode;

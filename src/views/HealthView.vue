@@ -269,7 +269,7 @@ const columns = computed(() => [
     title: "评分",
     key: "score",
     width: 90,
-    align: "right",
+    align: "right" as const,
     sorter: (a: RepoHealth, b: RepoHealth) => a.score - b.score,
     render(row: RepoHealth) {
       return h("span", { class: scoreClass(row.score) }, row.score);

@@ -511,7 +511,7 @@
         :max-height="380"
         :row-key="(row: WorkspaceStashSummary) => row.id"
         :expanded-row-keys="expandedWsStashKeys"
-        @update:expanded-row-keys="onWsStashExpand"
+        @update:expanded-row-keys="(keys: (string | number)[]) => onWsStashExpand(keys as number[])"
       />
     </n-modal>
 
@@ -640,7 +640,7 @@
         :data="changes"
         :row-key="(row: RepoChanges) => row.repoPath"
         :checked-row-keys="pushSelection"
-        @update:checked-row-keys="onPushSelectionChange"
+        @update:checked-row-keys="(keys: (string | number)[]) => onPushSelectionChange(keys as string[])"
         :max-height="360"
       />
       <template #footer>

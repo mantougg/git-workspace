@@ -56,19 +56,7 @@
         :row-key="(row: any) => row.id"
         :expanded-row-keys="expandedRowKeys"
         @update:expanded-keys="onExpandChange"
-      >
-        <template #expanded-row="{ row }">
-          <div class="items-wrap">
-            <n-spin :show="detailLoading[row.id]">
-              <n-data-table
-                :columns="detailColumns"
-                :data="details[row.id] ?? []"
-                size="small"
-              />
-            </n-spin>
-          </div>
-        </template>
-      </n-data-table>
+      />
     </n-spin>
 
     <div class="pager">
@@ -282,6 +270,37 @@ async function handleUndo(row: OperationLogSummary) {
 
 // --- Main table columns ---
 const columns = [
+  {
+    type: "expand" as const,
+    renderExpand: (row: any) => {
+      const items = details.value[row.id] ?? [];
+      return h("div", { class: "items-wrap" }, [
+        detailLoading.value[row.id]
+          ? h("div", { style: "padding: 8px" }, "加载中...")
+          : h("div", {}, [
+              items.length === 0
+                ? h("div", { style: "padding: 8px; color: #909399" }, "无明细")
+                : h("div", { style: "padding: 4px 0" }, items.map((item: any) =>
+                    h("div", { style: "display: flex; gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #f0f0f0" }, [
+                      h("span", { style: "font-weight: 500; min-width: 120px" }, repoName(item.repoPath)),
+                      h("span", { style: "min-width: 100px" }, item.refName || "（分离 HEAD）"),
+                      h("span", {}, [
+                        h("code", {}, shortOid(item.beforeOid)),
+                        h("span", { class: "arrow" }, "→"),
+                        item.afterOid
+                          ? h("code", {}, shortOid(item.afterOid))
+                          : h("span", { class: "after-none" }, "—（未记录 / 已删除）"),
+                      ]),
+                      h("span", { style: "color: #909399" }, formatDetail(item.detail)),
+                      item.undoneAt
+                        ? h("span", { style: "color: #409eff; font-size: 12px" }, "已撤销")
+                        : null,
+                    ]),
+                  )),
+            ]),
+      ]);
+    },
+  },
   { title: "时间", key: "createdAt", width: 170, render: (row: any) => formatDate(row.createdAt) },
   {
     title: "操作",
@@ -293,7 +312,7 @@ const columns = [
     },
   },
   { title: "摘要", key: "summary", minWidth: 220, ellipsis: { tooltip: true } },
-  { title: "仓库数", key: "repoCount", width: 80, align: "center" },
+  { title: "仓库数", key: "repoCount", width: 80, align: "center" as const },
   {
     title: "状态",
     key: "status",
@@ -320,54 +339,6 @@ const columns = [
         },
         { default: () => "撤销" },
       ),
-  },
-];
-
-// --- Detail table columns (expanded row) ---
-const detailColumns = [
-  {
-    title: "仓库",
-    key: "repoPath",
-    minWidth: 200,
-    render: (row: any) =>
-      h("div", { class: "repo-cell" }, [
-        h("span", { class: "repo-name" }, repoName(row.repoPath)),
-        h("span", { class: "repo-path" }, row.repoPath),
-      ]),
-  },
-  {
-    title: "Ref",
-    key: "refName",
-    width: 140,
-    render: (row: any) => row.refName || "（分离 HEAD）",
-  },
-  {
-    title: "Before → After",
-    key: "beforeOid",
-    minWidth: 180,
-    render: (row: any) =>
-      h("span", {}, [
-        h("code", {}, shortOid(row.beforeOid)),
-        h("span", { class: "arrow" }, "→"),
-        row.afterOid
-          ? h("code", {}, shortOid(row.afterOid))
-          : h("span", { class: "after-none" }, "—（未记录 / 已删除）"),
-      ]),
-  },
-  {
-    title: "备注",
-    key: "detail",
-    minWidth: 140,
-    render: (row: any) => formatDetail(row.detail),
-  },
-  {
-    title: "状态",
-    key: "undoneAt",
-    width: 90,
-    render: (row: any) =>
-      row.undoneAt
-        ? h(NTag, { type: "info", size: "small" }, { default: () => "已撤销" })
-        : "—",
   },
 ];
 

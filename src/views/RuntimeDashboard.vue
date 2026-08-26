@@ -522,6 +522,7 @@ function envKeys(config: RuntimeApplicationConfig): string[] {
 const configColumns = [
   {
     title: "状态",
+    key: "status",
     width: 130,
     render(row: RuntimeConfigSummary) {
       const status = statusOf(row.name);
@@ -554,6 +555,7 @@ const configColumns = [
   },
   {
     title: "Main Class",
+    key: "mainClass",
     minWidth: 200,
     ellipsis: { tooltip: true },
     render(row: RuntimeConfigSummary) {
@@ -564,6 +566,7 @@ const configColumns = [
   },
   {
     title: "JDK",
+    key: "jdk",
     width: 70,
     render(row: RuntimeConfigSummary) {
       return row.jdk
@@ -573,6 +576,7 @@ const configColumns = [
   },
   {
     title: "Profile",
+    key: "profile",
     width: 90,
     render(row: RuntimeConfigSummary) {
       return row.profile
@@ -582,6 +586,7 @@ const configColumns = [
   },
   {
     title: "PID",
+    key: "pid",
     width: 80,
     render(row: RuntimeConfigSummary) {
       const p = processOf(row.name);
@@ -592,6 +597,7 @@ const configColumns = [
   },
   {
     title: "端口",
+    key: "ports",
     width: 90,
     render(row: RuntimeConfigSummary) {
       const p = processOf(row.name);
@@ -602,8 +608,9 @@ const configColumns = [
   },
   {
     title: "操作",
+    key: "actions",
     width: 330,
-    fixed: "right",
+    fixed: "right" as const,
     render(row: RuntimeConfigSummary) {
       return h("div", { style: "display:flex;gap:4px;flex-wrap:wrap" }, [
         h(
@@ -690,6 +697,7 @@ const processColumns = [
   { title: "Runtime", key: "runtimeName", minWidth: 120 },
   {
     title: "PID",
+    key: "pid",
     width: 90,
     render(row: RuntimeProcessInfo) {
       return h("span", { class: "mono" }, row.pid != null ? String(row.pid) : "—");
@@ -697,6 +705,7 @@ const processColumns = [
   },
   {
     title: "状态",
+    key: "status",
     width: 110,
     render(row: RuntimeProcessInfo) {
       const status = statusOf(row.runtimeName);
@@ -708,6 +717,7 @@ const processColumns = [
   },
   {
     title: "策略",
+    key: "runStrategy",
     width: 110,
     render(row: RuntimeProcessInfo) {
       return row.runStrategy
@@ -717,6 +727,7 @@ const processColumns = [
   },
   {
     title: "端口",
+    key: "ports",
     width: 110,
     render(row: RuntimeProcessInfo) {
       return h("span", { class: "mono" }, row.ports?.join(", ") || "—");
@@ -724,6 +735,7 @@ const processColumns = [
   },
   {
     title: "已运行",
+    key: "uptime",
     width: 110,
     render(row: RuntimeProcessInfo) {
       return row.uptimeSeconds != null
@@ -733,6 +745,7 @@ const processColumns = [
   },
   {
     title: "CPU",
+    key: "cpu",
     width: 80,
     render(row: RuntimeProcessInfo) {
       return row.cpuPercent != null
@@ -742,6 +755,7 @@ const processColumns = [
   },
   {
     title: "内存",
+    key: "memory",
     width: 100,
     render(row: RuntimeProcessInfo) {
       return row.memoryBytes != null
@@ -751,6 +765,7 @@ const processColumns = [
   },
   {
     title: "退出码",
+    key: "exitCode",
     width: 80,
     render(row: RuntimeProcessInfo) {
       return row.exitCode != null
@@ -760,6 +775,7 @@ const processColumns = [
   },
   {
     title: "孤儿接管",
+    key: "adopted",
     width: 90,
     render(row: RuntimeProcessInfo) {
       return row.adopted
@@ -769,6 +785,7 @@ const processColumns = [
   },
   {
     title: "启动于",
+    key: "startedAt",
     width: 160,
     render(row: RuntimeProcessInfo) {
       return h("span", { class: "muted" }, formatTime(row.startedAt));
@@ -779,6 +796,7 @@ const processColumns = [
 const approvalColumns = [
   {
     title: "Runtime",
+    key: "runtimeName",
     minWidth: 120,
     render(row: ScriptApproval) {
       return h("span", { class: "app-name" }, row.runtimeName);
@@ -786,6 +804,7 @@ const approvalColumns = [
   },
   {
     title: "类型",
+    key: "scriptType",
     width: 110,
     render(row: ScriptApproval) {
       return h(
@@ -797,6 +816,7 @@ const approvalColumns = [
   },
   {
     title: "脚本预览",
+    key: "preview",
     minWidth: 220,
     ellipsis: { tooltip: true },
     render(row: ScriptApproval) {
@@ -805,6 +825,7 @@ const approvalColumns = [
   },
   {
     title: "确认于",
+    key: "approvedAt",
     width: 160,
     render(row: ScriptApproval) {
       return h("span", { class: "muted" }, formatTime(row.approvedAt));
@@ -812,6 +833,7 @@ const approvalColumns = [
   },
   {
     title: "最近执行",
+    key: "lastExecutedAt",
     width: 160,
     render(row: ScriptApproval) {
       return row.lastExecutedAt
@@ -821,6 +843,7 @@ const approvalColumns = [
   },
   {
     title: "操作",
+    key: "actions",
     width: 90,
     render(row: ScriptApproval) {
       return h(

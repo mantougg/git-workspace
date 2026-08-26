@@ -54,7 +54,7 @@
       <n-data-table
         :data="executables"
         :columns="tableColumns"
-        :row-key="(row: MavenExecutable) => row.id"
+        :row-key="(row: MavenExecutable) => row.id ?? ''"
         empty-text="暂无 Maven 可执行体记录，点击「检测项目 Maven」或构建项目后自动入库"
       />
     </n-spin>
@@ -170,6 +170,7 @@ function formatTime(iso: string): string {
 const tableColumns = [
   {
     title: "状态",
+    key: "status",
     width: 90,
     render(row: MavenExecutable) {
       return h(NTag, { size: "small", type: row.isValid ? "success" : "error", bordered: false }, { default: () => row.isValid ? "有效" : "失效" });
@@ -177,6 +178,7 @@ const tableColumns = [
   },
   {
     title: "Major",
+    key: "major",
     width: 80,
     align: "center" as const,
     render(row: MavenExecutable) {
@@ -187,6 +189,7 @@ const tableColumns = [
   },
   {
     title: "完整版本",
+    key: "fullVersion",
     minWidth: 120,
     render(row: MavenExecutable) {
       return row.fullVersion
@@ -196,6 +199,7 @@ const tableColumns = [
   },
   {
     title: "来源",
+    key: "source",
     width: 120,
     render(row: MavenExecutable) {
       return h(NTag, { size: "small", type: "info", bordered: true }, { default: () => sourceLabel(row.source) });
@@ -203,6 +207,7 @@ const tableColumns = [
   },
   {
     title: "所属项目",
+    key: "projectPath",
     minWidth: 200,
     ellipsis: { tooltip: true },
     render(row: MavenExecutable) {
@@ -213,6 +218,7 @@ const tableColumns = [
   },
   {
     title: "可执行路径",
+    key: "executablePath",
     minWidth: 280,
     ellipsis: { tooltip: true },
     render(row: MavenExecutable) {
@@ -221,6 +227,7 @@ const tableColumns = [
   },
   {
     title: "最近校验",
+    key: "lastChecked",
     width: 170,
     render(row: MavenExecutable) {
       return row.lastChecked
@@ -230,6 +237,7 @@ const tableColumns = [
   },
   {
     title: "操作",
+    key: "actions",
     width: 180,
     fixed: "right" as const,
     render(row: MavenExecutable) {

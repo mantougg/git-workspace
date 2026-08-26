@@ -147,7 +147,7 @@
                   :max="3600"
                   placeholder="600"
                   style="width: 110px"
-                  @update:value="(v: number | undefined) => setTimeoutSecs(step, v)"
+                  @update:value="(v: number | null) => setTimeoutSecs(step, v ?? undefined)"
                 />
               </div>
               <div class="step-row" v-if="step.kind.type !== 'report'">
