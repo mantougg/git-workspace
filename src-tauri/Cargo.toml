@@ -42,6 +42,15 @@ regex = "1"
 sysinfo = "0.30"
 quick-xml = "0.41"
 
+# F-06：仅 Windows 需要——tao/Tauri 的 set_icon 只设置窗口小图标
+# （WM_SETICON ICON_SMALL），任务栏大图标（ICON_BIG）需自己发消息设置。
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [profile.release]
 panic = "abort"
 codegen-units = 1

@@ -61,6 +61,52 @@ pub(crate) fn get_app_data_dir() -> PathBuf {
     }
 }
 
+/// F-06：显式设置 Windows 任务栏图标。
+///
+/// tao 的 `set_window_icon`（Tauri `set_icon` 走的也是它）只设置
+/// WM_SETICON ICON_SMALL；Windows 任务栏按钮用的是 ICON_BIG，实测打包
+/// 后 ICON_BIG 为 0 → 任务栏显示默认空白图标。tao 的大图标接口
+/// （`set_taskbar_icon`）没有被 tauri-runtime-wry 暴露，这里直接从 exe
+/// 内嵌资源加载 HICON（tauri-build 以固定 ID 32512 嵌入 `icons/icon.ico`），
+/// 再用 WM_SETICON 同时设置大/小图标。
+#[cfg(windows)]
+fn set_windows_taskbar_icon(app: &tauri::App) {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE, WM_SETICON,
+    };
+
+    /// tauri-build `set_icon_with_id(..., "32512")` 的固定资源 ID。
+    const APP_ICON_RESOURCE_ID: usize = 32512;
+
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+    // tauri 返回 windows crate 的 HWND（newtype 包装 isize），转成裸指针。
+    let hwnd = hwnd.0 as *mut std::ffi::c_void;
+    unsafe {
+        let module = GetModuleHandleW(std::ptr::null());
+        let icon = LoadImageW(
+            module,
+            APP_ICON_RESOURCE_ID as *const u16,
+            IMAGE_ICON,
+            0,
+            0,
+            LR_DEFAULTSIZE,
+        );
+        if icon.is_null() {
+            log::warn!("F-06: failed to load embedded icon resource 32512");
+            return;
+        }
+        let hwnd = hwnd as windows_sys::Win32::Foundation::HWND;
+        SendMessageW(hwnd, WM_SETICON, ICON_BIG as usize, icon as isize);
+        SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, icon as isize);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize the module-segregating logger (app/git/task/ai/performance.log,
@@ -118,6 +164,10 @@ pub fn run() {
             // Create and manage app state
             let state = AppState::new(db, task_manager, Arc::clone(&runtime_service), pom_cache);
             app.manage(state);
+
+            // F-06：修复打包后 Windows 任务栏无图标（详见函数注释）。
+            #[cfg(windows)]
+            set_windows_taskbar_icon(&app);
 
             // R-10/R-12：启动对账——接管上次会话遗留的活跃 Runtime 进程、
             // 死去的落终态。后台线程执行，不阻塞启动。
