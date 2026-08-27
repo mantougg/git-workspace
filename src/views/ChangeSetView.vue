@@ -3,6 +3,10 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
+        <n-button text @click="goBack">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
+          返回
+        </n-button>
         <n-select
           v-model:value="selectedWorkspaceId"
           placeholder="选择工作区"
@@ -479,6 +483,7 @@ import { computed, h, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import {
   AddOutline,
+  ArrowBackOutline,
   RefreshOutline,
   EyeOutline,
   SparklesOutline,
@@ -491,6 +496,7 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NTag, type DataTableColumns } from "naive-ui";
 import { useMessage, useDialog } from "naive-ui";
+import { useRouter } from "vue-router";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
 import { useChangeSetStore } from "@/stores/changeSet";
@@ -511,10 +517,15 @@ import type { FileDiff } from "@/types/git";
 
 const message = useMessage();
 const dialog = useDialog();
+const router = useRouter();
 
 const workspaceStore = useWorkspaceStore();
 const taskStore = useTaskStore();
 const store = useChangeSetStore();
+
+function goBack() {
+  router.push({ name: "dashboard" });
+}
 
 const selectedWorkspaceId = ref<number | null>(null);
 const summary = computed(() => store.summary);
