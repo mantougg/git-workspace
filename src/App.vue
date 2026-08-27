@@ -11,16 +11,18 @@
           <router-view />
         </AppShell>
         <TaskPanel />
+        <CommandPalette v-model:show="showPalette" />
       </n-dialog-provider>
     </n-message-provider>
   </n-config-provider>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { zhCN, dateZhCN, darkTheme } from "naive-ui";
 import AppShell from "@/components/shell/AppShell.vue";
 import TaskPanel from "@/views/TaskPanel.vue";
+import CommandPalette from "@/components/shell/CommandPalette.vue";
 import { useTheme } from "@/composables/useTheme";
 import { lightOverrides, darkOverrides } from "@/styles/naive-overrides";
 
@@ -34,6 +36,24 @@ const naiveTheme = computed(() =>
 const themeOverrides = computed(() =>
   resolved.value === "dark" ? darkOverrides : lightOverrides
 );
+
+// D-12：Command Palette
+const showPalette = ref(false);
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+    e.preventDefault();
+    showPalette.value = !showPalette.value;
+  }
+}
+
+onMounted(() => {
+  document.addEventListener("keydown", onGlobalKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("keydown", onGlobalKeydown);
+});
 </script>
 
 <style>
