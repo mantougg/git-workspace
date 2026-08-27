@@ -459,10 +459,10 @@ const distribution = computed<DistSegment[]>(() => {
     color,
   });
   return [
-    toSeg("clean", "干净", clean, "var(--el-color-success)"),
-    toSeg("dirty", "有变更", dirty, "var(--el-color-warning)"),
-    toSeg("conflict", "冲突", conflict, "var(--el-color-danger)"),
-    toSeg("sync", "仅领先/落后", syncOnly, "var(--el-color-info)"),
+    toSeg("clean", "干净", clean, "var(--gw-success)"),
+    toSeg("dirty", "有变更", dirty, "var(--gw-warning)"),
+    toSeg("conflict", "冲突", conflict, "var(--gw-danger)"),
+    toSeg("sync", "仅领先/落后", syncOnly, "var(--gw-info)"),
   ].filter((s) => s.count > 0);
 });
 

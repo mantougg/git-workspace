@@ -18,7 +18,7 @@
 ## 总体进度
 
 - 任务总数：**16**
-- 已完成：**9** · 进行中：**0** · 未开始：**7**
+- 已完成：**10** · 进行中：**0** · 未开始：**6**
 - 完成度：**0 / 16（0%）**
 
 ---
@@ -41,7 +41,7 @@
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
 | D-07 | Naive UI 组件级 themeOverrides | P1 | ✅ | D-01 | [D-07-theme-overrides.md](./D-07-theme-overrides.md) |
-| D-08 | `--el-*` 残留与硬编码色值全局替换 | P1 | ⬜ | D-01 | [D-08-token-migration.md](./D-08-token-migration.md) |
+| D-08 | `--el-*` 残留与硬编码色值全局替换 | P1 | ✅ | D-01 | [D-08-token-migration.md](./D-08-token-migration.md) |
 | D-09 | 等宽字体栈接入（路径/分支名/hash/日志/diff） | P2 | ⬜ | D-08 | [D-09-mono-font.md](./D-09-mono-font.md) |
 | D-10 | Panel / PanelHeader / Toolbar 抽取与逐视图替换 | P1 | ✅ | D-07 | [D-10-panel-toolbar.md](./D-10-panel-toolbar.md) |
 | D-11 | Dashboard / Runtime 摘要行收敛 + 自定义视觉件 | P1 | ⬜ | D-10 | [D-11-summary-strip.md](./D-11-summary-strip.md) |
