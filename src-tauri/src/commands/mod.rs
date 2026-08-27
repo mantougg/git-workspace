@@ -14,6 +14,7 @@ pub mod spring_boot;
 pub mod git_ops;
 pub mod graph;
 pub mod health;
+pub mod heatmap;
 pub mod logs;
 pub mod manifest;
 pub mod maven;

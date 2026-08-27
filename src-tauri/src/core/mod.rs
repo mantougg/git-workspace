@@ -13,6 +13,7 @@ pub mod git_ops;
 pub mod git_status;
 pub mod graph;
 pub mod health;
+pub mod heatmap;
 pub mod logger;
 pub mod manifest;
 pub mod pipeline;

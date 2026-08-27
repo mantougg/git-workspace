@@ -284,6 +284,8 @@ pub fn run() {
             // Workspace Health commands (T-19)
             commands::health::get_workspace_health,
             commands::health::get_health_extras,
+            // Commit heatmap (F-01b)
+            commands::heatmap::get_commit_heatmap,
             // AI commands
             commands::ai::ai_review,
             commands::ai::build_code_index,

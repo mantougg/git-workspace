@@ -216,11 +216,16 @@ pub fn compute_health_extra(repo_path: &Path, lfs_available: bool) -> RepoHealth
 /// Whether `git lfs` is usable on this machine. Probed once per extras call
 /// (spawning a process per repo would blow the concurrency budget).
 pub fn lfs_available() -> bool {
-    std::process::Command::new("git")
-        .args(["lfs", "version"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["lfs", "version"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW (0x08000000)：GUI 进程 spawn 控制台子进程必须加
+        // 这个 flag，否则健康检查执行时 Windows 会闪 cmd 窗口（F-01c）。
+        cmd.creation_flags(0x0800_0000);
+    }
+    cmd.output().map(|o| o.status.success()).unwrap_or(false)
 }
 
 /// Iterative workdir walk (no recursion depth issues on deep trees); skips

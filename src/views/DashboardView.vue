@@ -127,6 +127,74 @@
       </div>
     </div>
 
+    <!-- Commit heatmap (F-01b)：当前用户在当前工作区所有仓库的提交热力图 -->
+    <div v-if="selectedWorkspaceId" class="section">
+      <div class="section-title">
+        提交热力图
+        <span v-if="heatmap.identity" class="section-sub">{{ heatmap.identity }}</span>
+      </div>
+      <n-spin :show="heatmapLoading">
+        <CommitHeatmap v-if="heatmap.days.length > 0" :days="heatmap.days" />
+        <div v-else class="section-empty">
+          {{ heatmap.identity ? "近一年没有匹配到你的提交" : "未配置 git user.email / user.name，无法识别你的提交" }}
+        </div>
+      </n-spin>
+    </div>
+
+    <!-- Health summary (F-01c)：健康检查前置到首页，轻项走缓存即时返回 -->
+    <div v-if="selectedWorkspaceId" class="section">
+      <div class="section-title">
+        健康检查
+        <n-button size="tiny" text type="primary" @click="goHealth">查看详情</n-button>
+      </div>
+      <n-spin :show="healthLoading">
+        <div v-if="health" class="health-summary">
+          <span class="health-score" :class="healthScoreClass">{{ health.score }}%</span>
+          <span class="health-meta">
+            {{ health.anomalous > 0 ? `${health.anomalous} / ${health.total} 个仓库存在异常` : `${health.total} 个仓库全部健康` }}
+          </span>
+          <n-button size="small" :loading="healthLoading" @click="loadInsights">
+            <template #icon><n-icon><RefreshOutline /></n-icon></template>
+            重新检测
+          </n-button>
+        </div>
+        <div v-else-if="!healthLoading" class="section-empty">暂无健康数据</div>
+      </n-spin>
+    </div>
+
+    <!-- Runtime apps (F-01d)：当前工作区已创建的应用 -->
+    <div v-if="selectedWorkspaceId" class="section">
+      <div class="section-title">
+        我的应用
+        <n-button size="tiny" text type="primary" @click="router.push({ name: 'runtime-dashboard' })">
+          进入 Runtime
+        </n-button>
+      </div>
+      <n-spin :show="appsLoading">
+        <div v-if="apps.length > 0" class="app-cards">
+          <div
+            v-for="app in apps"
+            :key="app.id"
+            class="app-card"
+            @click="router.push({ name: 'runtime-dashboard' })"
+          >
+            <div class="app-name">{{ app.name }}</div>
+            <div class="app-meta">
+              <n-tag size="small" :bordered="false">{{ app.project.split(/[\\/]/).pop() }}</n-tag>
+              <n-tag v-if="app.profile" size="small" type="info" :bordered="false">{{ app.profile }}</n-tag>
+              <n-tag v-if="app.jdk" size="small" type="warning" :bordered="false">{{ app.jdk }}</n-tag>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="!appsLoading" class="section-empty">
+          还没有创建应用
+          <n-button size="tiny" text type="primary" @click="router.push({ name: 'runtime-app-wizard' })">
+            去创建
+          </n-button>
+        </div>
+      </n-spin>
+    </div>
+
     <!-- Group breakdown -->
     <div v-if="groupRows.length > 0" class="section">
       <div class="section-title">分组视图</div>
@@ -211,9 +279,16 @@ import { useRepositoryStore } from "@/stores/repository";
 import { useRepositories } from "@/composables/useRepositories";
 import { listGroups } from "@/api/group";
 import { startWatcher } from "@/api/git_ops";
+import { getCommitHeatmap } from "@/api/heatmap";
+import { getWorkspaceHealth } from "@/api/health";
+import { listRuntimeConfigs } from "@/api/runtime";
 import type { RepoGroup } from "@/types/group";
 import type { RepoStatus } from "@/types/repository";
+import type { CommitHeatmap as CommitHeatmapData } from "@/types/heatmap";
+import type { WorkspaceHealth } from "@/types/health";
+import type { RuntimeConfigSummary } from "@/types/runtime";
 import WorkspaceManager from "@/components/common/WorkspaceManager.vue";
+import CommitHeatmap from "@/components/repo/CommitHeatmap.vue";
 import { errMsg } from "@/utils/error";
 import { useMessage } from "naive-ui";
 
@@ -249,6 +324,21 @@ useRepositories();
 const selectedWorkspaceId = ref<number | null>(null);
 const showAddWorkspace = ref(false);
 const groups = ref<RepoGroup[]>([]);
+
+// F-01：首页数据面板（热力图 / 健康摘要 / 我的应用）。
+const heatmap = ref<CommitHeatmapData>({ identity: null, days: [] });
+const heatmapLoading = ref(false);
+const health = ref<WorkspaceHealth | null>(null);
+const healthLoading = ref(false);
+const apps = ref<RuntimeConfigSummary[]>([]);
+const appsLoading = ref(false);
+
+const healthScoreClass = computed(() => {
+  const score = health.value?.score ?? 100;
+  if (score >= 80) return "score-good";
+  if (score >= 60) return "score-warn";
+  return "score-bad";
+});
 
 // Workspace options for n-select
 const workspaceOptions = computed(() =>
@@ -532,6 +622,29 @@ function quickAction(action: string) {
 
 // --- Data loading ---
 
+/** F-01：热力图 / 健康摘要 / 我的应用，并行加载、互不阻塞。 */
+async function loadInsights() {
+  const wsId = selectedWorkspaceId.value;
+  if (!wsId) return;
+  heatmapLoading.value = true;
+  healthLoading.value = true;
+  appsLoading.value = true;
+  const [heatmapRes, healthRes, appsRes] = await Promise.allSettled([
+    getCommitHeatmap(wsId),
+    getWorkspaceHealth(wsId),
+    listRuntimeConfigs(wsId),
+  ]);
+  if (heatmapRes.status === "fulfilled") heatmap.value = heatmapRes.value;
+  else console.error("Failed to load heatmap:", heatmapRes.reason);
+  if (healthRes.status === "fulfilled") health.value = healthRes.value;
+  else console.error("Failed to load health:", healthRes.reason);
+  if (appsRes.status === "fulfilled") apps.value = appsRes.value;
+  else console.error("Failed to load runtime apps:", appsRes.reason);
+  heatmapLoading.value = false;
+  healthLoading.value = false;
+  appsLoading.value = false;
+}
+
 async function reload() {
   if (!selectedWorkspaceId.value) return;
   await repoStore.loadRepositories(selectedWorkspaceId.value);
@@ -540,6 +653,7 @@ async function reload() {
   } catch (e) {
     console.error("Failed to load groups:", e);
   }
+  loadInsights();
   // Keep the watcher mounted on the workspace repo set so the cards update
   // live even before the user opens the batch-ops view (idempotent, delta-
   // based on the backend).
@@ -752,5 +866,84 @@ onMounted(async () => {
   margin-top: 8px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+/* F-01：热力图 / 健康摘要 / 我的应用 */
+.section-sub {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #909399;
+}
+
+.section-title .n-button {
+  margin-left: 8px;
+}
+
+.section-empty {
+  font-size: 12px;
+  color: #909399;
+  padding: 8px 0;
+}
+
+.health-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.health-score {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.health-score.score-good {
+  color: #18a058;
+}
+
+.health-score.score-warn {
+  color: #f0a020;
+}
+
+.health-score.score-bad {
+  color: #d03050;
+}
+
+.health-meta {
+  flex: 1;
+  font-size: 13px;
+  color: #606266;
+}
+
+.app-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.app-card {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: box-shadow 0.15s;
+}
+
+.app-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.app-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.app-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 </style>

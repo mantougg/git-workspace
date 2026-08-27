@@ -14,6 +14,7 @@ declare module 'vue' {
     BatchActionBar: typeof import('./components/repo/BatchActionBar.vue')['default']
     ChangeTree: typeof import('./components/repo/ChangeTree.vue')['default']
     CommitGraph: typeof import('./components/graph/CommitGraph.vue')['default']
+    CommitHeatmap: typeof import('./components/repo/CommitHeatmap.vue')['default']
     GroupTree: typeof import('./components/common/GroupTree.vue')['default']
     LogManager: typeof import('./components/common/LogManager.vue')['default']
     NAlert: typeof import('naive-ui')['NAlert']

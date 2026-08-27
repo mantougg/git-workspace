@@ -21,7 +21,7 @@
 ## 总体进度
 
 - 任务总数：**10**（含 1 个讨论项）
-- 已完成：**7** · 修复中：**0** · 未开始：**2** · 仅讨论：**1**
+- 已完成：**8** · 修复中：**0** · 未开始：**1** · 仅讨论：**1**
 
 ---
 
@@ -29,7 +29,7 @@
 
 | 编号 | 问题 | 优先级 | 状态 | 文档 |
 |---|---|---|---|---|
-| F-01 | 首页重构：数据卡片与图表（仓库卡片 / 提交热力图 / 健康检查无 cmd 弹框 / 已创建应用） | P0 | ⬜ | [F-01-home-dashboard.md](./F-01-home-dashboard.md) |
+| F-01 | 首页重构：数据卡片与图表（仓库卡片 / 提交热力图 / 健康检查无 cmd 弹框 / 已创建应用） | P0 | ✅ | [F-01-home-dashboard.md](./F-01-home-dashboard.md) |
 | F-02 | Change Set 页面无法返回首页 | P0 | ✅ | [F-02-changeset-navigation.md](./F-02-changeset-navigation.md) |
 | F-03 | JDK 全量扫描兼容性验证（系统配置 / mise / jEnv / SDKMAN / Manual） | P1 | ✅ | [F-03-jdk-scan-compat.md](./F-03-jdk-scan-compat.md) |
 | F-04 | 新建应用预设参数与变量（IDEA 启动参数预设，需实测跑通） | P1 | ⬜ | [F-04-app-launch-presets.md](./F-04-app-launch-presets.md) |
