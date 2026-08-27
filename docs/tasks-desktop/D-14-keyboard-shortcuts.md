@@ -42,3 +42,4 @@
 |---|---|---|
 | 2026-08-27 | ⬜ | 任务拆解录入（来源：desktop-skin-plan.md §6 2.5期-3） |
 | 2026-08-27 | ✅ | 完成：快捷键映射表 + 全局监听 + CommandPalette 展示快捷键，pnpm build 通过 |
+| 2026-08-28 | ✅ 补齐 | 核查发现缺输入框聚焦守卫。shortcuts.ts 增加 isEditableTarget 守卫（input/textarea/select/contenteditable），pnpm build 通过（commit 5bf64c6） |

@@ -42,3 +42,4 @@
 |---|---|---|
 | 2026-08-27 | ⬜ | 任务拆解录入（来源：desktop-skin-plan.md §6 2.5期-2） |
 | 2026-08-27 | ✅ | 完成：ContextMenu 组件 + 变更树右键菜单（Fetch/Pull/Push/Stage/Discard 等），pnpm build 通过 |
+| 2026-08-28 | ✅ 补齐 | 核查发现菜单选中为 console.log 空壳、提交图未接入。补齐：变更树 repo 节点 Fetch/Pull/Push/预选提交/健康检查(单仓库)/文件管理器/提交图跳转，file 节点 Stage/Discard(危险确认)/查看 Diff（Unstage 无文件级后端能力，不提供假入口）；CommitGraph 新增 contextmenu 事件，GitGraph 右键复用 T-13 确认流 + Copy hash/查看 Diff，RepositoryList graph-pane 轻量右键。pnpm build 通过 |

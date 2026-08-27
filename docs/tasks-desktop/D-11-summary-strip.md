@@ -42,3 +42,4 @@
 |---|---|---|
 | 2026-08-27 | ⬜ | 任务拆解录入（来源：desktop-skin-plan.md §6 二期-5） |
 | 2026-08-27 | ✅ | 完成：Dashboard 卡片墙收敛为摘要行，section 样式 token 化，pnpm build 通过 |
+| 2026-08-28 | ✅ 补齐 | 核查发现 Runtime 总览 stat-card 墙未收敛。补齐 RuntimeDashboard 摘要行（同 DashboardView summary-strip 模式），pnpm build 通过（commit 5bf64c6） |

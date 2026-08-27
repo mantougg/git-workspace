@@ -10,6 +10,7 @@
         class="commit-row"
         :class="{ 'selected': selectedOid === row.commit.oid }"
         @click="selectCommit(row.commit)"
+        @contextmenu.stop.prevent="onRowContextmenu($event, row.commit)"
       >
         <!-- SVG lane graph -->
         <svg
@@ -123,6 +124,8 @@ const emit = defineEmits<{
   (e: "load-more"): void;
   /** T-13 history operations: "cherry-pick" | "revert" | "reset". */
   (e: "action", action: string, commit: CommitInfo): void;
+  /** D-13：提交节点右键（宿主视图渲染 ContextMenu） */
+  (e: "contextmenu", commit: CommitInfo, x: number, y: number): void;
 }>();
 
 const ROW_H = 30;
@@ -255,6 +258,11 @@ function selectCommit(commit: CommitInfo) {
 
 function onAction(key: string, commit: CommitInfo) {
   emit("action", key, commit);
+}
+
+function onRowContextmenu(e: MouseEvent, commit: CommitInfo) {
+  selectedOid.value = commit.oid;
+  emit("contextmenu", commit, e.clientX, e.clientY);
 }
 
 function commitMessage(commit: CommitInfo): string {

@@ -40,3 +40,4 @@
 |---|---|---|
 | 2026-08-27 | ⬜ | 任务拆解录入（来源：desktop-skin-plan.md §6 三期-1） |
 | 2026-08-27 | ✅ | 完成：三栏联动布局（树 + 提交图 + diff），单仓库选中自动加载提交图 |
+| 2026-08-28 | ✅ 补齐 | 核查发现 onCommitSelect 为 console.log 占位、三栏未真正联动。补齐：选中提交 → DiffViewer 显示该提交变更（repo+commit query）；graph-pane 提交节点右键（Copy hash/查看 Diff）。pnpm build 通过 |

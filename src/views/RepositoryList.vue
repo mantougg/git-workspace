@@ -116,8 +116,18 @@
             :commits="graphCommits"
             :loading="graphLoading"
             @select="onCommitSelect"
+            @contextmenu="onGraphCommitContextmenu"
           />
         </n-spin>
+        <!-- D-13：提交节点右键菜单（轻量版：复制 hash / 查看 Diff） -->
+        <ContextMenu
+          :show="graphCommitMenu.show"
+          :options="graphCommitMenuOptions"
+          :x="graphCommitMenu.x"
+          :y="graphCommitMenu.y"
+          @select="onGraphCommitMenuSelect"
+          @close="graphCommitMenu.show = false"
+        />
       </div>
 
       <!-- Right: change content of double-clicked file -->
@@ -192,7 +202,7 @@
             <n-button
               size="small"
               :loading="actionLoading"
-              @click="handlePull"
+              @click="() => handlePull()"
             >
               <template #icon><n-icon><RefreshOutline /></n-icon></template>
               Pull
@@ -200,7 +210,7 @@
             <n-button
               size="small"
               :loading="actionLoading"
-              @click="handleFetch"
+              @click="() => handleFetch()"
             >
               <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
               Fetch
@@ -208,7 +218,7 @@
             <n-button
               size="small"
               :loading="actionLoading"
-              @click="openPushDialog"
+              @click="() => openPushDialog()"
             >
               <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
               Push
@@ -681,6 +691,8 @@ import CommitGraph from "@/components/graph/CommitGraph.vue";
 import { getCommitHistory } from "@/api/graph";
 import type { CommitInfo } from "@/types/graph";
 import { startWatcher, stopWatcher, batchCommit, batchFetch, batchPull, batchPush } from "@/api/git_ops";
+import { open as openPath } from "@tauri-apps/plugin-shell";
+import { getWorkspaceHealth } from "@/api/health";
 import {
   scanCommit,
   getCommitIdentity,
@@ -773,9 +785,50 @@ async function loadGraphCommits(repoPath: string) {
 }
 
 function onCommitSelect(commit: CommitInfo) {
-  // 选中提交时，可以在 diff 面板显示该提交的变更
-  // 目前先记录选中状态，后续可扩展为显示 commit diff
-  console.log("Selected commit:", commit.shortOid, commit.message);
+  // D-15 三栏联动：选中提交 → 右侧 diff 面板显示该提交的变更
+  viewCommitDiff(selectedRepoPath.value, commit);
+}
+
+// D-13：graph-pane 提交节点右键（轻量菜单，历史操作请进提交图视图）
+const graphCommitMenu = ref({
+  show: false,
+  x: 0,
+  y: 0,
+  commit: null as CommitInfo | null,
+});
+
+const graphCommitMenuOptions = [
+  { label: "Copy hash", key: "copy-hash" },
+  { label: "查看 Diff", key: "diff" },
+];
+
+function onGraphCommitContextmenu(commit: CommitInfo, x: number, y: number) {
+  graphCommitMenu.value = { show: true, x, y, commit };
+}
+
+async function onGraphCommitMenuSelect(key: string) {
+  const commit = graphCommitMenu.value.commit;
+  if (!commit) return;
+  if (key === "copy-hash") {
+    try {
+      await navigator.clipboard.writeText(commit.oid);
+      message.success(`已复制 ${commit.shortOid}`);
+    } catch {
+      message.error("复制失败");
+    }
+    return;
+  }
+  if (key === "diff") {
+    viewCommitDiff(selectedRepoPath.value, commit);
+  }
+}
+
+function viewCommitDiff(repoPath: string | undefined, commit: CommitInfo) {
+  if (!repoPath) return;
+  router.push({
+    name: "diff-viewer",
+    query: { repo: repoPath, commit: commit.oid },
+  });
 }
 
 // D-13：右键菜单状态
@@ -794,19 +847,26 @@ const contextMenuOptions = computed(() => {
     return [
       { label: "Fetch", key: "fetch" },
       { label: "Pull", key: "pull" },
-      { label: "Push", key: "push" },
+      { label: "Push…", key: "push" },
       { type: "divider", key: "d1" },
-      { label: "提交", key: "commit" },
+      { label: "选中该仓库全部文件（准备提交）", key: "commit" },
       { label: "健康检查", key: "health" },
+      { label: "在文件管理器显示", key: "reveal" },
+      { type: "divider", key: "d2" },
+      { label: "查看提交图", key: "graph" },
     ];
   }
 
   if (node.type === "file") {
+    // 文件级 Unstage 无后端能力（仅 hunk/line 级），不提供假入口
     return [
       { label: "Stage", key: "stage" },
-      { label: "Unstage", key: "unstage" },
       { type: "divider", key: "d1" },
-      { label: "Discard", key: "discard" },
+      {
+        label: "Discard（丢弃工作区改动）",
+        key: "discard",
+        props: { style: "color: var(--gw-danger)" },
+      },
       { label: "查看 Diff", key: "diff" },
     ];
   }
@@ -818,11 +878,106 @@ function onTreeContextmenu(node: ChangeNode, x: number, y: number) {
   contextMenu.value = { show: true, x, y, node };
 }
 
-function onContextmenuSelect(key: string) {
+function repoChangesOf(repoPath: string) {
+  return changes.value.find((c) => c.repoPath === repoPath);
+}
+
+async function onContextmenuSelect(key: string) {
   const node = contextMenu.value.node;
   if (!node) return;
-  // 命令执行逻辑（复用已有能力）
-  console.log("Context menu action:", key, node);
+  const repoPath = node.repoPath;
+  if (!repoPath) return;
+  const repo = repoChangesOf(repoPath);
+
+  try {
+    switch (key) {
+      case "fetch":
+        await handleFetch([repoPath]);
+        break;
+      case "pull":
+        await handlePull([repoPath]);
+        break;
+      case "push":
+        openPushDialog([repoPath]);
+        break;
+      case "commit": {
+        // 与勾选该仓库全部文件等价：提交本身仍走表单确认（Safety First）
+        const files = (repo?.changes ?? [])
+          .filter((f) => !f.path.endsWith("/"))
+          .map((f) => f.path);
+        treeSelection.value = {
+          repoPaths: [repoPath],
+          filesByRepo: new Map([[repoPath, files]]),
+        };
+        message.success(`已选中 ${repoNameOf(repoPath)} 的 ${files.length} 个文件，请在上方填写提交信息`);
+        break;
+      }
+      case "health": {
+        // 编排已有能力：工作区健康检查 → 展示该仓库评分与异常项
+        const ws = workspaceStore.currentWorkspace;
+        if (!ws) {
+          message.warning("未选择工作区");
+          break;
+        }
+        const health = await getWorkspaceHealth(ws.id);
+        const rh = health.repos.find((r) => r.repoPath === repoPath);
+        if (!rh) {
+          message.warning(`${repoNameOf(repoPath)} 不在健康检查结果中`);
+          break;
+        }
+        dialog.info({
+          title: `健康检查 · ${rh.repoName}`,
+          content: rh.anomalies.length
+            ? `评分 ${rh.score}%，异常项：\n${rh.anomalies.join("、")}`
+            : `评分 ${rh.score}%，无异常`,
+          positiveText: "知道了",
+        });
+        break;
+      }
+      case "reveal":
+        await openPath(repoPath);
+        break;
+      case "stage": {
+        if (!repo || !node.relPath) break;
+        await batchAdd([
+          { repoPath, repoName: repo.repoName, files: [node.relPath] },
+        ]);
+        message.success(`已暂存 ${node.relPath}`);
+        await loadChanges();
+        break;
+      }
+      case "discard": {
+        if (!repo || !node.relPath) break;
+        const file = node.relPath;
+        dialog.error({
+          title: "危险操作确认",
+          content: `确定丢弃 ${repo.repoName} 中「${file}」的工作区改动吗？此操作不可撤销。`,
+          positiveText: "确认丢弃",
+          negativeText: "取消",
+          onPositiveClick: async () => {
+            try {
+              await batchRestore([
+                { repoPath, repoName: repo.repoName, files: [file] },
+              ]);
+              message.success(`已丢弃 ${file}`);
+              await loadChanges();
+            } catch (e) {
+              message.error("discard 失败: " + errMsg(e));
+            }
+          },
+        });
+        break;
+      }
+      case "diff":
+        viewDiff(repoPath);
+        break;
+      case "graph":
+        viewGraph(repoPath);
+        break;
+    }
+  } catch (e) {
+    message.error("操作失败: " + errMsg(e));
+  }
 }
 
 function onContextmenuClose() {
@@ -1768,15 +1923,15 @@ function wsStashCheckTagType(s: string): "success" | "warning" | "error" | "info
   )[s] ?? "info";
 }
 
-async function handleFetch() {
-  const paths = batchTargetRepos();
-  if (paths.length === 0) {
+async function handleFetch(paths?: string[]) {
+  const targets = paths ?? batchTargetRepos();
+  if (targets.length === 0) {
     message.warning("没有可操作的仓库");
     return;
   }
   actionLoading.value = true;
   try {
-    const taskIds = await batchFetch(paths);
+    const taskIds = await batchFetch(targets);
     message.success(`已提交 ${taskIds.length} 个 fetch 任务`);
     await loadChanges();
   } catch (e) {
@@ -1786,15 +1941,15 @@ async function handleFetch() {
   }
 }
 
-async function handlePull() {
-  const paths = batchTargetRepos();
-  if (paths.length === 0) {
+async function handlePull(paths?: string[]) {
+  const targets = paths ?? batchTargetRepos();
+  if (targets.length === 0) {
     message.warning("没有可操作的仓库");
     return;
   }
   actionLoading.value = true;
   try {
-    const taskIds = await batchPull(paths);
+    const taskIds = await batchPull(targets);
     message.success(`已提交 ${taskIds.length} 个 pull 任务`);
     await loadChanges();
   } catch (e) {
@@ -1804,8 +1959,8 @@ async function handlePull() {
   }
 }
 
-function openPushDialog() {
-  const defaultSelected = batchTargetRepos();
+function openPushDialog(paths?: string[]) {
+  const defaultSelected = paths ?? batchTargetRepos();
   pushSelection.value = defaultSelected;
   showPushDialog.value = true;
 }

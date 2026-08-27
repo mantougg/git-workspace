@@ -41,3 +41,4 @@
 |---|---|---|
 | 2026-08-27 | ⬜ | 任务拆解录入（来源：desktop-skin-plan.md §6 二期-4） |
 | 2026-08-27 | ✅ | 完成：Panel + PanelHeader + Toolbar 组件创建，pnpm build 通过 |
+| 2026-08-28 | ✅ 补齐 | 核查发现组件未被任何视图采用、6 视图仍手写 .section。补齐 Dashboard/Health/Manifest/BranchManager/RuntimeScope/RuntimeDashboard 替换，grep .section 残留 0，pnpm build 通过（commit 5bf64c6） |

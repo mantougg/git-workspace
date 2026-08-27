@@ -49,10 +49,21 @@
           :has-more="hasMore"
           @select="onCommitSelect"
           @action="onCommitAction"
+          @contextmenu="onCommitContextmenu"
           @load-more="loadMore"
         />
       </div>
     </n-spin>
+
+    <!-- D-13：提交节点右键菜单 -->
+    <ContextMenu
+      :show="commitMenu.show"
+      :options="commitMenuOptions"
+      :x="commitMenu.x"
+      :y="commitMenu.y"
+      @select="onCommitMenuSelect"
+      @close="commitMenu.show = false"
+    />
 
     <!-- Reset dialog (T-13) -->
     <n-modal v-model:show="resetDialog.show" preset="card" title="Reset 到此处" style="width: 520px">
@@ -160,6 +171,7 @@ import {
 import type { PickOutcome } from "@/types/history";
 import type { CommitInfo, BranchInfo } from "@/types/graph";
 import CommitGraph from "@/components/graph/CommitGraph.vue";
+import ContextMenu from "@/components/shell/ContextMenu.vue";
 import { errMsg } from "@/utils/error";
 
 const route = useRoute();
@@ -282,6 +294,64 @@ function onCommitAction(action: string, commit: CommitInfo) {
       resetDialog.commit = commit;
       resetDialog.mode = "mixed";
       resetDialog.show = true;
+      break;
+  }
+}
+
+// --- D-13：提交节点右键菜单（复用 T-13 历史操作与确认流） ---
+const commitMenu = ref({
+  show: false,
+  x: 0,
+  y: 0,
+  commit: null as CommitInfo | null,
+});
+
+const commitMenuOptions = [
+  { label: "Cherry-pick", key: "cherry-pick" },
+  { label: "Revert", key: "revert" },
+  { type: "divider", key: "d1" },
+  { label: "Reset 到此处…", key: "reset" },
+  {
+    label: "Reset --hard 到此处",
+    key: "reset-hard",
+    props: { style: "color: var(--gw-danger)" },
+  },
+  { type: "divider", key: "d2" },
+  { label: "Copy hash", key: "copy-hash" },
+  { label: "查看 Diff", key: "diff" },
+];
+
+function onCommitContextmenu(commit: CommitInfo, x: number, y: number) {
+  commitMenu.value = { show: true, x, y, commit };
+}
+
+async function onCommitMenuSelect(key: string) {
+  const commit = commitMenu.value.commit;
+  if (!commit) return;
+  switch (key) {
+    case "cherry-pick":
+    case "revert":
+    case "reset":
+      onCommitAction(key, commit);
+      break;
+    case "reset-hard":
+      resetDialog.commit = commit;
+      resetDialog.mode = "hard";
+      resetDialog.show = true;
+      break;
+    case "copy-hash":
+      try {
+        await navigator.clipboard.writeText(commit.oid);
+        message.success(`已复制 ${commit.shortOid}`);
+      } catch {
+        message.error("复制失败");
+      }
+      break;
+    case "diff":
+      router.push({
+        name: "diff-viewer",
+        query: { repo: repoPath.value, commit: commit.oid },
+      });
       break;
   }
 }
