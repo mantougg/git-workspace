@@ -3,17 +3,6 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button quaternary @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          :options="workspaceStore.workspaces.map(ws => ({ label: ws.name, value: ws.id }))"
-          placeholder="选择工作区"
-          style="width: 200px"
-          @update:value="selectWorkspace"
-        />
         <span class="page-title">{{ isEdit ? `编辑应用 · ${form.name}` : "新建 Runtime 应用" }}</span>
       </div>
       <div class="toolbar-right">
@@ -197,7 +186,6 @@ import { useRoute, useRouter } from "vue-router";
 import { NButton, NIcon, NInput, NTag, useMessage } from "naive-ui";
 import {
   AddOutline,
-  ArrowBackOutline,
   CheckmarkOutline,
   RefreshOutline,
   SparklesOutline,
@@ -215,7 +203,7 @@ const route = useRoute();
 const router = useRouter();
 // R-14 修复：向导此前未初始化 workspace（其他视图均走 useRuntimeWorkspace），
 // 直接进入向导时 workspaceId 为空 → 项目列表恒为 no data。
-const { workspaceStore, store, selectedWorkspaceId, ensureWorkspace, selectWorkspace } =
+const { workspaceStore, store, ensureWorkspace } =
   useRuntimeWorkspace();
 
 const isEdit = computed(() => !!route.query.edit);
@@ -516,8 +504,8 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
-  gap: 12px;
+  padding: var(--gw-space-3) var(--gw-space-4);
+  gap: var(--gw-space-3);
   overflow-y: auto;
 }
 .toolbar {
@@ -525,12 +513,12 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 .page-title {
@@ -543,12 +531,12 @@ onMounted(async () => {
 }
 .field-hint {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   margin-top: 4px;
   width: 100%;
 }
 .field-hint.warn-hint {
-  color: var(--el-color-warning);
+  color: var(--gw-warning);
 }
 .script-field {
   width: 100%;
@@ -557,7 +545,7 @@ onMounted(async () => {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: flex-start;
 }
 .projects-empty-alert {
@@ -566,17 +554,17 @@ onMounted(async () => {
 }
 .main-class-row {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   width: 100%;
 }
 .env-editor {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: flex-start;
 }
 .muted {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 </style>

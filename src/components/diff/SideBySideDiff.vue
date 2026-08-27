@@ -105,7 +105,7 @@ const rows = computed<Row[]>(() => {
   height: 21px;
   line-height: 21px;
   background: #f0f0f0;
-  color: #909399;
+  color: var(--gw-text-dim);
   padding: 0 8px;
   font-size: 12px;
   white-space: pre;

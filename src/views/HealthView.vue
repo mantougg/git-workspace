@@ -377,8 +377,8 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
-  gap: 12px;
+  padding: var(--gw-space-3) var(--gw-space-4);
+  gap: var(--gw-space-3);
   overflow-y: auto;
 }
 
@@ -391,7 +391,7 @@ onMounted(async () => {
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 
@@ -400,14 +400,14 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .score-panel {
   display: flex;
   align-items: center;
   gap: 28px;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 18px 22px;
 }
@@ -425,7 +425,7 @@ onMounted(async () => {
 .score-label {
   margin-top: 6px;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .score-side {
@@ -435,23 +435,23 @@ onMounted(async () => {
 .score-meta {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .tone-ok {
-  color: var(--el-color-success);
+  color: var(--gw-success);
 }
 
 .tone-warn {
-  color: var(--el-color-warning);
+  color: var(--gw-warning);
 }
 
 .tone-danger {
-  color: var(--el-color-danger);
+  color: var(--gw-danger);
 }
 
 .weights-collapse {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 0 12px;
 }
@@ -465,17 +465,17 @@ onMounted(async () => {
 
 .weight-item {
   font-size: 12px;
-  color: var(--el-text-color-regular);
+  color: var(--gw-text);
 }
 
 .anomaly-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .anomaly-card {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 10px 12px;
   text-align: center;
@@ -483,16 +483,16 @@ onMounted(async () => {
 }
 
 .anomaly-card:hover {
-  border-color: var(--el-color-primary);
+  border-color: var(--gw-accent);
 }
 
 .anomaly-card.active {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
+  border-color: var(--gw-accent);
+  background: var(--gw-bg-hover);
 }
 
 .anomaly-card.zero .anomaly-count {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .anomaly-count {
@@ -502,11 +502,11 @@ onMounted(async () => {
 
 .anomaly-label {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .section {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 12px 14px;
 }
@@ -514,7 +514,7 @@ onMounted(async () => {
 .section-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   margin-bottom: 10px;
 }
 
@@ -529,7 +529,7 @@ onMounted(async () => {
 
 .repo-path {
   font-size: 11px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .anomaly-tag {
@@ -538,16 +538,16 @@ onMounted(async () => {
 }
 
 .text-ok {
-  color: var(--el-color-success);
+  color: var(--gw-success);
 }
 
 .text-warn {
-  color: var(--el-color-warning);
+  color: var(--gw-warning);
   font-weight: 600;
 }
 
 .text-danger {
-  color: var(--el-color-danger);
+  color: var(--gw-danger);
   font-weight: 600;
 }
 </style>

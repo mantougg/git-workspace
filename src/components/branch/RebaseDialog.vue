@@ -177,7 +177,7 @@ async function run() {
 .rebase-form {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   margin-bottom: 12px;
 }
 
@@ -187,7 +187,7 @@ async function run() {
 }
 
 .op-editor {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 4px;
   max-height: 50vh;
   overflow-y: auto;
@@ -196,14 +196,14 @@ async function run() {
 
 .op-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
   margin-bottom: 8px;
 }
 
 .op-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 4px 6px;
   border-bottom: 1px solid #f5f5f5;
   cursor: grab;
@@ -217,7 +217,7 @@ async function run() {
 
 .op-oid {
   font-family: "Cascadia Code", Consolas, monospace;
-  color: #409eff;
+  color: var(--gw-accent);
   font-size: 12px;
   flex-shrink: 0;
 }

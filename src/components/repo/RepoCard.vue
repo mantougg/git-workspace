@@ -66,7 +66,7 @@ const emit = defineEmits<{
 }
 
 .card-path {
-  color: #909399;
+  color: var(--gw-text-dim);
   margin-bottom: 4px;
 }
 
@@ -81,6 +81,6 @@ const emit = defineEmits<{
 }
 
 .text-warning {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 </style>

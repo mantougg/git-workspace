@@ -397,14 +397,14 @@ async function handleClear() {
 }
 
 .drawer-resize:hover {
-  background: #409eff;
+  background: var(--gw-accent);
 }
 
 .drawer-title {
   display: flex;
   align-items: center;
   padding: 6px 0;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   flex-shrink: 0;
 }
 
@@ -432,7 +432,7 @@ async function handleClear() {
   justify-content: space-between;
   align-items: center;
   padding: 4px 0 8px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .task-count {
@@ -443,7 +443,7 @@ async function handleClear() {
 .task-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 8px;
   border-bottom: 1px solid #f0f0f0;
   flex-wrap: wrap;
@@ -495,14 +495,14 @@ async function handleClear() {
 .batch-children {
   width: 100%;
   margin-top: 4px;
-  border-top: 1px dashed #ebeef5;
+  border-top: 1px dashed var(--gw-border);
   padding-top: 4px;
 }
 
 .batch-child {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--gw-space-2);
   font-size: 12px;
   padding: 1px 0;
 }
@@ -518,18 +518,18 @@ async function handleClear() {
 }
 
 .child-mark.failed {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .child-error {
-  color: #f56c6c;
+  color: var(--gw-danger);
   word-break: break-all;
 }
 
 .task-error {
   width: 100%;
   font-size: 12px;
-  color: #f56c6c;
+  color: var(--gw-danger);
   padding: 2px 0;
 }
 
@@ -542,7 +542,7 @@ async function handleClear() {
 
 .git-console {
   margin-top: 8px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--gw-border);
   padding-top: 6px;
 }
 
@@ -574,13 +574,13 @@ async function handleClear() {
 .git-log-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   flex-wrap: wrap;
 }
 
 .git-log-time {
   font-size: 11px;
-  color: #909399;
+  color: var(--gw-text-dim);
   flex-shrink: 0;
 }
 
@@ -593,7 +593,7 @@ async function handleClear() {
 .git-log-cmd {
   font-family: Consolas, monospace;
   font-size: 12px;
-  color: #409eff;
+  color: var(--gw-accent);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -616,11 +616,11 @@ async function handleClear() {
 }
 
 .git-log-item.log-failed .git-log-cmd {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .git-log-item.log-failed .git-log-output {
-  color: #f56c6c;
+  color: var(--gw-danger);
   background: #fef0f0;
 }
 </style>

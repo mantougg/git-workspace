@@ -132,11 +132,11 @@ async function handleClear() {
   font-family: monospace;
 }
 .log-size {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 .empty {
-  color: #909399;
+  color: var(--gw-text-dim);
   text-align: center;
   padding: 24px 0;
 }

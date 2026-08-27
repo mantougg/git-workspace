@@ -797,9 +797,9 @@ async function runCompare() {
 .branch-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -807,7 +807,7 @@ async function runCompare() {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   min-width: 0;
 }
 
@@ -822,13 +822,13 @@ async function runCompare() {
 .branch-body {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: var(--gw-space-3) var(--gw-space-4);
   background: #fafafa;
 }
 
 .section {
   background: #fff;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 4px;
   margin-bottom: 12px;
 }
@@ -844,7 +844,7 @@ async function runCompare() {
 .branch-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 6px 12px;
   border-bottom: 1px solid #f5f5f5;
   font-size: 13px;
@@ -876,7 +876,7 @@ async function runCompare() {
 }
 
 .upstream {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .ahead {
@@ -885,7 +885,7 @@ async function runCompare() {
 }
 
 .behind {
-  color: #e6a23c;
+  color: var(--gw-warning);
   font-weight: 600;
 }
 
@@ -895,7 +895,7 @@ async function runCompare() {
 }
 
 .tag-message {
-  color: #909399;
+  color: var(--gw-text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -912,24 +912,24 @@ async function runCompare() {
 }
 
 .danger-item {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .compare-form {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   margin-bottom: 12px;
 }
 
 .compare-arrow {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .compare-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   margin-bottom: 8px;
 }
 
@@ -950,7 +950,7 @@ async function runCompare() {
 
 .commit-oid {
   font-family: "Cascadia Code", Consolas, monospace;
-  color: #409eff;
+  color: var(--gw-accent);
   width: 70px;
   flex-shrink: 0;
 }
@@ -963,7 +963,7 @@ async function runCompare() {
 }
 
 .commit-meta {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
   flex-shrink: 0;
 }
@@ -971,12 +971,12 @@ async function runCompare() {
 .compare-files {
   display: flex;
   height: 50vh;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
 }
 
 .file-list {
   width: 260px;
-  border-right: 1px solid #ebeef5;
+  border-right: 1px solid var(--gw-border);
   overflow-y: auto;
 }
 
@@ -1011,15 +1011,15 @@ async function runCompare() {
 }
 
 .file-status-icon.deleted {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .file-status-icon.modified {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 
 .file-status-icon.renamed {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .file-name {
@@ -1062,7 +1062,7 @@ async function runCompare() {
 }
 
 .banner-hint {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
@@ -1075,6 +1075,6 @@ async function runCompare() {
 .merge-modes {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 </style>

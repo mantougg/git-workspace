@@ -1001,8 +1001,8 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
-  gap: 12px;
+  padding: var(--gw-space-3) var(--gw-space-4);
+  gap: var(--gw-space-3);
   overflow-y: auto;
 }
 .toolbar {
@@ -1010,12 +1010,12 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -1025,14 +1025,14 @@ onMounted(async () => {
   gap: 10px;
 }
 .stat-card {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 12px 14px;
-  background: var(--el-bg-color);
+  background: var(--gw-bg-panel);
 }
 .stat-label {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 .stat-value {
   font-size: 26px;
@@ -1041,22 +1041,22 @@ onMounted(async () => {
 }
 .stat-sub {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 .tone-ok .stat-value {
-  color: var(--el-color-success);
+  color: var(--gw-success);
 }
 .tone-warn .stat-value {
-  color: var(--el-color-warning);
+  color: var(--gw-warning);
 }
 .tone-danger .stat-value {
-  color: var(--el-color-danger);
+  color: var(--gw-danger);
 }
 .tone-info .stat-value {
-  color: var(--el-color-primary);
+  color: var(--gw-accent);
 }
 .section {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 12px 14px;
 }
@@ -1068,7 +1068,7 @@ onMounted(async () => {
 }
 .section-head-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 .section-title {
@@ -1077,10 +1077,10 @@ onMounted(async () => {
 }
 .section-hint {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 .warn-hint {
-  color: var(--el-color-warning);
+  color: var(--gw-warning);
 }
 .status-cell {
   display: inline-flex;
@@ -1100,26 +1100,26 @@ onMounted(async () => {
 .status-dot.preparing,
 .status-dot.starting,
 .status-dot.stopping {
-  background: #409eff;
+  background: var(--gw-accent);
 }
 .status-dot.building {
-  background: #e6a23c;
+  background: var(--gw-warning);
 }
 .status-dot.running {
   background: #67c23a;
 }
 .status-dot.unhealthy {
-  background: #f56c6c;
+  background: var(--gw-danger);
 }
 .status-dot.failed {
-  background: #f56c6c;
+  background: var(--gw-danger);
 }
 .status-dot.other {
-  background: #909399;
+  background: var(--gw-text-dim);
 }
 .stage-text {
   font-size: 11px;
-  color: var(--el-color-primary);
+  color: var(--gw-accent);
   margin-top: 2px;
 }
 .app-name {
@@ -1130,7 +1130,7 @@ onMounted(async () => {
   font-size: 12px;
 }
 .muted {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 .cmd-preview {
   word-break: break-all;
@@ -1153,10 +1153,10 @@ onMounted(async () => {
 .scheduler-field {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 .scheduler-label {
   font-size: 13px;
-  color: var(--el-text-color-regular);
+  color: var(--gw-text);
 }
 </style>

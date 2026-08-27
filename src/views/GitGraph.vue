@@ -433,9 +433,9 @@ function openResolver() {
 .graph-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -449,7 +449,7 @@ function openResolver() {
   display: flex;
   gap: 4px;
   padding: 4px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fafafa;
   flex-wrap: wrap;
 }
@@ -485,14 +485,14 @@ function openResolver() {
 
 .conflict-text {
   flex: 1;
-  color: #f56c6c;
+  color: var(--gw-danger);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .conflict-hint {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
@@ -505,7 +505,7 @@ function openResolver() {
 .reset-modes {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .conflict-dialog-body p {
@@ -518,12 +518,12 @@ function openResolver() {
   padding-left: 20px;
   font-family: "Cascadia Code", Consolas, monospace;
   font-size: 12px;
-  color: #f56c6c;
+  color: var(--gw-danger);
   max-height: 160px;
   overflow-y: auto;
 }
 
 .conflict-note {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 </style>

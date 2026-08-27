@@ -779,7 +779,7 @@ function formatDuration(ms: number): string {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
+  padding: var(--gw-space-3) var(--gw-space-4);
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -788,17 +788,17 @@ function formatDuration(ms: number): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   flex-wrap: wrap;
   padding-bottom: 10px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .toolbar-left,
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   flex-wrap: wrap;
 }
 
@@ -806,7 +806,7 @@ function formatDuration(ms: number): string {
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding-top: 10px;
 }
 
@@ -815,7 +815,7 @@ function formatDuration(ms: number): string {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -825,11 +825,11 @@ function formatDuration(ms: number): string {
   font-weight: 600;
   color: #303133;
   padding: 8px 10px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fafafa;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   flex-wrap: wrap;
 }
 
@@ -840,7 +840,7 @@ function formatDuration(ms: number): string {
 }
 
 .step-card {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
   margin-bottom: 8px;
   padding: 6px 8px;
@@ -856,7 +856,7 @@ function formatDuration(ms: number): string {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #409eff;
+  background: var(--gw-accent);
   color: #fff;
   font-size: 11px;
   display: flex;
@@ -879,12 +879,12 @@ function formatDuration(ms: number): string {
 .step-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .step-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
   width: 48px;
   flex-shrink: 0;
 }
@@ -904,12 +904,12 @@ function formatDuration(ms: number): string {
 .run-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   flex-wrap: wrap;
 }
 
 .graph-box {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;
@@ -951,7 +951,7 @@ function formatDuration(ms: number): string {
 .graph-layer {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--gw-space-3);
   justify-content: center;
   z-index: 1;
 }
@@ -972,7 +972,7 @@ function formatDuration(ms: number): string {
 }
 
 .gnode-kind {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -980,7 +980,7 @@ function formatDuration(ms: number): string {
 }
 
 .gnode-cond {
-  color: #e6a23c;
+  color: var(--gw-warning);
   font-size: 11px;
 }
 
@@ -989,7 +989,7 @@ function formatDuration(ms: number): string {
 }
 
 .node-running {
-  border-color: #e6a23c;
+  border-color: var(--gw-warning);
   background: #fdf6ec;
 }
 
@@ -999,12 +999,12 @@ function formatDuration(ms: number): string {
 }
 
 .node-partialSuccess {
-  border-color: #e6a23c;
+  border-color: var(--gw-warning);
   background: #fdf6ec;
 }
 
 .node-failed {
-  border-color: #f56c6c;
+  border-color: var(--gw-danger);
   background: #fef0f0;
 }
 
@@ -1024,7 +1024,7 @@ function formatDuration(ms: number): string {
 .report-box {
   flex: 1;
   min-height: 0;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
@@ -1038,7 +1038,7 @@ function formatDuration(ms: number): string {
 }
 
 .report-step {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
   margin-bottom: 8px;
 }
@@ -1046,7 +1046,7 @@ function formatDuration(ms: number): string {
 .report-step-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 10px;
   cursor: pointer;
   flex-wrap: wrap;
@@ -1058,7 +1058,7 @@ function formatDuration(ms: number): string {
 }
 
 .report-step-kind {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 11px;
 }
 
@@ -1068,25 +1068,25 @@ function formatDuration(ms: number): string {
 }
 
 .report-step-dur {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
 .report-step-toggle {
   margin-left: auto;
-  color: #409eff;
+  color: var(--gw-accent);
   font-size: 12px;
 }
 
 .report-items {
-  border-top: 1px dashed #ebeef5;
+  border-top: 1px dashed var(--gw-border);
   padding: 4px 10px 6px;
 }
 
 .report-item {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--gw-space-2);
   font-size: 12px;
   padding: 2px 0;
   flex-wrap: wrap;
@@ -1103,12 +1103,12 @@ function formatDuration(ms: number): string {
 }
 
 .mark-failed {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .mark-cancelled,
 .mark-skipped {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .item-repo {
@@ -1121,11 +1121,11 @@ function formatDuration(ms: number): string {
 
 .item-attempts,
 .item-dur {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .item-msg {
-  color: #f56c6c;
+  color: var(--gw-danger);
   word-break: break-all;
 }
 

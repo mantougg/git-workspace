@@ -470,12 +470,12 @@ defineExpose({
 }
 
 .node-icon {
-  color: #909399;
+  color: var(--gw-text-dim);
   flex-shrink: 0;
 }
 
 .repo-icon {
-  color: #409eff;
+  color: var(--gw-accent);
 }
 
 .node-label {
@@ -503,19 +503,19 @@ defineExpose({
 }
 
 .behind {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 
 .status-untracked {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .status-modified {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 
 .status-deleted {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .status-added {

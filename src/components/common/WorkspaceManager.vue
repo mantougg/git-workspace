@@ -113,7 +113,7 @@ async function handleSubmit() {
 <style scoped>
 .tip {
   margin-left: 8px;
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 </style>

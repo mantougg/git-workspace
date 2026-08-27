@@ -274,9 +274,9 @@ async function handleRestore(entry: ReflogEntry) {
 .reflog-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -298,7 +298,7 @@ async function handleRestore(entry: ReflogEntry) {
 .reflog-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 6px 16px;
   border-bottom: 1px solid #f5f5f5;
   font-size: 13px;
@@ -308,7 +308,7 @@ async function handleRestore(entry: ReflogEntry) {
   width: 140px;
   flex-shrink: 0;
   font-family: "Cascadia Code", Consolas, monospace;
-  color: #409eff;
+  color: var(--gw-accent);
 }
 
 .summary {
@@ -331,13 +331,13 @@ async function handleRestore(entry: ReflogEntry) {
 }
 
 .time {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
   flex-shrink: 0;
 }
 
 .danger-item {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .reset-target {
@@ -349,6 +349,6 @@ async function handleRestore(entry: ReflogEntry) {
 .reset-modes {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 </style>

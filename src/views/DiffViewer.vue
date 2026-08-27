@@ -242,7 +242,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowBackOutline, SparklesOutline } from "@vicons/ionicons5";
+import { SparklesOutline } from "@vicons/ionicons5";
 import { useMessage } from "naive-ui";
 import {
   getStagedDiff,
@@ -542,10 +542,6 @@ async function submitStagedCommit(allowUnsafe: boolean) {
   }
 }
 
-function goBack() {
-  router.push({ name: "changes" });
-}
-
 function handleAiReview() {
   apiKeyValue.value = "";
   showApiKeyDialog.value = true;
@@ -593,9 +589,9 @@ function statusIcon(status: string): string {
 .diff-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -603,13 +599,13 @@ function statusIcon(status: string): string {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .diff-options {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   white-space: nowrap;
 }
 
@@ -626,7 +622,7 @@ function statusIcon(status: string): string {
 
 .file-list {
   width: 280px;
-  border-right: 1px solid #ebeef5;
+  border-right: 1px solid var(--gw-border);
   overflow-y: auto;
   background: #fafafa;
 }
@@ -647,7 +643,7 @@ function statusIcon(status: string): string {
 
 .file-item.active {
   background: #ecf5ff;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--gw-accent);
   padding-left: 9px;
 }
 
@@ -664,15 +660,15 @@ function statusIcon(status: string): string {
 }
 
 .file-status-icon.deleted {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .file-status-icon.modified {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 
 .file-status-icon.renamed {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .file-name {
@@ -696,10 +692,10 @@ function statusIcon(status: string): string {
 .file-diff-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 12px;
   background: #f5f7fa;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
   font-weight: 500;
 }
@@ -713,19 +709,19 @@ function statusIcon(status: string): string {
 .compare-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fafafa;
 }
 
 .compare-sep {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .staged-commit-options {
   display: flex;
-  gap: 16px;
+  gap: var(--gw-space-4);
   margin-top: 12px;
 }
 
@@ -740,7 +736,7 @@ function statusIcon(status: string): string {
 .scan-finding-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 0;
   border-bottom: 1px solid #f0f0f0;
   font-size: 13px;
@@ -752,7 +748,7 @@ function statusIcon(status: string): string {
 }
 
 .scan-detail {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
@@ -774,12 +770,12 @@ function statusIcon(status: string): string {
 .review-issues {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .review-issue {
   padding: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 4px;
   display: flex;
   align-items: flex-start;

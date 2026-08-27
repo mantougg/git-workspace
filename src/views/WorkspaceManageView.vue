@@ -180,8 +180,8 @@ function confirmRemove(ws: Workspace) {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
-  gap: 12px;
+  padding: var(--gw-space-3) var(--gw-space-4);
+  gap: var(--gw-space-3);
 }
 
 .toolbar {
@@ -192,7 +192,7 @@ function confirmRemove(ws: Workspace) {
 
 .toolbar-left {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 
@@ -204,18 +204,18 @@ function confirmRemove(ws: Workspace) {
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
+  gap: var(--gw-space-3);
   overflow-y: auto;
   padding-bottom: 8px;
 }
 
 .ws-card {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
   transition: box-shadow 0.15s;
 }
 
@@ -227,7 +227,7 @@ function confirmRemove(ws: Workspace) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .ws-name {

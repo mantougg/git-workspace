@@ -2,10 +2,6 @@
   <div class="conflict-resolver">
     <!-- Header -->
     <div class="resolver-header">
-      <n-button @click="goBack">
-        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-        返回
-      </n-button>
       <span v-if="queueMode" class="repo-path">冲突队列（{{ workspaceName }}）</span>
       <template v-else>
         <span class="repo-path">{{ repoPath }}</span>
@@ -133,7 +129,7 @@
 // @ts-nocheck — vue-tsc false positives: all bindings below ARE used in the template
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowBackOutline, CheckmarkOutline, RefreshOutline } from "@vicons/ionicons5";
+import { CheckmarkOutline, RefreshOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import {
   getConflictContent,
@@ -426,13 +422,6 @@ async function handleAbort() {
   }
 }
 
-function goBack() {
-  if (queueMode.value) {
-    router.push({ name: "changes" });
-  } else {
-    router.back();
-  }
-}
 </script>
 
 <style scoped>
@@ -445,9 +434,9 @@ function goBack() {
 .resolver-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -476,7 +465,7 @@ function goBack() {
 
 .conflict-list {
   width: 300px;
-  border-right: 1px solid #ebeef5;
+  border-right: 1px solid var(--gw-border);
   overflow-y: auto;
   background: #fafafa;
 }
@@ -484,7 +473,7 @@ function goBack() {
 .conflict-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 8px 12px;
   cursor: pointer;
   border-bottom: 1px solid #f0f0f0;
@@ -534,9 +523,9 @@ function goBack() {
 .pane-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 12px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -556,7 +545,7 @@ function goBack() {
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
   gap: 1px;
-  background: #ebeef5;
+  background: var(--gw-border);
   overflow: hidden;
 }
 
@@ -571,7 +560,7 @@ function goBack() {
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
-  color: #909399;
+  color: var(--gw-text-dim);
   background: #f5f7fa;
   border-bottom: 1px solid #f0f0f0;
 }
@@ -600,16 +589,16 @@ function goBack() {
 .truncate-hint {
   padding: 4px 12px;
   font-size: 12px;
-  color: #e6a23c;
+  color: var(--gw-warning);
   background: #fdf6ec;
 }
 
 .resolver-footer {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -627,7 +616,7 @@ function goBack() {
 .queue-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 10px 16px;
   border-bottom: 1px solid #f5f5f5;
   font-size: 13px;
@@ -641,7 +630,7 @@ function goBack() {
 
 .queue-path {
   flex: 1;
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;

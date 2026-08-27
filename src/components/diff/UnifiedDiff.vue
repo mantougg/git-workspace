@@ -183,11 +183,11 @@ function prefix(type: string): string {
 .hunk-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   height: 21px;
   line-height: 21px;
   background: #f0f0f0;
-  color: #909399;
+  color: var(--gw-text-dim);
   padding: 0 8px;
   font-size: 12px;
   white-space: pre;
@@ -213,13 +213,13 @@ function prefix(type: string): string {
 }
 
 .hunk-btn:hover {
-  border-color: #409eff;
-  color: #409eff;
+  border-color: var(--gw-accent);
+  color: var(--gw-accent);
 }
 
 .hunk-btn.primary {
-  border-color: #409eff;
-  color: #409eff;
+  border-color: var(--gw-accent);
+  color: var(--gw-accent);
 }
 
 .diff-line {

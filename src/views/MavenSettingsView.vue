@@ -368,19 +368,19 @@ onMounted(reload);
   align-items: center;
   margin-bottom: 16px;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 .repo-info {
   margin-bottom: 12px;
 }
 .repo-hint {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   font-size: 12px;
   margin-left: 8px;
 }
@@ -390,28 +390,28 @@ onMounted(reload);
   align-items: center;
   margin-bottom: 12px;
   font-size: 14px;
-  color: var(--el-text-color-regular);
+  color: var(--gw-text);
 }
 .summary-item b {
-  color: var(--el-color-primary);
+  color: var(--gw-accent);
   margin: 0 2px;
 }
 .summary-item.valid b {
-  color: var(--el-color-success);
+  color: var(--gw-success);
 }
 .summary-item.invalid b {
-  color: var(--el-color-danger);
+  color: var(--gw-danger);
 }
 .summary-hint {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 .major-badge {
   font-weight: 600;
-  color: var(--el-color-primary);
+  color: var(--gw-accent);
 }
 .muted {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -428,11 +428,11 @@ onMounted(reload);
 }
 .preview-head {
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   margin-bottom: 4px;
 }
 .preview-pre {
-  background: var(--el-fill-color-light);
+  background: var(--gw-bg-hover);
   padding: 8px 12px;
   border-radius: 4px;
   font-size: 12px;
@@ -448,12 +448,12 @@ onMounted(reload);
 }
 .raw-head {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
   margin-bottom: 4px;
 }
 .raw-pre {
-  background: var(--el-fill-color-light);
+  background: var(--gw-bg-hover);
   padding: 8px 12px;
   border-radius: 4px;
   font-size: 12px;

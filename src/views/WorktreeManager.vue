@@ -333,9 +333,9 @@ function viewDiff(row: WorktreeInfo) {
 .wt-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -347,7 +347,7 @@ function viewDiff(row: WorktreeInfo) {
 
 .wt-header-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .wt-body {

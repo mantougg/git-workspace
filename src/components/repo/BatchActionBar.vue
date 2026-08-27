@@ -141,7 +141,7 @@ async function handleCommit() {
 .batch-action-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 12px;
   background: #ecf5ff;
   border-radius: 4px;
@@ -150,7 +150,7 @@ async function handleCommit() {
 
 .selection-info {
   font-size: 13px;
-  color: #409eff;
+  color: var(--gw-accent);
   font-weight: 500;
 }
 </style>

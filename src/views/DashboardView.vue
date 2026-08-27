@@ -614,8 +614,8 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
-  gap: 12px;
+  padding: var(--gw-space-3) var(--gw-space-4);
+  gap: var(--gw-space-3);
   overflow-y: auto;
 }
 
@@ -628,7 +628,7 @@ onMounted(async () => {
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 
@@ -640,10 +640,10 @@ onMounted(async () => {
 }
 
 .stat-card {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 12px 14px;
-  background: var(--el-bg-color);
+  background: var(--gw-bg-panel);
 }
 
 .stat-card.clickable {
@@ -651,13 +651,13 @@ onMounted(async () => {
 }
 
 .stat-card.clickable:hover {
-  border-color: var(--el-color-primary);
-  box-shadow: var(--el-box-shadow-lighter);
+  border-color: var(--gw-accent);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
 .stat-label {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .stat-value {
@@ -668,31 +668,31 @@ onMounted(async () => {
 
 .stat-sub {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .tone-ok .stat-value {
-  color: var(--el-color-success);
+  color: var(--gw-success);
 }
 
 .tone-warn .stat-value {
-  color: var(--el-color-warning);
+  color: var(--gw-warning);
 }
 
 .tone-danger .stat-value {
-  color: var(--el-color-danger);
+  color: var(--gw-danger);
 }
 
 .tone-info .stat-value {
-  color: var(--el-color-primary);
+  color: var(--gw-accent);
 }
 
 .tone-muted .stat-value {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .section {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 12px 14px;
 }
@@ -708,7 +708,7 @@ onMounted(async () => {
   height: 14px;
   border-radius: 7px;
   overflow: hidden;
-  background: var(--el-fill-color-light);
+  background: var(--gw-bg-hover);
 }
 
 .dist-seg {
@@ -720,7 +720,7 @@ onMounted(async () => {
   width: 100%;
   text-align: center;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   line-height: 14px;
 }
 
@@ -736,7 +736,7 @@ onMounted(async () => {
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: var(--el-text-color-regular);
+  color: var(--gw-text);
 }
 
 .legend-dot {
@@ -750,19 +750,19 @@ onMounted(async () => {
 }
 
 .num-warn {
-  color: var(--el-color-warning);
+  color: var(--gw-warning);
   font-weight: 600;
 }
 
 .num-danger {
-  color: var(--el-color-danger);
+  color: var(--gw-danger);
   font-weight: 600;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .actions .n-button + .n-button,
@@ -773,7 +773,7 @@ onMounted(async () => {
 .actions-hint {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 /* F-01：热力图 / 健康摘要 / 我的应用 */
@@ -781,7 +781,7 @@ onMounted(async () => {
   margin-left: 8px;
   font-size: 12px;
   font-weight: 400;
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .section-title .n-button {
@@ -790,7 +790,7 @@ onMounted(async () => {
 
 .section-empty {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
   padding: 8px 0;
 }
 
@@ -806,7 +806,7 @@ onMounted(async () => {
 }
 
 .health-score.score-good {
-  color: #18a058;
+  color: var(--gw-success);
 }
 
 .health-score.score-warn {
@@ -830,7 +830,7 @@ onMounted(async () => {
 }
 
 .app-card {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
   padding: 10px 12px;
   cursor: pointer;

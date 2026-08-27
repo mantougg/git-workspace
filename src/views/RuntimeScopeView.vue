@@ -292,8 +292,8 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
-  gap: 12px;
+  padding: var(--gw-space-3) var(--gw-space-4);
+  gap: var(--gw-space-3);
   overflow: hidden;
 }
 .toolbar {
@@ -301,17 +301,17 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
   flex-wrap: wrap;
 }
 .section {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 12px 14px;
 }
@@ -331,19 +331,19 @@ onMounted(async () => {
 }
 .mode-desc {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   margin-top: 8px;
 }
 .closure-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   margin-top: 10px;
   flex-wrap: wrap;
 }
 .fingerprint {
   font-size: 11px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 .module-section {
   flex: 1;
@@ -364,12 +364,12 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 8px;
   border-radius: 6px;
 }
 .module-item.in-closure {
-  background: var(--el-color-success-light-9);
+  background: var(--gw-bg-hover);
 }
 .module-name {
   font-weight: 600;
@@ -378,22 +378,22 @@ onMounted(async () => {
 }
 .module-path {
   font-size: 11px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 .module-coords {
   font-size: 11px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   flex-shrink: 0;
 }
 .module-empty {
   text-align: center;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   font-size: 12px;
   padding: 24px 0;
 }
 .empty-tip {
   text-align: center;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   font-size: 13px;
   padding: 48px 0;
 }

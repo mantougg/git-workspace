@@ -397,8 +397,8 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
-  gap: 12px;
+  padding: var(--gw-space-3) var(--gw-space-4);
+  gap: var(--gw-space-3);
   overflow-y: auto;
 }
 
@@ -410,12 +410,12 @@ onMounted(async () => {
 
 .toolbar-left {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 
 .section {
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--gw-border);
   border-radius: 8px;
   padding: 12px 14px;
 }
@@ -431,7 +431,7 @@ onMounted(async () => {
 
 .section-desc {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   margin-bottom: 12px;
 }
 
@@ -444,7 +444,7 @@ onMounted(async () => {
 
 .summary-text {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .import-steps {
@@ -454,12 +454,12 @@ onMounted(async () => {
 .plan-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   margin-bottom: 10px;
 }
 
 .text-muted {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .scan-alert {
@@ -469,6 +469,6 @@ onMounted(async () => {
 .scan-alert :deep(.el-alert__content) {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
 }
 </style>

@@ -93,7 +93,7 @@ const cells = computed<Cell[]>(() => {
 .commit-heatmap {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .heatmap-scroll {
@@ -145,7 +145,7 @@ const cells = computed<Cell[]>(() => {
 
 .legend-text {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
   margin: 0 4px;
 }
 </style>

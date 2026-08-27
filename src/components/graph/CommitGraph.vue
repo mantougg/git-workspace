@@ -288,7 +288,7 @@ function formatTime(time: string): string {
 .commit-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 0 12px;
   border-bottom: 1px solid #f5f5f5;
   cursor: pointer;
@@ -310,7 +310,7 @@ function formatTime(time: string): string {
 }
 
 .commit-hash {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-family: monospace;
   font-size: 12px;
   flex-shrink: 0;
@@ -331,10 +331,10 @@ function formatTime(time: string): string {
 
 .commit-meta {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   flex-shrink: 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .commit-author {
@@ -345,7 +345,7 @@ function formatTime(time: string): string {
 .load-more {
   text-align: center;
   padding: 8px;
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 13px;
 }
 
@@ -354,7 +354,7 @@ function formatTime(time: string): string {
 }
 
 .load-more:hover {
-  color: #409eff;
+  color: var(--gw-accent);
 }
 
 .empty-graph {

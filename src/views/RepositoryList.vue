@@ -1789,8 +1789,8 @@ function viewConflicts() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
-  gap: 8px;
+  padding: var(--gw-space-3) var(--gw-space-4);
+  gap: var(--gw-space-2);
 }
 
 .toolbar {
@@ -1801,13 +1801,13 @@ function viewConflicts() {
 
 .toolbar-left {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 
@@ -1815,7 +1815,7 @@ function viewConflicts() {
   display: flex;
   flex: 1;
   overflow: hidden;
-  gap: 12px;
+  gap: var(--gw-space-3);
   min-height: 0;
 }
 
@@ -1837,7 +1837,7 @@ function viewConflicts() {
 }
 
 .resize-handle:hover {
-  background: #409eff;
+  background: var(--gw-accent);
 }
 
 .diff-pane {
@@ -1845,7 +1845,7 @@ function viewConflicts() {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -1855,20 +1855,20 @@ function viewConflicts() {
   align-items: center;
   justify-content: space-between;
   padding: 6px 8px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fafafa;
 }
 
 .diff-pane-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   min-width: 0;
 }
 
 .diff-repo {
   font-weight: 600;
-  color: #409eff;
+  color: var(--gw-accent);
   font-size: 13px;
   flex-shrink: 0;
 }
@@ -1912,7 +1912,7 @@ function viewConflicts() {
 }
 
 .selected-info {
-  color: #409eff;
+  color: var(--gw-accent);
   font-weight: 500;
 }
 
@@ -1924,13 +1924,13 @@ function viewConflicts() {
 .tree-container {
   flex: 1;
   overflow: hidden;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 4px;
   min-height: 0;
 }
 
 .commit-panel {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 4px;
   background: #fafafa;
   flex-shrink: 0;
@@ -1939,32 +1939,32 @@ function viewConflicts() {
 .commit-panel-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 2px 8px;
 }
 
 .commit-panel-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .commit-panel-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 0 12px 10px 12px;
 }
 
 .ops-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .commit-row {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--gw-space-3);
 }
 
 .commit-input {
@@ -1983,12 +1983,12 @@ function viewConflicts() {
 
 .scope-repo {
   font-weight: 600;
-  color: #409eff;
+  color: var(--gw-accent);
   font-size: 12px;
 }
 
 .scope-count {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
@@ -2005,7 +2005,7 @@ function viewConflicts() {
 
 .push-repo-rel {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2034,7 +2034,7 @@ function viewConflicts() {
 .commit-options {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--gw-space-4);
   margin-top: 6px;
 }
 
@@ -2056,7 +2056,7 @@ function viewConflicts() {
 .scan-finding-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 0;
   border-bottom: 1px solid #f0f0f0;
   font-size: 13px;
@@ -2068,7 +2068,7 @@ function viewConflicts() {
 }
 
 .scan-detail {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
@@ -2086,11 +2086,11 @@ function viewConflicts() {
 
 .selector-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .selector-count.is-empty {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 
 .affected-repo-list {
@@ -2104,7 +2104,7 @@ function viewConflicts() {
 .ws-stash-save-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   margin-bottom: 10px;
 }
 
@@ -2122,18 +2122,18 @@ function viewConflicts() {
 .ws-stash-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   font-size: 13px;
 }
 
 .ws-stash-item-repo {
   font-weight: 600;
-  color: #409eff;
+  color: var(--gw-accent);
 }
 
 .ws-stash-item-oid {
   font-family: monospace;
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 

@@ -234,7 +234,7 @@ const actions = computed<Action[]>(() => {
 }
 .err-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   flex-wrap: wrap;
   margin-top: 2px;
 }

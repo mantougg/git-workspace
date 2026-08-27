@@ -345,7 +345,7 @@ onMounted(async () => {
   padding: 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--gw-space-3);
   height: 100%;
   box-sizing: border-box;
 }
@@ -359,13 +359,13 @@ onMounted(async () => {
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   flex-wrap: wrap;
 }
 
 .items-wrap {
   padding: 8px 16px;
-  background: var(--el-fill-color-light);
+  background: var(--gw-bg-hover);
 }
 
 .repo-cell {
@@ -380,16 +380,16 @@ onMounted(async () => {
 
 .repo-path {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .arrow {
   margin: 0 6px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 
 .after-none {
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 

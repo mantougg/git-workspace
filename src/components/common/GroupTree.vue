@@ -185,11 +185,11 @@ async function handleCreate() {
 
 .node-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .tree-footer {
   padding: 8px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--gw-border);
 }
 </style>

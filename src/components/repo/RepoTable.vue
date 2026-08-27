@@ -171,7 +171,7 @@ const columns: DataTableColumns<RepositoryWithStatus> = [
 
 .repo-path {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
   margin-top: 2px;
 }
 
@@ -184,7 +184,7 @@ const columns: DataTableColumns<RepositoryWithStatus> = [
 }
 
 .text-warning {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 
 .separator {

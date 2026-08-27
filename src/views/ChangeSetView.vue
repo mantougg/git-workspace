@@ -1205,13 +1205,13 @@ async function doPushAll() {
   justify-content: space-between;
   align-items: center;
   padding: 8px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
 .toolbar-left {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
 }
 
@@ -1223,7 +1223,7 @@ async function doPushAll() {
 
 .set-list {
   width: 280px;
-  border-right: 1px solid #ebeef5;
+  border-right: 1px solid var(--gw-border);
   overflow-y: auto;
   background: #fafafa;
   padding: 8px;
@@ -1243,7 +1243,7 @@ async function doPushAll() {
 }
 
 .set-item.active {
-  border-color: #409eff;
+  border-color: var(--gw-accent);
   background: #ecf5ff;
 }
 
@@ -1272,7 +1272,7 @@ async function doPushAll() {
 
 .set-updated {
   font-size: 11px;
-  color: #909399;
+  color: var(--gw-text-dim);
   margin-top: 4px;
 }
 
@@ -1305,14 +1305,14 @@ async function doPushAll() {
 
 .stats-cards {
   display: flex;
-  gap: 12px;
+  gap: var(--gw-space-3);
   margin-bottom: 12px;
 }
 
 .stat-card {
   flex: 1;
   background: #fff;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
   padding: 12px;
   text-align: center;
@@ -1330,18 +1330,18 @@ async function doPushAll() {
 
 .stat-value.deleted,
 .deleted {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .stat-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
   margin-top: 2px;
 }
 
 .action-bar {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
   flex-wrap: wrap;
   margin-bottom: 12px;
@@ -1352,7 +1352,7 @@ async function doPushAll() {
 }
 
 .repo-table {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
 }
 
@@ -1367,7 +1367,7 @@ async function doPushAll() {
 
 .repo-rel {
   font-size: 11px;
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .target-branch {
@@ -1377,17 +1377,17 @@ async function doPushAll() {
 }
 
 .ahead {
-  color: #e6a23c;
+  color: var(--gw-warning);
   margin-right: 4px;
 }
 
 .behind {
-  color: #409eff;
+  color: var(--gw-accent);
 }
 
 .selector-row {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   margin-bottom: 10px;
 }
 
@@ -1404,14 +1404,14 @@ async function doPushAll() {
 .all-diff-body {
   display: flex;
   height: 72vh;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
   overflow: hidden;
 }
 
 .all-diff-repos {
   width: 200px;
-  border-right: 1px solid #ebeef5;
+  border-right: 1px solid var(--gw-border);
   overflow-y: auto;
   background: #fafafa;
 }
@@ -1432,13 +1432,13 @@ async function doPushAll() {
 
 .all-diff-repo.active {
   background: #ecf5ff;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--gw-accent);
   padding-left: 7px;
 }
 
 .all-diff-files {
   width: 260px;
-  border-right: 1px solid #ebeef5;
+  border-right: 1px solid var(--gw-border);
   overflow-y: auto;
 }
 
@@ -1463,7 +1463,7 @@ async function doPushAll() {
 
 .file-item.active {
   background: #ecf5ff;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--gw-accent);
   padding-left: 9px;
 }
 
@@ -1480,15 +1480,15 @@ async function doPushAll() {
 }
 
 .file-status-icon.deleted {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .file-status-icon.modified {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 
 .file-status-icon.renamed {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .file-name {
@@ -1500,7 +1500,7 @@ async function doPushAll() {
 .ai-repo-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .review-result {
@@ -1516,12 +1516,12 @@ async function doPushAll() {
 .review-issues {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 
 .review-issue {
   padding: 8px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
   border-radius: 4px;
   display: flex;
   align-items: flex-start;
@@ -1562,12 +1562,12 @@ async function doPushAll() {
 }
 
 .scope-count {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .scope-skipped {
   font-size: 12px;
-  color: #909399;
+  color: var(--gw-text-dim);
   margin-top: 8px;
 }
 
@@ -1582,7 +1582,7 @@ async function doPushAll() {
 .scan-finding-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 0;
   border-bottom: 1px solid #f0f0f0;
   font-size: 13px;
@@ -1594,7 +1594,7 @@ async function doPushAll() {
 }
 
 .scan-detail {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
@@ -1609,7 +1609,7 @@ async function doPushAll() {
 .push-repo-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 6px 0;
   border-bottom: 1px solid #f0f0f0;
   font-size: 13px;

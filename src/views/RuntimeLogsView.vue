@@ -348,7 +348,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px 16px;
+  padding: var(--gw-space-3) var(--gw-space-4);
   gap: 10px;
   overflow: hidden;
 }
@@ -357,24 +357,24 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--gw-space-2);
 }
 .toolbar-left,
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   align-items: center;
   flex-wrap: wrap;
 }
 .controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   flex-wrap: wrap;
 }
 .line-count {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--gw-text-dim);
 }
 .log-panel {
   flex: 1;
@@ -395,7 +395,7 @@ onMounted(async () => {
 }
 .log-line {
   display: flex;
-  gap: 8px;
+  gap: var(--gw-space-2);
   padding: 0 8px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -418,19 +418,19 @@ onMounted(async () => {
   color: #d4d4d4;
 }
 .log-line.lv-error .log-level {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 .log-line.lv-error .log-text {
   color: #ff8f8f;
 }
 .log-line.lv-warn .log-level {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 .log-line.lv-warn .log-text {
   color: #e6c07b;
 }
 .log-line.lv-info .log-level {
-  color: #409eff;
+  color: var(--gw-accent);
 }
 .log-line.lv-debug .log-level {
   color: #9a9a9a;

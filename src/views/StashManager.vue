@@ -294,9 +294,9 @@ async function openDiff(entry: StashEntry) {
 .stash-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--gw-border);
   background: #fff;
 }
 
@@ -318,7 +318,7 @@ async function openDiff(entry: StashEntry) {
 .stash-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gw-space-3);
   padding: 8px 16px;
   border-bottom: 1px solid #f5f5f5;
   font-size: 13px;
@@ -328,7 +328,7 @@ async function openDiff(entry: StashEntry) {
   width: 100px;
   flex-shrink: 0;
   font-family: "Cascadia Code", Consolas, monospace;
-  color: #409eff;
+  color: var(--gw-accent);
 }
 
 .stash-message {
@@ -339,7 +339,7 @@ async function openDiff(entry: StashEntry) {
 }
 
 .stash-time {
-  color: #909399;
+  color: var(--gw-text-dim);
   font-size: 12px;
   flex-shrink: 0;
 }
@@ -352,18 +352,18 @@ async function openDiff(entry: StashEntry) {
 }
 
 .danger-item {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .stash-diff {
   display: flex;
   height: 55vh;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--gw-border);
 }
 
 .file-list {
   width: 260px;
-  border-right: 1px solid #ebeef5;
+  border-right: 1px solid var(--gw-border);
   overflow-y: auto;
 }
 
@@ -398,15 +398,15 @@ async function openDiff(entry: StashEntry) {
 }
 
 .file-status-icon.deleted {
-  color: #f56c6c;
+  color: var(--gw-danger);
 }
 
 .file-status-icon.modified {
-  color: #e6a23c;
+  color: var(--gw-warning);
 }
 
 .file-status-icon.renamed {
-  color: #909399;
+  color: var(--gw-text-dim);
 }
 
 .file-name {
