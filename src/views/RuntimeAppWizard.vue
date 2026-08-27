@@ -423,13 +423,20 @@ async function onDetectMainClass() {
   detecting.value = true;
   try {
     const result = await detectSpringBoot(ws.path);
-    // 匹配当前项目（path 后缀 / artifactId 两种口径都试）。
-    const project = result.projects.find(
-      (p) =>
-        form.project === p.projectPath ||
-        form.project.endsWith(p.projectPath) ||
-        form.project.endsWith(p.module),
-    );
+    // 匹配当前项目。R-02 索引里的 path 统一是正斜杠，而 Rust 检测返回的
+    // projectPath 在 Windows 上是反斜杠——比较前两侧都归一化（AGENTS.md
+    // 平台规范 §1，F-05 修复：hussar-base-web 曾因分隔符不一致匹配失败）。
+    const norm = (s: string) => s.replace(/\\/g, "/");
+    const needle = norm(form.project);
+    const project = result.projects.find((p) => {
+      const pomPath = norm(p.projectPath);
+      return (
+        needle === pomPath ||
+        pomPath.endsWith(`/${needle}`) ||
+        needle === p.module ||
+        needle.endsWith(`/${p.module}`)
+      );
+    });
     const candidate = project?.defaultMainClass || project?.candidates?.[0]?.className;
     if (candidate) {
       form.mainClass = candidate;
