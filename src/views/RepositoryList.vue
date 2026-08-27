@@ -106,6 +106,20 @@
         </n-spin>
       </div>
 
+      <!-- D-15 Middle: commit graph pane -->
+      <div v-if="selectedRepoPath && graphCommits.length > 0" class="graph-pane">
+        <div class="graph-pane-header">
+          <span class="graph-pane-title">{{ repoNameOf(selectedRepoPath) }}</span>
+        </div>
+        <n-spin :show="graphLoading" class="graph-pane-spin">
+          <CommitGraph
+            :commits="graphCommits"
+            :loading="graphLoading"
+            @select="onCommitSelect"
+          />
+        </n-spin>
+      </div>
+
       <!-- Right: change content of double-clicked file -->
       <!-- F-09b：diff 面板必须是 .main-body 的直接 flex 子元素，n-spin 只能
            包内部内容——否则 spin 容器塌陷后面板会盖到左侧树上。 -->
@@ -663,6 +677,9 @@ import { listen } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
 import ContextMenu from "@/components/shell/ContextMenu.vue";
+import CommitGraph from "@/components/graph/CommitGraph.vue";
+import { getCommitHistory } from "@/api/graph";
+import type { CommitInfo } from "@/types/graph";
 import { startWatcher, stopWatcher, batchCommit, batchFetch, batchPull, batchPush } from "@/api/git_ops";
 import {
   scanCommit,
@@ -738,6 +755,28 @@ const identityDialog = ref({
   current: null as CommitIdentity | null,
   groupId: null as number | null,
 });
+
+// D-15：三栏联动状态
+const graphCommits = ref<CommitInfo[]>([]);
+const graphLoading = ref(false);
+
+async function loadGraphCommits(repoPath: string) {
+  graphLoading.value = true;
+  try {
+    graphCommits.value = await getCommitHistory(repoPath, 200);
+  } catch (e) {
+    console.error("Failed to load commits:", e);
+    graphCommits.value = [];
+  } finally {
+    graphLoading.value = false;
+  }
+}
+
+function onCommitSelect(commit: CommitInfo) {
+  // 选中提交时，可以在 diff 面板显示该提交的变更
+  // 目前先记录选中状态，后续可扩展为显示 commit diff
+  console.log("Selected commit:", commit.shortOid, commit.message);
+}
 
 // D-13：右键菜单状态
 const contextMenu = ref({
@@ -1084,6 +1123,12 @@ watch(() => workspaceStore.currentWorkspace, () => {
 
 function onTreeSelection(selection: TreeSelection) {
   treeSelection.value = selection;
+  // D-15：单仓库选中时加载提交图
+  if (selection.repoPaths.length === 1) {
+    loadGraphCommits(selection.repoPaths[0]);
+  } else {
+    graphCommits.value = [];
+  }
 }
 
 function repoNameOf(repoPath: string): string {
@@ -1901,6 +1946,39 @@ function viewConflicts() {
 
 .resize-handle:hover {
   background: var(--gw-accent);
+}
+
+/* D-15：提交图面板 */
+.graph-pane {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--gw-border);
+  border-radius: var(--gw-radius-md);
+  overflow: hidden;
+  background: var(--gw-bg-panel);
+}
+
+.graph-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--gw-space-2) var(--gw-space-3);
+  border-bottom: 1px solid var(--gw-border);
+  background: var(--gw-bg-panel);
+}
+
+.graph-pane-title {
+  font-size: var(--gw-text-sm);
+  font-weight: 600;
+  color: var(--gw-text);
+  font-family: var(--gw-font-mono);
+}
+
+.graph-pane-spin {
+  flex: 1;
+  min-height: 0;
 }
 
 .diff-pane {

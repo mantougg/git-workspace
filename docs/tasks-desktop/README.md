@@ -18,7 +18,7 @@
 ## 总体进度
 
 - 任务总数：**16**
-- 已完成：**14** · 进行中：**0** · 未开始：**2**
+- 已完成：**14** · 暂停：**2** · 未开始：**0**
 - 完成度：**0 / 16（0%）**
 
 ---
@@ -58,8 +58,8 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| D-15 | 变更视图三栏联动（仓库树 + 提交图 + diff） | P2 | ⬜ | D-10 | [D-15-three-pane-changes.md](./D-15-three-pane-changes.md) |
-| D-16 | splitter 位置记忆 + 自定义标题栏重估 | P3 | ⬜ | D-15 | [D-16-splitter-titlebar.md](./D-16-splitter-titlebar.md) |
+| D-15 | 变更视图三栏联动（仓库树 + 提交图 + diff） | P2 | ✅ | D-10 | [D-15-three-pane-changes.md](./D-15-three-pane-changes.md) |
+| D-16 | splitter 位置记忆 + 自定义标题栏重估 | P3 | ⏸️ | D-15 | [D-16-splitter-titlebar.md](./D-16-splitter-titlebar.md) |
 
 ---
 
