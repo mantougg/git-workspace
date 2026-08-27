@@ -883,7 +883,9 @@ const changeTreeRef = ref<InstanceType<typeof ChangeTree> | null>(null);
 const showPushDialog = ref(false);
 const pushSelection = ref<string[]>([]);
 
-const diffWidth = ref<number | null>(null);
+const diffWidth = ref<number | null>(
+  localStorage.getItem("gw-diff-width") ? Number(localStorage.getItem("gw-diff-width")) : null
+);
 const diffPaneEl = ref<HTMLElement | null>(null);
 const expandedWsStashKeys = ref<number[]>([]);
 let resizeStartX = 0;
@@ -1192,6 +1194,10 @@ function onResizeMove(e: MouseEvent) {
 function endResize() {
   document.removeEventListener("mousemove", onResizeMove);
   document.removeEventListener("mouseup", endResize);
+  // D-16：保存 splitter 位置到 localStorage
+  if (diffWidth.value) {
+    localStorage.setItem("gw-diff-width", String(diffWidth.value));
+  }
 }
 
 async function handleScan() {
