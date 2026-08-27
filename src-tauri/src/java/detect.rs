@@ -272,6 +272,16 @@ fn mise_homes() -> Vec<PathBuf> {
     if let Some(dir) = std::env::var_os("MISE_DATA_DIR").map(PathBuf::from) {
         parents.push(dir.join("installs").join("java"));
     }
+    // F-03：mise 默认数据目录——Windows 是 %LOCALAPPDATA%\mise（原来漏了，
+    // 用户实测 temurin 全系漏检）；Unix 是 $XDG_DATA_HOME/mise 或
+    // ~/.local/share/mise。dirs::data_local_dir 在 Linux 上就是
+    // ~/.local/share（与下面条目重复无妨，discover 阶段会去重）。
+    if let Some(dir) = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from) {
+        parents.push(dir.join("mise").join("installs").join("java"));
+    }
+    if let Some(local) = dirs::data_local_dir() {
+        parents.push(local.join("mise").join("installs").join("java"));
+    }
     if let Some(home) = dirs::home_dir() {
         parents.push(home.join(".mise").join("installs").join("java"));
         parents.push(home.join(".local").join("share").join("mise").join("installs").join("java"));
@@ -382,6 +392,37 @@ mod tests {
         assert!(!inst.is_valid, "non-executable java probe is invalid but recorded");
 
         let _ = fs::remove_dir_all(&home);
+    }
+
+    /// F-03：mise 默认数据目录覆盖——Windows 上是 %LOCALAPPDATA%\mise
+    /// （F-03 修复前漏掉，导致 mise 装的 JDK 全漏检）。探测不到 mise
+    /// 安装目录就 skip 并打印原因（AGENTS.md 平台规范 §4）。
+    #[test]
+    fn mise_data_local_dir_is_scanned() {
+        let local = match dirs::data_local_dir() {
+            Some(dir) => dir,
+            None => {
+                eprintln!("F-03: no data_local_dir on this platform; skipping");
+                return;
+            }
+        };
+        let parent = local.join("mise").join("installs").join("java");
+        if !parent.is_dir() {
+            eprintln!("F-03: {parent:?} not present (mise 未安装或未装 JDK); skipping");
+            return;
+        }
+        let homes = mise_homes();
+        assert!(
+            !homes.is_empty(),
+            "mise java installs exist at {parent:?} but none were discovered"
+        );
+        // 至少一个发现的 home 来自该目录（ mise 的别名目录如 temurin-17
+        // 与真实版本目录并列，均被接受）。
+        assert!(
+            homes.iter().any(|h| h.starts_with(&parent)),
+            "expected a discovered home under {parent:?}, got {homes:?}"
+        );
+        eprintln!("F-03 mise homes: {homes:?}");
     }
 
     /// 真实 `java -version` 集成：机器无 java 时跳过并标注（仿 R-03 mvn 集成约定）。
