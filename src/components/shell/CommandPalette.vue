@@ -50,7 +50,8 @@
 import { ref, computed, watch, nextTick } from "vue";
 import { NModal, NInput, NIcon } from "naive-ui";
 import { SearchOutline } from "@vicons/ionicons5";
-import { getAllCommands, type Command } from "@/commands/registry";
+import { getCommandsWithShortcuts } from "@/commands/shortcuts";
+import type { Command } from "@/commands/registry";
 
 const props = defineProps<{
   show: boolean;
@@ -64,7 +65,7 @@ const query = ref("");
 const activeIndex = ref(0);
 const inputRef = ref<InstanceType<typeof NInput> | null>(null);
 
-const allCommands = computed(() => getAllCommands());
+const allCommands = computed(() => getCommandsWithShortcuts());
 
 /** 模糊搜索过滤 */
 const filtered = computed(() => {

@@ -25,6 +25,7 @@ import TaskPanel from "@/views/TaskPanel.vue";
 import CommandPalette from "@/components/shell/CommandPalette.vue";
 import { useTheme } from "@/composables/useTheme";
 import { lightOverrides, darkOverrides } from "@/styles/naive-overrides";
+import { createShortcutListener } from "@/commands/shortcuts";
 
 // D-02：主题机制
 const { resolved } = useTheme();
@@ -37,14 +38,19 @@ const themeOverrides = computed(() =>
   resolved.value === "dark" ? darkOverrides : lightOverrides
 );
 
-// D-12：Command Palette
+// D-12/D-14：Command Palette + 快捷键
 const showPalette = ref(false);
+const shortcutListener = createShortcutListener();
 
 function onGlobalKeydown(e: KeyboardEvent) {
+  // Command Palette 快捷键优先
   if ((e.metaKey || e.ctrlKey) && e.key === "k") {
     e.preventDefault();
     showPalette.value = !showPalette.value;
+    return;
   }
+  // 其他快捷键走命令注册表
+  shortcutListener(e);
 }
 
 onMounted(() => {

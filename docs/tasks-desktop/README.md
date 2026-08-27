@@ -18,7 +18,7 @@
 ## 总体进度
 
 - 任务总数：**16**
-- 已完成：**13** · 进行中：**0** · 未开始：**3**
+- 已完成：**14** · 进行中：**0** · 未开始：**2**
 - 完成度：**0 / 16（0%）**
 
 ---
@@ -52,7 +52,7 @@
 |---|---|---|---|---|---|
 | D-12 | 命令注册表 + Command Palette（Ctrl/Cmd+K） | P1 | ✅ | D-04 | [D-12-command-palette.md](./D-12-command-palette.md) |
 | D-13 | ContextMenu（变更树 / 提交图右键菜单） | P2 | ✅ | D-12 | [D-13-context-menu.md](./D-13-context-menu.md) |
-| D-14 | 键盘快捷键体系（命令注册表按键映射） | P2 | ⬜ | D-12 | [D-14-keyboard-shortcuts.md](./D-14-keyboard-shortcuts.md) |
+| D-14 | 键盘快捷键体系（命令注册表按键映射） | P2 | ✅ | D-12 | [D-14-keyboard-shortcuts.md](./D-14-keyboard-shortcuts.md) |
 
 ### 三期 · Git Client Experience（可选，独立评估，2 个）
 
