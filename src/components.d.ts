@@ -17,6 +17,7 @@ declare module 'vue' {
     CommandPalette: typeof import('./components/shell/CommandPalette.vue')['default']
     CommitGraph: typeof import('./components/graph/CommitGraph.vue')['default']
     CommitHeatmap: typeof import('./components/repo/CommitHeatmap.vue')['default']
+    ContextMenu: typeof import('./components/shell/ContextMenu.vue')['default']
     GroupTree: typeof import('./components/common/GroupTree.vue')['default']
     LogManager: typeof import('./components/common/LogManager.vue')['default']
     NAlert: typeof import('naive-ui')['NAlert']

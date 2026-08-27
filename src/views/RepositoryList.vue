@@ -82,6 +82,7 @@
               :changes="changes"
               @selection-change="onTreeSelection"
               @file-dblclick="onFileDblClick"
+              @contextmenu="onTreeContextmenu"
             />
             <div
               v-if="!changesLoading && currentWorkspaceId && changes.length === 0"
@@ -597,6 +598,16 @@
 
     <LogManager v-model="showLogManager" />
 
+    <!-- D-13 右键菜单 -->
+    <ContextMenu
+      :show="contextMenu.show"
+      :options="contextMenuOptions"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @select="onContextmenuSelect"
+      @close="onContextmenuClose"
+    />
+
     <!-- Push repo picker dialog -->
     <n-modal v-model:show="showPushDialog" preset="card" title="选择要 Push 的仓库" style="width: 680px">
       <n-data-table
@@ -651,6 +662,7 @@ import { NButton, NIcon, NTag, useMessage, useDialog } from "naive-ui";
 import { listen } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
+import ContextMenu from "@/components/shell/ContextMenu.vue";
 import { startWatcher, stopWatcher, batchCommit, batchFetch, batchPull, batchPush } from "@/api/git_ops";
 import {
   scanCommit,
@@ -726,6 +738,57 @@ const identityDialog = ref({
   current: null as CommitIdentity | null,
   groupId: null as number | null,
 });
+
+// D-13：右键菜单状态
+const contextMenu = ref({
+  show: false,
+  x: 0,
+  y: 0,
+  node: null as ChangeNode | null,
+});
+
+const contextMenuOptions = computed(() => {
+  const node = contextMenu.value.node;
+  if (!node) return [];
+
+  if (node.type === "repo") {
+    return [
+      { label: "Fetch", key: "fetch" },
+      { label: "Pull", key: "pull" },
+      { label: "Push", key: "push" },
+      { type: "divider", key: "d1" },
+      { label: "提交", key: "commit" },
+      { label: "健康检查", key: "health" },
+    ];
+  }
+
+  if (node.type === "file") {
+    return [
+      { label: "Stage", key: "stage" },
+      { label: "Unstage", key: "unstage" },
+      { type: "divider", key: "d1" },
+      { label: "Discard", key: "discard" },
+      { label: "查看 Diff", key: "diff" },
+    ];
+  }
+
+  return [];
+});
+
+function onTreeContextmenu(node: ChangeNode, x: number, y: number) {
+  contextMenu.value = { show: true, x, y, node };
+}
+
+function onContextmenuSelect(key: string) {
+  const node = contextMenu.value.node;
+  if (!node) return;
+  // 命令执行逻辑（复用已有能力）
+  console.log("Context menu action:", key, node);
+}
+
+function onContextmenuClose() {
+  contextMenu.value.show = false;
+}
 
 // --- Batch selector + repo-level ops (T-20) ---
 const selectorQuery = ref("");

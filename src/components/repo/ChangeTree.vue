@@ -11,6 +11,7 @@
       :render-label="renderLabel"
       :render-prefix="renderPrefix"
       :render-suffix="renderSuffix"
+      :node-props="nodeProps"
       @update:checked-keys="onCheck"
       @update:expanded-keys="onExpandedChange"
       class="tree"
@@ -60,6 +61,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "selection-change", selection: TreeSelection): void;
   (e: "file-dblclick", node: ChangeNode): void;
+  (e: "contextmenu", node: ChangeNode, x: number, y: number): void;
 }>();
 
 const treeRef = ref();
@@ -97,6 +99,17 @@ watch(
 
 function onExpandedChange(keys: Array<string | number>) {
   expandedKeysState.value = keys.map(String);
+}
+
+/** D-13：右键菜单属性 */
+function nodeProps({ option }: { option: TreeOption }) {
+  return {
+    onContextmenu(e: MouseEvent) {
+      e.preventDefault();
+      const node = option as unknown as ChangeNode;
+      emit("contextmenu", node, e.clientX, e.clientY);
+    },
+  };
 }
 
 function normalizeRel(p: string): string {
