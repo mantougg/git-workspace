@@ -18,7 +18,7 @@
 ## 总体进度
 
 - 任务总数：**16**
-- 已完成：**0** · 进行中：**0** · 未开始：**16**
+- 已完成：**6** · 进行中：**0** · 未开始：**10**
 - 完成度：**0 / 16（0%）**
 
 ---
@@ -29,12 +29,12 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| D-01 | Design Tokens（tokens.scss 亮暗双套） | P0 | ⬜ | — | [D-01-design-tokens.md](./D-01-design-tokens.md) |
-| D-02 | 主题机制（darkTheme 绑定 / 系统跟随 / 三档持久化） | P0 | ⬜ | D-01 | [D-02-theme-system.md](./D-02-theme-system.md) |
-| D-03 | 骨架组件（AppShell / SideNav / StatusBar） | P0 | ⬜ | D-01 | [D-03-shell-components.md](./D-03-shell-components.md) |
-| D-04 | App.vue 壳层改造 + router meta + TaskPanel 收编 | P0 | ⬜ | D-03 | [D-04-app-shell-integration.md](./D-04-app-shell-integration.md) |
-| D-05 | 导航清理 + 工作区切换收编（含 F-02 回归） | P0 | ⬜ | D-04 | [D-05-nav-cleanup.md](./D-05-nav-cleanup.md) |
-| D-06 | 窗口状态记忆 + AGENTS.md 约定落地 | P1 | ⬜ | D-04 | [D-06-window-state-conventions.md](./D-06-window-state-conventions.md) |
+| D-01 | Design Tokens（tokens.scss 亮暗双套） | P0 | ✅ | — | [D-01-design-tokens.md](./D-01-design-tokens.md) |
+| D-02 | 主题机制（darkTheme 绑定 / 系统跟随 / 三档持久化） | P0 | ✅ | D-01 | [D-02-theme-system.md](./D-02-theme-system.md) |
+| D-03 | 骨架组件（AppShell / SideNav / StatusBar） | P0 | ✅ | D-01 | [D-03-shell-components.md](./D-03-shell-components.md) |
+| D-04 | App.vue 壳层改造 + router meta + TaskPanel 收编 | P0 | ✅ | D-03 | [D-04-app-shell-integration.md](./D-04-app-shell-integration.md) |
+| D-05 | 导航清理 + 工作区切换收编（含 F-02 回归） | P0 | ✅ | D-04 | [D-05-nav-cleanup.md](./D-05-nav-cleanup.md) |
+| D-06 | 窗口状态记忆 + AGENTS.md 约定落地 | P1 | ✅ | D-04 | [D-06-window-state-conventions.md](./D-06-window-state-conventions.md) |
 
 ### 二期 · Desktop Visual System（视觉密度收敛，5 个）
 

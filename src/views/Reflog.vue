@@ -2,10 +2,6 @@
   <div class="reflog-view">
     <!-- Header -->
     <div class="reflog-header">
-      <n-button @click="goBack">
-        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-        返回
-      </n-button>
       <span class="repo-path">{{ repoPath }}</span>
       <n-select
         v-model:value="reference"
@@ -78,7 +74,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowBackOutline, EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
+import { EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
 import { getReflog } from "@/api/reflog";
@@ -158,10 +154,6 @@ async function load() {
   } finally {
     loading.value = false;
   }
-}
-
-function goBack() {
-  router.push({ name: "git-graph", query: { repo: repoPath.value } });
 }
 
 function onAction(cmd: string, entry: ReflogEntry) {

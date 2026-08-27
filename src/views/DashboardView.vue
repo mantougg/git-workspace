@@ -1,27 +1,12 @@
 <template>
   <div class="dashboard">
-    <!-- Top toolbar -->
+    <!-- Top toolbar（D-05：导航按钮移除，仅保留操作类） -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          placeholder="选择工作区"
-          style="width: 200px"
-          :options="workspaceOptions"
-          @update:value="onWorkspaceChange"
-        />
-        <n-button @click="showAddWorkspace = true">
-          <template #icon><n-icon><AddOutline /></n-icon></template>
-          添加工作区
-        </n-button>
-        <n-button @click="router.push({ name: 'workspaces' })">
-          <template #icon><n-icon><SettingsOutline /></n-icon></template>
-          工作区管理
-        </n-button>
         <n-button
           type="primary"
           :loading="repoStore.scanning"
-          :disabled="!selectedWorkspaceId"
+          :disabled="!currentWorkspaceId"
           @click="handleScan"
         >
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
@@ -29,59 +14,11 @@
         </n-button>
         <n-button
           :loading="repoStore.loading"
-          :disabled="!selectedWorkspaceId"
+          :disabled="!currentWorkspaceId"
           @click="reload"
         >
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
-        </n-button>
-      </div>
-      <div class="toolbar-right">
-        <n-button :disabled="!selectedWorkspaceId" @click="goHealth">
-          <template #icon><n-icon><SpeedometerOutline /></n-icon></template>
-          健康检查
-        </n-button>
-        <n-button
-          :disabled="!selectedWorkspaceId"
-          @click="router.push({ name: 'change-sets' })"
-        >
-          <template #icon><n-icon><FolderOutline /></n-icon></template>
-          Change Set
-        </n-button>
-        <n-button
-          :disabled="!selectedWorkspaceId"
-          @click="router.push({ name: 'pipeline' })"
-        >
-          <template #icon><n-icon><LinkOutline /></n-icon></template>
-          Pipeline
-        </n-button>
-        <n-button
-          :disabled="!selectedWorkspaceId"
-          @click="router.push({ name: 'operation-log' })"
-        >
-          <template #icon><n-icon><TimeOutline /></n-icon></template>
-          操作日志
-        </n-button>
-        <n-button @click="router.push({ name: 'jdk-manager' })">
-          <template #icon><n-icon><HardwareChipOutline /></n-icon></template>
-          JDK 管理
-        </n-button>
-        <n-button
-          type="primary"
-          dashed
-          @click="router.push({ name: 'runtime-dashboard' })"
-        >
-          <template #icon><n-icon><DesktopOutline /></n-icon></template>
-          Runtime
-        </n-button>
-        <n-button
-          type="primary"
-          dashed
-          :disabled="!selectedWorkspaceId"
-          @click="goChanges()"
-        >
-          <template #icon><n-icon><DocumentsOutline /></n-icon></template>
-          变更与批量操作
         </n-button>
       </div>
     </div>
@@ -128,7 +65,7 @@
     </div>
 
     <!-- Commit heatmap (F-01b)：当前用户在当前工作区所有仓库的提交热力图 -->
-    <div v-if="selectedWorkspaceId" class="section">
+    <div v-if="currentWorkspaceId" class="section">
       <div class="section-title">
         提交热力图
         <span v-if="heatmap.identity" class="section-sub">{{ heatmap.identity }}</span>
@@ -142,7 +79,7 @@
     </div>
 
     <!-- Health summary (F-01c)：健康检查前置到首页，轻项走缓存即时返回 -->
-    <div v-if="selectedWorkspaceId" class="section">
+    <div v-if="currentWorkspaceId" class="section">
       <div class="section-title">
         健康检查
         <n-button size="tiny" text type="primary" @click="goHealth">查看详情</n-button>
@@ -163,7 +100,7 @@
     </div>
 
     <!-- Runtime apps (F-01d)：当前工作区已创建的应用 -->
-    <div v-if="selectedWorkspaceId" class="section">
+    <div v-if="currentWorkspaceId" class="section">
       <div class="section-title">
         我的应用
         <n-button size="tiny" text type="primary" @click="router.push({ name: 'runtime-dashboard' })">
@@ -249,30 +186,20 @@
       </div>
     </div>
 
-    <WorkspaceManager v-model="showAddWorkspace" @added="onWorkspaceAdded" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import {
-  AddOutline,
   RefreshOutline,
   DownloadOutline,
   CloudUploadOutline,
   CreateOutline,
   AddCircleOutline,
   ArchiveOutline,
-  DocumentsOutline,
-  SpeedometerOutline,
-  FolderOutline,
-  LinkOutline,
-  TimeOutline,
-  HardwareChipOutline,
-  DesktopOutline,
-  SettingsOutline,
 } from "@vicons/ionicons5";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
@@ -287,7 +214,6 @@ import type { RepoStatus } from "@/types/repository";
 import type { CommitHeatmap as CommitHeatmapData } from "@/types/heatmap";
 import type { WorkspaceHealth } from "@/types/health";
 import type { RuntimeConfigSummary } from "@/types/runtime";
-import WorkspaceManager from "@/components/common/WorkspaceManager.vue";
 import CommitHeatmap from "@/components/repo/CommitHeatmap.vue";
 import { errMsg } from "@/utils/error";
 import { useMessage } from "naive-ui";
@@ -321,8 +247,8 @@ const message = useMessage();
 // bounded by the watcher aggregation window).
 useRepositories();
 
-const selectedWorkspaceId = ref<number | null>(null);
-const showAddWorkspace = ref(false);
+// D-05：响应全局工作区 store，不再维护本地 currentWorkspaceId
+const currentWorkspaceId = computed(() => workspaceStore.currentWorkspace?.id ?? null);
 const groups = ref<RepoGroup[]>([]);
 
 // F-01：首页数据面板（热力图 / 健康摘要 / 我的应用）。
@@ -339,14 +265,6 @@ const healthScoreClass = computed(() => {
   if (score >= 60) return "score-warn";
   return "score-bad";
 });
-
-// Workspace options for n-select
-const workspaceOptions = computed(() =>
-  workspaceStore.workspaces.map((ws) => ({
-    label: ws.name,
-    value: ws.id,
-  }))
-);
 
 // Group table columns for n-data-table
 const groupColumns = [
@@ -624,7 +542,7 @@ function quickAction(action: string) {
 
 /** F-01：热力图 / 健康摘要 / 我的应用，并行加载、互不阻塞。 */
 async function loadInsights() {
-  const wsId = selectedWorkspaceId.value;
+  const wsId = currentWorkspaceId.value;
   if (!wsId) return;
   heatmapLoading.value = true;
   healthLoading.value = true;
@@ -646,10 +564,10 @@ async function loadInsights() {
 }
 
 async function reload() {
-  if (!selectedWorkspaceId.value) return;
-  await repoStore.loadRepositories(selectedWorkspaceId.value);
+  if (!currentWorkspaceId.value) return;
+  await repoStore.loadRepositories(currentWorkspaceId.value);
   try {
-    groups.value = await listGroups(selectedWorkspaceId.value);
+    groups.value = await listGroups(currentWorkspaceId.value);
   } catch (e) {
     console.error("Failed to load groups:", e);
   }
@@ -668,9 +586,9 @@ async function reload() {
 }
 
 async function handleScan() {
-  if (!selectedWorkspaceId.value) return;
+  if (!currentWorkspaceId.value) return;
   try {
-    await repoStore.scanRepositories(selectedWorkspaceId.value);
+    await repoStore.scanRepositories(currentWorkspaceId.value);
     message.success(`发现 ${repoStore.totalCount} 个仓库`);
     await reload();
   } catch (e) {
@@ -678,24 +596,14 @@ async function handleScan() {
   }
 }
 
-function onWorkspaceChange(id: number) {
-  selectedWorkspaceId.value = id;
-  const ws = workspaceStore.workspaces.find((w) => w.id === id);
-  if (ws) workspaceStore.selectWorkspace(ws);
-  reload();
-}
-
-function onWorkspaceAdded() {
-  if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
-    handleScan();
-  }
-}
+// D-05：监听全局工作区变化，自动重新加载
+watch(() => workspaceStore.currentWorkspace, (ws) => {
+  if (ws) reload();
+});
 
 onMounted(async () => {
   await workspaceStore.loadWorkspaces();
   if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
     await reload();
   }
 });

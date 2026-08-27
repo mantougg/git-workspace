@@ -2,10 +2,6 @@
   <div class="git-graph-view">
     <!-- Header -->
     <div class="graph-header">
-      <n-button @click="goBack">
-        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-        返回
-      </n-button>
       <span class="repo-path">{{ repoPath }}</span>
       <n-button
         type="primary"
@@ -14,9 +10,6 @@
         @click="loadHistory"
       >
         刷新
-      </n-button>
-      <n-button size="small" @click="viewReflog">
-        Reflog
       </n-button>
     </div>
 
@@ -155,7 +148,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowBackOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { getCommitHistory, getBranches } from "@/api/graph";
 import {
@@ -416,10 +408,6 @@ async function abortFromDialog() {
   await abortInProgress(base);
 }
 
-function viewReflog() {
-  router.push({ name: "reflog-view", query: { repo: repoPath.value } });
-}
-
 // Commit Diff entry (T-12): open the DiffViewer in commit mode.
 function viewCommitDiff() {
   if (!selectedCommit.value) return;
@@ -433,9 +421,6 @@ function openResolver() {
   router.push({ name: "conflict-resolver", query: { repo: repoPath.value } });
 }
 
-function goBack() {
-  router.push({ name: "changes" });
-}
 </script>
 
 <style scoped>

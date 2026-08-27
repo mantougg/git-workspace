@@ -21,6 +21,7 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-window-state = "2"
 git2 = { version = "0.19", features = ["ssh", "https"] }
 tokio = { version = "1", features = ["full"] }
 notify = "7"

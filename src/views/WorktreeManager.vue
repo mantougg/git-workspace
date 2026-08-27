@@ -2,10 +2,6 @@
   <div class="worktree-manager">
     <!-- Header -->
     <div class="wt-header">
-      <n-button @click="goBack">
-        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-        返回
-      </n-button>
       <span class="repo-path">{{ repoPath }}</span>
       <div class="wt-header-actions">
         <n-button size="small" :loading="loading" @click="load">
@@ -73,7 +69,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowBackOutline, AddOutline, RefreshOutline } from "@vicons/ionicons5";
+import { AddOutline, RefreshOutline } from "@vicons/ionicons5";
 import { open as openPath } from "@tauri-apps/plugin-shell";
 import { listWorktrees, createWorktree, removeWorktree } from "@/api/worktree";
 import { listBranches } from "@/api/branch";
@@ -325,9 +321,6 @@ function viewDiff(row: WorktreeInfo) {
   router.push({ name: "diff-viewer", query: { repo: row.path } });
 }
 
-function goBack() {
-  router.push({ name: "changes" });
-}
 </script>
 
 <style scoped>

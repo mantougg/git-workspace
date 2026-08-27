@@ -3,23 +3,12 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          :options="workspaceOptions"
-          placeholder="选择工作区"
-          style="width: 200px"
-          @update:value="onWorkspaceChange"
-        />
         <n-button :loading="store.loading" @click="reload">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
         </n-button>
         <n-button
-          :disabled="!selectedWorkspaceId"
+          :disabled="!workspaceStore.currentWorkspace"
           :loading="resolving"
           @click="onResolve"
         >
@@ -29,36 +18,8 @@
       </div>
       <div class="toolbar-right">
         <n-button
-          :disabled="!selectedWorkspaceId"
-          @click="router.push({ name: 'runtime-dependencies' })"
-        >
-          <template #icon><n-icon><ShareOutline /></n-icon></template>
-          依赖映射
-        </n-button>
-        <n-button
-          :disabled="!selectedWorkspaceId"
-          @click="router.push({ name: 'runtime-scope' })"
-        >
-          <template #icon><n-icon><SettingsOutline /></n-icon></template>
-          Scope
-        </n-button>
-        <n-button
-          :disabled="!selectedWorkspaceId"
-          @click="router.push({ name: 'runtime-logs' })"
-        >
-          <template #icon><n-icon><DocumentOutline /></n-icon></template>
-          日志
-        </n-button>
-        <n-button
-          :disabled="!selectedWorkspaceId"
-          @click="router.push({ name: 'runtime-app-wizard' })"
-        >
-          <template #icon><n-icon><AddOutline /></n-icon></template>
-          新建应用
-        </n-button>
-        <n-button
           type="success"
-          :disabled="!selectedWorkspaceId || store.configs.length === 0"
+          :disabled="!workspaceStore.currentWorkspace || store.configs.length === 0"
           @click="onStartAll"
         >
           <template #icon><n-icon><PlayOutline /></n-icon></template>
@@ -66,7 +27,7 @@
         </n-button>
         <n-button
           type="error"
-          :disabled="!selectedWorkspaceId || store.processes.length === 0"
+          :disabled="!workspaceStore.currentWorkspace || store.processes.length === 0"
           @click="onStopAll"
         >
           <template #icon><n-icon><StopOutline /></n-icon></template>
@@ -289,12 +250,7 @@ import { computed, h, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NTag, NIcon, useMessage, useDialog } from "naive-ui";
 import {
-  ArrowBackOutline,
   RefreshOutline,
-  AddOutline,
-  ShareOutline,
-  SettingsOutline,
-  DocumentOutline,
   PlayOutline,
   StopOutline,
 } from "@vicons/ionicons5";
@@ -318,17 +274,12 @@ const store = useRuntimeStore();
 const message = useMessage();
 const dialog = useDialog();
 
-const selectedWorkspaceId = ref<number | null>(null);
 const resolving = ref(false);
 const selectedConfig = ref<RuntimeConfigSummary | null>(null);
 /** 选中应用的完整配置（按需加载）。 */
 const configDetail = ref<RuntimeApplicationConfig | null>(null);
 const scheduler = ref<SchedulerConfig>({ maxConcurrentBuilds: 2, maxConcurrentResolves: 4 });
 const savingScheduler = ref(false);
-
-const workspaceOptions = computed(() =>
-  workspaceStore.workspaces.map((ws) => ({ label: ws.name, value: ws.id })),
-);
 
 // ------------------------------------------------------------------
 // R-14 §80 可行动错误提示 + §75 脚本确认流
@@ -905,7 +856,7 @@ async function onBuild(name: string) {
 }
 
 async function onResolve() {
-  if (!selectedWorkspaceId.value) return;
+  if (!workspaceStore.currentWorkspace) return;
   clearError();
   resolving.value = true;
   try {
@@ -989,8 +940,9 @@ async function onSaveScheduler() {
 // ------------------------------------------------------------------
 
 async function reload() {
-  if (!selectedWorkspaceId.value) return;
-  await store.setWorkspace(selectedWorkspaceId.value);
+  const wsId = workspaceStore.currentWorkspace?.id;
+  if (!wsId) return;
+  await store.setWorkspace(wsId);
   try {
     scheduler.value = await runtimeApi.runtimeGetSchedulerConfig();
   } catch (e) {
@@ -1017,18 +969,6 @@ function onAlertOpenLogs() {
   }
 }
 
-async function onWorkspaceChange(id: number) {
-  selectedWorkspaceId.value = id;
-  const ws = workspaceStore.workspaces.find((w) => w.id === id);
-  if (ws) workspaceStore.selectWorkspace(ws);
-  selectedConfig.value = null;
-  await reload();
-}
-
-function goBack() {
-  router.push({ name: "dashboard" });
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -1049,11 +989,6 @@ function formatTime(iso: string): string {
 
 onMounted(async () => {
   await workspaceStore.loadWorkspaces();
-  if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
-  } else if (workspaceStore.workspaces.length > 0) {
-    selectedWorkspaceId.value = workspaceStore.workspaces[0].id;
-  }
   await store.subscribe();
   await reload();
 });onUnmounted(() => {

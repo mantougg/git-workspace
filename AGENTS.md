@@ -116,10 +116,46 @@ This project is indexed by GitNexus as **git-workspace** (6606 symbols, 15045 re
 <!-- app-footer:start -->
 # 应用底部版本栏规则（F-07）
 
-- 应用底部常驻一栏，格式：`v<版本号> by <作者>`（如 `v0.1.0 by mantougg`）。
+- 版本信息展示在 StatusBar 最右槽位，格式：`v<版本号> by <作者>`（如 `v0.1.0 by mantougg`）。
 - **版本号与作者的唯一数据源是根目录 `package.json`**（`version` / `author` 字段），
   经 `vite.config.ts` 的 `define` 构建期注入为 `__APP_VERSION__` / `__APP_AUTHOR__`
-  （类型声明在 `src/vite-env.d.ts`），前端展示在 `src/App.vue` 的 `.app-footer`。
+  （类型声明在 `src/vite-env.d.ts`），前端展示在 `src/components/shell/StatusBar.vue`。
 - 发版本时只改 `package.json` 的 `version`（`src-tauri/tauri.conf.json` 的 `version`
   需同步保持一致）；换作者只改 `author`。**禁止在组件里硬编码版本号或作者名。**
 <!-- app-footer:end -->
+
+<!-- desktop-skin:start -->
+# Desktop Skin 约定
+
+> 来源：docs/desktop-skin-plan.md（F-10 桌面化 UI 改造方案）。
+> 任务跟踪：docs/tasks-desktop/README.md（D-01~D-16）。
+
+## 样式规范
+
+- **新 UI 一律使用 tokens 变量**（`src/styles/tokens.scss`），禁止硬编码色值、像素间距、字号。
+- 颜色取 `--gw-*` 语义色，间距取 `--gw-space-*`，字号取 `--gw-text-*`，圆角取 `--gw-radius-*`。
+- 等宽文本（路径、分支名、commit hash、日志）使用 `--gw-font-mono`。
+
+## 组件规范
+
+- 新面板一律使用 `Panel` / `PanelHeader` / `Toolbar` 骨架组件（二期落地后）。
+- 正文字号 / 圆角 / 组件密度以 Naive UI themeOverrides 为准，视图内不单独覆盖。
+- 新页面外壳遵循 docs/desktop-skin-plan.md §5.9 统一模式。
+
+## 导航规范
+
+- **工作区切换全局唯一入口为 StatusBar**；视图内不得再出现工作区选择器。
+- 视图内不自绘返回按钮，由骨架统一提供。
+- 导航按钮统一在 SideNav，视图 toolbar 只保留作用于当前视图数据的操作按钮。
+- 命令与快捷键统一走命令注册表（2.5 期起），禁止在视图内各自绑定快捷键。
+
+## 代码落点
+
+| 类型 | 位置 |
+|------|------|
+| 骨架组件 | `src/components/shell/` |
+| Design Tokens | `src/styles/tokens.scss` |
+| 命令注册表 | `src/commands/`（2.5 期起） |
+| Vue 视图 | `src/views/` |
+| 主题 composable | `src/composables/useTheme.ts` |
+<!-- desktop-skin:end -->

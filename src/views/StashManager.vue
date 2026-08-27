@@ -2,10 +2,6 @@
   <div class="stash-manager">
     <!-- Header -->
     <div class="stash-header">
-      <n-button @click="goBack">
-        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-        返回
-      </n-button>
       <span class="repo-path">{{ repoPath }}</span>
       <n-button size="small" :loading="loading" @click="load">
         <template #icon><n-icon><RefreshOutline /></n-icon></template>
@@ -92,7 +88,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowBackOutline, CloudUploadOutline, EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
+import { CloudUploadOutline, EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
 import {
@@ -153,10 +149,6 @@ async function load() {
   } finally {
     loading.value = false;
   }
-}
-
-function goBack() {
-  router.push({ name: "changes" });
 }
 
 function statusIcon(status: string): string {

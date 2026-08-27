@@ -3,10 +3,6 @@
     <!-- Top toolbar: filters (workspace / op type / repo / date range) -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
         <n-select
           v-model:value="filterWorkspaceId"
           placeholder="全部工作区"
@@ -72,8 +68,7 @@
 
 <script setup lang="ts">
 import { h, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { ArrowBackOutline, RefreshOutline } from "@vicons/ionicons5";
+import { RefreshOutline } from "@vicons/ionicons5";
 import { NButton, NIcon, NTag, useMessage, useDialog } from "naive-ui";
 import { useWorkspaceStore } from "@/stores/workspace";
 import {
@@ -90,7 +85,6 @@ import type {
 import { errMsg } from "@/utils/error";
 import { formatDate } from "@/utils/format";
 
-const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const message = useMessage();
 const dialog = useDialog();
@@ -154,10 +148,6 @@ function formatDetail(detail: string | null): string {
   if (detail.startsWith("mode:")) return `模式：${detail.slice(5)}`;
   if (detail.startsWith("onto:")) return `onto：${detail.slice(5)}`;
   return detail;
-}
-
-function goBack() {
-  router.back();
 }
 
 async function reload() {

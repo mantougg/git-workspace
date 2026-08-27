@@ -2,10 +2,6 @@
   <div class="branch-manager">
     <!-- Header -->
     <div class="branch-header">
-      <n-button @click="goBack">
-        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-        返回
-      </n-button>
       <div class="repo-info">
         <span class="repo-path">{{ repoPath }}</span>
         <n-tag v-if="overview?.current" size="small" type="success">
@@ -230,7 +226,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowBackOutline, EllipsisVerticalOutline, AddOutline, RefreshOutline, SwapHorizontalOutline } from "@vicons/ionicons5";
+import { EllipsisVerticalOutline, AddOutline, RefreshOutline, SwapHorizontalOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
 import {
@@ -381,10 +377,6 @@ async function load() {
 
 function openResolver() {
   router.push({ name: "conflict-resolver", query: { repo: repoPath.value } });
-}
-
-function goBack() {
-  router.push({ name: "changes" });
 }
 
 function shortOid(oid: string): string {

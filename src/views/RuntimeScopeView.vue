@@ -3,17 +3,6 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          :options="workspaceOptions"
-          placeholder="选择工作区"
-          style="width: 200px"
-          @update:value="selectWorkspace"
-        />
         <n-select
           v-model:value="selectedApp"
           :options="appOptions"
@@ -37,12 +26,6 @@
         >
           <template #icon><n-icon><CheckmarkOutline /></n-icon></template>
           保存 Scope
-        </n-button>
-      </div>
-      <div class="toolbar-right">
-        <n-button @click="router.push({ name: 'runtime-dashboard' })">
-          <template #icon><n-icon><SpeedometerOutline /></n-icon></template>
-          Dashboard
         </n-button>
       </div>
     </div>

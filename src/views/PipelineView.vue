@@ -3,17 +3,6 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          placeholder="选择工作区"
-          style="width: 180px"
-          :options="workspaceStore.workspaces.map(ws => ({ label: ws.name, value: ws.id }))"
-          @update:value="onWorkspaceChange"
-        />
         <n-input
           v-model:value="pipeline.name"
           placeholder="Pipeline 名称"
@@ -324,8 +313,6 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
-import { ArrowBackOutline } from "@vicons/ionicons5";
 import { useMessage } from "naive-ui";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -341,7 +328,6 @@ import type {
 } from "@/types/pipeline";
 import type { TaskProgress } from "@/types/task";
 
-const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
 const message = useMessage();
@@ -352,7 +338,6 @@ const message = useMessage();
 
 const templates = ref<Pipeline[]>([]);
 const selectedTemplateId = ref<string | null>(null);
-const selectedWorkspaceId = ref<number | null>(null);
 const selectedRepoPaths = ref<string[]>([]);
 const onFailure = ref<FailurePolicy>("continue");
 
@@ -410,8 +395,7 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 onMounted(async () => {
   await workspaceStore.loadWorkspaces();
   if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
-    await repoStore.loadRepositories(selectedWorkspaceId.value);
+    await repoStore.loadRepositories(workspaceStore.currentWorkspace.id);
   }
   await refreshTemplates();
 
@@ -434,13 +418,6 @@ onUnmounted(() => {
   if (refreshTimer) clearTimeout(refreshTimer);
   window.removeEventListener("resize", redrawEdges);
 });
-
-function onWorkspaceChange(id: number) {
-  const ws = workspaceStore.workspaces.find((w) => w.id === id);
-  if (ws) workspaceStore.selectWorkspace(ws);
-  selectedRepoPaths.value = [];
-  repoStore.loadRepositories(id);
-}
 
 async function refreshTemplates() {
   try {
@@ -795,9 +772,6 @@ function formatDuration(ms: number): string {
   return `${m}m${Math.round(s % 60)}s`;
 }
 
-function goBack() {
-  router.push({ name: "dashboard" });
-}
 </script>
 
 <style scoped>

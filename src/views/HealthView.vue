@@ -3,21 +3,10 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          :options="workspaceOptions"
-          placeholder="选择工作区"
-          style="width: 200px"
-          @update:value="onWorkspaceChange"
-        />
         <n-button
           type="primary"
           :loading="loading"
-          :disabled="!selectedWorkspaceId"
+          :disabled="!workspaceStore.currentWorkspace"
           @click="reload"
         >
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
@@ -116,9 +105,8 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import { NTag, NIcon, useMessage } from "naive-ui";
-import { ArrowBackOutline, RefreshOutline, SearchOutline } from "@vicons/ionicons5";
+import { RefreshOutline, SearchOutline } from "@vicons/ionicons5";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { getWorkspaceHealth, getHealthExtras } from "@/api/health";
 import type {
@@ -162,10 +150,8 @@ const ANOMALIES: AnomalyMeta[] = [
   },
 ];
 
-const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 
-const selectedWorkspaceId = ref<number | null>(null);
 const loading = ref(false);
 const extrasLoading = ref(false);
 const repos = ref<RepoHealth[]>([]);
@@ -176,13 +162,6 @@ const anomalousCount = ref(0);
 const activeFilter = ref("");
 const onlyAnomalous = ref(true);
 const searchQuery = ref("");
-
-const workspaceOptions = computed(() =>
-  workspaceStore.workspaces.map((ws) => ({
-    label: ws.name,
-    value: ws.id,
-  })),
-);
 
 const weightRows = computed(() =>
   ANOMALIES.map((a) => ({
@@ -351,12 +330,13 @@ function applyExtras(extras: RepoHealthExtra[]) {
 }
 
 async function reload() {
-  if (!selectedWorkspaceId.value) return;
+  const wsId = workspaceStore.currentWorkspace?.id;
+  if (!wsId) return;
   loading.value = true;
   activeFilter.value = "";
   try {
     // Phase 1: light checks from the T-02 status cache (instant).
-    const health = await getWorkspaceHealth(selectedWorkspaceId.value);
+    const health = await getWorkspaceHealth(wsId);
     repos.value = health.repos;
     weights.value = health.weights;
     score.value = health.score;
@@ -384,21 +364,9 @@ async function reload() {
   }
 }
 
-function onWorkspaceChange(id: number) {
-  selectedWorkspaceId.value = id;
-  const ws = workspaceStore.workspaces.find((w) => w.id === id);
-  if (ws) workspaceStore.selectWorkspace(ws);
-  reload();
-}
-
-function goBack() {
-  router.push({ name: "dashboard" });
-}
-
 onMounted(async () => {
   await workspaceStore.loadWorkspaces();
   if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
     await reload();
   }
 });

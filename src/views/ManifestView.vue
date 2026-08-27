@@ -1,21 +1,5 @@
 <template>
   <div class="manifest-view">
-    <!-- Top toolbar -->
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          placeholder="选择工作区"
-          style="width: 200px"
-          :options="workspaceOptions"
-          @update:value="onWorkspaceChange"
-        />
-      </div>
-    </div>
 
     <!-- Export -->
     <div class="section">
@@ -31,7 +15,7 @@
         <n-button
           type="primary"
           :loading="exporting"
-          :disabled="!selectedWorkspaceId"
+          :disabled="!workspaceStore.currentWorkspace"
           @click="handleExport"
         >
           <template #icon><n-icon><CloudUploadOutline /></n-icon></template>
@@ -129,9 +113,7 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import {
-  ArrowBackOutline,
   CloudUploadOutline,
   FolderOpenOutline,
   SearchOutline,
@@ -157,14 +139,12 @@ import { errMsg } from "@/utils/error";
 
 const MANIFEST_FILE_NAME = "gitworkspace.json";
 
-const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const repositoryStore = useRepositoryStore();
 const taskStore = useTaskStore();
 const message = useMessage();
 const dialog = useDialog();
 
-const selectedWorkspaceId = ref<number | null>(null);
 const exporting = ref(false);
 const exportSummary = ref("");
 
@@ -177,10 +157,6 @@ const submitting = ref(false);
 const cloneSubmitted = ref(false);
 const submittedCount = ref(0);
 const scanning = ref(false);
-
-const workspaceOptions = computed(() =>
-  workspaceStore.workspaces.map((ws) => ({ label: ws.name, value: ws.id })),
-);
 
 const importStep = computed(() => {
   if (cloneSubmitted.value) return 4;
@@ -259,7 +235,8 @@ function actionTagType(action: CloneAction): "success" | "info" | "warning" {
 }
 
 async function handleExport() {
-  if (!selectedWorkspaceId.value) return;
+  const wsId = workspaceStore.currentWorkspace?.id;
+  if (!wsId) return;
   const filePath = await save({
     title: "导出 Workspace Manifest",
     defaultPath: MANIFEST_FILE_NAME,
@@ -270,7 +247,7 @@ async function handleExport() {
   exporting.value = true;
   try {
     const m = await exportWorkspaceManifest(
-      selectedWorkspaceId.value,
+      wsId,
       filePath,
     );
     const noRemote = m.repositories.filter((r) => !r.remoteUrl).length;
@@ -410,21 +387,8 @@ async function scanIntoWorkspace() {
   }
 }
 
-function onWorkspaceChange(id: number) {
-  selectedWorkspaceId.value = id;
-  const ws = workspaceStore.workspaces.find((w) => w.id === id);
-  if (ws) workspaceStore.selectWorkspace(ws);
-}
-
-function goBack() {
-  router.push({ name: "dashboard" });
-}
-
 onMounted(async () => {
   await workspaceStore.loadWorkspaces();
-  if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
-  }
 });
 </script>
 

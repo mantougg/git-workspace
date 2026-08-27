@@ -3,27 +3,16 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          placeholder="选择工作区"
-          style="width: 200px"
-          :options="workspaceStore.workspaces.map(ws => ({ label: ws.name, value: ws.id }))"
-          @update:value="onWorkspaceChange"
-        />
         <n-button
           type="primary"
-          :disabled="!selectedWorkspaceId"
+          :disabled="!workspaceStore.currentWorkspace"
           @click="openCreateDialog"
         >
           <template #icon><n-icon><AddOutline /></n-icon></template>
           新建 Change Set
         </n-button>
         <n-button
-          :disabled="!selectedWorkspaceId"
+          :disabled="!workspaceStore.currentWorkspace"
           :loading="store.loading"
           @click="reloadList"
         >
@@ -32,9 +21,6 @@
         </n-button>
       </div>
       <div class="toolbar-right">
-        <n-button v-if="taskStore.tasks.length > 0" @click="taskStore.togglePanel()">
-          任务 ({{ taskStore.tasks.length }})
-        </n-button>
       </div>
     </div>
 
@@ -69,7 +55,7 @@
             <n-button
               type="primary"
               size="small"
-              :disabled="!selectedWorkspaceId"
+              :disabled="!workspaceStore.currentWorkspace"
               @click="openCreateDialog"
             >
               新建 Change Set
@@ -483,7 +469,6 @@ import { computed, h, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import {
   AddOutline,
-  ArrowBackOutline,
   RefreshOutline,
   EyeOutline,
   SparklesOutline,
@@ -496,7 +481,6 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NTag, type DataTableColumns } from "naive-ui";
 import { useMessage, useDialog } from "naive-ui";
-import { useRouter } from "vue-router";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
 import { useChangeSetStore } from "@/stores/changeSet";
@@ -517,17 +501,11 @@ import type { FileDiff } from "@/types/git";
 
 const message = useMessage();
 const dialog = useDialog();
-const router = useRouter();
 
 const workspaceStore = useWorkspaceStore();
 const taskStore = useTaskStore();
 const store = useChangeSetStore();
 
-function goBack() {
-  router.push({ name: "dashboard" });
-}
-
-const selectedWorkspaceId = ref<number | null>(null);
 const summary = computed(() => store.summary);
 
 // --- Create / edit change set ---
@@ -764,7 +742,6 @@ import { NInput } from "naive-ui";
 onMounted(async () => {
   await workspaceStore.loadWorkspaces();
   if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
     await loadCurrentList();
   }
   // Refresh the summary once batch commit/push tasks reach a final state
@@ -782,8 +759,8 @@ onMounted(async () => {
     window.clearTimeout(refreshTimer);
     refreshTimer = window.setTimeout(() => {
       store.refreshSummary().catch(() => {});
-      if (selectedWorkspaceId.value) {
-        store.loadChangeSets(selectedWorkspaceId.value).catch(() => {});
+      if (workspaceStore.currentWorkspace) {
+        store.loadChangeSets(workspaceStore.currentWorkspace.id).catch(() => {});
       }
     }, 800);
   });
@@ -800,17 +777,12 @@ onUnmounted(() => {
   window.clearTimeout(refreshTimer);
 });
 
-// Helper so onMounted stays linear (load list for the picked workspace).
+// Helper so onMounted stays linear (load list for the current workspace).
 async function loadCurrentList() {
-  if (selectedWorkspaceId.value) {
-    await store.loadChangeSets(selectedWorkspaceId.value);
+  const wsId = workspaceStore.currentWorkspace?.id;
+  if (wsId) {
+    await store.loadChangeSets(wsId);
   }
-}
-
-function onWorkspaceChange(id: number) {
-  selectedWorkspaceId.value = id;
-  store.selectChangeSet(null);
-  loadCurrentList();
 }
 
 function reloadList() {
@@ -856,7 +828,7 @@ async function saveSet() {
   try {
     if (d.editingId == null) {
       const cs = await store.createSet({
-        workspaceId: selectedWorkspaceId.value!,
+        workspaceId: workspaceStore.currentWorkspace!.id,
         name,
         description: d.description.trim() || null,
       });
@@ -916,13 +888,14 @@ function isMember(row: RepositoryWithStatus): boolean {
 }
 
 async function openAddDialog() {
-  if (!selectedWorkspaceId.value) return;
+  const wsId = workspaceStore.currentWorkspace?.id;
+  if (!wsId) return;
   addDialog.value.show = true;
   addDialog.value.loading = true;
   addDialog.value.selector = "";
   addDialog.value.checked = [];
   try {
-    const repos = await listRepositories(selectedWorkspaceId.value);
+    const repos = await listRepositories(wsId);
     addDialog.value.repos = repos;
     const branches: Record<number, string> = {};
     for (const r of repos) {
@@ -948,10 +921,11 @@ function onAddSelectionChange(keys: Array<number | string>) {
 /** T-20 联动：用选择器结果勾选仓库。 */
 async function applySelector() {
   const query = addDialog.value.selector.trim();
-  if (!query || !selectedWorkspaceId.value) return;
+  const wsId = workspaceStore.currentWorkspace?.id;
+  if (!query || !wsId) return;
   addDialog.value.selectorLoading = true;
   try {
-    const paths = await selectRepos(selectedWorkspaceId.value, query);
+    const paths = await selectRepos(wsId, query);
     const matched = new Set(paths);
     // Select matching repos that are not already members
     addDialog.value.checked = addDialog.value.repos.filter(

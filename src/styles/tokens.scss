@@ -1,0 +1,61 @@
+// GitWorkspace Design Tokens
+// 亮/暗双套，一期一次到位。
+// 暗色挂 [data-theme="dark"]，与 Naive UI darkTheme 联动切换。
+// 参考：docs/desktop-skin-plan.md §3.1
+
+// ─── 亮色（默认） ───────────────────────────────────────────
+:root {
+  // ── 颜色 ──
+  --gw-bg-app: #f5f6f7;
+  --gw-bg-panel: #ffffff;
+  --gw-bg-hover: #f0f1f2;
+  --gw-border: #e0e1e3;
+  --gw-text: #1f2329;
+  --gw-text-dim: #8f959e;
+  --gw-accent: #3370ff;
+  --gw-success: #34c759;
+  --gw-warning: #ff9500;
+  --gw-danger: #ff3b30;
+  --gw-info: #5ac8fa;
+
+  // ── 间距 ──
+  --gw-space-1: 4px;
+  --gw-space-2: 8px;
+  --gw-space-3: 12px;
+  --gw-space-4: 16px;
+
+  // ── 字号 ──
+  --gw-text-xs: 11px;
+  --gw-text-sm: 12px;
+  --gw-text-md: 13px;
+  --gw-text-lg: 14px;
+
+  // ── 圆角 ──
+  --gw-radius-sm: 2px;
+  --gw-radius-md: 4px;
+
+  // ── 字体栈 ──
+  --gw-font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas,
+    monospace;
+
+  // ── 骨架尺寸 ──
+  --gw-statusbar-h: 24px;
+  --gw-sidenav-w: 188px;
+  --gw-sidenav-w-collapsed: 48px;
+}
+
+// ─── 暗色 ───────────────────────────────────────────────────
+[data-theme="dark"] {
+  // ── 颜色 ──
+  --gw-bg-app: #1e1e1e;
+  --gw-bg-panel: #252526;
+  --gw-bg-hover: #2a2d2e;
+  --gw-border: #3b3b3b;
+  --gw-text: #cccccc;
+  --gw-text-dim: #808080;
+  --gw-accent: #4d8bf5;
+  --gw-success: #4ade80;
+  --gw-warning: #f59e0b;
+  --gw-danger: #f87171;
+  --gw-info: #38bdf8;
+}

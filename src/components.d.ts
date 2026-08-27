@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AppShell: typeof import('./components/shell/AppShell.vue')['default']
     BatchActionBar: typeof import('./components/repo/BatchActionBar.vue')['default']
     ChangeTree: typeof import('./components/repo/ChangeTree.vue')['default']
     CommitGraph: typeof import('./components/graph/CommitGraph.vue')['default']
@@ -65,7 +66,9 @@ declare module 'vue' {
     RuntimeErrorAlert: typeof import('./components/runtime/RuntimeErrorAlert.vue')['default']
     SearchBar: typeof import('./components/common/SearchBar.vue')['default']
     SideBySideDiff: typeof import('./components/diff/SideBySideDiff.vue')['default']
+    SideNav: typeof import('./components/shell/SideNav.vue')['default']
     StatusBadge: typeof import('./components/repo/StatusBadge.vue')['default']
+    StatusBar: typeof import('./components/shell/StatusBar.vue')['default']
     UnifiedDiff: typeof import('./components/diff/UnifiedDiff.vue')['default']
     VirtualList: typeof import('./components/common/VirtualList.vue')['default']
     WorkspaceManager: typeof import('./components/common/WorkspaceManager.vue')['default']

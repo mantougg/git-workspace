@@ -1,72 +1,30 @@
 <template>
   <div class="repository-list">
-    <!-- Top toolbar -->
+    <!-- Top toolbar（D-05：导航按钮移除，仅保留操作类） -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="router.push({ name: 'dashboard' })">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          :options="workspaceOptions"
-          placeholder="选择工作区"
-          style="width: 200px"
-          @update:value="onWorkspaceChange"
-        />
-        <n-button @click="showAddWorkspace = true">
-          <template #icon><n-icon><AddOutline /></n-icon></template>
-          添加工作区
-        </n-button>
         <n-button
           type="primary"
           :loading="repoStore.scanning"
-          :disabled="!selectedWorkspaceId"
+          :disabled="!currentWorkspaceId"
           @click="handleScan"
         >
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           扫描仓库
         </n-button>
         <n-button
-          :disabled="!selectedWorkspaceId"
+          :disabled="!currentWorkspaceId"
           @click="toggleWatcher"
         >
           <template #icon><n-icon><DesktopOutline /></n-icon></template>
           {{ watcherActive ? "停止监听" : "启动监听" }}
         </n-button>
-      </div>
-      <div class="toolbar-right">
-        <n-button
-          v-if="taskStore.tasks.length > 0"
-          @click="taskStore.togglePanel()"
-        >
-          <template #icon><n-icon><NotificationsOutline /></n-icon></template>
-          任务 ({{ taskStore.tasks.length }})
-        </n-button>
-        <n-button @click="router.push({ name: 'health' })">
-          <template #icon><n-icon><SpeedometerOutline /></n-icon></template>
-          健康检查
-        </n-button>
-        <n-button @click="router.push({ name: 'change-sets' })">
-          <template #icon><n-icon><FolderOutline /></n-icon></template>
-          Change Set
-        </n-button>
-        <n-button @click="router.push({ name: 'pipeline' })">
-          <template #icon><n-icon><LinkOutline /></n-icon></template>
-          Pipeline
-        </n-button>
-        <n-button @click="router.push({ name: 'manifest' })">
-          <template #icon><n-icon><DocumentTextOutline /></n-icon></template>
-          Manifest
-        </n-button>
-        <n-button @click="router.push({ name: 'operation-log' })">
-          <template #icon><n-icon><TimeOutline /></n-icon></template>
-          操作日志
-        </n-button>
         <n-button @click="showLogManager = true">
           <template #icon><n-icon><FolderOpenOutline /></n-icon></template>
           日志
         </n-button>
+      </div>
+      <div class="toolbar-right">
         <n-input
           v-model:value="searchQuery"
           placeholder="搜索文件或仓库..."
@@ -126,7 +84,7 @@
               @file-dblclick="onFileDblClick"
             />
             <div
-              v-if="!changesLoading && selectedWorkspaceId && changes.length === 0"
+              v-if="!changesLoading && currentWorkspaceId && changes.length === 0"
               class="empty-state"
             >
               <n-empty description="未发现任何 Git 仓库">
@@ -134,12 +92,12 @@
               </n-empty>
             </div>
             <div
-              v-else-if="!selectedWorkspaceId"
+              v-else-if="!currentWorkspaceId"
               class="empty-state"
             >
               <n-empty description="请先添加工作区目录">
-                <n-button type="primary" @click="showAddWorkspace = true">
-                  添加工作区
+                <n-button type="primary" @click="router.push({ name: 'workspaces' })">
+                  前往工作区管理
                 </n-button>
               </n-empty>
             </div>
@@ -294,7 +252,7 @@
           </n-button>
           <n-button
             size="small"
-            :disabled="!selectedWorkspaceId"
+            :disabled="!currentWorkspaceId"
             @click="viewConflicts"
           >
             <template #icon><n-icon><WarningOutline /></n-icon></template>
@@ -320,7 +278,7 @@
             {{ chip.label }}
           </n-tag>
           <span v-if="selectorActive" class="selector-count" :class="{ 'is-empty': selectorPaths.length === 0 }">
-            <template v-if="!selectedWorkspaceId">请先选择工作区</template>
+            <template v-if="!currentWorkspaceId">请先选择工作区</template>
             <template v-else>
               匹配 {{ selectorPaths.length }} 个仓库
               <template v-if="selectorPaths.length === 0">（无匹配：检查分组/标签/状态条件是否正确）</template>
@@ -637,11 +595,7 @@
       </template>
     </n-modal>
 
-    <!-- Add workspace dialog -->
-    <WorkspaceManager v-model="showAddWorkspace" @added="onWorkspaceAdded" />
     <LogManager v-model="showLogManager" />
-
-    <div class="app-footer">by mantougg · v0.1.0</div>
 
     <!-- Push repo picker dialog -->
     <n-modal v-model:show="showPushDialog" preset="card" title="选择要 Push 的仓库" style="width: 680px">
@@ -672,10 +626,8 @@
 import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
-  AddOutline,
   AddCircleOutline,
   ArchiveOutline,
-  ArrowBackOutline,
   ArrowUndoOutline,
   CloudDownloadOutline,
   CloudUploadOutline,
@@ -686,26 +638,19 @@ import {
   CreateOutline,
   DesktopOutline,
   DocumentsOutline,
-  DocumentTextOutline,
   ExpandOutline,
   EyeOutline,
-  FolderOutline,
   FolderOpenOutline,
   GridOutline,
-  LinkOutline,
-  NotificationsOutline,
   RefreshOutline,
   SearchOutline,
   ShareOutline,
-  SpeedometerOutline,
-  TimeOutline,
   WarningOutline,
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NTag, useMessage, useDialog } from "naive-ui";
 import { listen } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
-import { useTaskStore } from "@/stores/task";
 import { startWatcher, stopWatcher, batchCommit, batchFetch, batchPull, batchPush } from "@/api/git_ops";
 import {
   scanCommit,
@@ -741,7 +686,6 @@ import ChangeTree, {
   type TreeSelection,
 } from "@/components/repo/ChangeTree.vue";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
-import WorkspaceManager from "@/components/common/WorkspaceManager.vue";
 import LogManager from "@/components/common/LogManager.vue";
 import { errMsg } from "@/utils/error";
 
@@ -755,12 +699,11 @@ const router = useRouter();
 const route = useRoute();
 const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
-const taskStore = useTaskStore();
 const message = useMessage();
 const dialog = useDialog();
 
-const selectedWorkspaceId = ref<number | null>(null);
-const showAddWorkspace = ref(false);
+// D-05：响应全局工作区 store
+const currentWorkspaceId = computed(() => workspaceStore.currentWorkspace?.id ?? null);
 const showLogManager = ref(false);
 const watcherActive = ref(false);
 const searchQuery = ref("");
@@ -845,10 +788,6 @@ let resizeStartX = 0;
 let resizeStartWidth = 0;
 
 let unlistenScan: (() => void) | null = null;
-
-const workspaceOptions = computed(() =>
-  workspaceStore.workspaces.map((ws) => ({ label: ws.name, value: ws.id })),
-);
 
 const scanPercentage = computed(() => {
   if (!scanProgress.value || !scanProgress.value.total) return 0;
@@ -997,7 +936,6 @@ const pushColumns = [
 onMounted(async () => {
   await workspaceStore.loadWorkspaces();
   if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
     await loadChanges();
     await startFileWatcher();
     await applyRoutePrefill();
@@ -1018,7 +956,7 @@ async function applyRoutePrefill() {
   try {
     if (selector) {
       selectorQuery.value = selector;
-      selectorPaths.value = await selectRepos(selectedWorkspaceId.value!, selector);
+      selectorPaths.value = await selectRepos(currentWorkspaceId.value!, selector);
       commitPanelOpen.value = true;
     }
     switch (action) {
@@ -1064,10 +1002,10 @@ onUnmounted(() => {
 });
 
 async function loadChanges() {
-  if (!selectedWorkspaceId.value) return;
+  if (!currentWorkspaceId.value) return;
   changesLoading.value = true;
   try {
-    changes.value = await getWorkspaceChanges(selectedWorkspaceId.value);
+    changes.value = await getWorkspaceChanges(currentWorkspaceId.value);
   } catch (e) {
     message.error("加载变更失败: " + errMsg(e));
   } finally {
@@ -1075,11 +1013,11 @@ async function loadChanges() {
   }
 }
 
-function onWorkspaceChange(id: number) {
-  selectedWorkspaceId.value = id;
+// D-05：监听全局工作区变化
+watch(() => workspaceStore.currentWorkspace, () => {
   loadChanges();
   selectedDiff.value = null;
-}
+});
 
 function onTreeSelection(selection: TreeSelection) {
   treeSelection.value = selection;
@@ -1149,10 +1087,10 @@ function endResize() {
 }
 
 async function handleScan() {
-  if (!selectedWorkspaceId.value) return;
+  if (!currentWorkspaceId.value) return;
   scanProgress.value = null;
   try {
-    await repoStore.scanRepositories(selectedWorkspaceId.value);
+    await repoStore.scanRepositories(currentWorkspaceId.value);
     message.success(`发现 ${repoStore.totalCount} 个仓库`);
     await loadChanges();
     await startFileWatcher();
@@ -1160,13 +1098,6 @@ async function handleScan() {
     message.error("扫描失败: " + errMsg(e));
   } finally {
     scanProgress.value = null;
-  }
-}
-
-function onWorkspaceAdded() {
-  if (workspaceStore.currentWorkspace) {
-    selectedWorkspaceId.value = workspaceStore.currentWorkspace.id;
-    handleScan();
   }
 }
 
@@ -1371,12 +1302,12 @@ watch(selectorQuery, (q) => {
   window.clearTimeout(selectorTimer);
   selectorTimer = window.setTimeout(async () => {
     const query = q.trim();
-    if (!query || !selectedWorkspaceId.value) {
+    if (!query || !currentWorkspaceId.value) {
       selectorPaths.value = [];
       return;
     }
     try {
-      selectorPaths.value = await selectRepos(selectedWorkspaceId.value, query);
+      selectorPaths.value = await selectRepos(currentWorkspaceId.value, query);
     } catch (e) {
       message.error("选择器查询失败: " + errMsg(e));
     }
@@ -1551,17 +1482,17 @@ const wsStashSaveSummary = computed(() => {
 });
 
 function openWsStashDialog() {
-  if (!selectedWorkspaceId.value) return;
+  if (!currentWorkspaceId.value) return;
   wsStashDialog.value.show = true;
   wsStashDialog.value.lastSave = null;
   loadWsStashes();
 }
 
 async function loadWsStashes() {
-  if (!selectedWorkspaceId.value) return;
+  if (!currentWorkspaceId.value) return;
   wsStashDialog.value.loading = true;
   try {
-    wsStashDialog.value.list = await listWorkspaceStashes(selectedWorkspaceId.value);
+    wsStashDialog.value.list = await listWorkspaceStashes(currentWorkspaceId.value);
     wsStashDialog.value.items = {};
   } catch (e) {
     message.error("加载 Workspace Stash 记录失败: " + errMsg(e));
@@ -1580,7 +1511,7 @@ async function saveWsStash() {
   d.saving = true;
   try {
     const result = await saveWorkspaceStash(
-      selectedWorkspaceId.value!,
+      currentWorkspaceId.value!,
       targets,
       d.message.trim() || undefined,
       d.includeUntracked,

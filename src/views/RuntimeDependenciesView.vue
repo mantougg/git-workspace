@@ -3,30 +3,9 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          placeholder="选择工作区"
-          style="width: 200px"
-          :options="workspaceOptions"
-          @update:value="selectWorkspace"
-        />
         <n-button :loading="loading" @click="reload">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
-        </n-button>
-      </div>
-      <div class="toolbar-right">
-        <n-button @click="router.push({ name: 'runtime-dashboard' })">
-          <template #icon><n-icon><SpeedometerOutline /></n-icon></template>
-          Dashboard
-        </n-button>
-        <n-button @click="router.push({ name: 'runtime-scope' })">
-          <template #icon><n-icon><SettingsOutline /></n-icon></template>
-          Scope
         </n-button>
       </div>
     </div>
@@ -136,18 +115,15 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import { useMessage, NTag } from "naive-ui";
-import { ArrowBackOutline, RefreshOutline, SpeedometerOutline, SettingsOutline } from "@vicons/ionicons5";
+import { RefreshOutline } from "@vicons/ionicons5";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import * as runtimeApi from "@/api/runtime";
 import type { MavenProjectNode } from "@/types/maven";
 import type { DependencyGraphView, ProjectInspection } from "@/types/runtime";
 
-const router = useRouter();
 const message = useMessage();
-const { workspaceStore, store, selectedWorkspaceId, selectWorkspace } =
-  useRuntimeWorkspace();
+const { store } = useRuntimeWorkspace();
 
 const loading = ref(false);
 const graph = ref<DependencyGraphView | null>(null);
@@ -164,10 +140,6 @@ const sourceMappingCount = computed(() => graph.value?.sourceMappings.length ?? 
 const sourceCount = computed(() => countBySource("workspaceSource"));
 const localCount = computed(() => countBySource("localRepository"));
 const remoteCount = computed(() => countBySource("remoteRepository"));
-
-const workspaceOptions = computed(() =>
-  workspaceStore.workspaces.map((ws: any) => ({ label: ws.name, value: ws.id })),
-);
 
 function countBySource(source: string): number {
   return allEdges.value.filter((e) => e.source === source).length;
@@ -312,10 +284,6 @@ async function onSelectProject(p: MavenProjectNode) {
 function clearProject() {
   selectedProjectId.value = null;
   inspection.value = null;
-}
-
-function goBack() {
-  router.push({ name: "runtime-dashboard" });
 }
 
 onMounted(reload);
