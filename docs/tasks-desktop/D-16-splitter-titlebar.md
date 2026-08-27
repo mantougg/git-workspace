@@ -49,3 +49,4 @@
 | 2026-08-27 | ⬜ | 任务拆解录入（来源：desktop-skin-plan.md §6 三期-2/3） |
 | 2026-08-27 | ✅ | 完成：splitter 位置 localStorage 持久化；标题栏重估结论：暂不做（见下方） |
 | 2026-08-28 | ✅ 补齐 | 核查发现重估结论未按 spec 回写 desktop-skin-plan.md §2/§6/§8。补齐回写（暂不实施 + 理由 + 4 期+ 再评估）；另注明 splitter 存储为全局 key `gw-diff-width`（当前仅变更视图有 splitter，视图内唯一，与「按视图 key」意图等效） |
+| 2026-08-28 | ✅ 补齐 | 三个遗留缺口补齐：① 存储改为按视图 key `gw-splitter:changes:{diff,graph}`，旧全局 key 首次保存后迁移移除；② 恢复值与窗口 resize 均重新夹紧（diff 320~70% 视口，graph 240~50%），修复窗口缩小后左栏被挤瘪；③ tree｜graph 之间新增 splitter，graph-pane 宽度可拖拽并记忆（默认 320px）。pnpm build 通过 |

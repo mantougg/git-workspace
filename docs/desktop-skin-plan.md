@@ -420,7 +420,7 @@ Change Set / 健康检查 / Pipeline / Manifest / 操作日志 / 分支 / Stash 
 ### 三期（已落地）
 
 - 三栏联动（D-15）：树单选 → 中栏提交图；提交点选/右键 → DiffViewer 显示该提交变更；文件双击 → 右栏内联 diff；批量操作流不受影响。
-- splitter 位置记忆（D-16）：diff-pane 宽度 `gw-diff-width` localStorage 持久化，拖拽结束保存、重启恢复。
+- splitter 位置记忆（D-16）：按视图 key `gw-splitter:changes:{diff,graph}` localStorage 持久化（旧全局 key 自动迁移），拖拽结束保存、恢复与窗口缩放时重新夹紧；树｜提交图、提交图｜diff 两个把手均可拖拽。
 - 标题栏重估（D-16）：**暂不实施**，结论与理由见 §2 与 D-16 任务文档。
 
 ## 9. 风险

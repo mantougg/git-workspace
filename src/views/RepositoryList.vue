@@ -107,7 +107,18 @@
       </div>
 
       <!-- D-15 Middle: commit graph pane -->
-      <div v-if="selectedRepoPath && graphCommits.length > 0" class="graph-pane">
+      <!-- D-16：树 | 提交图 splitter（把手贴 graph-pane 左缘） -->
+      <div
+        v-if="selectedRepoPath && graphCommits.length > 0"
+        class="resize-handle"
+        @mousedown="startResize('graph')"
+      ></div>
+      <div
+        v-if="selectedRepoPath && graphCommits.length > 0"
+        ref="graphPaneEl"
+        class="graph-pane"
+        :style="graphWidth ? { width: graphWidth + 'px' } : undefined"
+      >
         <div class="graph-pane-header">
           <span class="graph-pane-title">{{ repoNameOf(selectedRepoPath) }}</span>
         </div>
@@ -136,7 +147,7 @@
       <div
         v-if="selectedDiff"
         class="resize-handle"
-        @mousedown="startResize"
+        @mousedown="startResize('diff')"
       ></div>
       <div
         v-if="selectedDiff"
@@ -1038,13 +1049,92 @@ const changeTreeRef = ref<InstanceType<typeof ChangeTree> | null>(null);
 const showPushDialog = ref(false);
 const pushSelection = ref<string[]>([]);
 
+// D-16：splitter 位置按视图 key 持久化（gw-splitter:<视图>:<面板>）；
+// 旧全局 key gw-diff-width 首次保存后迁移移除。
+const DIFF_WIDTH_KEY = "gw-splitter:changes:diff";
+const GRAPH_WIDTH_KEY = "gw-splitter:changes:graph";
+const LEGACY_DIFF_WIDTH_KEY = "gw-diff-width";
+
+function loadStoredWidth(key: string, legacyKey?: string): number | null {
+  const raw =
+    localStorage.getItem(key) ??
+    (legacyKey ? localStorage.getItem(legacyKey) : null);
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// 恢复值与拖拽共用同一夹紧：下限保证树/图可用，上限按视口比例
+const clampDiffWidth = (w: number) =>
+  Math.max(320, Math.min(window.innerWidth * 0.7, w));
+const clampGraphWidth = (w: number) =>
+  Math.max(240, Math.min(window.innerWidth * 0.5, w));
+
+const storedDiffWidth = loadStoredWidth(DIFF_WIDTH_KEY, LEGACY_DIFF_WIDTH_KEY);
+const storedGraphWidth = loadStoredWidth(GRAPH_WIDTH_KEY);
 const diffWidth = ref<number | null>(
-  localStorage.getItem("gw-diff-width") ? Number(localStorage.getItem("gw-diff-width")) : null
+  storedDiffWidth === null ? null : clampDiffWidth(storedDiffWidth),
+);
+const graphWidth = ref<number | null>(
+  storedGraphWidth === null ? null : clampGraphWidth(storedGraphWidth),
 );
 const diffPaneEl = ref<HTMLElement | null>(null);
+const graphPaneEl = ref<HTMLElement | null>(null);
 const expandedWsStashKeys = ref<number[]>([]);
+
+function persistWidth(key: string, value: number, legacyKey?: string) {
+  localStorage.setItem(key, String(value));
+  if (legacyKey) localStorage.removeItem(legacyKey);
+}
+
+type ResizePane = "diff" | "graph";
+let resizePane: ResizePane | null = null;
 let resizeStartX = 0;
 let resizeStartWidth = 0;
+
+function startResize(pane: ResizePane) {
+  return (e: MouseEvent) => {
+    e.preventDefault();
+    resizePane = pane;
+    resizeStartX = e.clientX;
+    resizeStartWidth =
+      pane === "diff"
+        ? diffPaneEl.value?.offsetWidth ?? 600
+        : graphPaneEl.value?.offsetWidth ?? 320;
+    document.addEventListener("mousemove", onResizeMove);
+    document.addEventListener("mouseup", endResize);
+  };
+}
+
+function onResizeMove(e: MouseEvent) {
+  if (!resizePane) return;
+  // 两个把手都贴在目标面板左缘：鼠标左移 → 面板变宽
+  const delta = resizeStartX - e.clientX;
+  if (resizePane === "diff") {
+    diffWidth.value = clampDiffWidth(resizeStartWidth + delta);
+  } else {
+    graphWidth.value = clampGraphWidth(resizeStartWidth + delta);
+  }
+}
+
+function endResize() {
+  document.removeEventListener("mousemove", onResizeMove);
+  document.removeEventListener("mouseup", endResize);
+  if (resizePane === "diff" && diffWidth.value !== null) {
+    persistWidth(DIFF_WIDTH_KEY, diffWidth.value, LEGACY_DIFF_WIDTH_KEY);
+  } else if (resizePane === "graph" && graphWidth.value !== null) {
+    persistWidth(GRAPH_WIDTH_KEY, graphWidth.value);
+  }
+  resizePane = null;
+}
+
+// D-16：窗口缩放后对已恢复/已保存的宽度重新夹紧，防止挤瘪左侧面板
+function onWindowResize() {
+  if (diffWidth.value !== null) diffWidth.value = clampDiffWidth(diffWidth.value);
+  if (graphWidth.value !== null) graphWidth.value = clampGraphWidth(graphWidth.value);
+}
+onMounted(() => window.addEventListener("resize", onWindowResize));
+onUnmounted(() => window.removeEventListener("resize", onWindowResize));
 
 let unlistenScan: (() => void) | null = null;
 
@@ -1329,30 +1419,6 @@ function statusText(status: string): string {
     typechange: "类型变更",
   };
   return map[status] ?? status;
-}
-
-/** Start dragging the diff-pane width. */
-function startResize(e: MouseEvent) {
-  e.preventDefault();
-  resizeStartX = e.clientX;
-  resizeStartWidth = diffPaneEl.value?.offsetWidth ?? 600;
-  document.addEventListener("mousemove", onResizeMove);
-  document.addEventListener("mouseup", endResize);
-}
-
-function onResizeMove(e: MouseEvent) {
-  const delta = resizeStartX - e.clientX;
-  const maxW = window.innerWidth * 0.7;
-  diffWidth.value = Math.max(320, Math.min(maxW, resizeStartWidth + delta));
-}
-
-function endResize() {
-  document.removeEventListener("mousemove", onResizeMove);
-  document.removeEventListener("mouseup", endResize);
-  // D-16：保存 splitter 位置到 localStorage
-  if (diffWidth.value) {
-    localStorage.setItem("gw-diff-width", String(diffWidth.value));
-  }
 }
 
 async function handleScan() {
