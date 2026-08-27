@@ -21,7 +21,7 @@
 ## 总体进度
 
 - 任务总数：**10**（含 1 个讨论项）
-- 已完成：**3** · 修复中：**0** · 未开始：**6** · 仅讨论：**1**
+- 已完成：**4** · 修复中：**0** · 未开始：**5** · 仅讨论：**1**
 
 ---
 
@@ -35,7 +35,7 @@
 | F-04 | 新建应用预设参数与变量（IDEA 启动参数预设，需实测跑通） | P1 | ⬜ | [F-04-app-launch-presets.md](./F-04-app-launch-presets.md) |
 | F-05 | 新建应用启动类自动检测不准确（hussar-base-web HussarApplication 漏检） | P0 | ✅ | [F-05-main-class-detection.md](./F-05-main-class-detection.md) |
 | F-06 | 打包启动后任务栏不显示应用图标 | P1 | ⬜ | [F-06-taskbar-icon.md](./F-06-taskbar-icon.md) |
-| F-07 | 应用底部增加版本与作者栏（vX.Y.Z by author），规则写入 AGENTS.md | P2 | ⬜ | [F-07-footer-version-bar.md](./F-07-footer-version-bar.md) |
+| F-07 | 应用底部增加版本与作者栏（vX.Y.Z by author），规则写入 AGENTS.md | P2 | ✅ | [F-07-footer-version-bar.md](./F-07-footer-version-bar.md) |
 | F-08 | 工作区管理页面（卡片：名称 / 目录路径 / 扫描深度） | P1 | ⬜ | [F-08-workspace-management.md](./F-08-workspace-management.md) |
 | F-09 | 变更与操作页 Git 树问题集合（8 个子项） | P0 | ✅ | [F-09-git-tree-ux.md](./F-09-git-tree-ux.md) |
 | F-10 | UI 客户端化讨论（不像 Web 套壳） | P3 | 💬 | [F-10-native-ui-discussion.md](./F-10-native-ui-discussion.md) |

@@ -4,11 +4,17 @@ import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { NaiveUiResolver } from "unplugin-vue-components/resolvers";
 import path from "path";
+import pkg from "./package.json";
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
+  define: {
+    // F-07：版本号/作者单一数据源是 package.json，构建期注入全局常量。
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_AUTHOR__: JSON.stringify(pkg.author),
+  },
   plugins: [
     vue(),
     // Naive UI 按需引入：模板中的 n-* 组件与 useMessage/useDialog 等

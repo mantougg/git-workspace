@@ -112,3 +112,14 @@ This project is indexed by GitNexus as **git-workspace** (6606 symbols, 15045 re
   不要用运行时字符串探测代替编译期分支（除非确有必要）。
 
 <!-- platform:end -->
+
+<!-- app-footer:start -->
+# 应用底部版本栏规则（F-07）
+
+- 应用底部常驻一栏，格式：`v<版本号> by <作者>`（如 `v0.1.0 by mantougg`）。
+- **版本号与作者的唯一数据源是根目录 `package.json`**（`version` / `author` 字段），
+  经 `vite.config.ts` 的 `define` 构建期注入为 `__APP_VERSION__` / `__APP_AUTHOR__`
+  （类型声明在 `src/vite-env.d.ts`），前端展示在 `src/App.vue` 的 `.app-footer`。
+- 发版本时只改 `package.json` 的 `version`（`src-tauri/tauri.conf.json` 的 `version`
+  需同步保持一致）；换作者只改 `author`。**禁止在组件里硬编码版本号或作者名。**
+<!-- app-footer:end -->
