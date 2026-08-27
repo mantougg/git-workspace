@@ -20,8 +20,8 @@
 
 ## 总体进度
 
-- 任务总数：**10**（含 1 个讨论项）
-- 已完成：**8** · 修复中：**0** · 未开始：**1** · 仅讨论：**1**
+- 任务总数：**10**（全部已转为正式任务）
+- 已完成：**8** · 修复中：**0** · 未开始：**2** · 仅讨论：**0**
 
 ---
 
@@ -38,7 +38,7 @@
 | F-07 | 应用底部增加版本与作者栏（vX.Y.Z by author），规则写入 AGENTS.md | P2 | ✅ | [F-07-footer-version-bar.md](./F-07-footer-version-bar.md) |
 | F-08 | 工作区管理页面（卡片：名称 / 目录路径 / 扫描深度） | P1 | ✅ | [F-08-workspace-management.md](./F-08-workspace-management.md) |
 | F-09 | 变更与操作页 Git 树问题集合（8 个子项） | P0 | ✅ | [F-09-git-tree-ux.md](./F-09-git-tree-ux.md) |
-| F-10 | UI 客户端化讨论（不像 Web 套壳） | P3 | 💬 | [F-10-native-ui-discussion.md](./F-10-native-ui-discussion.md) |
+| F-10 | UI 客户端化：Desktop Skin + IDEA 式布局骨架（[改造方案](../desktop-skin-plan.md)） | P3 | ⬜ | [F-10-native-ui-discussion.md](./F-10-native-ui-discussion.md) |
 
 ---
 
