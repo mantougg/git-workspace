@@ -1874,7 +1874,7 @@ function viewConflicts() {
 }
 
 .diff-file {
-  font-family: monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   color: #606266;
   overflow: hidden;
@@ -2004,6 +2004,7 @@ function viewConflicts() {
 }
 
 .push-repo-rel {
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   color: var(--gw-text-dim);
   overflow: hidden;
@@ -2063,7 +2064,7 @@ function viewConflicts() {
 }
 
 .scan-path {
-  font-family: monospace;
+  font-family: var(--gw-font-mono);
   color: #303133;
 }
 
@@ -2132,7 +2133,7 @@ function viewConflicts() {
 }
 
 .ws-stash-item-oid {
-  font-family: monospace;
+  font-family: var(--gw-font-mono);
   color: var(--gw-text-dim);
   font-size: 12px;
 }

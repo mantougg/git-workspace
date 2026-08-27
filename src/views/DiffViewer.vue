@@ -612,6 +612,7 @@ function statusIcon(status: string): string {
 .repo-path {
   font-size: 14px;
   font-weight: 500;
+  font-family: var(--gw-font-mono);
 }
 
 .diff-body {
@@ -672,6 +673,7 @@ function statusIcon(status: string): string {
 }
 
 .file-name {
+  font-family: var(--gw-font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -701,6 +703,7 @@ function statusIcon(status: string): string {
 }
 
 .file-diff-path {
+  font-family: var(--gw-font-mono);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -743,7 +746,7 @@ function statusIcon(status: string): string {
 }
 
 .scan-path {
-  font-family: monospace;
+  font-family: var(--gw-font-mono);
   color: #303133;
 }
 
@@ -784,7 +787,7 @@ function statusIcon(status: string): string {
 }
 
 .issue-file {
-  font-family: monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   color: #606266;
 }

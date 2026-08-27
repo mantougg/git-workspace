@@ -343,6 +343,7 @@ function viewDiff(row: WorktreeInfo) {
   flex: 1;
   font-size: 14px;
   font-weight: 500;
+  font-family: var(--gw-font-mono);
 }
 
 .wt-header-actions {
@@ -362,7 +363,7 @@ function viewDiff(row: WorktreeInfo) {
 }
 
 .wt-path {
-  font-family: monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   color: #606266;
 }

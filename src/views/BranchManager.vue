@@ -814,6 +814,7 @@ async function runCompare() {
 .repo-path {
   font-size: 14px;
   font-weight: 500;
+  font-family: var(--gw-font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -864,6 +865,7 @@ async function runCompare() {
   gap: 6px;
   width: 220px;
   font-weight: 500;
+  font-family: var(--gw-font-mono);
   flex-shrink: 0;
 }
 
@@ -904,7 +906,7 @@ async function runCompare() {
 .branch-commit {
   flex: 1;
   color: #606266;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -949,7 +951,7 @@ async function runCompare() {
 }
 
 .commit-oid {
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   color: var(--gw-accent);
   width: 70px;
   flex-shrink: 0;
@@ -1023,6 +1025,7 @@ async function runCompare() {
 }
 
 .file-name {
+  font-family: var(--gw-font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

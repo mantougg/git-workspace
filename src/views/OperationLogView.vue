@@ -368,6 +368,10 @@ onMounted(async () => {
   background: var(--gw-bg-hover);
 }
 
+.items-wrap code {
+  font-family: var(--gw-font-mono);
+}
+
 .repo-cell {
   display: flex;
   flex-direction: column;

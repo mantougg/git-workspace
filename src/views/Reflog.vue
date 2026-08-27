@@ -284,6 +284,7 @@ async function handleRestore(entry: ReflogEntry) {
   flex: 1;
   font-size: 14px;
   font-weight: 500;
+  font-family: var(--gw-font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -307,7 +308,7 @@ async function handleRestore(entry: ReflogEntry) {
 .selector {
   width: 140px;
   flex-shrink: 0;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   color: var(--gw-accent);
 }
 
@@ -325,7 +326,7 @@ async function handleRestore(entry: ReflogEntry) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   color: #303133;
 }

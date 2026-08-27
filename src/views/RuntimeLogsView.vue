@@ -383,7 +383,7 @@ onMounted(async () => {
   background: #1e1e1e;
   border-radius: 8px;
   padding: 8px 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   line-height: 1.55;
 }

@@ -304,6 +304,7 @@ async function openDiff(entry: StashEntry) {
   flex: 1;
   font-size: 14px;
   font-weight: 500;
+  font-family: var(--gw-font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -327,7 +328,7 @@ async function openDiff(entry: StashEntry) {
 .stash-ref {
   width: 100px;
   flex-shrink: 0;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   color: var(--gw-accent);
 }
 
@@ -410,6 +411,7 @@ async function openDiff(entry: StashEntry) {
 }
 
 .file-name {
+  font-family: var(--gw-font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

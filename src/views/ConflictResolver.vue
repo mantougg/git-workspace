@@ -444,6 +444,7 @@ async function handleAbort() {
   flex: 1;
   font-size: 14px;
   font-weight: 500;
+  font-family: var(--gw-font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -498,7 +499,7 @@ async function handleAbort() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
 }
 
@@ -531,7 +532,7 @@ async function handleAbort() {
 
 .pane-file {
   flex: 1;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   color: #606266;
   overflow: hidden;
@@ -570,7 +571,7 @@ async function handleAbort() {
   overflow: auto;
   margin: 0;
   padding: 8px 10px;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   white-space: pre;
 }
@@ -581,7 +582,7 @@ async function handleAbort() {
   outline: none;
   resize: none;
   padding: 8px 10px;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   background: #fffef8;
 }
@@ -631,6 +632,7 @@ async function handleAbort() {
 .queue-path {
   flex: 1;
   color: var(--gw-text-dim);
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;

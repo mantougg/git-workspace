@@ -443,6 +443,7 @@ function openResolver() {
   flex: 1;
   font-size: 14px;
   font-weight: 500;
+  font-family: var(--gw-font-mono);
 }
 
 .branch-bar {
@@ -466,7 +467,7 @@ function openResolver() {
 .commit-message-full {
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: inherit;
+  font-family: var(--gw-font-mono);
   font-size: 13px;
   margin: 0;
 }
@@ -516,7 +517,7 @@ function openResolver() {
 .conflict-file-list {
   margin: 4px 0;
   padding-left: 20px;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 12px;
   color: var(--gw-danger);
   max-height: 160px;

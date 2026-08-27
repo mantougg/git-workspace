@@ -23,21 +23,20 @@
       </div>
     </div>
 
-    <!-- Stat cards (T-18): aggregation is a pure O(n) computed over the
-         T-02 status cache data already fetched by list_repositories. -->
+    <!-- D-11 摘要行：高密度平铺，保留点击跳转语义 -->
     <n-spin :show="repoStore.loading">
-      <div class="cards">
-        <div
+      <div class="summary-strip">
+        <span
           v-for="card in cards"
           :key="card.key"
-          class="stat-card"
+          class="summary-item"
           :class="[`tone-${card.tone}`, { clickable: card.jumpable }]"
+          :title="card.sub"
           @click="openCard(card)"
         >
-          <div class="stat-label">{{ card.label }}</div>
-          <div class="stat-value">{{ card.value }}</div>
-          <div class="stat-sub">{{ card.sub }}</div>
-        </div>
+          <span class="summary-value">{{ card.value }}</span>
+          <span class="summary-label">{{ card.label }}</span>
+        </span>
       </div>
     </n-spin>
 
@@ -632,75 +631,74 @@ onMounted(async () => {
   align-items: center;
 }
 
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-  min-height: 96px;
+/* D-11 摘要行 */
+.summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gw-space-3);
+  padding: var(--gw-space-2) 0;
 }
 
-.stat-card {
-  border: 1px solid var(--gw-border);
-  border-radius: 8px;
-  padding: 12px 14px;
-  background: var(--gw-bg-panel);
+.summary-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gw-space-1);
+  font-size: var(--gw-text-sm);
+  color: var(--gw-text-dim);
+  white-space: nowrap;
 }
 
-.stat-card.clickable {
+.summary-item.clickable {
   cursor: pointer;
+  padding: var(--gw-space-1) var(--gw-space-2);
+  border-radius: var(--gw-radius-sm);
+  transition: background 0.15s;
 }
 
-.stat-card.clickable:hover {
-  border-color: var(--gw-accent);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+.summary-item.clickable:hover {
+  background: var(--gw-bg-hover);
 }
 
-.stat-label {
-  font-size: 12px;
-  color: var(--gw-text-dim);
-}
-
-.stat-value {
-  font-size: 28px;
+.summary-value {
+  font-size: var(--gw-text-lg);
   font-weight: 600;
-  line-height: 1.3;
+  color: var(--gw-text);
 }
 
-.stat-sub {
-  font-size: 12px;
-  color: var(--gw-text-dim);
-}
-
-.tone-ok .stat-value {
+.tone-ok .summary-value {
   color: var(--gw-success);
 }
 
-.tone-warn .stat-value {
+.tone-warn .summary-value {
   color: var(--gw-warning);
 }
 
-.tone-danger .stat-value {
+.tone-danger .summary-value {
   color: var(--gw-danger);
 }
 
-.tone-info .stat-value {
+.tone-info .summary-value {
   color: var(--gw-accent);
 }
 
-.tone-muted .stat-value {
+.tone-muted .summary-value {
   color: var(--gw-text-dim);
 }
 
+/* D-11 section 使用 tokens */
 .section {
   border: 1px solid var(--gw-border);
-  border-radius: 8px;
-  padding: 12px 14px;
+  border-radius: var(--gw-radius-md);
+  padding: var(--gw-space-3) var(--gw-space-4);
 }
 
 .section-title {
-  font-size: 13px;
+  font-size: var(--gw-text-md);
   font-weight: 600;
-  margin-bottom: 10px;
+  margin-bottom: var(--gw-space-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .dist-bar {
