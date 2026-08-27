@@ -3,6 +3,10 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
+        <n-button text @click="router.push({ name: 'dashboard' })">
+          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
+          返回
+        </n-button>
         <n-select
           v-model:value="selectedWorkspaceId"
           :options="workspaceOptions"
@@ -144,35 +148,41 @@
       </div>
 
       <!-- Right: change content of double-clicked file -->
-      <div class="resize-handle" @mousedown="startResize"></div>
-      <n-spin :show="diffLoading">
-        <div
-          v-if="selectedDiff"
-          ref="diffPaneEl"
-          class="diff-pane"
-          :style="{ width: diffWidth ? diffWidth + 'px' : '46%' }"
-        >
-          <div class="diff-pane-header">
-            <div class="diff-pane-title">
-              <span class="diff-repo">{{ repoNameOf(selectedDiff.repoPath) }}</span>
-              <span class="diff-file">{{ selectedDiff.relPath }}</span>
-              <n-tag size="small" :bordered="false">
-                {{ statusText(selectedDiff.file.status) }}
-              </n-tag>
-            </div>
-            <n-button
-              size="small"
-              text
-              @click="selectedDiff = null"
-            >
-              <template #icon><n-icon><CloseOutline /></n-icon></template>
-            </n-button>
+      <!-- F-09b：diff 面板必须是 .main-body 的直接 flex 子元素，n-spin 只能
+           包内部内容——否则 spin 容器塌陷后面板会盖到左侧树上。 -->
+      <div
+        v-if="selectedDiff"
+        class="resize-handle"
+        @mousedown="startResize"
+      ></div>
+      <div
+        v-if="selectedDiff"
+        ref="diffPaneEl"
+        class="diff-pane"
+        :style="{ width: diffWidth ? diffWidth + 'px' : '46%' }"
+      >
+        <div class="diff-pane-header">
+          <div class="diff-pane-title">
+            <span class="diff-repo">{{ repoNameOf(selectedDiff.repoPath) }}</span>
+            <span class="diff-file">{{ selectedDiff.relPath }}</span>
+            <n-tag size="small" :bordered="false">
+              {{ statusText(selectedDiff.file.status) }}
+            </n-tag>
           </div>
-          <div class="diff-pane-body">
-            <UnifiedDiff v-if="selectedDiff" :file="selectedDiff.file" />
-          </div>
+          <n-button
+            size="small"
+            text
+            @click="selectedDiff = null"
+          >
+            <template #icon><n-icon><CloseOutline /></n-icon></template>
+          </n-button>
         </div>
-      </n-spin>
+        <n-spin :show="diffLoading" class="diff-pane-spin">
+          <div class="diff-pane-body">
+            <UnifiedDiff :file="selectedDiff.file" />
+          </div>
+        </n-spin>
+      </div>
     </div>
 
     <!-- Bottom: batch operations panel (always visible, buttons disable instead of hiding) -->
@@ -291,8 +301,8 @@
             冲突
           </n-button>
         </div>
-        <!-- Batch selector + repo-level ops (T-20) -->
-        <div class="batch-row">
+        <!-- F-09f：中间选择器用途不明、可用性存疑，暂时隐藏（保留代码，后续决定去向）。 -->
+        <div v-if="false" class="batch-row">
           <n-input
             v-model:value="selectorQuery"
             size="small"
@@ -665,6 +675,7 @@ import {
   AddOutline,
   AddCircleOutline,
   ArchiveOutline,
+  ArrowBackOutline,
   ArrowUndoOutline,
   CloudDownloadOutline,
   CloudUploadOutline,
@@ -1944,6 +1955,14 @@ function viewConflicts() {
   flex: 1;
   overflow: auto;
   padding: 4px 0;
+}
+
+/* F-09b：n-spin 作为 diff 内容容器参与 flex 布局。 */
+.diff-pane-spin {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .stats-bar {

@@ -6,12 +6,13 @@
       key-field="key"
       :selectable="false"
       checkable
-      :default-expanded-keys="expandedKeys"
+      :expanded-keys="expandedKeysState"
       :cascade="true"
       :render-label="renderLabel"
       :render-prefix="renderPrefix"
       :render-suffix="renderSuffix"
       @update:checked-keys="onCheck"
+      @update:expanded-keys="onExpandedChange"
       class="tree"
     />
 
@@ -70,6 +71,22 @@ const naiveTreeData = computed(() => treeData.value as unknown as TreeOption[]);
 /** Default-expand the top level (top dirs + repos at the workspace root). */
 const expandedKeys = computed(() => treeData.value.map((n) => n.key));
 
+/** F-09a/g：受控展开状态（双击整行展开/收起、展开全部/收起全部）。 */
+const expandedKeysState = ref<string[]>([]);
+
+/** F-09d/e：最近一次勾选 keys（naive-ui Tree 只有 getCheckedData，没有
+ *  getCheckedKeys——旧代码调用不存在的方法导致勾选状态永远同步不上来）。 */
+const lastCheckedKeys = ref<string[]>([]);
+
+watch(
+  expandedKeys,
+  (keys) => {
+    // 数据变化时恢复「默认展开顶层」行为。
+    expandedKeysState.value = [...keys];
+  },
+  { immediate: true },
+);
+
 watch(
   () => props.changes,
   () => {
@@ -77,6 +94,10 @@ watch(
   },
   { deep: true },
 );
+
+function onExpandedChange(keys: Array<string | number>) {
+  expandedKeysState.value = keys.map(String);
+}
 
 function normalizeRel(p: string): string {
   return p.replace(/[\\/]+/g, "/").replace(/^\/+|\/+$/g, "");
@@ -250,7 +271,8 @@ function sortTree(nodes: ChangeNode[]) {
   }
 }
 
-function onCheck(_checkedKeys: string[]) {
+function onCheck(checkedKeys: Array<string | number>) {
+  lastCheckedKeys.value = checkedKeys.map(String);
   emitSelection();
 }
 
@@ -258,7 +280,13 @@ function onCheck(_checkedKeys: string[]) {
 function onNodeDblClick(data: ChangeNode) {
   if (data.type === "file") {
     emit("file-dblclick", data);
+    return;
   }
+  // F-09a：非叶子节点整行双击 → 展开/收起子级（不必点折叠箭头）。
+  const keys = expandedKeysState.value;
+  const index = keys.indexOf(data.key);
+  expandedKeysState.value =
+    index >= 0 ? keys.filter((key) => key !== data.key) : [...keys, data.key];
 }
 
 function renderLabel({ option }: { option: TreeOption }) {
@@ -269,7 +297,7 @@ function renderLabel({ option }: { option: TreeOption }) {
     parts.push(h("span", { class: "node-label repo-name" }, data.label));
     if (data.branch) {
       parts.push(
-        h(NTag, { size: "small", bordered: false, class: "branch-tag" }, () => data.branch),
+        h(NTag, { size: "small", type: "info", bordered: false, class: "branch-tag" }, () => data.branch),
       );
     }
     if (data.ahead && data.ahead > 0 || data.behind && data.behind > 0) {
@@ -278,17 +306,29 @@ function renderLabel({ option }: { option: TreeOption }) {
       if (data.behind && data.behind > 0) infoParts.push(h("span", { class: "behind" }, `↓${data.behind}`));
       parts.push(h("span", { class: "remote-info" }, infoParts));
     }
+    // F-09c：变更状态用 NTag 语义化颜色展示。
     if (data.changeCount && data.changeCount > 0) {
-      parts.push(h("span", { class: "change-badge" }, `${data.changeCount} 处变更`));
+      parts.push(
+        h(NTag, { size: "small", type: "warning", bordered: false }, () => `${data.changeCount} 处变更`),
+      );
+      parts.push(
+        h(NTag, { size: "small", type: "warning", bordered: false }, () => "已修改"),
+      );
     } else {
-      parts.push(h("span", { class: "clean-text" }, "无变更"));
+      parts.push(
+        h(NTag, { size: "small", type: "success", bordered: false }, () => "未变更"),
+      );
     }
   } else if (data.type === "dir") {
     parts.push(h("span", { class: "node-label" }, `${data.label}/`));
   } else {
     parts.push(h("span", { class: "node-label" }, data.label));
     parts.push(
-      h("span", { class: `file-status status-${data.status}` }, statusText(data.status || "")),
+      h(
+        NTag,
+        { size: "small", type: statusTagType(data.status || ""), bordered: false },
+        () => statusText(data.status || ""),
+      ),
     );
   }
 
@@ -320,8 +360,7 @@ function renderSuffix() {
 }
 
 function emitSelection() {
-  if (!treeRef.value) return;
-  const checkedKeys = treeRef.value.getCheckedKeys() as string[];
+  const checkedKeys = lastCheckedKeys.value;
   const allNodes = flattenTree(treeData.value);
   const checkedNodes = allNodes.filter((n) => checkedKeys.includes(n.key));
 
@@ -369,10 +408,42 @@ function statusText(status: string): string {
   return map[status] ?? status;
 }
 
+/** F-09c：文件状态 → NTag 语义化颜色。 */
+function statusTagType(
+  status: string,
+): "default" | "info" | "success" | "warning" | "error" {
+  const map: Record<string, "default" | "info" | "success" | "warning" | "error"> = {
+    untracked: "default",
+    modified: "warning",
+    deleted: "error",
+    added: "success",
+    renamed: "info",
+    typechange: "warning",
+  };
+  return map[status] ?? "default";
+}
+
+/** 收集所有有子级的节点 key（用于「展开全部」）。 */
+function collectParentKeys(nodes: ChangeNode[]): string[] {
+  const keys: string[] = [];
+  for (const n of nodes) {
+    if (n.children && n.children.length > 0) {
+      keys.push(n.key);
+      keys.push(...collectParentKeys(n.children));
+    }
+  }
+  return keys;
+}
+
 defineExpose({
   refresh: () => emitSelection(),
-  expandAll: () => {},
-  collapseAll: () => {},
+  // F-09g：原来是空实现，按钮点击无反应。
+  expandAll: () => {
+    expandedKeysState.value = collectParentKeys(treeData.value);
+  },
+  collapseAll: () => {
+    expandedKeysState.value = [];
+  },
 });
 </script>
 
@@ -433,26 +504,6 @@ defineExpose({
 
 .behind {
   color: #e6a23c;
-}
-
-.change-badge {
-  font-size: 12px;
-  color: #f56c6c;
-  background: #fef0f0;
-  border-radius: 8px;
-  padding: 0 6px;
-  flex-shrink: 0;
-}
-
-.clean-text {
-  font-size: 12px;
-  color: #c0c4cc;
-  flex-shrink: 0;
-}
-
-.file-status {
-  font-size: 12px;
-  flex-shrink: 0;
 }
 
 .status-untracked {
