@@ -3,10 +3,6 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="router.push({ name: 'dashboard' })">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
         <span class="page-title">工作区管理</span>
       </div>
       <div class="toolbar-right">
@@ -98,7 +94,6 @@ import { useRouter } from "vue-router";
 import { useDialog, useMessage } from "naive-ui";
 import {
   AddOutline,
-  ArrowBackOutline,
   CreateOutline,
   FolderOpenOutline,
   TrashOutline,

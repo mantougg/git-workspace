@@ -1,5 +1,10 @@
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" :theme="naiveTheme">
+  <n-config-provider
+    :locale="zhCN"
+    :date-locale="dateZhCN"
+    :theme="naiveTheme"
+    :theme-overrides="themeOverrides"
+  >
     <n-message-provider>
       <n-dialog-provider>
         <AppShell>
@@ -17,11 +22,17 @@ import { zhCN, dateZhCN, darkTheme } from "naive-ui";
 import AppShell from "@/components/shell/AppShell.vue";
 import TaskPanel from "@/views/TaskPanel.vue";
 import { useTheme } from "@/composables/useTheme";
+import { lightOverrides, darkOverrides } from "@/styles/naive-overrides";
 
 // D-02：主题机制
 const { resolved } = useTheme();
 const naiveTheme = computed(() =>
   resolved.value === "dark" ? darkTheme : null
+);
+
+// D-07：组件级 themeOverrides
+const themeOverrides = computed(() =>
+  resolved.value === "dark" ? darkOverrides : lightOverrides
 );
 </script>
 

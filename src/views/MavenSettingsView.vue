@@ -3,10 +3,6 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
         <n-button type="primary" :loading="pruning" @click="onPrune">
           <template #icon><n-icon><TrashOutline /></n-icon></template>
           清理失效条目
@@ -112,9 +108,8 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
 import { NButton, NIcon, NTag, useMessage } from "naive-ui";
-import { ArrowBackOutline, TrashOutline, SearchOutline } from "@vicons/ionicons5";
+import { TrashOutline, SearchOutline } from "@vicons/ionicons5";
 import {
   buildMavenCommand,
   detectMavenByPicker,
@@ -127,7 +122,6 @@ import {
 import type { MavenExecutable, MavenSource } from "@/types/maven";
 import { errMsg } from "@/utils/error";
 
-const router = useRouter();
 const message = useMessage();
 
 const executables = ref<MavenExecutable[]>([]);
@@ -359,10 +353,6 @@ async function onPreview() {
   } finally {
     previewing.value = false;
   }
-}
-
-function goBack() {
-  router.push({ name: "dashboard" });
 }
 
 onMounted(reload);

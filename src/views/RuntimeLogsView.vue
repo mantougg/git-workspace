@@ -3,17 +3,6 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
-        <n-select
-          v-model:value="selectedWorkspaceId"
-          placeholder="选择工作区"
-          style="width: 180px"
-          :options="workspaceOptions"
-          @update:value="selectWorkspace"
-        />
         <n-select
           v-model:value="selectedApp"
           placeholder="选择 Runtime 应用"
@@ -100,8 +89,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
-import { ArrowBackOutline, RefreshOutline, TrashOutline, CloudUploadOutline } from "@vicons/ionicons5";
+import { RefreshOutline, TrashOutline, CloudUploadOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
@@ -116,11 +104,9 @@ interface DisplayLine {
   text: string;
 }
 
-const router = useRouter();
 const message = useMessage();
 const dialog = useDialog();
-const { workspaceStore, store, selectedWorkspaceId, selectWorkspace } =
-  useRuntimeWorkspace();
+const { store } = useRuntimeWorkspace();
 
 const selectedApp = ref<string | null>(null);
 const selectedProcessId = ref<number | null>(null);
@@ -143,10 +129,6 @@ const LEVEL_ORDER: Record<string, number> = {
 
 /** 渲染预算：最多渲染最近 3000 行（全局约束 §5，高频输出下保流畅）。 */
 const DISPLAY_CAP = 3000;
-
-const workspaceOptions = computed(() =>
-  workspaceStore.workspaces.map((ws) => ({ label: ws.name, value: ws.id })),
-);
 
 const appOptions = computed(() =>
   store.configs.map((c) => ({ label: c.name, value: c.name })),
@@ -350,10 +332,6 @@ watch(
   },
   { flush: "post" },
 );
-
-function goBack() {
-  router.push({ name: "runtime-dashboard" });
-}
 
 onMounted(async () => {
   // 从 Dashboard 带参进入（?name=xxx）。

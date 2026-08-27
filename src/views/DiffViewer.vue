@@ -2,10 +2,6 @@
   <div class="diff-viewer">
     <!-- Header -->
     <div class="diff-header">
-      <n-button @click="goBack">
-        <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-        返回
-      </n-button>
       <div class="repo-info">
         <span class="repo-path">{{ repoPath }}</span>
         <n-tag v-if="files.length > 0" size="small">

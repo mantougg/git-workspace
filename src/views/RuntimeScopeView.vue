@@ -106,9 +106,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import { useMessage } from "naive-ui";
-import { ArrowBackOutline, CheckmarkOutline, EyeOutline, SpeedometerOutline } from "@vicons/ionicons5";
+import { CheckmarkOutline, EyeOutline } from "@vicons/ionicons5";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import * as runtimeApi from "@/api/runtime";
 import type { ClosurePreview, RuntimeApplicationConfig } from "@/types/runtime";
@@ -117,10 +116,8 @@ import { errMsg } from "@/utils/error";
 
 type ScopeMode = "auto" | "manual" | "hybrid";
 
-const router = useRouter();
 const message = useMessage();
-const { workspaceStore, store, selectedWorkspaceId, selectWorkspace } =
-  useRuntimeWorkspace();
+const { store } = useRuntimeWorkspace();
 
 const selectedApp = ref<string | null>(null);
 const configDetail = ref<RuntimeApplicationConfig | null>(null);
@@ -135,9 +132,6 @@ const saving = ref(false);
 const modeDisabled = computed(() => mode.value === "auto");
 const checkedCount = computed(() => checkedIds.value.size);
 
-const workspaceOptions = computed(() =>
-  workspaceStore.workspaces.map((ws) => ({ label: ws.name, value: ws.id })),
-);
 const appOptions = computed(() =>
   store.configs.map((c) => ({ label: c.name, value: c.name })),
 );
@@ -281,10 +275,6 @@ async function onSave() {
   } finally {
     saving.value = false;
   }
-}
-
-function goBack() {
-  router.push({ name: "runtime-dashboard" });
 }
 
 onMounted(async () => {

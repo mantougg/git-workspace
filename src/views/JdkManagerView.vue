@@ -3,10 +3,6 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button text @click="goBack">
-          <template #icon><n-icon><ArrowBackOutline /></n-icon></template>
-          返回
-        </n-button>
         <n-button type="primary" :loading="discovering" @click="onDiscover">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           扫描本机 JDK
@@ -69,9 +65,8 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import { NButton, NIcon, NTag, useMessage } from "naive-ui";
-import { ArrowBackOutline, RefreshOutline, TrashOutline, AddOutline } from "@vicons/ionicons5";
+import { RefreshOutline, TrashOutline, AddOutline } from "@vicons/ionicons5";
 import {
   addJdkManualByPicker,
   discoverJdks,
@@ -83,7 +78,6 @@ import {
 import type { JdkDiscoverySource, JdkInstallation, JdkVendor } from "@/types/jdk";
 import { errMsg } from "@/utils/error";
 
-const router = useRouter();
 const message = useMessage();
 
 const jdks = ref<JdkInstallation[]>([]);
@@ -295,10 +289,6 @@ async function onRemove(row: JdkInstallation) {
   } catch (e) {
     message.error("删除失败：" + errMsg(e));
   }
-}
-
-function goBack() {
-  router.push({ name: "dashboard" });
 }
 
 const SOURCE_LABELS: Record<JdkDiscoverySource, string> = {
