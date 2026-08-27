@@ -76,21 +76,23 @@
     </n-spin>
 
     <!-- Repo table -->
-    <div class="section">
-      <div class="section-head">
+    <Panel>
+      <template #header>
         <n-checkbox v-model:checked="onlyAnomalous">仅显示异常仓库</n-checkbox>
         <n-tag v-if="activeFilter" closable @close="activeFilter = ''">
           {{ anomalyLabel(activeFilter) }}
         </n-tag>
+      </template>
+      <template #actions>
         <n-input
           v-model:value="searchQuery"
           placeholder="按名称 / 路径筛选"
-          style="width: 220px; margin-left: auto"
+          style="width: 220px"
           clearable
         >
           <template #prefix><n-icon><SearchOutline /></n-icon></template>
         </n-input>
-      </div>
+      </template>
       <n-spin :show="loading">
         <n-data-table
           :columns="columns"
@@ -99,7 +101,7 @@
           :default-sort="{ columnKey: 'score', order: 'ascend' }"
         />
       </n-spin>
-    </div>
+    </Panel>
   </div>
 </template>
 
@@ -107,6 +109,7 @@
 import { computed, h, onMounted, ref } from "vue";
 import { NTag, NIcon, useMessage } from "naive-ui";
 import { RefreshOutline, SearchOutline } from "@vicons/ionicons5";
+import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { getWorkspaceHealth, getHealthExtras } from "@/api/health";
 import type {
@@ -505,18 +508,7 @@ onMounted(async () => {
   color: var(--gw-text-dim);
 }
 
-.section {
-  border: 1px solid var(--gw-border);
-  border-radius: 8px;
-  padding: 12px 14px;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  gap: var(--gw-space-3);
-  margin-bottom: 10px;
-}
+/* D-10：section 外壳已替换为 Panel 组件 */
 
 .repo-cell {
   display: flex;

@@ -228,7 +228,7 @@ const actions = computed<Action[]>(() => {
 }
 .context-line {
   font-size: 12px;
-  color: var(--n-text-color-regular, #666);
+  color: var(--n-text-color-regular, var(--gw-text-dim));
   word-break: break-all;
   white-space: pre-wrap;
 }

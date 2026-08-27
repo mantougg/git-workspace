@@ -297,7 +297,7 @@ async function openDiff(entry: StashEntry) {
   gap: var(--gw-space-3);
   padding: 8px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .repo-path {
@@ -313,7 +313,7 @@ async function openDiff(entry: StashEntry) {
 .stash-body {
   flex: 1;
   overflow-y: auto;
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .stash-row {
@@ -321,7 +321,7 @@ async function openDiff(entry: StashEntry) {
   align-items: center;
   gap: var(--gw-space-3);
   padding: 8px 16px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
@@ -375,15 +375,15 @@ async function openDiff(entry: StashEntry) {
   padding: 5px 10px;
   cursor: pointer;
   font-size: 13px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .file-item:hover {
-  background: #f5f7fa;
+  background: var(--gw-bg-hover);
 }
 
 .file-item.active {
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
 }
 
 .file-status-icon {
@@ -395,7 +395,7 @@ async function openDiff(entry: StashEntry) {
 
 .file-status-icon.added,
 .file-status-icon.untracked {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .file-status-icon.deleted {

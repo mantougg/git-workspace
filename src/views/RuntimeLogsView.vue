@@ -380,7 +380,7 @@ onMounted(async () => {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: #1e1e1e;
+  background: var(--gw-bg-app);
   border-radius: 8px;
   padding: 8px 4px;
   font-family: var(--gw-font-mono);
@@ -388,7 +388,7 @@ onMounted(async () => {
   line-height: 1.55;
 }
 .log-empty {
-  color: #8a8a8a;
+  color: var(--gw-text-dim);
   text-align: center;
   padding: 48px 0;
   font-family: inherit;
@@ -401,10 +401,10 @@ onMounted(async () => {
   word-break: break-all;
 }
 .log-line:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--gw-bg-hover);
 }
 .log-seq {
-  color: #6a737d;
+  color: var(--gw-text-dim);
   flex-shrink: 0;
   user-select: none;
 }
@@ -415,30 +415,30 @@ onMounted(async () => {
   user-select: none;
 }
 .log-text {
-  color: #d4d4d4;
+  color: var(--gw-border);
 }
 .log-line.lv-error .log-level {
   color: var(--gw-danger);
 }
 .log-line.lv-error .log-text {
-  color: #ff8f8f;
+  color: var(--gw-danger);
 }
 .log-line.lv-warn .log-level {
   color: var(--gw-warning);
 }
 .log-line.lv-warn .log-text {
-  color: #e6c07b;
+  color: var(--gw-warning);
 }
 .log-line.lv-info .log-level {
   color: var(--gw-accent);
 }
 .log-line.lv-debug .log-level {
-  color: #9a9a9a;
+  color: var(--gw-text-dim);
 }
 .log-line.lv-trace .log-level {
-  color: #6a737d;
+  color: var(--gw-text-dim);
 }
 .log-line.lv-none .log-level {
-  color: #6a737d;
+  color: var(--gw-text-dim);
 }
 </style>

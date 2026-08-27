@@ -183,7 +183,7 @@ async function run() {
 
 .form-label {
   font-size: 13px;
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .op-editor {
@@ -205,14 +205,14 @@ async function run() {
   align-items: center;
   gap: var(--gw-space-2);
   padding: 4px 6px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
   cursor: grab;
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .op-row.dropped .op-subject {
   text-decoration: line-through;
-  color: #c0c4cc;
+  color: var(--gw-text-dim);
 }
 
 .op-oid {

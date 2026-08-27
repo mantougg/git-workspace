@@ -411,7 +411,7 @@ async function handleClear() {
 .drawer-title-text {
   font-size: 13px;
   font-weight: 600;
-  color: #303133;
+  color: var(--gw-text);
 }
 
 .task-panel-content {
@@ -437,7 +437,7 @@ async function handleClear() {
 
 .task-count {
   font-size: 13px;
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .task-item {
@@ -445,7 +445,7 @@ async function handleClear() {
   align-items: center;
   gap: var(--gw-space-2);
   padding: 6px 8px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   flex-wrap: wrap;
 }
 
@@ -464,23 +464,23 @@ async function handleClear() {
 }
 
 .task-type-fetch {
-  background: #e6f7ff;
-  color: #1890ff;
+  background: var(--gw-bg-hover);
+  color: var(--gw-accent);
 }
 
 .task-type-pull {
-  background: #f6ffed;
-  color: #52c41a;
+  background: var(--gw-bg-hover);
+  color: var(--gw-success);
 }
 
 .task-type-push {
-  background: #fff7e6;
-  color: #fa8c16;
+  background: var(--gw-warning);
+  color: var(--gw-warning);
 }
 
 .task-type-commit {
-  background: #fff0f6;
-  color: #eb2f96;
+  background: var(--gw-danger);
+  color: var(--gw-accent);
 }
 
 .task-repo {
@@ -514,7 +514,7 @@ async function handleClear() {
 }
 
 .child-mark.success {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .child-mark.failed {
@@ -556,19 +556,19 @@ async function handleClear() {
 .git-console-title {
   font-size: 13px;
   font-weight: 600;
-  color: #303133;
+  color: var(--gw-text);
 }
 
 .empty-git-log {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--gw-text-dim);
   text-align: center;
   padding: 12px 0;
 }
 
 .git-log-item {
   padding: 6px 8px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .git-log-head {
@@ -604,8 +604,8 @@ async function handleClear() {
 .git-log-output {
   font-family: Consolas, monospace;
   font-size: 11px;
-  color: #606266;
-  background: #f5f7fa;
+  color: var(--gw-text-dim);
+  background: var(--gw-bg-hover);
   padding: 4px 8px;
   border-radius: 3px;
   margin: 4px 0 0;
@@ -621,6 +621,6 @@ async function handleClear() {
 
 .git-log-item.log-failed .git-log-output {
   color: var(--gw-danger);
-  background: #fef0f0;
+  background: var(--gw-danger);
 }
 </style>

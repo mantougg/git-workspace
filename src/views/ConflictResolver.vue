@@ -437,7 +437,7 @@ async function handleAbort() {
   gap: var(--gw-space-3);
   padding: 8px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .repo-path {
@@ -453,9 +453,9 @@ async function handleAbort() {
 .resolver-progress {
   padding: 6px 16px;
   font-size: 13px;
-  color: #606266;
-  background: #fafafa;
-  border-bottom: 1px solid #f0f0f0;
+  color: var(--gw-text-dim);
+  background: var(--gw-bg-hover);
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .resolver-body {
@@ -468,7 +468,7 @@ async function handleAbort() {
   width: 300px;
   border-right: 1px solid var(--gw-border);
   overflow-y: auto;
-  background: #fafafa;
+  background: var(--gw-bg-hover);
 }
 
 .conflict-item {
@@ -477,20 +477,20 @@ async function handleAbort() {
   gap: var(--gw-space-2);
   padding: 8px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
 .conflict-item:hover {
-  background: #f5f7fa;
+  background: var(--gw-bg-hover);
 }
 
 .conflict-item.active {
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
 }
 
 .conflict-item.resolved .conflict-path {
-  color: #67c23a;
+  color: var(--gw-success);
   text-decoration: line-through;
 }
 
@@ -504,7 +504,7 @@ async function handleAbort() {
 }
 
 .resolved-icon {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .panes {
@@ -527,14 +527,14 @@ async function handleAbort() {
   gap: var(--gw-space-2);
   padding: 6px 12px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .pane-file {
   flex: 1;
   font-family: var(--gw-font-mono);
   font-size: 12px;
-  color: #606266;
+  color: var(--gw-text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -553,7 +553,7 @@ async function handleAbort() {
 .pane {
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--gw-bg-panel);
   overflow: hidden;
 }
 
@@ -562,8 +562,8 @@ async function handleAbort() {
   font-size: 12px;
   font-weight: 600;
   color: var(--gw-text-dim);
-  background: #f5f7fa;
-  border-bottom: 1px solid #f0f0f0;
+  background: var(--gw-bg-hover);
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .pane-content {
@@ -584,14 +584,14 @@ async function handleAbort() {
   padding: 8px 10px;
   font-family: var(--gw-font-mono);
   font-size: 12px;
-  background: #fffef8;
+  background: var(--gw-bg-panel);
 }
 
 .truncate-hint {
   padding: 4px 12px;
   font-size: 12px;
   color: var(--gw-warning);
-  background: #fdf6ec;
+  background: var(--gw-warning);
 }
 
 .resolver-footer {
@@ -600,18 +600,18 @@ async function handleAbort() {
   gap: var(--gw-space-3);
   padding: 8px 16px;
   border-top: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .footer-hint {
-  color: #67c23a;
+  color: var(--gw-success);
   font-size: 13px;
 }
 
 .queue-body {
   flex: 1;
   overflow-y: auto;
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .queue-row {
@@ -619,7 +619,7 @@ async function handleAbort() {
   align-items: center;
   gap: var(--gw-space-3);
   padding: 10px 16px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 

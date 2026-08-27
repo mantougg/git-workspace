@@ -64,8 +64,7 @@
       <div class="branch-body">
         <template v-if="overview">
           <!-- Local branches -->
-          <div class="section">
-            <div class="section-title">Local Branches（{{ overview.locals.length }}）</div>
+          <Panel title="Local Branches（{{ overview.locals.length }}）" class="branch-section">
             <div
               v-for="b in overview.locals"
               :key="b.name"
@@ -93,11 +92,10 @@
               </n-dropdown>
             </div>
             <n-empty v-if="overview.locals.length === 0" description="无本地分支" />
-          </div>
+          </Panel>
 
           <!-- Remote branches -->
-          <div class="section">
-            <div class="section-title">Remote Branches（{{ overview.remotes.length }}）</div>
+          <Panel title="Remote Branches（{{ overview.remotes.length }}）" class="branch-section">
             <div v-for="r in overview.remotes" :key="r.name" class="branch-row">
               <span class="branch-name">{{ r.name }}</span>
               <span class="branch-track" />
@@ -111,11 +109,10 @@
               </n-dropdown>
             </div>
             <n-empty v-if="overview.remotes.length === 0" description="无远程分支" />
-          </div>
+          </Panel>
 
           <!-- Tags -->
-          <div class="section">
-            <div class="section-title">Tags（{{ overview.tags.length }}）</div>
+          <Panel title="Tags（{{ overview.tags.length }}）" class="branch-section">
             <div v-for="t in overview.tags" :key="t.name" class="branch-row">
               <span class="branch-name">{{ t.name }}</span>
               <span class="branch-track tag-message" :title="t.message ?? ''">{{ t.message ?? "" }}</span>
@@ -123,7 +120,7 @@
               <span />
             </div>
             <n-empty v-if="overview.tags.length === 0" description="无标签" />
-          </div>
+          </Panel>
         </template>
       </div>
     </n-spin>
@@ -245,6 +242,7 @@ import type { FileDiff } from "@/types/git";
 import { syncPull } from "@/api/git_ops";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import RebaseDialog from "@/components/branch/RebaseDialog.vue";
+import Panel from "@/components/shell/Panel.vue";
 import { getMergeInProgress, mergeAbort, mergeBranch, mergeContinue } from "@/api/merge";
 import { getRebaseState, rebaseAbort, rebaseContinue, rebaseSkip } from "@/api/rebase";
 import type { MergeOutcome } from "@/types/merge";
@@ -337,7 +335,7 @@ function localBranchOptions(b: BranchEntry) {
   opts.push({ label: "Merge 到当前分支…", key: "merge" });
   if (!b.isCurrent) {
     opts.push({ type: "divider", key: "d1" } as never);
-    opts.push({ label: "Delete", key: "delete", props: { style: "color: #d03050" } });
+    opts.push({ label: "Delete", key: "delete", props: { style: "color: var(--gw-danger)" } });
   }
   return opts;
 }
@@ -800,7 +798,7 @@ async function runCompare() {
   gap: var(--gw-space-3);
   padding: 8px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .repo-info {
@@ -824,22 +822,17 @@ async function runCompare() {
   flex: 1;
   overflow-y: auto;
   padding: var(--gw-space-3) var(--gw-space-4);
-  background: #fafafa;
+  background: var(--gw-bg-hover);
 }
 
-.section {
-  background: #fff;
-  border: 1px solid var(--gw-border);
-  border-radius: 4px;
+/* D-10：section 外壳已替换为 Panel 组件；间距沿用原列表节奏 */
+.branch-section {
   margin-bottom: 12px;
 }
 
-.section-title {
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #606266;
-  border-bottom: 1px solid #f0f0f0;
+/* Panel 标题行下加分隔线，对齐原 .section-title 视觉 */
+.branch-section :deep(.panel-header) {
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .branch-row {
@@ -847,7 +840,7 @@ async function runCompare() {
   align-items: center;
   gap: var(--gw-space-3);
   padding: 6px 12px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
@@ -856,7 +849,7 @@ async function runCompare() {
 }
 
 .branch-row.current {
-  background: #f0f9eb;
+  background: var(--gw-bg-hover);
 }
 
 .branch-name {
@@ -882,7 +875,7 @@ async function runCompare() {
 }
 
 .ahead {
-  color: #67c23a;
+  color: var(--gw-success);
   font-weight: 600;
 }
 
@@ -892,7 +885,7 @@ async function runCompare() {
 }
 
 .no-upstream {
-  color: #c0c4cc;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
@@ -905,7 +898,7 @@ async function runCompare() {
 
 .branch-commit {
   flex: 1;
-  color: #606266;
+  color: var(--gw-text-dim);
   font-family: var(--gw-font-mono);
   font-size: 12px;
   overflow: hidden;
@@ -936,7 +929,7 @@ async function runCompare() {
 }
 
 .summary-text {
-  color: #606266;
+  color: var(--gw-text-dim);
   font-size: 13px;
   margin-right: 8px;
 }
@@ -947,7 +940,7 @@ async function runCompare() {
   gap: 10px;
   padding: 4px 8px;
   font-size: 13px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .commit-oid {
@@ -989,15 +982,15 @@ async function runCompare() {
   padding: 5px 10px;
   cursor: pointer;
   font-size: 13px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
 }
 
 .file-item:hover {
-  background: #f5f7fa;
+  background: var(--gw-bg-hover);
 }
 
 .file-item.active {
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
 }
 
 .file-status-icon {
@@ -1009,7 +1002,7 @@ async function runCompare() {
 
 .file-status-icon.added,
 .file-status-icon.untracked {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .file-status-icon.deleted {
@@ -1044,21 +1037,21 @@ async function runCompare() {
   gap: 10px;
   padding: 6px 16px;
   font-size: 13px;
-  border-bottom: 1px solid #fde2e2;
+  border-bottom: 1px solid var(--gw-danger);
 }
 
 .state-banner.merge {
-  background: #fdf6ec;
-  border-bottom-color: #faecd8;
+  background: var(--gw-warning);
+  border-bottom-color: var(--gw-warning);
 }
 
 .state-banner.rebase {
-  background: #fef0f0;
+  background: var(--gw-danger);
 }
 
 .banner-text {
   font-weight: 500;
-  color: #606266;
+  color: var(--gw-text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1072,7 +1065,7 @@ async function runCompare() {
 .merge-line {
   margin-bottom: 12px;
   font-size: 13px;
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .merge-modes {

@@ -54,8 +54,8 @@
             :cx="lx(row.lane)"
             :cy="CY"
             r="5"
-            :fill="isMerge(row) ? '#a855f7' : '#409eff'"
-            stroke="#fff"
+            :fill="isMerge(row) ? '#a855f7' : 'var(--gw-accent)'"
+            stroke="var(--gw-bg-panel)"
             stroke-width="1.5"
           />
         </svg>
@@ -130,16 +130,16 @@ const CY = ROW_H / 2;
 const LANE_W = 16;
 
 const LANE_COLORS = [
-  "#409eff",
-  "#67c23a",
-  "#e6a23c",
-  "#f56c6c",
-  "#a855f7",
-  "#00b4d8",
-  "#ff7d00",
-  "#5c7cfa",
-  "#2f9e44",
-  "#f03e3e",
+  "var(--gw-accent)",
+  "var(--gw-success)",
+  "var(--gw-warning)",
+  "var(--gw-danger)",
+  "var(--gw-text-dim)",
+  "var(--gw-info)",
+  "var(--gw-warning)",
+  "var(--gw-accent)",
+  "var(--gw-success)",
+  "var(--gw-danger)",
 ];
 
 const actionOptions = [
@@ -290,18 +290,18 @@ function formatTime(time: string): string {
   align-items: center;
   gap: var(--gw-space-2);
   padding: 0 12px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
   cursor: pointer;
   font-size: 13px;
   height: 30px;
 }
 
 .commit-row:hover {
-  background: #f5f7fa;
+  background: var(--gw-bg-hover);
 }
 
 .commit-row.selected {
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
 }
 
 .graph-svg {

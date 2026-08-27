@@ -436,7 +436,7 @@ function openResolver() {
   gap: var(--gw-space-3);
   padding: 8px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .repo-path {
@@ -451,7 +451,7 @@ function openResolver() {
   gap: 4px;
   padding: 4px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fafafa;
+  background: var(--gw-bg-hover);
   flex-wrap: wrap;
 }
 
@@ -479,8 +479,8 @@ function openResolver() {
   align-items: center;
   gap: 10px;
   padding: 6px 16px;
-  background: #fef0f0;
-  border-bottom: 1px solid #fde2e2;
+  background: var(--gw-danger);
+  border-bottom: 1px solid var(--gw-danger);
   font-size: 13px;
 }
 
@@ -500,7 +500,7 @@ function openResolver() {
 .reset-target {
   margin-bottom: 12px;
   font-size: 13px;
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .reset-modes {

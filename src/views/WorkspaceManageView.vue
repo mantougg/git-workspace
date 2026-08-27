@@ -242,7 +242,7 @@ function confirmRemove(ws: Workspace) {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #606266;
+  color: var(--gw-text-dim);
   font-size: 12px;
   min-width: 0;
 }

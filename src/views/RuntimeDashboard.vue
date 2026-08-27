@@ -46,48 +46,43 @@
       @retry="pendingRetry?.()"
     />
 
-    <!-- Stat cards -->
+    <!-- D-11 摘要行：高密度平铺（与 DashboardView summary-strip 同模式） -->
     <n-spin :show="store.loading">
-      <div class="cards">
-        <div class="stat-card">
-          <div class="stat-label">应用配置</div>
-          <div class="stat-value">{{ store.configs.length }}</div>
-          <div class="stat-sub">Runtime 配置总数</div>
-        </div>
-        <div class="stat-card tone-ok">
-          <div class="stat-label">运行中</div>
-          <div class="stat-value">{{ runningCount }}</div>
-          <div class="stat-sub">● Running</div>
-        </div>
-        <div class="stat-card tone-warn">
-          <div class="stat-label">启动中</div>
-          <div class="stat-value">{{ startingCount }}</div>
-          <div class="stat-sub">Preparing / Building / Starting</div>
-        </div>
-        <div class="stat-card tone-danger">
-          <div class="stat-label">失败</div>
-          <div class="stat-value">{{ failedCount }}</div>
-          <div class="stat-sub">✕ Failed</div>
-        </div>
-        <div class="stat-card tone-info">
-          <div class="stat-label">进程记录</div>
-          <div class="stat-value">{{ store.processes.length }}</div>
-          <div class="stat-sub">Maven 项目索引 {{ store.projects.length }} 个</div>
-        </div>
+      <div class="summary-strip">
+        <span class="summary-item">
+          <span class="summary-value">{{ store.configs.length }}</span>
+          <span class="summary-label">应用配置 · Runtime 配置总数</span>
+        </span>
+        <span class="summary-item tone-ok">
+          <span class="summary-value">{{ runningCount }}</span>
+          <span class="summary-label">运行中 · Running</span>
+        </span>
+        <span class="summary-item tone-warn">
+          <span class="summary-value">{{ startingCount }}</span>
+          <span class="summary-label">启动中 · Preparing / Building / Starting</span>
+        </span>
+        <span class="summary-item tone-danger">
+          <span class="summary-value">{{ failedCount }}</span>
+          <span class="summary-label">失败 · Failed</span>
+        </span>
+        <span class="summary-item tone-info">
+          <span class="summary-value">{{ store.processes.length }}</span>
+          <span class="summary-label">进程记录 · Maven 项目索引 {{ store.projects.length }} 个</span>
+        </span>
       </div>
     </n-spin>
 
     <!-- Applications -->
-    <div class="section">
-      <div class="section-head">
-        <div class="section-title">Applications</div>
-        <div v-if="store.configs.length === 0" class="section-hint">
+    <Panel>
+      <template #header>
+        <span>Applications</span>
+        <span v-if="store.configs.length === 0" class="section-hint">
           暂无 Runtime 配置 —— 点击「新建应用」创建（向导会自动预填 JDK / Main Class / Profile）
-        </div>
-        <div v-else-if="store.projects.length === 0" class="section-hint warn-hint">
+        </span>
+        <span v-else-if="store.projects.length === 0" class="section-hint warn-hint">
           依赖索引为空，请先「解析依赖」后再启动
-        </div>
-      </div>
+        </span>
+      </template>
       <n-spin :show="store.loading">
         <n-data-table
           :columns="configColumns"
@@ -99,16 +94,16 @@
           @row-click="onSelectRow"
         />
       </n-spin>
-    </div>
+    </Panel>
 
     <!-- Selected application detail -->
-    <div v-if="selectedConfig" class="section">
-      <div class="section-title">
-        应用详情 · {{ selectedConfig.name }}
+    <Panel v-if="selectedConfig">
+      <template #header>
+        <span>应用详情 · {{ selectedConfig.name }}</span>
         <n-tag v-if="configDetail" size="small" class="scope-tag" type="info">
           Scope: {{ scopeLabel(configDetail.scope) }}
         </n-tag>
-      </div>
+      </template>
       <n-descriptions :column="4" label-placement="left" bordered size="small">
         <n-descriptions-item label="JDK">
           {{ configDetail?.jdk ?? selectedConfig.jdk ?? "—" }}
@@ -164,11 +159,10 @@
           <span v-else class="muted">—</span>
         </n-descriptions-item>
       </n-descriptions>
-    </div>
+    </Panel>
 
     <!-- Processes -->
-    <div class="section">
-      <div class="section-title">Processes</div>
+    <Panel title="Processes">
       <n-spin :show="store.loading">
         <n-data-table
           :columns="processColumns"
@@ -177,31 +171,31 @@
           :single-line="false"
         />
       </n-spin>
-    </div>
+    </Panel>
 
     <!-- R-14 §75：脚本执行确认管理（默认禁止自动执行；可重置） -->
-    <div class="section">
-      <div class="section-head">
-        <div class="section-title">脚本执行确认（§75 Command Safety）</div>
-        <div class="section-head-right">
-          <n-button size="small" :loading="approvalsLoading" @click="loadApprovals">
-            <template #icon><n-icon><RefreshOutline /></n-icon></template>
-            刷新
-          </n-button>
-          <n-popconfirm @positive-click="onResetApprovals(store.workspaceId, null)">
-            <template #trigger>
-              <n-button
-                size="small"
-                type="error"
-                :disabled="workspaceApprovals.length === 0"
-              >
-                全部重置
-              </n-button>
-            </template>
-            撤销当前 workspace 的全部脚本确认？
-          </n-popconfirm>
-        </div>
-      </div>
+    <Panel>
+      <template #header>
+        <span>脚本执行确认（§75 Command Safety）</span>
+      </template>
+      <template #actions>
+        <n-button size="small" :loading="approvalsLoading" @click="loadApprovals">
+          <template #icon><n-icon><RefreshOutline /></n-icon></template>
+          刷新
+        </n-button>
+        <n-popconfirm @positive-click="onResetApprovals(store.workspaceId, null)">
+          <template #trigger>
+            <n-button
+              size="small"
+              type="error"
+              :disabled="workspaceApprovals.length === 0"
+            >
+              全部重置
+            </n-button>
+          </template>
+          撤销当前 workspace 的全部脚本确认？
+        </n-popconfirm>
+      </template>
       <n-spin :show="approvalsLoading">
         <n-data-table
           :columns="approvalColumns"
@@ -213,11 +207,10 @@
       <div class="section-hint">
         脚本**默认禁止自动执行**：首次执行必须确认；脚本内容变更后需重新确认；「不再询问」可随时重置（全局约束 §3）。
       </div>
-    </div>
+    </Panel>
 
     <!-- Scheduler config (§66) -->
-    <div class="section scheduler-section">
-      <div class="section-title">Runtime Task Scheduler（§66 限流并发）</div>
+    <Panel title="Runtime Task Scheduler（§66 限流并发）">
       <div class="scheduler-row">
         <div class="scheduler-field">
           <span class="scheduler-label">最大并发 Build</span>
@@ -241,7 +234,7 @@
           保存并生效
         </n-button>
       </div>
-    </div>
+    </Panel>
   </div>
 </template>
 
@@ -254,6 +247,7 @@ import {
   PlayOutline,
   StopOutline,
 } from "@vicons/ionicons5";
+import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRuntimeStore } from "@/stores/runtime";
 import * as runtimeApi from "@/api/runtime";
@@ -1019,62 +1013,44 @@ onMounted(async () => {
   align-items: center;
   flex-wrap: wrap;
 }
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-}
-.stat-card {
-  border: 1px solid var(--gw-border);
-  border-radius: 8px;
-  padding: 12px 14px;
+/* D-11 摘要行：数字+标签平铺，无卡片边框（同 DashboardView） */
+.summary-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gw-space-4);
+  padding: var(--gw-space-2) var(--gw-space-4);
   background: var(--gw-bg-panel);
+  border: 1px solid var(--gw-border);
+  border-radius: var(--gw-radius-md);
 }
-.stat-label {
-  font-size: 12px;
-  color: var(--gw-text-dim);
+.summary-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
-.stat-value {
-  font-size: 26px;
+.summary-value {
+  font-size: 20px;
   font-weight: 600;
   line-height: 1.3;
 }
-.stat-sub {
-  font-size: 12px;
+.summary-label {
+  font-size: var(--gw-text-xs);
   color: var(--gw-text-dim);
 }
-.tone-ok .stat-value {
+.tone-ok .summary-value {
   color: var(--gw-success);
 }
-.tone-warn .stat-value {
+.tone-warn .summary-value {
   color: var(--gw-warning);
 }
-.tone-danger .stat-value {
+.tone-danger .summary-value {
   color: var(--gw-danger);
 }
-.tone-info .stat-value {
+.tone-info .summary-value {
   color: var(--gw-accent);
 }
-.section {
-  border: 1px solid var(--gw-border);
-  border-radius: 8px;
-  padding: 12px 14px;
-}
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.section-head-right {
-  display: flex;
-  gap: var(--gw-space-2);
-  align-items: center;
-}
-.section-title {
-  font-size: 13px;
-  font-weight: 600;
-}
+/* D-10：section 外壳已替换为 Panel 组件 */
 .section-hint {
   font-size: 12px;
   color: var(--gw-text-dim);
@@ -1095,7 +1071,7 @@ onMounted(async () => {
   display: inline-block;
 }
 .status-dot.stopped {
-  background: #c0c4cc;
+  background: var(--gw-text-dim);
 }
 .status-dot.preparing,
 .status-dot.starting,
@@ -1106,7 +1082,7 @@ onMounted(async () => {
   background: var(--gw-warning);
 }
 .status-dot.running {
-  background: #67c23a;
+  background: var(--gw-success);
 }
 .status-dot.unhealthy {
   background: var(--gw-danger);

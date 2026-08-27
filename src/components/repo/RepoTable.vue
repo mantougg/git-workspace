@@ -57,7 +57,7 @@ const columns: DataTableColumns<RepositoryWithStatus> = [
       const parts = [];
       if (row.repository.isFavorite) {
         parts.push(
-          h(NIcon, { color: "#e6a23c", size: 14 }, () => h(StarOutline)),
+          h(NIcon, { color: "var(--gw-warning)", size: 14 }, () => h(StarOutline)),
         );
       }
       parts.push(h("span", null, row.repository.name));
@@ -176,11 +176,11 @@ const columns: DataTableColumns<RepositoryWithStatus> = [
 }
 
 .text-muted {
-  color: #c0c4cc;
+  color: var(--gw-text-dim);
 }
 
 .text-success {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .text-warning {
@@ -189,6 +189,6 @@ const columns: DataTableColumns<RepositoryWithStatus> = [
 
 .separator {
   margin: 0 4px;
-  color: #dcdfe6;
+  color: var(--gw-border);
 }
 </style>

@@ -277,7 +277,7 @@ async function handleRestore(entry: ReflogEntry) {
   gap: var(--gw-space-3);
   padding: 8px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .repo-path {
@@ -293,7 +293,7 @@ async function handleRestore(entry: ReflogEntry) {
 .reflog-body {
   flex: 1;
   overflow-y: auto;
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .reflog-row {
@@ -301,7 +301,7 @@ async function handleRestore(entry: ReflogEntry) {
   align-items: center;
   gap: var(--gw-space-3);
   padding: 6px 16px;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
@@ -315,7 +315,7 @@ async function handleRestore(entry: ReflogEntry) {
 .summary {
   width: 260px;
   flex-shrink: 0;
-  color: #606266;
+  color: var(--gw-text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -328,7 +328,7 @@ async function handleRestore(entry: ReflogEntry) {
   white-space: nowrap;
   font-family: var(--gw-font-mono);
   font-size: 12px;
-  color: #303133;
+  color: var(--gw-text);
 }
 
 .time {
@@ -344,7 +344,7 @@ async function handleRestore(entry: ReflogEntry) {
 .reset-target {
   margin-bottom: 12px;
   font-size: 13px;
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .reset-modes {

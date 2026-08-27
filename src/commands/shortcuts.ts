@@ -57,8 +57,25 @@ function parseKeyEvent(e: KeyboardEvent): string {
 }
 
 /** 全局快捷键监听器 */
+/** 事件目标是否为可编辑区域（输入框聚焦时不触发非组合键快捷键） */
+function isEditableTarget(e: KeyboardEvent): boolean {
+  const target = e.target as HTMLElement | null;
+  if (!target) return false;
+  const tag = target.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    target.isContentEditable
+  );
+}
+
 export function createShortcutListener() {
   return function onKeydown(e: KeyboardEvent) {
+    // 输入框聚焦时跳过快捷键分发（当前映射表全部为 Ctrl 组合键，
+    // 浏览器在输入框内对 Ctrl+数字 无输入语义，但守卫是 spec 要求的机制）
+    if (isEditableTarget(e)) return;
+
     // 解析按键
     const keyStr = parseKeyEvent(e);
     if (!keyStr) return;

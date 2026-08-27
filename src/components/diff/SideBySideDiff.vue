@@ -104,7 +104,7 @@ const rows = computed<Row[]>(() => {
 .hunk-header {
   height: 21px;
   line-height: 21px;
-  background: #f0f0f0;
+  background: var(--gw-border);
   color: var(--gw-text-dim);
   padding: 0 8px;
   font-size: 12px;
@@ -132,26 +132,26 @@ const rows = computed<Row[]>(() => {
 }
 
 .diff-cell:first-child {
-  border-right: 1px solid #e0e0e0;
+  border-right: 1px solid var(--gw-border);
 }
 
 .diff-cell.delete {
-  background: #ffebe9;
+  background: var(--gw-danger);
 }
 
 .diff-cell.add {
-  background: #e6ffec;
+  background: var(--gw-bg-hover);
 }
 
 .diff-cell.context {
-  background: #fafafa;
+  background: var(--gw-bg-hover);
 }
 
 .line-num {
   display: inline-block;
   width: 40px;
   text-align: right;
-  color: #adb1b8;
+  color: var(--gw-text-dim);
   user-select: none;
   flex-shrink: 0;
 }

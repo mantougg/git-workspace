@@ -2,11 +2,11 @@
   <div class="manifest-view">
 
     <!-- Export -->
-    <div class="section">
-      <div class="section-title">
+    <Panel>
+      <template #header>
         <n-icon><CloudUploadOutline /></n-icon>
         导出 Manifest
-      </div>
+      </template>
       <div class="section-desc">
         将当前工作区导出为 gitworkspace.json（含每个仓库的 remote URL / 默认分支 /
         分组 / 标签），可据此在新机器重建环境。Manifest 只存纯数据，不含任何凭据。
@@ -23,14 +23,14 @@
         </n-button>
         <span v-if="exportSummary" class="summary-text">{{ exportSummary }}</span>
       </div>
-    </div>
+    </Panel>
 
     <!-- Import / onboarding -->
-    <div class="section">
-      <div class="section-title">
+    <Panel>
+      <template #header>
         <n-icon><CloudUploadOutline /></n-icon>
         导入 Manifest（新成员入职引导）
-      </div>
+      </template>
       <div class="section-desc">
         选择 gitworkspace.json → 选择目标目录 → 预览并批量克隆 →
         扫描加入工作区。克隆走任务队列（并发受限、逐仓库子结果、失败可重试）。
@@ -107,7 +107,7 @@
           扫描加入工作区
         </n-button>
       </n-alert>
-    </div>
+    </Panel>
   </div>
 </template>
 
@@ -120,6 +120,7 @@ import {
 } from "@vicons/ionicons5";
 import { NTag, useDialog, useMessage } from "naive-ui";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
 import { useTaskStore } from "@/stores/task";
@@ -414,20 +415,7 @@ onMounted(async () => {
   align-items: center;
 }
 
-.section {
-  border: 1px solid var(--gw-border);
-  border-radius: 8px;
-  padding: 12px 14px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
+/* D-10：section 外壳已替换为 Panel 组件 */
 
 .section-desc {
   font-size: 12px;

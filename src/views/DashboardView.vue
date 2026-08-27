@@ -41,8 +41,7 @@
     </n-spin>
 
     <!-- Status distribution -->
-    <div class="section">
-      <div class="section-title">状态分布</div>
+    <Panel title="状态分布">
       <div class="dist-bar">
         <template v-if="total > 0">
           <div
@@ -61,28 +60,26 @@
           {{ seg.label }} {{ seg.count }}（{{ seg.pct.toFixed(1) }}%）
         </span>
       </div>
-    </div>
+    </Panel>
 
     <!-- Commit heatmap (F-01b)：当前用户在当前工作区所有仓库的提交热力图 -->
-    <div v-if="currentWorkspaceId" class="section">
-      <div class="section-title">
-        提交热力图
-        <span v-if="heatmap.identity" class="section-sub">{{ heatmap.identity }}</span>
-      </div>
+    <Panel v-if="currentWorkspaceId" title="提交热力图">
+      <template v-if="heatmap.identity" #actions>
+        <span class="section-sub">{{ heatmap.identity }}</span>
+      </template>
       <n-spin :show="heatmapLoading">
         <CommitHeatmap v-if="heatmap.days.length > 0" :days="heatmap.days" />
         <div v-else class="section-empty">
           {{ heatmap.identity ? "近一年没有匹配到你的提交" : "未配置 git user.email / user.name，无法识别你的提交" }}
         </div>
       </n-spin>
-    </div>
+    </Panel>
 
     <!-- Health summary (F-01c)：健康检查前置到首页，轻项走缓存即时返回 -->
-    <div v-if="currentWorkspaceId" class="section">
-      <div class="section-title">
-        健康检查
+    <Panel v-if="currentWorkspaceId" title="健康检查">
+      <template #actions>
         <n-button size="tiny" text type="primary" @click="goHealth">查看详情</n-button>
-      </div>
+      </template>
       <n-spin :show="healthLoading">
         <div v-if="health" class="health-summary">
           <span class="health-score" :class="healthScoreClass">{{ health.score }}%</span>
@@ -96,16 +93,15 @@
         </div>
         <div v-else-if="!healthLoading" class="section-empty">暂无健康数据</div>
       </n-spin>
-    </div>
+    </Panel>
 
     <!-- Runtime apps (F-01d)：当前工作区已创建的应用 -->
-    <div v-if="currentWorkspaceId" class="section">
-      <div class="section-title">
-        我的应用
+    <Panel v-if="currentWorkspaceId" title="我的应用">
+      <template #actions>
         <n-button size="tiny" text type="primary" @click="router.push({ name: 'runtime-dashboard' })">
           进入 Runtime
         </n-button>
-      </div>
+      </template>
       <n-spin :show="appsLoading">
         <div v-if="apps.length > 0" class="app-cards">
           <div
@@ -129,11 +125,10 @@
           </n-button>
         </div>
       </n-spin>
-    </div>
+    </Panel>
 
     <!-- Group breakdown -->
-    <div v-if="groupRows.length > 0" class="section">
-      <div class="section-title">分组视图</div>
+    <Panel v-if="groupRows.length > 0" title="分组视图">
       <n-data-table
         :columns="groupColumns"
         :data="groupRows"
@@ -141,12 +136,11 @@
         :row-props="groupRowProps"
         class="group-table"
       />
-    </div>
+    </Panel>
 
     <!-- Quick actions: jump into the T-20 batch-ops view with a prefilled
          selection; the user confirms execution there (Safety First). -->
-    <div class="section">
-      <div class="section-title">快捷操作</div>
+    <Panel title="快捷操作">
       <div class="actions">
         <n-button :disabled="total === 0" @click="quickAction('fetch')">
           <template #icon><n-icon><DownloadOutline /></n-icon></template>
@@ -183,7 +177,7 @@
       <div class="actions-hint">
         跳转到批量操作视图并预填选择，在那里确认后执行
       </div>
-    </div>
+    </Panel>
 
   </div>
 </template>
@@ -191,6 +185,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import Panel from "@/components/shell/Panel.vue";
 
 import {
   RefreshOutline,
@@ -685,21 +680,7 @@ onMounted(async () => {
   color: var(--gw-text-dim);
 }
 
-/* D-11 section 使用 tokens */
-.section {
-  border: 1px solid var(--gw-border);
-  border-radius: var(--gw-radius-md);
-  padding: var(--gw-space-3) var(--gw-space-4);
-}
-
-.section-title {
-  font-size: var(--gw-text-md);
-  font-weight: 600;
-  margin-bottom: var(--gw-space-2);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
+/* D-10：section 外壳已替换为 Panel 组件，样式由组件自带 */
 
 .dist-bar {
   display: flex;
@@ -776,14 +757,9 @@ onMounted(async () => {
 
 /* F-01：热力图 / 健康摘要 / 我的应用 */
 .section-sub {
-  margin-left: 8px;
   font-size: 12px;
   font-weight: 400;
   color: var(--gw-text-dim);
-}
-
-.section-title .n-button {
-  margin-left: 8px;
 }
 
 .section-empty {
@@ -808,17 +784,17 @@ onMounted(async () => {
 }
 
 .health-score.score-warn {
-  color: #f0a020;
+  color: var(--gw-warning);
 }
 
 .health-score.score-bad {
-  color: #d03050;
+  color: var(--gw-danger);
 }
 
 .health-meta {
   flex: 1;
   font-size: 13px;
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .app-cards {

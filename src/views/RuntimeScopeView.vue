@@ -36,8 +36,7 @@
 
     <template v-else>
       <!-- Mode selection (§15) -->
-      <div class="section">
-        <div class="section-title">Scope 模式</div>
+      <Panel title="Scope 模式">
         <n-radio-group v-model:value="mode" @update:value="onModeChange">
           <n-radio-button value="auto">Auto</n-radio-button>
           <n-radio-button value="manual">Manual</n-radio-button>
@@ -61,19 +60,19 @@
           </n-tag>
           <span class="mono fingerprint">graph fingerprint: {{ preview.closure.graphFingerprint }}</span>
         </div>
-      </div>
+      </Panel>
 
       <!-- Module checklist -->
-      <div class="section module-section">
-        <div class="section-head">
-          <div class="section-title">
-            模块（{{ store.projects.length }} 个 workspace 源码项目 · 已勾选 {{ checkedCount }}）
-          </div>
+      <Panel class="module-section">
+        <template #header>
+          <span>模块（{{ store.projects.length }} 个 workspace 源码项目 · 已勾选 {{ checkedCount }}）</span>
+        </template>
+        <template #actions>
           <div class="check-actions" v-if="mode !== 'auto'">
             <n-button size="small" @click="checkAll">全选</n-button>
             <n-button size="small" @click="checkNone">全不选</n-button>
           </div>
-        </div>
+        </template>
         <n-scrollbar class="module-scroll">
           <div class="module-list">
             <div
@@ -99,7 +98,7 @@
             </div>
           </div>
         </n-scrollbar>
-      </div>
+      </Panel>
     </template>
   </div>
 </template>
@@ -108,6 +107,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useMessage } from "naive-ui";
 import { CheckmarkOutline, EyeOutline } from "@vicons/ionicons5";
+import Panel from "@/components/shell/Panel.vue";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import * as runtimeApi from "@/api/runtime";
 import type { ClosurePreview, RuntimeApplicationConfig } from "@/types/runtime";
@@ -310,20 +310,13 @@ onMounted(async () => {
   align-items: center;
   flex-wrap: wrap;
 }
-.section {
-  border: 1px solid var(--gw-border);
-  border-radius: 8px;
-  padding: 12px 14px;
-}
-.section-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-.section-head {
+/* D-10：section 外壳已替换为 Panel 组件 */
+.module-section {
+  margin-top: var(--gw-space-3);
+  flex: 1;
+  min-height: 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
 }
 .check-actions {
   display: flex;
@@ -344,12 +337,6 @@ onMounted(async () => {
 .fingerprint {
   font-size: 11px;
   color: var(--gw-text-dim);
-}
-.module-section {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 .module-scroll {
   flex: 1;

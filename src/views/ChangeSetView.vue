@@ -1206,7 +1206,7 @@ async function doPushAll() {
   align-items: center;
   padding: 8px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .toolbar-left {
@@ -1225,7 +1225,7 @@ async function doPushAll() {
   width: 280px;
   border-right: 1px solid var(--gw-border);
   overflow-y: auto;
-  background: #fafafa;
+  background: var(--gw-bg-hover);
   padding: 8px;
 }
 
@@ -1235,16 +1235,16 @@ async function doPushAll() {
   cursor: pointer;
   border: 1px solid transparent;
   margin-bottom: 6px;
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .set-item:hover {
-  border-color: #c6e2ff;
+  border-color: var(--gw-accent);
 }
 
 .set-item.active {
   border-color: var(--gw-accent);
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
 }
 
 .set-item-title {
@@ -1263,7 +1263,7 @@ async function doPushAll() {
 
 .set-desc {
   font-size: 12px;
-  color: #606266;
+  color: var(--gw-text-dim);
   margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1299,7 +1299,7 @@ async function doPushAll() {
 
 .detail-desc {
   font-size: 13px;
-  color: #606266;
+  color: var(--gw-text-dim);
   margin-top: 4px;
 }
 
@@ -1311,7 +1311,7 @@ async function doPushAll() {
 
 .stat-card {
   flex: 1;
-  background: #fff;
+  background: var(--gw-bg-panel);
   border: 1px solid var(--gw-border);
   border-radius: 6px;
   padding: 12px;
@@ -1325,7 +1325,7 @@ async function doPushAll() {
 
 .stat-value.added,
 .added {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .stat-value.deleted,
@@ -1413,7 +1413,7 @@ async function doPushAll() {
   width: 200px;
   border-right: 1px solid var(--gw-border);
   overflow-y: auto;
-  background: #fafafa;
+  background: var(--gw-bg-hover);
 }
 
 .all-diff-repo {
@@ -1422,16 +1422,16 @@ async function doPushAll() {
   align-items: center;
   padding: 8px 10px;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
 .all-diff-repo:hover {
-  background: #f5f7fa;
+  background: var(--gw-bg-hover);
 }
 
 .all-diff-repo.active {
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
   border-left: 3px solid var(--gw-accent);
   padding-left: 7px;
 }
@@ -1453,16 +1453,16 @@ async function doPushAll() {
   gap: 6px;
   padding: 6px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
 .file-item:hover {
-  background: #f5f7fa;
+  background: var(--gw-bg-hover);
 }
 
 .file-item.active {
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
   border-left: 3px solid var(--gw-accent);
   padding-left: 9px;
 }
@@ -1476,7 +1476,7 @@ async function doPushAll() {
 
 .file-status-icon.added,
 .file-status-icon.untracked {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .file-status-icon.deleted {
@@ -1532,13 +1532,13 @@ async function doPushAll() {
 .issue-file {
   font-family: monospace;
   font-size: 12px;
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .issue-desc {
   width: 100%;
   font-size: 13px;
-  color: #303133;
+  color: var(--gw-text);
   margin-top: 4px;
 }
 
@@ -1546,7 +1546,7 @@ async function doPushAll() {
   margin-top: 12px;
   max-height: 180px;
   overflow-y: auto;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--gw-border);
   padding-top: 8px;
 }
 
@@ -1584,13 +1584,13 @@ async function doPushAll() {
   align-items: center;
   gap: var(--gw-space-2);
   padding: 6px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
 .scan-path {
   font-family: monospace;
-  color: #303133;
+  color: var(--gw-text);
 }
 
 .scan-detail {
@@ -1611,7 +1611,7 @@ async function doPushAll() {
   align-items: center;
   gap: var(--gw-space-2);
   padding: 6px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 </style>

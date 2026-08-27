@@ -143,7 +143,7 @@ async function handleCommit() {
   align-items: center;
   gap: var(--gw-space-3);
   padding: 8px 12px;
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
   border-radius: 4px;
   margin-bottom: 8px;
 }

@@ -592,7 +592,7 @@ function statusIcon(status: string): string {
   gap: var(--gw-space-3);
   padding: 8px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .repo-info {
@@ -625,7 +625,7 @@ function statusIcon(status: string): string {
   width: 280px;
   border-right: 1px solid var(--gw-border);
   overflow-y: auto;
-  background: #fafafa;
+  background: var(--gw-bg-hover);
 }
 
 .file-item {
@@ -634,16 +634,16 @@ function statusIcon(status: string): string {
   gap: 6px;
   padding: 6px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
 .file-item:hover {
-  background: #f5f7fa;
+  background: var(--gw-bg-hover);
 }
 
 .file-item.active {
-  background: #ecf5ff;
+  background: var(--gw-bg-hover);
   border-left: 3px solid var(--gw-accent);
   padding-left: 9px;
 }
@@ -657,7 +657,7 @@ function statusIcon(status: string): string {
 
 .file-status-icon.added,
 .file-status-icon.untracked {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .file-status-icon.deleted {
@@ -682,7 +682,7 @@ function statusIcon(status: string): string {
 .diff-content {
   flex: 1;
   overflow: auto;
-  background: #fff;
+  background: var(--gw-bg-panel);
 }
 
 .file-diff {
@@ -696,7 +696,7 @@ function statusIcon(status: string): string {
   align-items: center;
   gap: var(--gw-space-2);
   padding: 6px 12px;
-  background: #f5f7fa;
+  background: var(--gw-bg-hover);
   border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
   font-weight: 500;
@@ -715,7 +715,7 @@ function statusIcon(status: string): string {
   gap: var(--gw-space-2);
   padding: 6px 16px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fafafa;
+  background: var(--gw-bg-hover);
 }
 
 .compare-sep {
@@ -741,13 +741,13 @@ function statusIcon(status: string): string {
   align-items: center;
   gap: var(--gw-space-2);
   padding: 6px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
 .scan-path {
   font-family: var(--gw-font-mono);
-  color: #303133;
+  color: var(--gw-text);
 }
 
 .scan-detail {
@@ -789,13 +789,13 @@ function statusIcon(status: string): string {
 .issue-file {
   font-family: var(--gw-font-mono);
   font-size: 12px;
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .issue-desc {
   width: 100%;
   font-size: 13px;
-  color: #303133;
+  color: var(--gw-text);
   margin-top: 4px;
 }
 </style>

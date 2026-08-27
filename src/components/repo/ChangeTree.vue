@@ -511,7 +511,7 @@ defineExpose({
 }
 
 .ahead {
-  color: #67c23a;
+  color: var(--gw-success);
   margin-right: 4px;
 }
 
@@ -532,15 +532,15 @@ defineExpose({
 }
 
 .status-added {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .status-renamed {
-  color: #a855f7;
+  color: var(--gw-info);
 }
 
 .status-typechange {
-  color: #ff7d00;
+  color: var(--gw-warning);
 }
 
 .empty-tree {

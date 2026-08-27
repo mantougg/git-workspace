@@ -1,7 +1,7 @@
 <template>
   <n-card class="repo-card" hoverable @click="emit('click', repo)">
     <div class="card-header">
-      <n-icon v-if="repo.repository.isFavorite" color="#e6a23c">
+      <n-icon v-if="repo.repository.isFavorite" color="var(--gw-warning)">
         <StarOutline />
       </n-icon>
       <span class="card-title">{{ repo.repository.name }}</span>
@@ -77,7 +77,7 @@ const emit = defineEmits<{
 }
 
 .text-success {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .text-warning {

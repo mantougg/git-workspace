@@ -2003,7 +2003,7 @@ function viewConflicts() {
   justify-content: space-between;
   padding: 6px 8px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fafafa;
+  background: var(--gw-bg-hover);
 }
 
 .diff-pane-title {
@@ -2023,7 +2023,7 @@ function viewConflicts() {
 .diff-file {
   font-family: var(--gw-font-mono);
   font-size: 12px;
-  color: #606266;
+  color: var(--gw-text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2045,7 +2045,7 @@ function viewConflicts() {
 
 .stats-bar {
   font-size: 13px;
-  color: #606266;
+  color: var(--gw-text-dim);
   padding: 4px 0;
   display: flex;
   align-items: center;
@@ -2079,7 +2079,7 @@ function viewConflicts() {
 .commit-panel {
   border: 1px solid var(--gw-border);
   border-radius: 4px;
-  background: #fafafa;
+  background: var(--gw-bg-hover);
   flex-shrink: 0;
 }
 
@@ -2161,7 +2161,7 @@ function viewConflicts() {
 
 .separator {
   margin: 0 8px;
-  color: #dcdfe6;
+  color: var(--gw-border);
 }
 
 .empty-state {
@@ -2174,7 +2174,7 @@ function viewConflicts() {
 .app-footer {
   text-align: right;
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--gw-text-dim);
   padding: 2px 4px 0;
   flex-shrink: 0;
 }
@@ -2206,13 +2206,13 @@ function viewConflicts() {
   align-items: center;
   gap: var(--gw-space-2);
   padding: 6px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
 }
 
 .scan-path {
   font-family: var(--gw-font-mono);
-  color: #303133;
+  color: var(--gw-text);
 }
 
 .scan-detail {

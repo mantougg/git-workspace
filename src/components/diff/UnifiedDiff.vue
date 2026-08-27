@@ -186,7 +186,7 @@ function prefix(type: string): string {
   gap: var(--gw-space-2);
   height: 21px;
   line-height: 21px;
-  background: #f0f0f0;
+  background: var(--gw-border);
   color: var(--gw-text-dim);
   padding: 0 8px;
   font-size: 12px;
@@ -205,10 +205,10 @@ function prefix(type: string): string {
   line-height: 15px;
   padding: 0 6px;
   font-size: 11px;
-  border: 1px solid #c0c4cc;
+  border: 1px solid var(--gw-text-dim);
   border-radius: 3px;
-  background: #fff;
-  color: #606266;
+  background: var(--gw-bg-panel);
+  color: var(--gw-text-dim);
   cursor: pointer;
 }
 
@@ -232,11 +232,11 @@ function prefix(type: string): string {
 }
 
 .diff-line.add {
-  background: #e6ffec;
+  background: var(--gw-bg-hover);
 }
 
 .diff-line.delete {
-  background: #ffebe9;
+  background: var(--gw-danger);
 }
 
 .diff-line.selectable {
@@ -248,18 +248,18 @@ function prefix(type: string): string {
 }
 
 .diff-line.selected.add {
-  background: #b7eb8f;
+  background: color-mix(in srgb, var(--gw-success) 35%, transparent);
 }
 
 .diff-line.selected.delete {
-  background: #ffa39e;
+  background: var(--gw-danger);
 }
 
 .line-num {
   display: inline-block;
   width: 40px;
   text-align: right;
-  color: #adb1b8;
+  color: var(--gw-text-dim);
   user-select: none;
   flex-shrink: 0;
 }

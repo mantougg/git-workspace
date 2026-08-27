@@ -269,9 +269,9 @@ const columns = [
           ? h("div", { style: "padding: 8px" }, "加载中...")
           : h("div", {}, [
               items.length === 0
-                ? h("div", { style: "padding: 8px; color: #909399" }, "无明细")
+                ? h("div", { style: "padding: 8px; color: var(--gw-text-dim)" }, "无明细")
                 : h("div", { style: "padding: 4px 0" }, items.map((item: any) =>
-                    h("div", { style: "display: flex; gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #f0f0f0" }, [
+                    h("div", { style: "display: flex; gap: 12px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--gw-border)" }, [
                       h("span", { style: "font-weight: 500; min-width: 120px" }, repoName(item.repoPath)),
                       h("span", { style: "min-width: 100px" }, item.refName || "（分离 HEAD）"),
                       h("span", {}, [
@@ -281,9 +281,9 @@ const columns = [
                           ? h("code", {}, shortOid(item.afterOid))
                           : h("span", { class: "after-none" }, "—（未记录 / 已删除）"),
                       ]),
-                      h("span", { style: "color: #909399" }, formatDetail(item.detail)),
+                      h("span", { style: "color: var(--gw-text-dim)" }, formatDetail(item.detail)),
                       item.undoneAt
-                        ? h("span", { style: "color: #409eff; font-size: 12px" }, "已撤销")
+                        ? h("span", { style: "color: var(--gw-accent); font-size: 12px" }, "已撤销")
                         : null,
                     ]),
                   )),

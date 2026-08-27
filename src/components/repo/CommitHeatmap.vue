@@ -113,27 +113,27 @@ const cells = computed<Cell[]>(() => {
   width: 12px;
   height: 12px;
   border-radius: 2px;
-  background: #ebedf0;
+  background: var(--gw-bg-hover);
 }
 
 .level-0 {
-  background: #ebedf0;
+  background: var(--gw-bg-hover);
 }
 
 .level-1 {
-  background: #9be9a8;
+  background: color-mix(in srgb, var(--gw-success) 30%, transparent);
 }
 
 .level-2 {
-  background: #40c463;
+  background: color-mix(in srgb, var(--gw-success) 55%, transparent);
 }
 
 .level-3 {
-  background: #30a14e;
+  background: color-mix(in srgb, var(--gw-success) 80%, transparent);
 }
 
 .level-4 {
-  background: #216e39;
+  background: var(--gw-success);
 }
 
 .heatmap-legend {

@@ -823,10 +823,10 @@ function formatDuration(ms: number): string {
 .panel-title {
   font-size: 13px;
   font-weight: 600;
-  color: #303133;
+  color: var(--gw-text);
   padding: 8px 10px;
   border-bottom: 1px solid var(--gw-border);
-  background: #fafafa;
+  background: var(--gw-bg-hover);
   display: flex;
   align-items: center;
   gap: var(--gw-space-3);
@@ -857,7 +857,7 @@ function formatDuration(ms: number): string {
   height: 20px;
   border-radius: 50%;
   background: var(--gw-accent);
-  color: #fff;
+  color: var(--gw-bg-panel);
   font-size: 11px;
   display: flex;
   align-items: center;
@@ -918,7 +918,7 @@ function formatDuration(ms: number): string {
 .run-summary {
   font-size: 12px;
   font-weight: 400;
-  color: #606266;
+  color: var(--gw-text-dim);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -931,7 +931,7 @@ function formatDuration(ms: number): string {
   padding: 16px 20px;
   overflow-x: auto;
   min-height: 120px;
-  background: #fdfdfd;
+  background: var(--gw-bg-panel);
 }
 
 .graph-edges {
@@ -943,7 +943,7 @@ function formatDuration(ms: number): string {
 }
 
 .edge-path {
-  stroke: #c0c4cc;
+  stroke: var(--gw-text-dim);
   stroke-width: 1.5;
   fill: none;
 }
@@ -958,9 +958,9 @@ function formatDuration(ms: number): string {
 
 .gnode {
   width: 150px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--gw-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--gw-bg-panel);
   padding: 6px 8px;
   font-size: 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -968,7 +968,7 @@ function formatDuration(ms: number): string {
 
 .gnode-name {
   font-weight: 600;
-  color: #303133;
+  color: var(--gw-text);
 }
 
 .gnode-kind {
@@ -990,32 +990,32 @@ function formatDuration(ms: number): string {
 
 .node-running {
   border-color: var(--gw-warning);
-  background: #fdf6ec;
+  background: var(--gw-warning);
 }
 
 .node-success {
-  border-color: #67c23a;
-  background: #f0f9eb;
+  border-color: var(--gw-success);
+  background: var(--gw-bg-hover);
 }
 
 .node-partialSuccess {
   border-color: var(--gw-warning);
-  background: #fdf6ec;
+  background: var(--gw-warning);
 }
 
 .node-failed {
   border-color: var(--gw-danger);
-  background: #fef0f0;
+  background: var(--gw-danger);
 }
 
 .node-cancelled,
 .node-skipped {
-  border-color: #c0c4cc;
-  background: #f4f4f5;
+  border-color: var(--gw-text-dim);
+  background: var(--gw-bg-hover);
 }
 
 .graph-empty {
-  color: #c0c4cc;
+  color: var(--gw-text-dim);
   font-size: 13px;
   align-self: center;
   margin: auto;
@@ -1063,7 +1063,7 @@ function formatDuration(ms: number): string {
 }
 
 .report-step-stats {
-  color: #606266;
+  color: var(--gw-text-dim);
   font-size: 12px;
 }
 
@@ -1099,7 +1099,7 @@ function formatDuration(ms: number): string {
 }
 
 .mark-success {
-  color: #67c23a;
+  color: var(--gw-success);
 }
 
 .mark-failed {
@@ -1116,7 +1116,7 @@ function formatDuration(ms: number): string {
 }
 
 .item-status {
-  color: #606266;
+  color: var(--gw-text-dim);
 }
 
 .item-attempts,
@@ -1133,8 +1133,8 @@ function formatDuration(ms: number): string {
   width: 100%;
   font-family: Consolas, monospace;
   font-size: 11px;
-  color: #606266;
-  background: #f5f7fa;
+  color: var(--gw-text-dim);
+  background: var(--gw-bg-hover);
   padding: 4px 8px;
   border-radius: 3px;
   margin: 2px 0 0;
