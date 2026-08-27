@@ -14,6 +14,10 @@
           <template #icon><n-icon><AddOutline /></n-icon></template>
           添加工作区
         </n-button>
+        <n-button @click="router.push({ name: 'workspaces' })">
+          <template #icon><n-icon><SettingsOutline /></n-icon></template>
+          工作区管理
+        </n-button>
         <n-button
           type="primary"
           :loading="repoStore.scanning"
@@ -200,6 +204,7 @@ import {
   TimeOutline,
   HardwareChipOutline,
   DesktopOutline,
+  SettingsOutline,
 } from "@vicons/ionicons5";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";

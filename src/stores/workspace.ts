@@ -1,6 +1,10 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import type { CreateWorkspaceRequest, Workspace } from "@/types/workspace";
+import type {
+  CreateWorkspaceRequest,
+  UpdateWorkspaceRequest,
+  Workspace,
+} from "@/types/workspace";
 import * as workspaceApi from "@/api/workspace";
 
 export const useWorkspaceStore = defineStore("workspace", () => {
@@ -37,6 +41,14 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     }
   }
 
+  async function updateWorkspace(id: number, req: UpdateWorkspaceRequest) {
+    const ws = await workspaceApi.updateWorkspace(id, req);
+    const index = workspaces.value.findIndex((w) => w.id === id);
+    if (index >= 0) workspaces.value[index] = ws;
+    if (currentWorkspace.value?.id === id) currentWorkspace.value = ws;
+    return ws;
+  }
+
   function selectWorkspace(ws: Workspace) {
     currentWorkspace.value = ws;
   }
@@ -48,6 +60,7 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     loadWorkspaces,
     addWorkspace,
     removeWorkspace,
+    updateWorkspace,
     selectWorkspace,
   };
 });
