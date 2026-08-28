@@ -26,7 +26,10 @@ pub mod store;
 
 pub use launcher::{launch_command, LaunchRunner, SystemLaunchRunner};
 pub use lifecycle::LifecycleStatus;
-pub use manager::{RuntimeProcessManager, StartOptions, DEFAULT_START_GRACE, DEFAULT_STOP_GRACE};
+pub use manager::{
+    EnvironmentOverrides, RuntimeProcessManager, StartOptions, DEFAULT_START_GRACE,
+    DEFAULT_STOP_GRACE,
+};
 pub use store::RuntimeProcessRow;
 
 use serde::{Deserialize, Serialize};

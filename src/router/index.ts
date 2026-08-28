@@ -115,6 +115,12 @@ const router = createRouter({
       component: () => import("@/views/RuntimeLogsView.vue"),
       meta: { group: "Runtime", title: "日志" },
     },
+    {
+      path: "/runtime/environments",
+      name: "runtime-environments",
+      component: () => import("@/views/RuntimeEnvironmentsView.vue"),
+      meta: { group: "Runtime", title: "多服务环境" },
+    },
     // ── 设置 ────────────────────────────────────────────────
     {
       path: "/workspaces",

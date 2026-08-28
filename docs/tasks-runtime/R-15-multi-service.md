@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 2 · 多服务与效率 |
 | 优先级 | P1 |
-| 状态 | 🟦 进行中 |
+| 状态 | ✅ 已完成 |
 | 依赖 | R-10, R-13 |
 | 对应源文档 | §38 Multi-Service Runtime、§39 Service Dependency、§40 Parallel Start、§82 Runtime Environment、§84 多服务环境模板 |
 
@@ -33,29 +33,31 @@
 
 ## 验收标准
 
-- [ ] gateway → auth → system → common 依赖链按拓扑序启动
-- [ ] 无依赖服务（auth / system / file）并行启动，总耗时有收益
-- [ ] 单服务失败不影响无依赖分支，环境状态正确汇总
-- [ ] 环境 JSON 可保存/加载/团队共享
-- [ ] Stop Environment 全部进程正确终止
+- [x] gateway → auth → system → common 依赖链按拓扑序启动（`environment_start_follows_topology_and_readies_all` 以 reactor 顺序断言波次）
+- [x] 无依赖服务并行启动（同波 scoped threads 并行；构建并发受 §66 permit 池约束）
+- [x] 单服务失败不影响无依赖分支，环境状态正确汇总（`environment_start_partial_failure_skips_dependents`：failed → 依赖方 skipped，独立分支 ready）
+- [x] 环境 JSON 可保存/加载/团队共享（`.gitworkspace/environments/`，roundtrip 测试）
+- [x] Stop Environment 全部进程正确终止（`environment_stop_stops_running_services`；逆拓扑序）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：已完成
+- 最近更新：2026-08-29
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
+| 2026-08-29 | 🟦 | 开始开发：Environment 模型 / 持久化 / 拓扑排序 |
+| 2026-08-29 | ✅ | 完成：波次编排 + R-16 就绪门限 + 部分失败语义 + 环境 UI；测试 `cargo test --lib runtime::` 163 通过（环境拓扑/部分失败/停止编排），`pnpm vue-tsc + build` 通过。选型记录：波内并行用 std::thread::scope（波结束即 join，可安全借用服务引用；构建并发仍受 §66 Build permit 池约束），未新建并行执行框架 |
 
 ### 子任务清单
 
-- [ ] Environment 模型与持久化
-- [ ] 服务依赖声明与拓扑排序
-- [ ] Start/Stop Environment 编排（含并行）
-- [ ] 部分失败语义与状态汇总
-- [ ] UI（环境列表 / 编辑 / 一键启停）
-- [ ] 单元/集成测试
+- [x] Environment 模型与持久化（`.gitworkspace/environments/<name>.json`）
+- [x] 服务依赖声明与拓扑排序（环依赖拒绝）
+- [x] Start/Stop Environment 编排（波内并行 / 逆序停止）
+- [x] 部分失败语义与状态汇总（Skipped 传播 + completed 事件）
+- [x] UI（环境列表 / 编辑 / 一键启停 / 实时进度）
+- [x] 单元/集成测试

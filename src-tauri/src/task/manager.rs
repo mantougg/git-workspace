@@ -504,6 +504,9 @@ fn label_for(req: &TaskRequest) -> String {
                 crate::models::task::RuntimeOp::Stop => "Stop",
                 crate::models::task::RuntimeOp::Restart => "Restart",
                 crate::models::task::RuntimeOp::ResolveDependencies => "Resolve",
+                crate::models::task::RuntimeOp::StartEnvironment => "StartEnvironment",
+                crate::models::task::RuntimeOp::StopEnvironment => "StopEnvironment",
+                crate::models::task::RuntimeOp::RebuildRestart => "RebuildRestart",
             };
             return format!("Runtime {} · {}", kind, req.repo_name);
         }

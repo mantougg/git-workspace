@@ -409,6 +409,10 @@ impl HealthEngine {
     /// 为进程启动探针线程。配置（`health_check`）缺失时不监控——R-12 的
     /// 生命周期推导（Running→up / 停止→down）保持原语义。
     /// 重复调用（同一 process_id 已在监控）为 no-op。
+    ///
+    /// 注意：句柄注册发生在**线程内**（配置确认存在后）——无配置的线程
+    /// 立即退出且不留表项，[`HealthEngine::has_monitor`] 因此能区分
+    /// 「未配置探针」与「探针尚未注册」。
     pub fn start_monitor(self: &Arc<Self>, process_id: i64, workspace_id: i64, runtime_name: &str) {
         {
             let monitors = self.monitors.lock().unwrap();
@@ -423,16 +427,43 @@ impl HealthEngine {
         std::thread::Builder::new()
             .name(format!("health-{process_id}"))
             .spawn(move || {
-                this.monitor_loop(process_id, workspace_id, &runtime_name, &stop_flag);
-            })
-            .map(|_| {
-                self.monitors
-                    .lock()
-                    .unwrap()
-                    .insert(process_id, MonitorHandle { stop });
+                // 配置确认存在后才注册句柄；随后在循环里仍可能被 stop_monitor
+                // 摘牌（双保险：stop 标志 + 行终态自愈）。
+                if !this.config_exists(workspace_id, &runtime_name) {
+                    return;
+                }
+                let registered = {
+                    let mut monitors = this.monitors.lock().unwrap();
+                    if monitors.contains_key(&process_id) {
+                        false
+                    } else {
+                        monitors.insert(
+                            process_id,
+                            MonitorHandle {
+                                stop: Arc::clone(&stop_flag),
+                            },
+                        );
+                        true
+                    }
+                };
+                if registered {
+                    this.monitor_loop(process_id, workspace_id, &runtime_name, &stop_flag);
+                }
             })
             .inspect_err(|e| log::warn!("R-16: failed to spawn health monitor #{process_id}: {e}"))
             .ok();
+    }
+
+    /// 该 Runtime 配置是否存在 health_check（供线程内的注册前置检查）。
+    fn config_exists(&self, workspace_id: i64, runtime_name: &str) -> bool {
+        let conn = match self.db.lock() {
+            Ok(conn) => conn,
+            Err(_) => return false,
+        };
+        crate::runtime::config::load_config_unredacted(&conn, workspace_id, runtime_name)
+            .ok()
+            .and_then(|config| config.health_check)
+            .is_some()
     }
 
     /// 停止探针线程。进程行已终态（或正在停止）时补发 `Stopped`（此前
@@ -466,6 +497,11 @@ impl HealthEngine {
     /// 当前快照（无探针 / 未启动监控为 None）。
     pub fn snapshot(&self, process_id: i64) -> Option<HealthSnapshot> {
         self.states.lock().unwrap().get(&process_id).cloned()
+    }
+
+    /// 进程是否有探针在跑（R-15 就绪门限用：无探针立即就绪）。
+    pub fn has_monitor(&self, process_id: i64) -> bool {
+        self.monitors.lock().unwrap().contains_key(&process_id)
     }
 
     /// workspace 下全部探针快照（Dashboard 汇总）。

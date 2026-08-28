@@ -2,6 +2,7 @@
 
 pub mod build;
 pub mod config;
+pub mod environment;
 pub mod events;
 pub mod guard;
 pub mod health;
@@ -41,6 +42,11 @@ pub use health::{
 };
 
 pub use port_manager::{kill_external_process, PortCheckResult, PortKillOutcome};
+
+pub use environment::{
+    delete_environment, get_environment, list_environments, save_environment,
+    topo_sort_services, RuntimeEnvironment,
+};
 
 pub use spring_boot::{
     detect_spring_boot_workspace, SpringBootCandidate, SpringBootDetectionCache, SpringBootProject,

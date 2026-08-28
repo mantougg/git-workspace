@@ -395,6 +395,12 @@ pub fn run() {
             commands::runtime::runtime_check_port,
             commands::runtime::runtime_kill_port_process,
             commands::runtime::runtime_change_runtime_port,
+            // R-15 §38/§39/§40：Multi-Service Runtime Environment
+            commands::runtime::runtime_list_environments,
+            commands::runtime::runtime_save_environment,
+            commands::runtime::runtime_delete_environment,
+            commands::runtime::runtime_start_named_environment,
+            commands::runtime::runtime_stop_named_environment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

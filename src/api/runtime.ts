@@ -11,6 +11,7 @@ import type {
   ProjectInspection,
   RuntimeApplicationConfig,
   RuntimeConfigSummary,
+  RuntimeEnvironment,
   RuntimeLogQuery,
   RuntimeOperationRequest,
   RuntimeProcessInfo,
@@ -36,6 +37,8 @@ export const RUNTIME_EVENTS = {
   fileChanged: "runtime_file_changed",
   restartStarted: "runtime_restart_started",
   restartCompleted: "runtime_restart_completed",
+  environmentProgress: "runtime_environment_progress",
+  environmentCompleted: "runtime_environment_completed",
 } as const;
 
 export function createRuntimeConfig(
@@ -294,5 +297,57 @@ export function runtimeChangeRuntimePort(
     workspaceId,
     name,
     port,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// R-15 §38/§39/§40：Multi-Service Runtime Environment
+// ---------------------------------------------------------------------------
+
+export function runtimeListEnvironments(
+  workspaceId: number,
+): Promise<RuntimeEnvironment[]> {
+  return invoke<RuntimeEnvironment[]>("runtime_list_environments", {
+    workspaceId,
+  });
+}
+
+/** 创建 / 覆盖环境（后端校验依赖图 + Runtime 配置存在性）。 */
+export function runtimeSaveEnvironment(
+  workspaceId: number,
+  environment: RuntimeEnvironment,
+): Promise<RuntimeEnvironment> {
+  return invoke<RuntimeEnvironment>("runtime_save_environment", {
+    workspaceId,
+    environment,
+  });
+}
+
+export function runtimeDeleteEnvironment(
+  workspaceId: number,
+  name: string,
+): Promise<void> {
+  return invoke<void>("runtime_delete_environment", { workspaceId, name });
+}
+
+/** 提交 Start Environment 任务（拓扑分波编排，返回任务 id）。 */
+export function runtimeStartNamedEnvironment(
+  workspaceId: number,
+  environment: string,
+): Promise<string> {
+  return invoke<string>("runtime_start_named_environment", {
+    workspaceId,
+    environment,
+  });
+}
+
+/** 提交 Stop Environment 任务（逆拓扑序停止）。 */
+export function runtimeStopNamedEnvironment(
+  workspaceId: number,
+  environment: string,
+): Promise<string> {
+  return invoke<string>("runtime_stop_named_environment", {
+    workspaceId,
+    environment,
   });
 }

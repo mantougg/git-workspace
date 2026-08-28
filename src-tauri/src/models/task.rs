@@ -81,6 +81,7 @@ pub enum TaskType {
 }
 
 /// Runtime task operations (R-12, §63/§65). Plain camelCase string union.
+/// R-15/R-17 扩展：环境编排 / 重建重启。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuntimeOp {
@@ -90,6 +91,14 @@ pub enum RuntimeOp {
     Restart,
     /// Refresh the workspace Maven discovery + dependency index (R-02 sync).
     ResolveDependencies,
+    /// R-15 §38：Start Environment——按拓扑序编排启动环境内全部服务。
+    /// 目标环境名放在 `runtime_name` 字段。
+    StartEnvironment,
+    /// R-15 §38：Stop Environment——逆拓扑序停止环境内全部服务。
+    StopEnvironment,
+    /// R-17/R-21：Stop → 完整构建 → Start（区别于 Restart 的 skip_build
+    /// 复用；源码变更后的自动重启 / Rebuild & Restart 入口用）。
+    RebuildRestart,
 }
 
 /// User-tunable options carried by a Runtime task. Mapped onto

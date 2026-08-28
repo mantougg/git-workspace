@@ -640,6 +640,81 @@ fn samples() -> Map<String, Value> {
             killed: true,
         }),
     );
+    // R-15 环境编排
+    m.insert(
+        "RuntimeEnvironment".into(),
+        json!(crate::runtime::environment::RuntimeEnvironment {
+            schema_version: 1,
+            name: "Development".into(),
+            description: Some("联调环境".into()),
+            services: vec![crate::runtime::environment::EnvironmentService {
+                runtime_name: "gateway".into(),
+                depends_on: vec!["auth".into()],
+                jdk: Some("21".into()),
+                profile: Some("dev".into()),
+                environment: BTreeMap::from([("GATEWAY_UPSTREAM".into(), "http://auth:8081".into())]),
+                port: Some(8080),
+                external_notes: Some("依赖外部 MySQL".into()),
+                ready_timeout_seconds: Some(90),
+            }],
+        }),
+    );
+    m.insert(
+        "EnvironmentService".into(),
+        json!(crate::runtime::environment::EnvironmentService {
+            runtime_name: "auth".into(),
+            depends_on: vec![],
+            jdk: None,
+            profile: None,
+            environment: BTreeMap::new(),
+            port: None,
+            external_notes: None,
+            ready_timeout_seconds: None,
+        }),
+    );
+    m.insert(
+        "ServiceExecState".into(),
+        json!([
+            crate::runtime::events::ServiceExecState::Skipped,
+            crate::runtime::events::ServiceExecState::Starting,
+            crate::runtime::events::ServiceExecState::Ready,
+            crate::runtime::events::ServiceExecState::Failed,
+            crate::runtime::events::ServiceExecState::Stopped,
+        ]),
+    );
+    m.insert(
+        "EnvironmentServiceOutcome".into(),
+        json!(runtime_events::EnvironmentServiceOutcome {
+            service: "gateway".into(),
+            state: runtime_events::ServiceExecState::Ready,
+            detail: Some("Healthy（5231ms）".into()),
+        }),
+    );
+    m.insert(
+        "EnvironmentProgressPayload".into(),
+        json!(runtime_events::EnvironmentProgressPayload {
+            workspace_id: 1,
+            environment: "Development".into(),
+            service: "gateway".into(),
+            state: runtime_events::ServiceExecState::Ready,
+            detail: Some("Healthy（5231ms）".into()),
+            at: "2026-08-29T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "EnvironmentCompletedPayload".into(),
+        json!(runtime_events::EnvironmentCompletedPayload {
+            workspace_id: 1,
+            environment: "Development".into(),
+            success: true,
+            services: vec![runtime_events::EnvironmentServiceOutcome {
+                service: "gateway".into(),
+                state: runtime_events::ServiceExecState::Ready,
+                detail: None,
+            }],
+            at: "2026-08-29T00:00:00Z".into(),
+        }),
+    );
     // §64 事件 payload（runtime.<event> 一一对应）
     m.insert(
         "ProjectDiscoveredPayload".into(),
@@ -1009,6 +1084,10 @@ fn samples() -> Map<String, Value> {
             task::RuntimeOp::Stop,
             task::RuntimeOp::Restart,
             task::RuntimeOp::ResolveDependencies,
+            // R-15/R-17 扩展
+            task::RuntimeOp::StartEnvironment,
+            task::RuntimeOp::StopEnvironment,
+            task::RuntimeOp::RebuildRestart,
         ]),
     );
     m.insert(
@@ -2232,6 +2311,20 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("PortCheckResult", "types/runtime.ts", "PortCheckResult"),
     ("PortKillOutcome", "types/runtime.ts", "PortKillOutcome"),
     ("PortOccupier", "types/runtime.ts", "PortOccupier"),
+    // R-15 环境编排
+    ("RuntimeEnvironment", "types/runtime.ts", "RuntimeEnvironment"),
+    ("EnvironmentService", "types/runtime.ts", "EnvironmentService"),
+    (
+        "EnvironmentProgressPayload",
+        "types/runtime.ts",
+        "EnvironmentProgressPayload",
+    ),
+    (
+        "EnvironmentCompletedPayload",
+        "types/runtime.ts",
+        "EnvironmentCompletedPayload",
+    ),
+    ("EnvironmentServiceOutcome", "types/runtime.ts", "EnvironmentServiceOutcome"),
     // R-13 Runtime Scope 预览
     ("ClosurePreview", "types/runtime.ts", "ClosurePreview"),
     // R-14 §75 Command Safety 脚本确认

@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 2 · 多服务与效率 |
 | 优先级 | P1 |
-| 状态 | 🟦 进行中 |
+| 状态 | ✅ 已完成 |
 | 依赖 | R-10 |
 | 对应源文档 | §41 Health Check、§81 Port Manager（§80 端口占用错误提示已在 R-14 落地，本任务提供其能力底座） |
 
@@ -32,17 +32,17 @@
 
 ## 验收标准
 
-- [ ] 带 actuator 的样例应用启动后状态正确流转 Starting → Healthy
-- [ ] 无 actuator 应用回退 Port/TCP 检测可用
-- [ ] 8080 被外部进程占用时，启动前给出占用方信息并可一键处理
-- [ ] 健康检查接入后，R-15 依赖服务等待 Healthy 再启动
-- [ ] 进程停止后检查正确收尾，无泄漏轮询
+- [x] 带 actuator 的样例应用启动后状态正确流转 Starting → Healthy（`evaluate_check` Actuator 探针本地 HTTP 服务实测 + 集成测试全链路）
+- [x] 无 actuator 应用回退 Port/TCP 检测可用（Auto 回退路径单测）
+- [x] 8080 被外部进程占用时，启动前给出占用方信息并可一键处理（R-14 preflight 错误 + PortDiagnosticsModal 检测/Kill/改端口）
+- [x] 健康检查接入后，R-15 依赖服务等待 Healthy 再启动（`wait_service_ready`）
+- [x] 进程停止后检查正确收尾，无泄漏轮询（finalize_exit → stop_monitor + 终态行自愈；`health_probe_transitions_with_lifecycle` 验证）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：进行中
+- 当前状态：已完成
 - 最近更新：2026-08-29
 
 ### 时间线
@@ -50,12 +50,13 @@
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-08-29 | 🟦 | 开始开发：健康检查器（Port/TCP/HTTP/Actuator）+ 状态机 + 端口管理（复用 process/port.rs 检测底座） |
+| 2026-08-29 | ✅ | 完成：HealthEngine 探针状态机 + Port Manager + IPC/UI；`health_probe_transitions_with_lifecycle` 验证 Starting→Healthy→Stopped 全链路；R-15 就绪门限已接入（`wait_service_ready` 轮询 Healthy / 超时放行 / 进程死亡即失败）。测试 `cargo test --lib runtime::` 163 通过，golden 快照同步 |
 
 ### 子任务清单
 
-- [ ] 健康检查器（Port/HTTP/TCP/Actuator）
-- [ ] 状态机 + health_changed 事件
-- [ ] 端口占用识别（跨平台）
-- [ ] Find / Kill / Change Port 操作
-- [ ] R-15 就绪门限接入
-- [ ] 单元/集成测试
+- [x] 健康检查器（Port/HTTP/TCP/Actuator；Auto = Actuator 优先回退 TCP）
+- [x] 状态机 + health_changed 事件（HealthStatus 扩展 starting/healthy/unhealthy/stopped）
+- [x] 端口占用识别（跨平台；bind 实测 + process/port.rs 占用方解析）
+- [x] Find / Kill / Change Port 操作（Kill 需 confirmed 二次确认；改写只动 GitWorkspace 配置）
+- [x] R-15 就绪门限接入
+- [x] 单元/集成测试

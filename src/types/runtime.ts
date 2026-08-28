@@ -64,8 +64,16 @@ export interface UpdateRuntimeConfigRequest {
 /** R-09 Run Strategy（§30）。 */
 export type RunStrategy = "mavenRun" | "packageRun" | "classpathRun";
 
-/** Runtime 任务操作（R-12，§63/§65）。 */
-export type RuntimeOp = "build" | "start" | "stop" | "restart" | "resolveDependencies";
+/** Runtime 任务操作（R-12，§63/§65；R-15/R-17 扩展）。 */
+export type RuntimeOp =
+  | "build"
+  | "start"
+  | "stop"
+  | "restart"
+  | "resolveDependencies"
+  | "startEnvironment"
+  | "stopEnvironment"
+  | "rebuildRestart";
 
 /** R-10 生命周期状态机（§27）。 */
 export type LifecycleStatus =
@@ -135,6 +143,64 @@ export interface PortKillOutcome {
   pid: number;
   processName: string | null;
   killed: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// R-15 §38/§39/§40：Multi-Service Runtime Environment
+// ---------------------------------------------------------------------------
+
+/** 环境内的一个服务（引用 Runtime 配置 + 覆盖项，§39/§82）。 */
+export interface EnvironmentService {
+  runtimeName: string;
+  /** 依赖的其他服务（拓扑排序决定启动顺序）。 */
+  dependsOn: string[];
+  jdk: string | null;
+  profile: string | null;
+  environment: Record<string, string>;
+  port: number | null;
+  externalNotes: string | null;
+  readyTimeoutSeconds: number | null;
+}
+
+/** 多服务环境（§82；持久化于 .gitworkspace/environments/<name>.json）。 */
+export interface RuntimeEnvironment {
+  schemaVersion: number;
+  name: string;
+  description: string | null;
+  services: EnvironmentService[];
+}
+
+/** 环境内单服务的编排状态。 */
+export type ServiceExecState =
+  | "skipped"
+  | "starting"
+  | "ready"
+  | "failed"
+  | "stopped";
+
+/** `runtime.environment_progress` 事件 payload。 */
+export interface EnvironmentProgressPayload {
+  workspaceId: number;
+  environment: string;
+  service: string;
+  state: ServiceExecState;
+  detail: string | null;
+  at: string;
+}
+
+/** `runtime.environment_completed` 事件 payload。 */
+export interface EnvironmentServiceOutcome {
+  service: string;
+  state: ServiceExecState;
+  detail: string | null;
+}
+
+export interface EnvironmentCompletedPayload {
+  workspaceId: number;
+  environment: string;
+  success: boolean;
+  services: EnvironmentServiceOutcome[];
+  at: string;
 }
 
 /** 日志级别（R-11，序数语义：越大越严重）。 */

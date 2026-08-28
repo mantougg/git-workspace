@@ -45,6 +45,8 @@ pub const EVENT_HEALTH_CHANGED: &str = "runtime_health_changed";
 pub const EVENT_FILE_CHANGED: &str = "runtime_file_changed";
 pub const EVENT_RESTART_STARTED: &str = "runtime_restart_started";
 pub const EVENT_RESTART_COMPLETED: &str = "runtime_restart_completed";
+pub const EVENT_ENVIRONMENT_PROGRESS: &str = "runtime_environment_progress";
+pub const EVENT_ENVIRONMENT_COMPLETED: &str = "runtime_environment_completed";
 
 /// Start 流水线的 UI 阶段（§65：Preparing ✓ / Resolving ✓ / Building ▓ /
 /// Starting ○）。与 `LifecycleStatus` 的前四个状态一一对应。
@@ -222,6 +224,59 @@ pub struct RestartCompletedPayload {
     pub runtime_name: String,
     pub success: bool,
     pub error: Option<String>,
+    pub at: String,
+}
+
+// ---------------------------------------------------------------------------
+// R-15 §38/§39/§40：环境编排事件
+// ---------------------------------------------------------------------------
+
+/// 环境内单个服务的编排状态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ServiceExecState {
+    /// 已被依赖失败跳过（部分失败语义：不影响无依赖分支）。
+    Skipped,
+    /// 构建中 / 启动中。
+    Starting,
+    /// 已启动且就绪门限通过（Healthy 或就绪等待超时放行）。
+    Ready,
+    /// 启动失败。
+    Failed,
+    /// 停止中 / 已停止（Stop Environment 阶段）。
+    Stopped,
+}
+
+/// `runtime.environment_progress`：环境内单个服务的状态变化。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentProgressPayload {
+    pub workspace_id: i64,
+    pub environment: String,
+    pub service: String,
+    pub state: ServiceExecState,
+    /// 上下文详情（失败原因 / 就绪耗时等）。
+    pub detail: Option<String>,
+    pub at: String,
+}
+
+/// `runtime.environment_completed`：一次环境编排的汇总（含每个服务终态）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentServiceOutcome {
+    pub service: String,
+    pub state: ServiceExecState,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentCompletedPayload {
+    pub workspace_id: i64,
+    pub environment: String,
+    /// true = 全部服务 Ready；false = 存在 Failed（Skipped 不算失败）。
+    pub success: bool,
+    pub services: Vec<EnvironmentServiceOutcome>,
     pub at: String,
 }
 

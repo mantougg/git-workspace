@@ -76,6 +76,18 @@ pub struct StartOptions {
     pub build_options: BuildOptions,
     /// spawn 后判定 Running 的宽限。
     pub start_grace: Duration,
+    /// R-15 §82：环境覆盖项（内存生效，不改 Runtime 配置文件）；None = 无覆盖。
+    pub overrides: Option<EnvironmentOverrides>,
+}
+
+/// 环境编排（R-15）对单个服务的启动覆盖项。只存环境里声明的差异项：
+/// JDK / Profile / 追加环境变量 / 端口。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EnvironmentOverrides {
+    pub jdk: Option<String>,
+    pub profile: Option<String>,
+    pub environment: std::collections::BTreeMap<String, String>,
+    pub port: Option<u16>,
 }
 
 impl Default for StartOptions {
@@ -84,6 +96,7 @@ impl Default for StartOptions {
             skip_build: false,
             build_options: BuildOptions::default(),
             start_grace: DEFAULT_START_GRACE,
+            overrides: None,
         }
     }
 }
@@ -410,12 +423,33 @@ impl RuntimeProcessManager {
         runtime_name: &str,
         options: &StartOptions,
     ) -> AppResult<Prepared> {
-        let (config, workspace_root) = {
+        let (mut config, workspace_root) = {
             let conn = self.db.lock().unwrap();
             let config = config::load_config_unredacted(&conn, workspace_id, runtime_name)?;
             let root = config::workspace_root(&conn, workspace_id)?;
             (config, root)
         };
+
+        // R-15 §82：环境覆盖项（内存生效，不改配置文件；应用层在五层合并的
+        // Application 层之上追加，与「环境只存覆盖项」一致）。
+        if let Some(overrides) = &options.overrides {
+            if let Some(jdk) = &overrides.jdk {
+                config.jdk = Some(jdk.clone());
+            }
+            if let Some(profile) = &overrides.profile {
+                config.profile = Some(profile.clone());
+            }
+            config.environment.extend(overrides.environment.clone());
+            if let Some(port) = overrides.port {
+                config
+                    .program_arguments
+                    .retain(|arg| !arg.starts_with("--server.port="));
+                config
+                    .vm_options
+                    .retain(|arg| !arg.starts_with("-Dserver.port="));
+                config.program_arguments.push(format!("--server.port={port}"));
+            }
+        }
 
         // R-14 §79：启动前端口预检——显式端口被占用直接返回 PortOccupied
         // （带占用方 PID / 进程名，§80 可行动提示），避免启动后崩溃。

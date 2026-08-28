@@ -392,6 +392,75 @@ pub fn runtime_change_runtime_port(
 }
 
 // ---------------------------------------------------------------------------
+// R-15 §38/§39/§40：Multi-Service Runtime Environment
+// ---------------------------------------------------------------------------
+
+/// R-15 `runtime.list_environments`：workspace 全部环境（读目录）。
+#[command]
+pub fn runtime_list_environments(
+    workspace_id: i64,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::runtime::environment::RuntimeEnvironment>> {
+    let conn = lock_db(&state)?;
+    let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+    Ok(crate::runtime::environment::list_environments(&root))
+}
+
+/// R-15 `runtime.save_environment`：创建 / 覆盖环境（校验依赖图 + Runtime
+/// 配置存在性后原子写盘，可 Git 版本化共享）。
+#[command]
+pub fn runtime_save_environment(
+    workspace_id: i64,
+    environment: crate::runtime::environment::RuntimeEnvironment,
+    state: State<'_, AppState>,
+) -> AppResult<crate::runtime::environment::RuntimeEnvironment> {
+    let conn = lock_db(&state)?;
+    let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+    crate::runtime::environment::validate_environment_configs(&conn, workspace_id, &environment)?;
+    crate::runtime::environment::save_environment(&root, &environment)
+}
+
+/// R-15 `runtime.delete_environment`。
+#[command]
+pub fn runtime_delete_environment(workspace_id: i64, name: String, state: State<'_, AppState>) -> AppResult<()> {
+    let conn = lock_db(&state)?;
+    let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+    crate::runtime::environment::delete_environment(&root, &name)
+}
+
+/// R-15 §38 `runtime.start_named_environment`：提交 Start Environment 任务
+/// （拓扑分波编排；波内并行受构建 permit 池约束）。
+#[command]
+pub fn runtime_start_named_environment(
+    workspace_id: i64,
+    environment: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let req = state.runtime.named_environment_task_request(
+        workspace_id,
+        &environment,
+        RuntimeOp::StartEnvironment,
+    );
+    submit_one(&state, req)
+}
+
+/// R-15 §38 `runtime.stop_named_environment`：提交 Stop Environment 任务
+/// （逆拓扑序停止）。
+#[command]
+pub fn runtime_stop_named_environment(
+    workspace_id: i64,
+    environment: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let req = state.runtime.named_environment_task_request(
+        workspace_id,
+        &environment,
+        RuntimeOp::StopEnvironment,
+    );
+    submit_one(&state, req)
+}
+
+// ---------------------------------------------------------------------------
 // R-14 §75 Command Safety：Pre/Post Build Script 确认状态
 // ---------------------------------------------------------------------------
 

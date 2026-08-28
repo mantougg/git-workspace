@@ -560,6 +560,42 @@
     "repoName": "repo",
     "repoPath": "/ws/repo"
   },
+  "EnvironmentCompletedPayload": {
+    "at": "2026-08-29T00:00:00Z",
+    "environment": "Development",
+    "services": [
+      {
+        "detail": null,
+        "service": "gateway",
+        "state": "ready"
+      }
+    ],
+    "success": true,
+    "workspaceId": 1
+  },
+  "EnvironmentProgressPayload": {
+    "at": "2026-08-29T00:00:00Z",
+    "detail": "Healthy（5231ms）",
+    "environment": "Development",
+    "service": "gateway",
+    "state": "ready",
+    "workspaceId": 1
+  },
+  "EnvironmentService": {
+    "dependsOn": [],
+    "environment": {},
+    "externalNotes": null,
+    "jdk": null,
+    "port": null,
+    "profile": null,
+    "readyTimeoutSeconds": null,
+    "runtimeName": "auth"
+  },
+  "EnvironmentServiceOutcome": {
+    "detail": "Healthy（5231ms）",
+    "service": "gateway",
+    "state": "ready"
+  },
   "ErrorResponse": {
     "code": "RepositoryError",
     "details": null,
@@ -1433,6 +1469,27 @@
     "updatedAt": "2026-08-18T00:00:00Z",
     "workspaceId": 2
   },
+  "RuntimeEnvironment": {
+    "description": "联调环境",
+    "name": "Development",
+    "schemaVersion": 1,
+    "services": [
+      {
+        "dependsOn": [
+          "auth"
+        ],
+        "environment": {
+          "GATEWAY_UPSTREAM": "http://auth:8081"
+        },
+        "externalNotes": "依赖外部 MySQL",
+        "jdk": "21",
+        "port": 8080,
+        "profile": "dev",
+        "readyTimeoutSeconds": 90,
+        "runtimeName": "gateway"
+      }
+    ]
+  },
   "RuntimeLogQuery": {
     "filter": {
       "limit": null,
@@ -1448,7 +1505,10 @@
     "start",
     "stop",
     "restart",
-    "resolveDependencies"
+    "resolveDependencies",
+    "startEnvironment",
+    "stopEnvironment",
+    "rebuildRestart"
   ],
   "RuntimeOperationRequest": {
     "options": {
@@ -1562,6 +1622,13 @@
     "repoPath": "/ws/repo",
     "snippet": "let x"
   },
+  "ServiceExecState": [
+    "skipped",
+    "starting",
+    "ready",
+    "failed",
+    "stopped"
+  ],
   "SourceMapping": {
     "coordinates": {
       "artifactId": "library",

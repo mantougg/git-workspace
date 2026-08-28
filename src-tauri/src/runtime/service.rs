@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -46,10 +46,12 @@ use crate::runtime::build::{BuildOptions, BuildRequest, RingTail};
 use crate::runtime::config;
 use crate::runtime::events::{
     BuildCompletedPayload, BuildProgressPayload, BuildStartedPayload, DependencyResolvedPayload,
+    EnvironmentCompletedPayload, EnvironmentProgressPayload, EnvironmentServiceOutcome,
     ProjectDiscoveredPayload, RestartCompletedPayload, RestartStartedPayload, RuntimeEmission,
-    RuntimeEventEmitter, RuntimeStage, TauriRuntimeBridge, TauriRuntimeEmitter,
+    RuntimeEventEmitter, RuntimeStage, ServiceExecState, TauriRuntimeBridge, TauriRuntimeEmitter,
     EVENT_BUILD_COMPLETED, EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED, EVENT_DEPENDENCY_RESOLVED,
-    EVENT_PROJECT_DISCOVERED, EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
+    EVENT_ENVIRONMENT_COMPLETED, EVENT_ENVIRONMENT_PROGRESS, EVENT_PROJECT_DISCOVERED,
+    EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
 };
 use crate::runtime::launch::launcher::{LaunchRunner, SystemLaunchRunner};
 use crate::runtime::launch::manager::{
@@ -697,6 +699,364 @@ impl RuntimeService {
     }
 
     // ------------------------------------------------------------------
+    // R-15 §38/§39/§40：环境编排（Start / Stop Environment）
+    // ------------------------------------------------------------------
+
+    /// `runtime_start_named_environment` 的任务组装（环境名放 `runtime_name`
+    /// 字段；任务面板显示为「环境 <name>」）。
+    pub fn named_environment_task_request(
+        &self,
+        workspace_id: i64,
+        environment: &str,
+        op: RuntimeOp,
+    ) -> TaskRequest {
+        TaskRequest {
+            task_type: TaskType::Runtime {
+                op,
+                workspace_id,
+                runtime_name: environment.to_string(),
+                options: RuntimeTaskOptions::default(),
+            },
+            repo_path: String::new(),
+            repo_name: format!("环境 {environment}"),
+        }
+    }
+
+    fn emit_environment_progress(
+        &self,
+        workspace_id: i64,
+        environment: &str,
+        service: &str,
+        state: ServiceExecState,
+        detail: Option<String>,
+    ) {
+        self.emit(
+            EVENT_ENVIRONMENT_PROGRESS,
+            &EnvironmentProgressPayload {
+                workspace_id,
+                environment: environment.to_string(),
+                service: service.to_string(),
+                state,
+                detail,
+                at: Self::now(),
+            },
+        );
+    }
+
+    /// R-16 就绪门限：等待服务 Healthy（或就绪超时放行）。
+    ///
+    /// - 有探针：轮询健康快照，`Healthy` 即就绪；超时（默认 60s，可按服务
+    ///   覆盖）按警告放行（应用仍在运行，只是未达 Healthy）。
+    /// - 无探针：`processes.start` 返回时进程已确认 Running，视为就绪
+    ///   （快照缺位时的首个轮询窗口即返回超时放行语义，秒级）。
+    fn wait_service_ready(
+        &self,
+        _workspace_id: i64,
+        _runtime_name: &str,
+        process_id: i64,
+        timeout: Duration,
+    ) -> Result<String, String> {
+        let deadline = Instant::now() + timeout;
+        let started = Instant::now();
+        // 无探针服务：processes.start 返回时已确认 Running，立即就绪
+        // （R-15 第一版「固定顺序占位」的退化路径；探针门限归 R-16 引擎）。
+        if !self.health.has_monitor(process_id) {
+            // 给探针注册留一个小窗口（Running 迁移与 monitor spawn 同线程序，
+            // 此处只是防御性二次确认）。
+            std::thread::sleep(Duration::from_millis(150));
+            if !self.health.has_monitor(process_id) {
+                return Ok("进程 Running（未配置探针，跳过就绪等待）".into());
+            }
+        }
+        loop {
+            // 进程先死 → 就绪等待失败（编排按失败处理，依赖分支跳过）。
+            if let Ok(Some(info)) = self.processes.get_process(process_id) {
+                if info.status.is_terminal() {
+                    return Err(format!(
+                        "服务在就绪等待期间退出（状态 {}）",
+                        info.status.as_str()
+                    ));
+                }
+            }
+            if let Some(snapshot) = self.health.snapshot(process_id) {
+                match snapshot.phase {
+                    crate::runtime::events::HealthStatus::Healthy => {
+                        return Ok(format!("Healthy（{}ms）", started.elapsed().as_millis()));
+                    }
+                    crate::runtime::events::HealthStatus::Stopped => {
+                        return Err("探针判定服务已停止".into());
+                    }
+                    _ => {}
+                }
+            }
+            if Instant::now() >= deadline {
+                return Ok(format!(
+                    "就绪等待超时（{:?}），进程仍在运行，放行依赖分支",
+                    timeout
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+
+    /// §38 Start Environment：拓扑分波，波内并行启动（构建并发受 §66
+    /// Build permit 池约束），波间严格串行；依赖失败的服务及其下游标记
+    /// Skipped（部分失败语义：不影响无依赖分支）。
+    fn exec_start_environment(
+        &self,
+        workspace_id: i64,
+        environment_name: &str,
+        cancel: &Arc<AtomicBool>,
+    ) -> AppResult<Option<String>> {
+        let environment = {
+            let conn = self.db.lock().unwrap();
+            let root = config::workspace_root(&conn, workspace_id)?;
+            let environment =
+                crate::runtime::environment::get_environment(&root, environment_name)?;
+            crate::runtime::environment::validate_environment_configs(
+                &conn,
+                workspace_id,
+                &environment,
+            )?;
+            environment
+        };
+        let env_name: &str = &environment.name;
+        let waves = crate::runtime::environment::topo_sort_services(&environment)?;
+        log::info!(
+            "R-15: starting environment '{}' ({} services, {} waves)",
+            environment.name,
+            environment.services.len(),
+            waves.len()
+        );
+
+        // 服务终态收集（state + detail）。
+        let mut outcomes: std::collections::BTreeMap<String, (ServiceExecState, Option<String>)> =
+            environment
+                .services
+                .iter()
+                .map(|s| (s.runtime_name.clone(), (ServiceExecState::Starting, None)))
+                .collect();
+
+        for wave in &waves {
+            if cancel.load(Ordering::Relaxed) {
+                // 取消：剩余服务标记 Skipped，汇总后返回。
+                for name in waves.iter().flatten() {
+                    if let Some(entry) = outcomes.get_mut(name) {
+                        if entry.0 == ServiceExecState::Starting && entry.1.is_none() {
+                            *entry = (ServiceExecState::Skipped, Some("环境启动已取消".into()));
+                        }
+                    }
+                }
+                break;
+            }
+            // 波内并行：scoped threads（波结束即 join，可安全借用 &self）。
+            // 构建阶段受 §66 Build permit 池约束（排队调度而非无脑并发）。
+            // 依赖状态在进入本波前已定稿（依赖都在更早的波次），提前检查。
+            let plans: Vec<(crate::runtime::environment::EnvironmentService, Vec<String>)> = wave
+                .iter()
+                .filter_map(|service_name| {
+                    let service = environment
+                        .services
+                        .iter()
+                        .find(|s| &s.runtime_name == service_name)?;
+                    let failed_deps: Vec<String> = service
+                        .depends_on
+                        .iter()
+                        .filter(|dep| {
+                            outcomes
+                                .get(*dep)
+                                .map(|(state, _)| *state != ServiceExecState::Ready)
+                                .unwrap_or(true)
+                        })
+                        .cloned()
+                        .collect();
+                    Some((service.clone(), failed_deps))
+                })
+                .collect();
+            let results: Vec<(String, ServiceExecState, Option<String>)> =
+                std::thread::scope(|scope| {
+                    let mut handles = Vec::new();
+                    for (service, failed_deps) in plans {
+                        let cancel = Arc::clone(cancel);
+                        handles.push(scope.spawn(move || {
+                            start_environment_service(
+                                self,
+                                workspace_id,
+                                env_name,
+                                &service,
+                                &failed_deps,
+                                &cancel,
+                            )
+                        }));
+                    }
+                    handles
+                        .into_iter()
+                        .map(|handle| handle.join().expect("environment service thread"))
+                        .collect()
+                });
+            for (name, state, detail) in results {
+                outcomes.insert(name, (state, detail));
+            }
+        }
+
+        // 汇总事件 + 任务结果。
+        let service_outcomes: Vec<EnvironmentServiceOutcome> = outcomes
+            .iter()
+            .map(|(name, (state, detail))| EnvironmentServiceOutcome {
+                service: name.clone(),
+                state: *state,
+                detail: detail.clone(),
+            })
+            .collect();
+        let ready = service_outcomes
+            .iter()
+            .filter(|o| o.state == ServiceExecState::Ready)
+            .count();
+        let skipped = service_outcomes
+            .iter()
+            .filter(|o| o.state == ServiceExecState::Skipped)
+            .count();
+        let failed: Vec<String> = service_outcomes
+            .iter()
+            .filter(|o| o.state == ServiceExecState::Failed)
+            .map(|o| o.service.clone())
+            .collect();
+        let success = failed.is_empty() && ready > 0;
+        let summary = format!(
+            "环境 '{}' 编排完成：{} Ready / {} Failed / {} Skipped / 共 {} 服务",
+            environment.name,
+            ready,
+            failed.len(),
+            skipped,
+            service_outcomes.len()
+        );
+        self.emit(
+            EVENT_ENVIRONMENT_COMPLETED,
+            &EnvironmentCompletedPayload {
+                workspace_id,
+                environment: environment.name.clone(),
+                success,
+                services: service_outcomes,
+                at: Self::now(),
+            },
+        );
+        if success {
+            Ok(Some(summary))
+        } else if ready == 0 {
+            Err(AppError::Task(format!(
+                "{summary}；失败服务：{}",
+                failed.join(", ")
+            )))
+        } else {
+            // 部分成功：任务成功收尾，失败明细在汇总与事件中可见。
+            Ok(Some(format!("{summary}；失败服务：{}", failed.join(", "))))
+        }
+    }
+
+    /// §38 Stop Environment：逆拓扑序分波并行停止（先停下游，再停上游）。
+    fn exec_stop_environment(
+        &self,
+        workspace_id: i64,
+        environment_name: &str,
+    ) -> AppResult<Option<String>> {
+        let environment = {
+            let conn = self.db.lock().unwrap();
+            let root = config::workspace_root(&conn, workspace_id)?;
+            crate::runtime::environment::get_environment(&root, environment_name)?
+        };
+        let mut waves = crate::runtime::environment::topo_sort_services(&environment)?;
+        waves.reverse();
+        let env_name: &str = &environment.name;
+
+        let mut outcomes: std::collections::BTreeMap<String, (ServiceExecState, Option<String>)> =
+            environment
+                .services
+                .iter()
+                .map(|s| (s.runtime_name.clone(), (ServiceExecState::Stopped, None)))
+                .collect();
+
+        for wave in &waves {
+            let results: Vec<(String, ServiceExecState, Option<String>)> =
+                std::thread::scope(|scope| {
+                    let mut handles = Vec::new();
+                    for service_name in wave {
+                        let service_name = service_name.clone();
+                        handles.push(scope.spawn(move || {
+                            let result =
+                                self.processes
+                                    .stop_runtime(workspace_id, &service_name, None);
+                            let (state, detail) = match result {
+                                Ok(Some(info)) => (
+                                    ServiceExecState::Stopped,
+                                    Some(format!("已停止（pid {:?}）", info.pid)),
+                                ),
+                                Ok(None) => {
+                                    (ServiceExecState::Stopped, Some("未在运行".to_string()))
+                                }
+                                Err(error) => (ServiceExecState::Failed, Some(error.to_string())),
+                            };
+                            self.emit_environment_progress(
+                                workspace_id,
+                                env_name,
+                                &service_name,
+                                state,
+                                detail.clone(),
+                            );
+                            (service_name, state, detail)
+                        }));
+                    }
+                    handles
+                        .into_iter()
+                        .map(|handle| handle.join().expect("environment stop thread"))
+                        .collect()
+                });
+            for (name, state, detail) in results {
+                outcomes.insert(name, (state, detail));
+            }
+        }
+
+        let service_outcomes: Vec<EnvironmentServiceOutcome> = outcomes
+            .iter()
+            .map(|(name, (state, detail))| EnvironmentServiceOutcome {
+                service: name.clone(),
+                state: *state,
+                detail: detail.clone(),
+            })
+            .collect();
+        let stopped = service_outcomes
+            .iter()
+            .filter(|o| o.state == ServiceExecState::Stopped)
+            .count();
+        let failed: Vec<String> = service_outcomes
+            .iter()
+            .filter(|o| o.state == ServiceExecState::Failed)
+            .map(|o| o.service.clone())
+            .collect();
+        let summary = format!(
+            "环境 '{}' 停止完成：{}/{} 已停止；失败：[{}]",
+            environment.name,
+            stopped,
+            service_outcomes.len(),
+            failed.join(", ")
+        );
+        self.emit(
+            EVENT_ENVIRONMENT_COMPLETED,
+            &EnvironmentCompletedPayload {
+                workspace_id,
+                environment: environment.name.clone(),
+                success: failed.is_empty(),
+                services: service_outcomes,
+                at: Self::now(),
+            },
+        );
+        if failed.is_empty() {
+            Ok(Some(summary))
+        } else {
+            Err(AppError::Task(summary))
+        }
+    }
+
+    // ------------------------------------------------------------------
     // 启动对账（R-10 孤儿接管；应用启动时调用一次，best-effort）
     // ------------------------------------------------------------------
 
@@ -872,6 +1232,55 @@ impl RuntimeService {
         }
     }
 
+    /// R-17/R-21 的 Rebuild & Restart 入口：Stop → 完整构建 → Start
+    /// （与 `restart` 的 skip_build 复用相对；源码变更后必须重建）。
+    fn exec_rebuild_restart(
+        &self,
+        workspace_id: i64,
+        runtime_name: &str,
+        options: &RuntimeTaskOptions,
+        cancel: &Arc<AtomicBool>,
+    ) -> AppResult<Option<String>> {
+        self.emit(
+            EVENT_RESTART_STARTED,
+            &RestartStartedPayload {
+                workspace_id,
+                runtime_name: runtime_name.to_string(),
+                at: Self::now(),
+            },
+        );
+        let _watch = CancelWatch::start(&self.processes, workspace_id, runtime_name, cancel);
+        if self
+            .processes
+            .stop_runtime(workspace_id, runtime_name, None)?
+            .is_some()
+        {
+            log::info!("R-17: rebuild-restart stopped previous instance of '{runtime_name}'");
+        }
+        let mut start_options = start_options_of(options);
+        start_options.skip_build = false;
+        let result = self.processes.start(workspace_id, runtime_name, start_options);
+        let (success, error) = match &result {
+            Ok(_) => (true, None),
+            Err(e) => (false, Some(e.to_string())),
+        };
+        self.emit(
+            EVENT_RESTART_COMPLETED,
+            &RestartCompletedPayload {
+                workspace_id,
+                runtime_name: runtime_name.to_string(),
+                success,
+                error,
+                at: Self::now(),
+            },
+        );
+        let info = result?;
+        Ok(Some(format!(
+            "'{}' 已重建并重启（pid {:?}）",
+            runtime_name, info.pid
+        )))
+    }
+
     fn exec_restart(
         &self,
         workspace_id: i64,
@@ -1023,6 +1432,112 @@ impl RuntimeService {
     }
 }
 
+// ---------------------------------------------------------------------------
+// R-15 §40：波内单服务启动（scoped thread 体内）
+// ---------------------------------------------------------------------------
+
+/// 启动环境内的一个服务：依赖未就绪 → Skipped；否则 Start（带环境覆盖项）
+/// → R-16 就绪门限（Healthy / 超时放行 / 进程死亡即失败）。
+#[allow(clippy::too_many_arguments)]
+fn start_environment_service(
+    service_runtime: &RuntimeService,
+    workspace_id: i64,
+    environment_name: &str,
+    service: &crate::runtime::environment::EnvironmentService,
+    failed_deps: &[String],
+    cancel: &Arc<AtomicBool>,
+) -> (String, ServiceExecState, Option<String>) {
+    let runtime_name = &service.runtime_name;
+    if !failed_deps.is_empty() {
+        let detail = format!(
+            "依赖未就绪：{}（部分失败语义：跳过本服务）",
+            failed_deps.join(", ")
+        );
+        service_runtime.emit_environment_progress(
+            workspace_id,
+            environment_name,
+            runtime_name,
+            ServiceExecState::Skipped,
+            Some(detail.clone()),
+        );
+        return (runtime_name.clone(), ServiceExecState::Skipped, Some(detail));
+    }
+
+    service_runtime.emit_environment_progress(
+        workspace_id,
+        environment_name,
+        runtime_name,
+        ServiceExecState::Starting,
+        None,
+    );
+    // 每服务一个取消 watcher（构建取消快路径 + 停止收尾）。
+    let _watch = CancelWatch::start(
+        &service_runtime.processes,
+        workspace_id,
+        runtime_name,
+        cancel,
+    );
+    let options = StartOptions {
+        overrides: Some(crate::runtime::launch::EnvironmentOverrides {
+            jdk: service.jdk.clone(),
+            profile: service.profile.clone(),
+            environment: service.environment.clone(),
+            port: service.port,
+        }),
+        ..Default::default()
+    };
+    match service_runtime
+        .processes
+        .start(workspace_id, runtime_name, options)
+    {
+        Ok(info) => {
+            let timeout = Duration::from_secs(
+                service
+                    .ready_timeout_seconds
+                    .unwrap_or(crate::runtime::environment::DEFAULT_READY_TIMEOUT_SECS),
+            );
+            match service_runtime.wait_service_ready(
+                workspace_id,
+                runtime_name,
+                info.process_id,
+                timeout,
+            ) {
+                Ok(detail) => {
+                    service_runtime.emit_environment_progress(
+                        workspace_id,
+                        environment_name,
+                        runtime_name,
+                        ServiceExecState::Ready,
+                        Some(detail.clone()),
+                    );
+                    (runtime_name.clone(), ServiceExecState::Ready, Some(detail))
+                }
+                Err(detail) => {
+                    service_runtime.emit_environment_progress(
+                        workspace_id,
+                        environment_name,
+                        runtime_name,
+                        ServiceExecState::Failed,
+                        Some(detail.clone()),
+                    );
+                    (runtime_name.clone(), ServiceExecState::Failed, Some(detail))
+                }
+            }
+        }
+        Err(error) => {
+            let detail = error.to_string();
+            service_runtime.emit_environment_progress(
+                workspace_id,
+                environment_name,
+                runtime_name,
+                ServiceExecState::Failed,
+                Some(detail.clone()),
+            );
+            (runtime_name.clone(), ServiceExecState::Failed, Some(detail))
+        }
+    }
+}
+
 impl RuntimeTaskHandler for RuntimeService {
     fn execute(&self, task_type: &TaskType, cancel: Arc<AtomicBool>) -> AppResult<Option<String>> {
         let TaskType::Runtime {
@@ -1048,6 +1563,15 @@ impl RuntimeTaskHandler for RuntimeService {
             RuntimeOp::Stop => self.exec_stop(*workspace_id, runtime_name),
             RuntimeOp::Restart => self.exec_restart(*workspace_id, runtime_name, options, &cancel),
             RuntimeOp::ResolveDependencies => self.exec_resolve(*workspace_id, &cancel),
+            RuntimeOp::StartEnvironment => {
+                self.exec_start_environment(*workspace_id, runtime_name, &cancel)
+            }
+            RuntimeOp::StopEnvironment => {
+                self.exec_stop_environment(*workspace_id, runtime_name)
+            }
+            RuntimeOp::RebuildRestart => {
+                self.exec_rebuild_restart(*workspace_id, runtime_name, options, &cancel)
+            }
         }
     }
 }
@@ -1894,6 +2418,343 @@ mod tests {
             service.get_health(process_id).is_none(),
             "without health_check config there must be no probe snapshot"
         );
+    }
+
+    // --------------------------------------------------------------
+    // R-15 §38/§39/§40：环境编排
+    // --------------------------------------------------------------
+
+    /// 记录 Maven 调用顺序的 runner（`-f` reactor pom 区分服务；顺序断言
+    /// 拓扑波次）。
+    struct OrderingRunner {
+        workdirs: Mutex<Vec<String>>,
+    }
+
+    impl MavenRunner for OrderingRunner {
+        fn resolve_maven(
+            &self,
+            _project_dir: &Path,
+            local_repository: &Path,
+        ) -> AppResult<crate::maven::ResolvedMaven> {
+            Ok(crate::maven::ResolvedMaven {
+                executable: crate::maven::MavenExecutable::new(
+                    "fake-mvn",
+                    crate::maven::MavenSource::System,
+                    None,
+                ),
+                local_repository: local_repository.to_path_buf(),
+                uses_wrapper: false,
+            })
+        }
+
+        fn run(
+            &self,
+            request: &crate::maven::MavenExecutionRequest,
+            _env: &[(String, String)],
+            sink: &mut dyn BuildOutputSink,
+            _cancel: Option<&AtomicBool>,
+            _timeout: Option<Duration>,
+        ) -> AppResult<StreamingExit> {
+            let reactor = request
+                .extra_args
+                .iter()
+                .position(|arg| arg == "-f")
+                .and_then(|i| request.extra_args.get(i + 1))
+                .cloned()
+                .unwrap_or_default();
+            self.workdirs.lock().unwrap().push(reactor);
+            sink.on_line(OutputStream::Stdout, "BUILD SUCCESS");
+            Ok(StreamingExit {
+                exit_code: Some(0),
+                timed_out: false,
+                cancelled: false,
+            })
+        }
+    }
+
+    fn env_service(name: &str, deps: &[&str]) -> crate::runtime::environment::EnvironmentService {
+        crate::runtime::environment::EnvironmentService {
+            runtime_name: name.into(),
+            depends_on: deps.iter().map(|s| s.to_string()).collect(),
+            jdk: None,
+            profile: None,
+            environment: Default::default(),
+            port: None,
+            external_notes: None,
+            ready_timeout_seconds: None,
+        }
+    }
+
+    /// Start Environment：无依赖服务并行（第一波），依赖服务按拓扑序串行；
+    /// 全部就绪后 completed(success) 汇总。
+    #[test]
+    fn environment_start_follows_topology_and_readies_all() {
+        let fixture = maven_fixture("envstart");
+        let emitter = Arc::new(VecEmitter::default());
+        let lib_dir = fixture.root.join("repo/lib").to_string_lossy().to_string();
+        let app_dir = fixture.root.join("repo/app").to_string_lossy().to_string();
+        let ordering = Arc::new(OrderingRunner {
+            workdirs: Mutex::new(Vec::new()),
+        });
+        let service = test_service(
+            &fixture,
+            Arc::clone(&emitter),
+            ordering.clone(),
+            Arc::new(FakeLaunchRunner::staying_alive()),
+        );
+
+        // 四个配置：common/lib、file/app（第一波无依赖）；auth/lib、gateway/app。
+        for (name, pom) in [
+            ("common", "repo/lib/pom.xml"),
+            ("file", "repo/app/pom.xml"),
+            ("auth", "repo/lib/pom.xml"),
+            ("gateway", "repo/app/pom.xml"),
+        ] {
+            let conn = fixture.db.lock().unwrap();
+            config::create_config(
+                &conn,
+                &CreateRuntimeConfigRequest {
+                    workspace_id: fixture.workspace_id,
+                    config: RuntimeApplicationConfig {
+                        name: name.into(),
+                        project: fixture.root.join(pom).to_string_lossy().to_string(),
+                        main_class: Some("com.example.app.Application".into()),
+                        // PackageRun：单次 Maven 调用 + jar 产物校验（见下），
+                        // 避免假 runner 下的 ClasspathRun classpath 文件生成。
+                        profile: Some("prod".into()),
+                        ..Default::default()
+                    },
+                },
+            )
+            .unwrap();
+        }
+        // PackageRun 需要 target jar 产物存在。
+        for (dir, artifact) in [("repo/lib", "lib"), ("repo/app", "app")] {
+            let target = fixture.root.join(dir).join("target");
+            std::fs::create_dir_all(&target).unwrap();
+            std::fs::write(target.join(format!("{artifact}-1.0.0.jar")), b"jar").unwrap();
+        }
+        let environment = crate::runtime::environment::RuntimeEnvironment {
+            schema_version: 1,
+            name: "Development".into(),
+            description: None,
+            services: vec![
+                env_service("gateway", &["auth"]),
+                env_service("auth", &["common"]),
+                env_service("common", &[]),
+                env_service("file", &[]),
+            ],
+        };
+        crate::runtime::environment::save_environment(&fixture.root, &environment).unwrap();
+
+        let output = service
+            .execute(
+                &runtime_task(
+                    RuntimeOp::StartEnvironment,
+                    fixture.workspace_id,
+                    "Development",
+                    Default::default(),
+                ),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .unwrap();
+        assert!(output.unwrap().contains("4 Ready"));
+
+        // Maven 调用顺序：波 0（common/file，并行）→ 波 1（auth）→ 波 2
+        // （gateway）。auth 的构建必须晚于两个无依赖服务的构建完成。
+        let workdirs = ordering.workdirs.lock().unwrap();
+        assert_eq!(workdirs.len(), 4, "each service builds once");
+        // lib 配置的 reactor 是单项目 pom；app 配置（依赖 lib）的 reactor 是
+        // 父 pom（带 -pl app）。
+        let kind_of = |reactor: &str| {
+            if reactor.ends_with("/repo/lib/pom.xml") {
+                "lib"
+            } else {
+                "app"
+            }
+        };
+        assert_eq!(kind_of(&workdirs[2]), "lib", "wave 1 = auth (lib reactor)");
+        assert_eq!(kind_of(&workdirs[3]), "app", "wave 2 = gateway (app reactor)");
+        drop(workdirs);
+        let _ = (&lib_dir, &app_dir);
+
+        // 事件：completed(success=true)，4 服务全部 ready。
+        let names = emitter.names();
+        assert!(names.contains(&EVENT_ENVIRONMENT_PROGRESS));
+        assert_eq!(names.last(), Some(&EVENT_ENVIRONMENT_COMPLETED));
+        let collected = emitter.collected();
+        let completed = collected.last().unwrap();
+        assert_eq!(completed.payload["success"], serde_json::json!(true));
+        assert_eq!(completed.payload["services"].as_array().unwrap().len(), 4);
+        for outcome in completed.payload["services"].as_array().unwrap() {
+            assert_eq!(outcome["state"], serde_json::json!("ready"), "{outcome}");
+        }
+    }
+
+    /// 部分失败语义：单服务启动失败 → 其依赖方 Skipped，无依赖分支照常
+    /// Ready；completed(success=false) 正确汇总。
+    #[test]
+    fn environment_start_partial_failure_skips_dependents() {
+        let fixture = maven_fixture("envfail");
+        let emitter = Arc::new(VecEmitter::default());
+        let service = test_service(
+            &fixture,
+            Arc::clone(&emitter),
+            Arc::new(FakeMavenRunner::successful()),
+            Arc::new(FakeLaunchRunner::staying_alive()),
+        );
+        for (name, pom) in [
+            ("ok", "repo/lib/pom.xml"),
+            ("broken", "repo/missing/pom.xml"), // prepare 阶段即失败
+            ("dependent", "repo/app/pom.xml"),
+        ] {
+            let conn = fixture.db.lock().unwrap();
+            config::create_config(
+                &conn,
+                &CreateRuntimeConfigRequest {
+                    workspace_id: fixture.workspace_id,
+                    config: RuntimeApplicationConfig {
+                        name: name.into(),
+                        project: fixture.root.join(pom).to_string_lossy().to_string(),
+                        main_class: Some("com.example.app.Application".into()),
+                        profile: Some("prod".into()),
+                        ..Default::default()
+                    },
+                },
+            )
+            .unwrap();
+        }
+        for (dir, artifact) in [("repo/lib", "lib"), ("repo/app", "app")] {
+            let target = fixture.root.join(dir).join("target");
+            std::fs::create_dir_all(&target).unwrap();
+            std::fs::write(target.join(format!("{artifact}-1.0.0.jar")), b"jar").unwrap();
+        }
+        let environment = crate::runtime::environment::RuntimeEnvironment {
+            schema_version: 1,
+            name: "Demo".into(),
+            description: None,
+            services: vec![
+                env_service("dependent", &["broken"]),
+                env_service("broken", &[]),
+                env_service("ok", &[]),
+            ],
+        };
+        crate::runtime::environment::save_environment(&fixture.root, &environment).unwrap();
+
+        let output = service
+            .execute(
+                &runtime_task(
+                    RuntimeOp::StartEnvironment,
+                    fixture.workspace_id,
+                    "Demo",
+                    Default::default(),
+                ),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .unwrap();
+        // 部分成功：任务以 Ok 收尾（ok Ready），失败明细在汇总里。
+        assert!(output.unwrap().contains("Failed"));
+        let collected = emitter.collected();
+        let completed = collected.last().unwrap();
+        assert_eq!(completed.payload["success"], serde_json::json!(false));
+        let states: std::collections::BTreeMap<String, String> = completed.payload["services"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| {
+                (
+                    o["service"].as_str().unwrap().to_string(),
+                    o["state"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(states["ok"], "ready");
+        assert_eq!(states["broken"], "failed");
+        assert_eq!(states["dependent"], "skipped");
+    }
+
+    /// Stop Environment：运行中的服务全部停止。
+    #[test]
+    fn environment_stop_stops_running_services() {
+        let fixture = maven_fixture("envstop");
+        let emitter = Arc::new(VecEmitter::default());
+        let service = test_service(
+            &fixture,
+            Arc::clone(&emitter),
+            Arc::new(FakeMavenRunner::successful()),
+            Arc::new(FakeLaunchRunner::staying_alive()),
+        );
+        for (name, pom) in [("a", "repo/lib/pom.xml"), ("b", "repo/app/pom.xml")] {
+            let conn = fixture.db.lock().unwrap();
+            config::create_config(
+                &conn,
+                &CreateRuntimeConfigRequest {
+                    workspace_id: fixture.workspace_id,
+                    config: RuntimeApplicationConfig {
+                        name: name.into(),
+                        project: fixture.root.join(pom).to_string_lossy().to_string(),
+                        ..Default::default()
+                    },
+                },
+            )
+            .unwrap();
+        }
+        let environment = crate::runtime::environment::RuntimeEnvironment {
+            schema_version: 1,
+            name: "Local".into(),
+            description: None,
+            services: vec![env_service("a", &[]), env_service("b", &["a"])],
+        };
+        crate::runtime::environment::save_environment(&fixture.root, &environment).unwrap();
+
+        // 先启动 a（b 不启动）。
+        service
+            .execute(
+                &runtime_task(
+                    RuntimeOp::Start,
+                    fixture.workspace_id,
+                    "a",
+                    RuntimeTaskOptions {
+                        strategy: Some(RunStrategy::MavenRun),
+                        ..Default::default()
+                    },
+                ),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .unwrap();
+        let before = emitter.names().len();
+
+        let output = service
+            .execute(
+                &runtime_task(
+                    RuntimeOp::StopEnvironment,
+                    fixture.workspace_id,
+                    "Local",
+                    Default::default(),
+                ),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .unwrap();
+        assert!(output.unwrap().contains("已停止"));
+        let collected = emitter.collected();
+        let completed = collected.last().unwrap();
+        assert_eq!(completed.payload["environment"], serde_json::json!("Local"));
+        let states: Vec<(String, String)> = completed.payload["services"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| {
+                (
+                    o["service"].as_str().unwrap().to_string(),
+                    o["state"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        assert!(states.contains(&("a".into(), "stopped".into())));
+        assert!(states.contains(&("b".into(), "stopped".into())));
+        // a 真正被停止：进程事件发出。
+        let after: Vec<_> = emitter.names()[before..].to_vec();
+        assert!(after.contains(&EVENT_PROCESS_STOPPED));
     }
 
     // --------------------------------------------------------------
