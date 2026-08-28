@@ -61,6 +61,7 @@ declare module 'vue' {
     NTag: typeof import('naive-ui')['NTag']
     NTooltip: typeof import('naive-ui')['NTooltip']
     NTree: typeof import('naive-ui')['NTree']
+    NVirtualList: typeof import('naive-ui')['NVirtualList']
     Panel: typeof import('./components/shell/Panel.vue')['default']
     PanelHeader: typeof import('./components/shell/PanelHeader.vue')['default']
     PortDiagnosticsModal: typeof import('./components/runtime/PortDiagnosticsModal.vue')['default']
