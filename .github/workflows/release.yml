@@ -79,13 +79,16 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # pnpm 10：与本地开发一致；pnpm 9 对缺 packages 字段的
+          # pnpm-workspace.yaml 会在 setup-node 缓存步骤报错
+          version: 10
           run_install: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 22：Node 20 在 GitHub Actions runner 已弃用，且与本地开发一致
+          node-version: 22
           cache: pnpm
 
       - name: Install frontend dependencies
