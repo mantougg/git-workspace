@@ -26,6 +26,13 @@
       </div>
       <div class="toolbar-right">
         <n-button
+          :disabled="!selectedConfig"
+          @click="portModalShow = true"
+        >
+          <template #icon><n-icon><GitNetworkOutline /></n-icon></template>
+          端口诊断
+        </n-button>
+        <n-button
           type="success"
           :disabled="!workspaceStore.currentWorkspace || store.configs.length === 0"
           @click="onStartAll"
@@ -243,6 +250,13 @@
         </n-button>
       </div>
     </Panel>
+
+    <!-- R-16 §81 端口诊断：占用检测 / Kill（确认）/ 改写端口 -->
+    <PortDiagnosticsModal
+      v-model:show="portModalShow"
+      :runtime-name="portModalTarget"
+      :default-port="portModalDefaultPort"
+    />
   </div>
 </template>
 
@@ -255,6 +269,7 @@ import {
   RefreshOutline,
   PlayOutline,
   StopOutline,
+  GitNetworkOutline,
 } from "@vicons/ionicons5";
 import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -269,6 +284,7 @@ import type {
 import type { RuntimeScope } from "@/types/maven";
 import { errMsg } from "@/utils/error";
 import RuntimeErrorAlert from "@/components/runtime/RuntimeErrorAlert.vue";
+import PortDiagnosticsModal from "@/components/runtime/PortDiagnosticsModal.vue";
 import type { ScriptApproval } from "@/types/runtime";
 
 const router = useRouter();
@@ -283,6 +299,14 @@ const selectedConfig = ref<RuntimeConfigSummary | null>(null);
 const configDetail = ref<RuntimeApplicationConfig | null>(null);
 const scheduler = ref<SchedulerConfig>({ maxConcurrentBuilds: 2, maxConcurrentResolves: 4 });
 const savingScheduler = ref(false);
+
+// R-16 §81 端口诊断对话框（选中应用 + 默认端口取其探测端口）。
+const portModalShow = ref(false);
+const portModalTarget = computed(() => selectedConfig.value?.name ?? "");
+const portModalDefaultPort = computed(() => {
+  const ports = processOf(selectedConfig.value?.name ?? "")?.ports;
+  return ports?.length ? ports[ports.length - 1] : 8080;
+});
 
 // ------------------------------------------------------------------
 // R-14 §80 可行动错误提示 + §75 脚本确认流
@@ -415,10 +439,16 @@ function statusOf(name: string): StatusView {
       return { label: "Preparing", cls: "preparing" };
     case "building":
       return { label: "Building", cls: "building" };
-    case "running":
-      return store.health.get(name) === "down"
-        ? { label: "Unhealthy", cls: "unhealthy" }
-        : { label: "Running", cls: "running" };
+    case "running": {
+      // R-16：探针状态机取值优先展示；无探针时回落 up/down 生命周期推导。
+      const health = store.health.get(name);
+      if (health === "unhealthy") return { label: "Unhealthy", cls: "unhealthy" };
+      if (health === "starting") return { label: "Starting (Health)", cls: "preparing" };
+      if (health === "healthy" || health === "up" || health == null) {
+        return { label: "Running", cls: "running" };
+      }
+      return { label: "Unhealthy", cls: "unhealthy" };
+    }
     case "stopping":
       return { label: "Stopping", cls: "stopping" };
     case "failed":

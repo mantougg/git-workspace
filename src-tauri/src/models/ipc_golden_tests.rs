@@ -236,6 +236,16 @@ fn samples() -> Map<String, Value> {
         scope: maven_closure::RuntimeScope::Auto,
         pre_build_script: None,
         post_build_script: None,
+        health_check: Some(crate::runtime::health::HealthCheckConfig {
+            kind: crate::runtime::health::HealthCheckKind::Auto,
+            host: None,
+            port: Some(8080),
+            path: None,
+            interval_ms: Some(5000),
+            timeout_ms: Some(2000),
+            healthy_after: Some(1),
+            unhealthy_after: Some(3),
+        }),
     };
     m.insert(
         "RuntimeApplicationConfig".into(),
@@ -562,7 +572,73 @@ fn samples() -> Map<String, Value> {
         json!([
             runtime_events::HealthStatus::Up,
             runtime_events::HealthStatus::Down,
+            // R-16 探针状态机取值
+            runtime_events::HealthStatus::Starting,
+            runtime_events::HealthStatus::Healthy,
+            runtime_events::HealthStatus::Unhealthy,
+            runtime_events::HealthStatus::Stopped,
         ]),
+    );
+    // R-16 健康快照 / 端口管理
+    m.insert(
+        "HealthSnapshot".into(),
+        json!(crate::runtime::health::HealthSnapshot {
+            process_id: 7,
+            workspace_id: 1,
+            runtime_name: "boot".into(),
+            phase: runtime_events::HealthStatus::Healthy,
+            last_checked_at: Some("2026-08-29T00:00:00Z".into()),
+            last_detail: Some("Actuator /actuator/health UP".into()),
+        }),
+    );
+    m.insert(
+        "HealthCheckConfig".into(),
+        json!(crate::runtime::health::HealthCheckConfig {
+            kind: crate::runtime::health::HealthCheckKind::Auto,
+            host: None,
+            port: Some(8080),
+            path: None,
+            interval_ms: Some(5000),
+            timeout_ms: Some(2000),
+            healthy_after: Some(1),
+            unhealthy_after: Some(3),
+        }),
+    );
+    m.insert(
+        "HealthCheckKind".into(),
+        json!([
+            crate::runtime::health::HealthCheckKind::Auto,
+            crate::runtime::health::HealthCheckKind::Port,
+            crate::runtime::health::HealthCheckKind::Http,
+            crate::runtime::health::HealthCheckKind::Tcp,
+            crate::runtime::health::HealthCheckKind::Actuator,
+        ]),
+    );
+    m.insert(
+        "PortCheckResult".into(),
+        json!(crate::runtime::port_manager::PortCheckResult {
+            port: 8080,
+            in_use: true,
+            occupier: Some(crate::process::port::PortOccupier {
+                pid: Some(4242),
+                process_name: Some("java".into()),
+            }),
+        }),
+    );
+    m.insert(
+        "PortOccupier".into(),
+        json!(crate::process::port::PortOccupier {
+            pid: Some(4242),
+            process_name: Some("java".into()),
+        }),
+    );
+    m.insert(
+        "PortKillOutcome".into(),
+        json!(crate::runtime::port_manager::PortKillOutcome {
+            pid: 4242,
+            process_name: Some("java".into()),
+            killed: true,
+        }),
     );
     // §64 事件 payload（runtime.<event> 一一对应）
     m.insert(
@@ -2150,6 +2226,12 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "DependencyGraphView",
     ),
     ("SchedulerConfig", "types/runtime.ts", "SchedulerConfig"),
+    // R-16 §41/§81 健康检查 + 端口管理
+    ("HealthSnapshot", "types/runtime.ts", "HealthSnapshot"),
+    ("HealthCheckConfig", "types/runtime.ts", "HealthCheckConfig"),
+    ("PortCheckResult", "types/runtime.ts", "PortCheckResult"),
+    ("PortKillOutcome", "types/runtime.ts", "PortKillOutcome"),
+    ("PortOccupier", "types/runtime.ts", "PortOccupier"),
     // R-13 Runtime Scope 预览
     ("ClosurePreview", "types/runtime.ts", "ClosurePreview"),
     // R-14 §75 Command Safety 脚本确认

@@ -13,6 +13,7 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import type {
   BuildProgressPayload,
   HealthChangedPayload,
+  HealthStatus,
   LogLine,
   ProcessOutputPayload,
   RuntimeApplicationConfig,
@@ -43,8 +44,8 @@ export const useRuntimeStore = defineStore("runtime", () => {
   const processes = ref<RuntimeProcessInfo[]>([]);
   /** runtimeName → Start 流水线阶段（§65，build_progress 事件驱动）。 */
   const stages = ref<Map<string, RuntimeStage>>(new Map());
-  /** runtimeName → 健康状态（health_changed 事件驱动）。 */
-  const health = ref<Map<string, "up" | "down">>(new Map());
+  /** runtimeName → 健康状态（health_changed 事件驱动；R-16 起含探针状态机取值）。 */
+  const health = ref<Map<string, HealthStatus>>(new Map());
   /** runtimeName → 进程输出环形缓冲（process_output 事件驱动，已脱敏）。 */
   const logBuffers = ref<Map<string, LogLine[]>>(new Map());
   /** F-23：runtimeName → 闭包摘要（源码依赖数与名称）；

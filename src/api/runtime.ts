@@ -3,8 +3,11 @@ import type {
   ClosurePreview,
   CreateRuntimeConfigRequest,
   DependencyGraphView,
+  HealthSnapshot,
   LogEntry,
   LogExportOutcome,
+  PortCheckResult,
+  PortKillOutcome,
   ProjectInspection,
   RuntimeApplicationConfig,
   RuntimeConfigSummary,
@@ -244,5 +247,52 @@ export function runtimeResetScriptApprovals(
   return invoke<number>("runtime_reset_script_approvals", {
     workspaceId: workspaceId ?? null,
     runtimeName: runtimeName ?? null,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// R-16 §41/§81：健康检查 + 端口管理
+// ---------------------------------------------------------------------------
+
+/** 单进程健康快照（无探针 / 未启动为 null）。 */
+export function runtimeGetHealth(
+  processId: number,
+): Promise<HealthSnapshot | null> {
+  return invoke<HealthSnapshot | null>("runtime_get_health", { processId });
+}
+
+/** workspace 下全部探针快照（Dashboard 汇总）。 */
+export function runtimeListHealth(
+  workspaceId: number,
+): Promise<HealthSnapshot[]> {
+  return invoke<HealthSnapshot[]>("runtime_list_health", { workspaceId });
+}
+
+/** 端口占用检测（bind 实测 + 占用方识别）。 */
+export function runtimeCheckPort(port: number): Promise<PortCheckResult> {
+  return invoke<PortCheckResult>("runtime_check_port", { port });
+}
+
+/** 终止占用端口的进程（危险操作，UI 必须二次确认后传 confirmed=true）。 */
+export function runtimeKillPortProcess(
+  pid: number,
+  confirmed: boolean,
+): Promise<PortKillOutcome> {
+  return invoke<PortKillOutcome>("runtime_kill_port_process", {
+    pid,
+    confirmed,
+  });
+}
+
+/** 改写 Runtime 配置端口（注入 --server.port=；只改 GitWorkspace 配置）。 */
+export function runtimeChangeRuntimePort(
+  workspaceId: number,
+  name: string,
+  port: number,
+): Promise<RuntimeApplicationConfig> {
+  return invoke<RuntimeApplicationConfig>("runtime_change_runtime_port", {
+    workspaceId,
+    name,
+    port,
   });
 }

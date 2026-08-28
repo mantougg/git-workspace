@@ -60,6 +60,10 @@ pub struct RuntimeApplicationConfig {
     /// R-14 §75 Command Safety：构建成功后执行的用户脚本（同上确认规则）。
     #[serde(default)]
     pub post_build_script: Option<String>,
+    /// R-16 §41 健康检查配置；`None` = 不探针（保持 R-12 生命周期推导的
+    /// up/down 语义）。配置持久化在本 JSON 内（向后兼容：缺字段有默认值）。
+    #[serde(default)]
+    pub health_check: Option<crate::runtime::health::HealthCheckConfig>,
 }
 
 fn default_schema_version() -> u32 {
@@ -87,6 +91,7 @@ impl Default for RuntimeApplicationConfig {
             scope: RuntimeScope::Auto,
             pre_build_script: None,
             post_build_script: None,
+            health_check: None,
         }
     }
 }
@@ -107,6 +112,9 @@ impl RuntimeApplicationConfig {
         }
         validate_environment(&self.environment)?;
         validate_environment(&self.runtime_environment)?;
+        if let Some(health) = &self.health_check {
+            health.validate()?;
+        }
         Ok(())
     }
 

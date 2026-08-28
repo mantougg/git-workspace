@@ -171,6 +171,8 @@ pub struct RuntimeProcessDeps {
     pub sample_interval: Duration,
     /// R-14 §75：Pre/Post Build Script 确认状态（传给 R-09 流水线）。
     pub script_approvals: ScriptApprovalStore,
+    /// R-16 §41 健康检查引擎；`None` = 不探针（R-12 生命周期推导语义）。
+    pub health: Option<Arc<crate::runtime::health::HealthEngine>>,
 }
 
 impl Default for RuntimeProcessDeps {
@@ -187,6 +189,7 @@ impl Default for RuntimeProcessDeps {
             script_approvals: ScriptApprovalStore::new(
                 crate::runtime::script_approval::script_approvals_path(),
             ),
+            health: None,
         }
     }
 }
@@ -374,6 +377,10 @@ impl RuntimeProcessManager {
         match self.wait_running_or_outcome(handle, options.start_grace) {
             RunWait::Running => {
                 self.transit(process_id, runtime_name, LifecycleStatus::Running, None)?;
+                // R-16：进入 Running 后开启健康探针（配置缺失时引擎内部 no-op）。
+                if let Some(health) = &self.deps.health {
+                    health.start_monitor(process_id, workspace_id, runtime_name);
+                }
                 self.info(process_id)
             }
             RunWait::Exited => self.finish_early_exit(process_id, runtime_name, handle),
@@ -381,6 +388,10 @@ impl RuntimeProcessManager {
                 let start_time = *handle.pid_start_time.lock().unwrap();
                 if self.deps.launch_runner.alive(pid, start_time) {
                     self.transit(process_id, runtime_name, LifecycleStatus::Running, None)?;
+                    // R-16：宽限边界翻转 Running 同样开启探针。
+                    if let Some(health) = &self.deps.health {
+                        health.start_monitor(process_id, workspace_id, runtime_name);
+                    }
                     self.info(process_id)
                 } else {
                     // 宽限边界上刚好退出：等 monitor 收尾后按退出分类。
@@ -760,6 +771,10 @@ impl RuntimeProcessManager {
                         .unwrap()
                         .insert(row.id, handle.clone());
                     self.spawn_adopted_monitor(row.id, name.clone(), pid, start_time, handle);
+                    // R-16：接管的 Running 孤儿同样恢复健康探针。
+                    if let Some(health) = &self.deps.health {
+                        health.start_monitor(row.id, workspace_id, &name);
+                    }
                     adopted.push(store::row_to_info(&self.row(row.id)?));
                     log::info!("R-10: adopted orphan process pid={pid} for runtime '{name}'");
                 }
@@ -959,6 +974,10 @@ impl RuntimeProcessManager {
             exit_code: outcome.exit_code,
             crashed,
         });
+        // R-16：进程退出收口健康探针（快照翻 Stopped 并广播；无探针时 no-op）。
+        if let Some(health) = &self.deps.health {
+            health.stop_monitor(process_id);
+        }
         if crashed {
             log::warn!(
                 "R-10: {}",

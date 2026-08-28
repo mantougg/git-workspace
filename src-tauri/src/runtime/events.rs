@@ -57,13 +57,20 @@ pub enum RuntimeStage {
     Starting,
 }
 
-/// `health_changed` 的健康取值。R-16 的探针式健康检查之前，由生命周期
-/// 迁移推导：进入 Running → Up；停止 / 崩溃 → Down。
+/// `health_changed` 的健康取值。两组来源：
+/// - R-12 生命周期推导（无探针配置时）：进入 Running → `Up`；停止 / 崩溃 →
+///   `Down`（向后兼容，R-16 之前的取值）；
+/// - R-16 探针状态机（配置了 health_check 时）：`Starting / Healthy /
+///   Unhealthy / Stopped`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum HealthStatus {
     Up,
     Down,
+    Starting,
+    Healthy,
+    Unhealthy,
+    Stopped,
 }
 
 // ---------------------------------------------------------------------------

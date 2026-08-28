@@ -28,6 +28,8 @@ export interface RuntimeApplicationConfig {
   preBuildScript: string | null;
   /** R-14 §75：构建成功后执行的用户脚本（同上确认规则）。 */
   postBuildScript: string | null;
+  /** R-16 §41 健康检查配置；null = 不探针（保持生命周期推导语义）。 */
+  healthCheck: HealthCheckConfig | null;
 }
 
 export interface RuntimeConfigSummary {
@@ -80,8 +82,60 @@ export type LifecycleStatus =
 /** Start 流水线的 UI 阶段（§65）。 */
 export type RuntimeStage = "preparing" | "resolving" | "building" | "starting";
 
-/** `runtime.health_changed` 的健康取值。 */
-export type HealthStatus = "up" | "down";
+/** `runtime.health_changed` 的健康取值。R-12 生命周期推导产生
+    up/down；R-16 探针状态机产生 starting/healthy/unhealthy/stopped。 */
+export type HealthStatus =
+  | "up"
+  | "down"
+  | "starting"
+  | "healthy"
+  | "unhealthy"
+  | "stopped";
+
+/** R-16 §41 健康检查方式；auto = Actuator 优先、失败回退 TCP。 */
+export type HealthCheckKind = "auto" | "port" | "http" | "tcp" | "actuator";
+
+/** R-16 §41 每应用健康检查配置（随 Runtime 配置持久化，全部字段可缺省）。 */
+export interface HealthCheckConfig {
+  kind: HealthCheckKind;
+  host: string | null;
+  port: number | null;
+  path: string | null;
+  intervalMs: number | null;
+  timeoutMs: number | null;
+  healthyAfter: number | null;
+  unhealthyAfter: number | null;
+}
+
+/** R-16 健康快照（探针状态机当前状态）。 */
+export interface HealthSnapshot {
+  processId: number;
+  workspaceId: number;
+  runtimeName: string;
+  phase: HealthStatus;
+  lastCheckedAt: string | null;
+  lastDetail: string | null;
+}
+
+/** R-16 §81 端口占用方信息。 */
+export interface PortOccupier {
+  pid: number | null;
+  processName: string | null;
+}
+
+/** R-16 §81 端口检查结果。 */
+export interface PortCheckResult {
+  port: number;
+  inUse: boolean;
+  occupier: PortOccupier | null;
+}
+
+/** R-16 §81 跨进程 Kill 结果。 */
+export interface PortKillOutcome {
+  pid: number;
+  processName: string | null;
+  killed: boolean;
+}
 
 /** 日志级别（R-11，序数语义：越大越严重）。 */
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";

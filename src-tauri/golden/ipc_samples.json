@@ -261,6 +261,16 @@
       "environment": {
         "SERVER_PORT": "8080"
       },
+      "healthCheck": {
+        "healthyAfter": 1,
+        "host": null,
+        "intervalMs": 5000,
+        "kind": "auto",
+        "path": null,
+        "port": 8080,
+        "timeoutMs": 2000,
+        "unhealthyAfter": 3
+      },
       "jdk": "21",
       "mainClass": "com.example.Application",
       "name": "boot",
@@ -589,9 +599,38 @@
     "runtimeName": "app",
     "workspaceId": 1
   },
+  "HealthCheckConfig": {
+    "healthyAfter": 1,
+    "host": null,
+    "intervalMs": 5000,
+    "kind": "auto",
+    "path": null,
+    "port": 8080,
+    "timeoutMs": 2000,
+    "unhealthyAfter": 3
+  },
+  "HealthCheckKind": [
+    "auto",
+    "port",
+    "http",
+    "tcp",
+    "actuator"
+  ],
+  "HealthSnapshot": {
+    "lastCheckedAt": "2026-08-29T00:00:00Z",
+    "lastDetail": "Actuator /actuator/health UP",
+    "phase": "healthy",
+    "processId": 7,
+    "runtimeName": "boot",
+    "workspaceId": 1
+  },
   "HealthStatus": [
     "up",
-    "down"
+    "down",
+    "starting",
+    "healthy",
+    "unhealthy",
+    "stopped"
   ],
   "HealthWeights": {
     "ahead": 5,
@@ -1017,6 +1056,23 @@
     "retries": 1,
     "timeoutSecs": 600
   },
+  "PortCheckResult": {
+    "inUse": true,
+    "occupier": {
+      "pid": 4242,
+      "processName": "java"
+    },
+    "port": 8080
+  },
+  "PortKillOutcome": {
+    "killed": true,
+    "pid": 4242,
+    "processName": "java"
+  },
+  "PortOccupier": {
+    "pid": 4242,
+    "processName": "java"
+  },
   "ProcessFailedPayload": {
     "at": "2026-08-25T00:00:00Z",
     "exitCode": 1,
@@ -1312,6 +1368,16 @@
     "buildEngine": "maven",
     "environment": {
       "SERVER_PORT": "8080"
+    },
+    "healthCheck": {
+      "healthyAfter": 1,
+      "host": null,
+      "intervalMs": 5000,
+      "kind": "auto",
+      "path": null,
+      "port": 8080,
+      "timeoutMs": 2000,
+      "unhealthyAfter": 3
     },
     "jdk": "21",
     "mainClass": "com.example.Application",
@@ -1764,6 +1830,16 @@
       "buildEngine": "maven",
       "environment": {
         "SERVER_PORT": "8080"
+      },
+      "healthCheck": {
+        "healthyAfter": 1,
+        "host": null,
+        "intervalMs": 5000,
+        "kind": "auto",
+        "path": null,
+        "port": 8080,
+        "timeoutMs": 2000,
+        "unhealthyAfter": 3
       },
       "jdk": "21",
       "mainClass": "com.example.Application",

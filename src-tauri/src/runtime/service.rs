@@ -265,6 +265,8 @@ pub struct RuntimeService {
     pom_cache: Arc<PomCache>,
     scheduler_config_path: PathBuf,
     script_approvals: ScriptApprovalStore,
+    /// R-16 健康检查引擎（与进程管理器共享实例）。
+    health: Arc<crate::runtime::health::HealthEngine>,
 }
 
 impl RuntimeService {
@@ -300,6 +302,12 @@ impl RuntimeService {
         let closure_cache = Arc::new(RuntimeClosureCache::new());
         let bridge = Arc::new(TauriRuntimeBridge::new(Arc::clone(&emitter), Arc::clone(&db)));
 
+        // R-16：健康检查引擎与进程管理器共享同一 emitter / DB。
+        let health = crate::runtime::health::HealthEngine::new(
+            Arc::clone(&db),
+            Arc::clone(&emitter),
+        );
+
         let processes = Arc::new(RuntimeProcessManager::with_deps(
             Arc::clone(&db),
             RuntimeProcessDeps {
@@ -312,6 +320,7 @@ impl RuntimeService {
                 logs: Arc::clone(&overrides.logs),
                 sample_interval: overrides.sample_interval,
                 script_approvals: ScriptApprovalStore::new(script_approvals_path.clone()),
+                health: Some(Arc::clone(&health)),
             },
         ));
 
@@ -328,6 +337,7 @@ impl RuntimeService {
             pom_cache,
             scheduler_config_path,
             script_approvals: ScriptApprovalStore::new(script_approvals_path),
+            health,
         })
     }
 
@@ -467,6 +477,22 @@ impl RuntimeService {
     /// `runtime_process_status`。
     pub fn process_status(&self, process_id: i64) -> AppResult<Option<RuntimeProcessInfo>> {
         self.processes.get_process(process_id)
+    }
+
+    /// R-16 `runtime_get_health`：单进程健康快照（无探针为 None）。
+    pub fn get_health(
+        &self,
+        process_id: i64,
+    ) -> Option<crate::runtime::health::HealthSnapshot> {
+        self.health.snapshot(process_id)
+    }
+
+    /// R-16 `runtime_list_health`：workspace 下全部探针快照。
+    pub fn list_health(
+        &self,
+        workspace_id: i64,
+    ) -> Vec<crate::runtime::health::HealthSnapshot> {
+        self.health.snapshots(workspace_id)
     }
 
     /// `runtime_get_logs`（R-11 引擎 search：跨滚动段、时间序、脱敏在写入侧已完成）。
@@ -1730,6 +1756,143 @@ mod tests {
                 .unwrap()
                 .len(),
             1
+        );
+    }
+
+    // --------------------------------------------------------------
+    // R-16 §41：健康探针与进程生命周期集成
+    // --------------------------------------------------------------
+
+    /// 配置了 health_check 的应用：Start 后探针 Starting → Healthy；
+    /// Stop 后收口为 Stopped（进程退出 → finalize_exit → stop_monitor）。
+    #[test]
+    fn health_probe_transitions_with_lifecycle() {
+        let fixture = maven_fixture("health");
+        // 真实本地端口：探针 Port 方式连它（FakeLaunchRunner 不开端口，
+        // 因此显式配置 port，不经启动日志探测）。
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        {
+            let conn = fixture.db.lock().unwrap();
+            config::update_config(
+                &conn,
+                &config::UpdateRuntimeConfigRequest {
+                    workspace_id: fixture.workspace_id,
+                    name: "app".into(),
+                    config: RuntimeApplicationConfig {
+                        name: "app".into(),
+                        project: fixture
+                            .root
+                            .join("repo/app/pom.xml")
+                            .to_string_lossy()
+                            .to_string(),
+                        main_class: Some("com.example.app.Application".into()),
+                        health_check: Some(crate::runtime::health::HealthCheckConfig {
+                            kind: crate::runtime::health::HealthCheckKind::Port,
+                            port: Some(port),
+                            interval_ms: Some(500),
+                            timeout_ms: Some(500),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                },
+            )
+            .unwrap();
+        }
+        let emitter = Arc::new(VecEmitter::default());
+        let service = test_service(
+            &fixture,
+            Arc::clone(&emitter),
+            Arc::new(FakeMavenRunner::successful()),
+            Arc::new(FakeLaunchRunner::staying_alive()),
+        );
+
+        service
+            .execute(
+                &runtime_task(
+                    RuntimeOp::Start,
+                    fixture.workspace_id,
+                    "app",
+                    RuntimeTaskOptions {
+                        strategy: Some(RunStrategy::MavenRun),
+                        ..Default::default()
+                    },
+                ),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .unwrap();
+
+        // 等待探针翻到 Healthy（首个探测在一个间隔内发生）。
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut healthy_seen = false;
+        while Instant::now() < deadline {
+            if let Some(snapshot) = service.get_health(
+                service.list_processes(fixture.workspace_id).unwrap()[0].process_id,
+            ) {
+                if snapshot.phase == crate::runtime::events::HealthStatus::Healthy {
+                    healthy_seen = true;
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(healthy_seen, "probe must reach Healthy while running");
+
+        // Stop：进程退出收口探针 → Stopped。
+        service
+            .execute(
+                &runtime_task(RuntimeOp::Stop, fixture.workspace_id, "app", Default::default()),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut stopped_seen = false;
+        while Instant::now() < deadline {
+            if let Some(snapshot) = service.get_health(
+                service.list_processes(fixture.workspace_id).unwrap()[0].process_id,
+            ) {
+                if snapshot.phase == crate::runtime::events::HealthStatus::Stopped {
+                    stopped_seen = true;
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(stopped_seen, "probe must be finalized to Stopped after exit");
+        drop(listener);
+    }
+
+    /// 未配置 health_check 的应用：无探针快照（R-12 up/down 语义保持）。
+    #[test]
+    fn no_health_config_means_no_probe() {
+        let fixture = maven_fixture("nohealth");
+        let emitter = Arc::new(VecEmitter::default());
+        let service = test_service(
+            &fixture,
+            emitter,
+            Arc::new(FakeMavenRunner::successful()),
+            Arc::new(FakeLaunchRunner::staying_alive()),
+        );
+        service
+            .execute(
+                &runtime_task(
+                    RuntimeOp::Start,
+                    fixture.workspace_id,
+                    "app",
+                    RuntimeTaskOptions {
+                        strategy: Some(RunStrategy::MavenRun),
+                        ..Default::default()
+                    },
+                ),
+                Arc::new(AtomicBool::new(false)),
+            )
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        let process_id = service.list_processes(fixture.workspace_id).unwrap()[0].process_id;
+        assert!(
+            service.get_health(process_id).is_none(),
+            "without health_check config there must be no probe snapshot"
         );
     }
 

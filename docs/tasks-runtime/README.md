@@ -66,8 +66,8 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| R-15 | Multi-Service Runtime 与 Runtime Environment | P1 | ⬜ | R-10, R-13 | [R-15-multi-service.md](./R-15-multi-service.md) |
-| R-16 | Health Check 与 Port Manager | P1 | ⬜ | R-10 | [R-16-health-port.md](./R-16-health-port.md) |
+| R-15 | Multi-Service Runtime 与 Runtime Environment | P1 | 🟦 | R-10, R-13 | [R-15-multi-service.md](./R-15-multi-service.md) |
+| R-16 | Health Check 与 Port Manager | P1 | 🟦 | R-10 | [R-16-health-port.md](./R-16-health-port.md) |
 | R-17 | File Watch / 增量构建 / 自动重启 | P1 | ⬜ | R-09, R-02, T-06 | [R-17-watch-incremental-restart.md](./R-17-watch-incremental-restart.md) |
 | R-18 | 构建加速：mvnd 与构建缓存分级 | P1 | ⬜ | R-09, R-05 | [R-18-mvnd-build-cache.md](./R-18-mvnd-build-cache.md) |
 | R-19 | Runtime Templates | P1 | ⬜ | R-07 | [R-19-runtime-templates.md](./R-19-runtime-templates.md) |

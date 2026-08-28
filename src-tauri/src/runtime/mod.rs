@@ -4,8 +4,10 @@ pub mod build;
 pub mod config;
 pub mod events;
 pub mod guard;
+pub mod health;
 pub mod launch;
 pub mod logs;
+pub mod port_manager;
 pub mod script_approval;
 pub mod service;
 pub mod spring_boot;
@@ -32,6 +34,13 @@ pub use logs::{
 };
 
 pub use script_approval::{script_approvals_path, ScriptApproval, ScriptApprovalStore};
+
+pub use health::{
+    evaluate_check, parse_http_response, tcp_probe, HealthCheckConfig, HealthCheckKind,
+    HealthEngine, HealthSnapshot,
+};
+
+pub use port_manager::{kill_external_process, PortCheckResult, PortKillOutcome};
 
 pub use spring_boot::{
     detect_spring_boot_workspace, SpringBootCandidate, SpringBootDetectionCache, SpringBootProject,

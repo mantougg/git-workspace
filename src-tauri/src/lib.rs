@@ -389,6 +389,12 @@ pub fn run() {
             commands::runtime::runtime_get_script_approvals,
             commands::runtime::runtime_approve_script,
             commands::runtime::runtime_reset_script_approvals,
+            // R-16 §41/§81：健康检查 + 端口管理
+            commands::runtime::runtime_get_health,
+            commands::runtime::runtime_list_health,
+            commands::runtime::runtime_check_port,
+            commands::runtime::runtime_kill_port_process,
+            commands::runtime::runtime_change_runtime_port,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

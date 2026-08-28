@@ -319,6 +319,79 @@ pub fn runtime_set_scheduler_config(
 }
 
 // ---------------------------------------------------------------------------
+// R-16 §41/§81：健康检查查询 + 端口管理
+// ---------------------------------------------------------------------------
+
+/// R-16 `runtime.get_health`：单进程健康快照（无探针 / 未启动为 null）。
+#[command]
+pub fn runtime_get_health(
+    process_id: i64,
+    state: State<'_, AppState>,
+) -> AppResult<Option<crate::runtime::health::HealthSnapshot>> {
+    Ok(state.runtime.get_health(process_id))
+}
+
+/// R-16 `runtime.list_health`：workspace 下全部探针快照（Dashboard 汇总）。
+#[command]
+pub fn runtime_list_health(
+    workspace_id: i64,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::runtime::health::HealthSnapshot>> {
+    Ok(state.runtime.list_health(workspace_id))
+}
+
+/// R-16 §81 `runtime.check_port`：端口占用检测（bind 实测 + 占用方识别）。
+#[command]
+pub fn runtime_check_port(port: u16) -> AppResult<crate::runtime::port_manager::PortCheckResult> {
+    Ok(crate::runtime::port_manager::check_port(port))
+}
+
+/// R-16 §81 `runtime.kill_port_process`：终止占用端口的进程。**危险操作**：
+/// 必须带 `confirmed=true`（全局约束 §3 二次确认），确认文案需明确进程身份。
+#[command]
+pub fn runtime_kill_port_process(
+    pid: u32,
+    confirmed: bool,
+) -> AppResult<crate::runtime::port_manager::PortKillOutcome> {
+    if !confirmed {
+        return Err(AppError::Permission(format!(
+            "终止 PID {pid} 会直接结束该进程（TERM 优雅优先，3s 未退出升级 KILL）。\
+             请确认这是你了解的进程后，带 confirmed=true 重试"
+        )));
+    }
+    Ok(crate::runtime::port_manager::kill_external_process(pid))
+}
+
+/// R-16 §81 `runtime.change_runtime_port`：改写 Runtime 配置的端口
+/// （`program_arguments` 注入 `--server.port=`；只改 GitWorkspace 配置，
+/// 不触碰用户项目文件）。返回更新后的配置（秘密已掩码）。
+#[command]
+pub fn runtime_change_runtime_port(
+    workspace_id: i64,
+    name: String,
+    port: u16,
+    state: State<'_, AppState>,
+) -> AppResult<RuntimeApplicationConfig> {
+    let conn = lock_db(&state)?;
+    let mut config = crate::runtime::config::get_config(&conn, workspace_id, &name)?;
+    // 端口注入三处形态统一收敛到 --server.port=<port>（Spring Boot 标准形）。
+    config.program_arguments.retain(|arg| {
+        !arg.starts_with("--server.port=")
+            && !arg.starts_with("--server.port ")
+    });
+    config.vm_options.retain(|arg| !arg.starts_with("-Dserver.port="));
+    config.program_arguments.push(format!("--server.port={port}"));
+    crate::runtime::config::update_config(
+        &conn,
+        &UpdateRuntimeConfigRequest {
+            workspace_id,
+            name: name.clone(),
+            config,
+        },
+    )
+}
+
+// ---------------------------------------------------------------------------
 // R-14 §75 Command Safety：Pre/Post Build Script 确认状态
 // ---------------------------------------------------------------------------
 

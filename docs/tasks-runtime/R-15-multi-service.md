@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 2 · 多服务与效率 |
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | 🟦 进行中 |
 | 依赖 | R-10, R-13 |
 | 对应源文档 | §38 Multi-Service Runtime、§39 Service Dependency、§40 Parallel Start、§82 Runtime Environment、§84 多服务环境模板 |
 

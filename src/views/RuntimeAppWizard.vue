@@ -183,11 +183,61 @@
       <n-form-item label="构建引擎">
         <n-select
           v-model:value="form.buildEngine"
-          :options="[{ label: 'Maven', value: 'maven' }]"
-          disabled
+          :options="buildEngineOptions"
           style="width: 200px"
         />
-        <div class="field-hint">mvnd（R-18）/ Gradle（R-22）将在此扩展。</div>
+        <div class="field-hint">mvnd 未安装 / 异常时自动回退普通 Maven（R-18）。</div>
+      </n-form-item>
+
+      <n-form-item label="健康检查">
+        <n-space vertical style="width: 100%" :size="8">
+          <n-space align="center">
+            <n-checkbox v-model:checked="healthEnabled">启用探针（R-16）</n-checkbox>
+            <n-select
+              v-model:value="healthForm.kind"
+              :options="[
+                { label: 'Auto（Actuator 优先，回退 TCP）', value: 'auto' },
+                { label: 'Actuator（/actuator/health）', value: 'actuator' },
+                { label: 'HTTP GET', value: 'http' },
+                { label: 'TCP 端口', value: 'tcp' },
+                { label: '端口（本机 127.0.0.1）', value: 'port' },
+              ]"
+              :disabled="!healthEnabled"
+              style="width: 280px"
+              size="small"
+            />
+          </n-space>
+          <n-space align="center" v-if="healthEnabled">
+            <n-input-number
+              v-model:value="healthForm.port"
+              placeholder="端口（缺省用探测端口）"
+              :min="1"
+              :max="65535"
+              :show-button="false"
+              style="width: 200px"
+              size="small"
+            />
+            <n-input
+              v-model:value="healthForm.path"
+              placeholder="路径，缺省 /actuator/health"
+              :disabled="healthForm.kind === 'port' || healthForm.kind === 'tcp'"
+              style="width: 220px"
+              size="small"
+            />
+            <n-input-number
+              v-model:value="healthForm.intervalMs"
+              placeholder="间隔 ms"
+              :min="500"
+              :show-button="false"
+              style="width: 120px"
+              size="small"
+            />
+          </n-space>
+          <div class="field-hint">
+            启用后 Running 状态按间隔探测：Starting → Healthy / Unhealthy；无配置时保持
+            「启动即 Up」的生命周期推导语义。
+          </div>
+        </n-space>
       </n-form-item>
     </n-form>
   </div>
@@ -262,6 +312,21 @@ function applyPreset(id: string | null) {
 /** R-14 §75：Pre/Post Build Script（首次执行必须确认）。 */
 const preBuildScriptText = ref("");
 const postBuildScriptText = ref("");
+
+// R-18 §20：构建引擎（maven / mvnd；mvnd 缺失时后端自动回退）。
+const buildEngineOptions = [
+  { label: "Maven", value: "maven" },
+  { label: "Maven Daemon (mvnd)", value: "mvnd" },
+];
+
+// R-16 §41：健康检查（未启用 → healthCheck = null，保持生命周期推导语义）。
+const healthEnabled = ref(false);
+const healthForm = reactive({
+  kind: "auto",
+  port: null as number | null,
+  path: "",
+  intervalMs: null as number | null,
+});
 
 interface EnvRow {
   key: string;
@@ -391,7 +456,28 @@ function toConfig(): RuntimeApplicationConfig {
     scope: originalScope.value,
     preBuildScript: preBuildScriptText.value.trim() || null,
     postBuildScript: postBuildScriptText.value.trim() || null,
+    healthCheck: healthConfig(),
   };
+}
+
+/** R-16：把健康检查表单收敛为 HealthCheckConfig；未启用或全空 → null。 */
+function healthConfig(): RuntimeApplicationConfig["healthCheck"] {
+  if (!healthEnabled.value) return null;
+  const config = {
+    kind: healthForm.kind as "auto" | "port" | "http" | "tcp" | "actuator",
+    host: null,
+    port: healthForm.port,
+    path: healthForm.path.trim() || null,
+    intervalMs: healthForm.intervalMs,
+    timeoutMs: null,
+    healthyAfter: null,
+    unhealthyAfter: null,
+  };
+  if (config.port == null && config.path == null && config.intervalMs == null && config.kind === "auto") {
+    // 全缺省 = 没有有效配置；视为未启用，避免保存一份等价默认的 JSON。
+    return null;
+  }
+  return config;
 }
 
 function fillForm(config: RuntimeApplicationConfig) {
@@ -406,6 +492,19 @@ function fillForm(config: RuntimeApplicationConfig) {
   programArgsText.value = config.programArguments.join("\n");
   preBuildScriptText.value = config.preBuildScript ?? "";
   postBuildScriptText.value = config.postBuildScript ?? "";
+  const hc = config.healthCheck;
+  healthEnabled.value = !!hc;
+  if (hc) {
+    healthForm.kind = hc.kind ?? "auto";
+    healthForm.port = hc.port ?? null;
+    healthForm.path = hc.path ?? "";
+    healthForm.intervalMs = hc.intervalMs ?? null;
+  } else {
+    healthForm.kind = "auto";
+    healthForm.port = null;
+    healthForm.path = "";
+    healthForm.intervalMs = null;
+  }
   envRows.value = Object.entries(config.environment).map(([key, value]) => ({
     key,
     value,
