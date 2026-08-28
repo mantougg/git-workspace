@@ -2,7 +2,7 @@ name: Release
 run-name: Release ${{ github.ref_name }}
 
 # 触发条件：
-#   1) 推送 v* tag 时自动发布正式版（如 v0.1.0）
+#   1) 推送 v* tag 时自动发布正式版（如 v0.2.0）
 #   2) 手动触发（Actions → Release → Run workflow），构建草稿用于测试打包流程
 on:
   push:
@@ -15,7 +15,22 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
+    # 三平台矩阵：Windows (NSIS) / Linux (AppImage+deb) / macOS (universal dmg)。
+    # 各 job 向同一个 Release 上传各自平台的产物；tauri-action 自动汇总
+    # 生成 updater 用的 latest.json。
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ""
+          - os: ubuntu-24.04
+            args: ""
+          # universal-apple-darwin 一次产出 arm64 + x86_64 双架构安装包
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +57,25 @@ jobs:
           cat src-tauri/tauri.conf.json
           echo "::endgroup::"
 
+      # Tauri v2 Linux 系统依赖（WebKitGTK 4.1 等）；
+      # 24.04 起 appindicator 包名为 libayatana-appindicator3-dev
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            patchelf
+
+      # macOS universal 包需要同时安装两个 Rust target
+      - name: Add Rust targets for macOS universal
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -57,18 +91,22 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # Rust 编译缓存（跨平台通用，加速矩阵内重复构建）
+      - uses: Swatinem/rust-cache@v2
+
       - name: Build and release Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Tauri Updater 签名密钥（可选）：用于自动更新时验证安装包完整性。
-          # 注意：这是 Tauri 更新器签名，并非 Windows Authenticode 代码签名，
-          #       不能消除 SmartScreen "未知发布者" 警告（详见 README）。
+          # 注意：这是 Tauri 更新器签名，并非平台代码签名（Windows Authenticode /
+          #       macOS 公证），不能消除 SmartScreen / Gatekeeper 警告（详见 README）。
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v${{ steps.version.outputs.version }}
           releaseName: 'GitWorkspace v${{ steps.version.outputs.version }}'
+          args: ${{ matrix.args }}
           # tag 推送时直接发布；手动触发时作为草稿，便于人工审核
           releaseDraft: ${{ github.event_name == 'workflow_dispatch' }}
           prerelease: false
