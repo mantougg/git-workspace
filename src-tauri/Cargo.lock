@@ -1301,6 +1301,7 @@ dependencies = [
  "uuid",
  "walkdir",
  "windows-sys 0.59.0",
+ "zip",
 ]
 
 [[package]]

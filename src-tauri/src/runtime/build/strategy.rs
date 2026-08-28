@@ -181,6 +181,21 @@ fn classpath_run_plan(inputs: &LaunchInputs) -> AppResult<LaunchPlan> {
     let mut classpath = vec![module_dir.join("target").join("classes")];
     classpath.extend(inputs.classpath.clone().unwrap_or_default());
     let java_exec = java_exec_for(inputs.jdk);
+    // F-11：classpath 过长会让 Windows CreateProcess 超限（os error 206），
+    // 必要时收敛为 pathing jar（manifest Class-Path，JDK 8/17/21 均兼容）。
+    let estimate = super::pathing_jar::estimate_command_len(
+        &java_exec,
+        &config.vm_options,
+        &classpath,
+        &main_class,
+        &config.program_arguments,
+    );
+    let classpath = super::pathing_jar::shorten_if_needed(
+        inputs.workspace_root,
+        &config.name,
+        classpath,
+        estimate,
+    )?;
     let cp = std::env::join_paths(&classpath)
         .map(|cp| cp.to_string_lossy().into_owned())
         .unwrap_or_default();

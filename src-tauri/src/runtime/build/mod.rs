@@ -17,6 +17,7 @@
 //! 直接暴露到 IPC（全局约束 §4）。
 
 pub mod classpath;
+pub mod pathing_jar;
 pub mod pipeline;
 pub mod runner;
 pub mod scheduler;

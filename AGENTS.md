@@ -92,6 +92,11 @@ This project is indexed by GitNexus as **git-workspace** (6606 symbols, 15045 re
   Windows 无 SIGTERM 语义，优雅停止用 `terminate_process`，超时升级整树终止。
 - **子进程 spawn**：Windows 必须设 `CREATE_NO_WINDOW`（`process/streaming.rs` 已有）；
   禁止依赖 shell 特定行为（`ls`、`pgrep` 等）编写业务逻辑。
+- **超长命令行（F-11）**：Windows CreateProcess 上限 32767 字符。`java -cp
+  <数百 jar>` 会超限（os error 206）——走 `runtime/build/pathing_jar.rs`
+  的 pathing jar（manifest Class-Path，JDK 8/17/21 均兼容；`@argfile` 需
+  JDK 9+ 不可用）。新增拼超长命令的代码必须先过 `estimate_command_len`
+  阈值判断。
 - 长命令预览/追溯时，路径分隔符保持平台原生展示即可，不要为「统一」重写路径。
 
 ## 4. 环境与工具链
