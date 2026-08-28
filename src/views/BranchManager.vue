@@ -228,6 +228,7 @@ import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
 import { EllipsisVerticalOutline, AddOutline, RefreshOutline, SwapHorizontalOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
+import { guardRuntimeRunning } from "@/utils/runtimeGuard";
 import {
   checkoutBranch,
   compareBranches,
@@ -417,6 +418,8 @@ function statusIcon(status: string): string {
 async function handleLocalCommand(cmd: string, b: BranchEntry) {
   switch (cmd) {
     case "checkout":
+      // R-21 §49：有 Runtime 应用运行中 → Stop & Switch / Cancel 确认。
+      if (!(await guardRuntimeRunning(dialog, message))) return;
       await runOp(`已切换到分支 ${b.name}`, () => checkoutBranch(repoPath.value, b.name));
       break;
     case "rename":

@@ -392,6 +392,30 @@ export interface RestartCompletedPayload {
   at: string;
 }
 
+// ---------------------------------------------------------------------------
+// R-21 §47/§48/§49：Git 联动
+// ---------------------------------------------------------------------------
+
+/** `runtime_dependency_changed` 事件 payload。reason：`filesModified`
+    （§47 Status 联动）/ `branchSwitched`（§48 分支切换 POM 变化）。 */
+export interface DependencyChangedPayload {
+  workspaceId: number;
+  runtimeName: string;
+  reason: "filesModified" | "branchSwitched";
+  /** 发生变化的仓库路径（正斜杠归一化）。 */
+  repos: string[];
+  /** 受影响模块 GA 列表。 */
+  affectedModules: string[];
+  at: string;
+}
+
+/** §49 运行中应用摘要（Checkout 保护确认查询用）。 */
+export interface RuntimeRunningBrief {
+  workspaceId: number;
+  runtimeName: string;
+  status: string;
+}
+
 // §63 请求 / 视图类型
 
 /** `runtime_build` / `runtime_start` / `runtime_restart` 请求。 */

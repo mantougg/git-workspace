@@ -182,8 +182,27 @@ pub fn run() {
                 submitter
             });
 
+            // R-21 Git 联动引擎：§47 Status 提示 / §48 分支切换复核，
+            // 与 RuntimeService 共享同一批图 / 闭包缓存实例。
+            let (_processes, link_graph_cache, link_closure_cache) =
+                runtime_service.watch_shared_parts();
+            let git_link = crate::runtime::git_link::GitLinkEngine::spawn(
+                Arc::clone(&db),
+                link_graph_cache,
+                link_closure_cache,
+                Arc::new(crate::runtime::events::TauriRuntimeEmitter::new(
+                    app.handle().clone(),
+                )),
+            );
+            git_link.attach_task_manager({
+                let submitter: Arc<dyn crate::runtime::watch::WatchTaskSubmitter> =
+                    task_manager.clone();
+                submitter
+            });
+
             // Create and manage app state
-            let state = AppState::new(db, task_manager, Arc::clone(&runtime_service), pom_cache);
+            let state =
+                AppState::new(db, task_manager, Arc::clone(&runtime_service), pom_cache, git_link);
             app.manage(state);
 
             // F-06：修复打包后 Windows 任务栏无图标（详见函数注释）。
@@ -397,8 +416,11 @@ pub fn run() {
             commands::runtime::runtime_start,
             commands::runtime::runtime_stop,
             commands::runtime::runtime_restart,
+            commands::runtime::runtime_rebuild_restart,
             commands::runtime::runtime_list_processes,
             commands::runtime::runtime_process_status,
+            commands::runtime::runtime_running_briefs,
+            commands::runtime::runtime_stop_blocking,
             commands::runtime::runtime_get_logs,
             commands::runtime::runtime_clear_logs,
             commands::runtime::runtime_export_logs,

@@ -745,6 +745,26 @@ fn samples() -> Map<String, Value> {
             at: "2026-08-29T00:00:00Z".into(),
         }),
     );
+    // R-21 §47/§48/§49 Git 联动
+    m.insert(
+        "DependencyChangedPayload".into(),
+        json!(runtime_events::DependencyChangedPayload {
+            workspace_id: 1,
+            runtime_name: "boot".into(),
+            reason: "filesModified".into(),
+            repos: vec!["/ws/repo-auth".into(), "/ws/repo-common".into()],
+            affected_modules: vec!["com.example:auth".into(), "com.example:common".into()],
+            at: "2026-08-29T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "RuntimeRunningBrief".into(),
+        json!(crate::runtime::git_link::RuntimeRunningBrief {
+            workspace_id: 1,
+            runtime_name: "boot".into(),
+            status: "running".into(),
+        }),
+    );
     // §64 事件 payload（runtime.<event> 一一对应）
     m.insert(
         "ProjectDiscoveredPayload".into(),
@@ -2358,6 +2378,13 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ),
     ("EnvironmentServiceOutcome", "types/runtime.ts", "EnvironmentServiceOutcome"),
     ("RuntimeTemplate", "types/runtime.ts", "RuntimeTemplate"),
+    // R-21 §47/§48/§49 Git 联动
+    (
+        "DependencyChangedPayload",
+        "types/runtime.ts",
+        "DependencyChangedPayload",
+    ),
+    ("RuntimeRunningBrief", "types/runtime.ts", "RuntimeRunningBrief"),
     // R-13 Runtime Scope 预览
     ("ClosurePreview", "types/runtime.ts", "ClosurePreview"),
     // R-14 §75 Command Safety 脚本确认

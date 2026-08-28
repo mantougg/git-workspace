@@ -716,6 +716,7 @@ import {
 } from "@/api/commit";
 import type { CommitScanFinding, CommitIdentity } from "@/types/commit";
 import { selectRepos, batchBranchOp, batchDryRun } from "@/api/batch";
+import { guardRuntimeRunning } from "@/utils/runtimeGuard";
 import type { DryRunItem } from "@/types/batch";
 import {
   saveWorkspaceStash,
@@ -1717,6 +1718,10 @@ async function handleBranchOp() {
   if (!d.name.trim()) {
     message.warning("请输入分支名");
     return;
+  }
+  if (d.op === "checkout") {
+    // R-21 §49：批量检出前检查运行中 Runtime 应用（Stop & Switch / Cancel）。
+    if (!(await guardRuntimeRunning(dialog, message))) return;
   }
   if (d.op === "delete") {
     try {

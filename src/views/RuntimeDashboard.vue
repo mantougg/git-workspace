@@ -61,6 +61,35 @@
       @retry="pendingRetry?.()"
     />
 
+    <!-- R-21 §47/§48：Runtime Dependency Changed 提示条（snooze 支持） -->
+    <n-alert
+      v-for="[name, payload] in store.dependencyChanged"
+      :key="name"
+      type="warning"
+      class="dep-changed-alert"
+      closable
+      @close="store.dismissDependencyChanged(name)"
+    >
+      <template #header>
+        Runtime Dependency Changed · {{ name }}
+        <n-tag size="small" :bordered="false" :type="payload.reason === 'branchSwitched' ? 'info' : 'warning'">
+          {{ payload.reason === "branchSwitched" ? "分支切换 · POM 变化" : "仓库文件修改" }}
+        </n-tag>
+      </template>
+      <n-space vertical :size="4">
+        <span class="mono dep-changed-line">
+          受影响模块：{{ payload.affectedModules.join("、") || "—" }}
+        </span>
+        <span class="mono dep-changed-line">仓库：{{ payload.repos.join("、") }}</span>
+        <n-space :size="8">
+          <n-button size="small" type="primary" @click="onRebuildRestart(name)">
+            Rebuild &amp; Restart
+          </n-button>
+          <n-button size="small" @click="store.dismissDependencyChanged(name)">稍后</n-button>
+        </n-space>
+      </n-space>
+    </n-alert>
+
     <!-- D-11 摘要行：高密度平铺（与 DashboardView summary-strip 同模式） -->
     <n-spin :show="store.loading">
       <div class="summary-strip">
@@ -482,6 +511,16 @@ function stageOf(name: string): string | null {
 const runningCount = computed(
   () => store.configs.filter((c) => isRunning(c.name)).length,
 );
+
+/** R-21 §47/§48：从联动提示一键 Rebuild & Restart（复用 RebuildRestart 任务）。 */
+async function onRebuildRestart(name: string) {
+  try {
+    await store.rebuildRestart(name);
+    store.dismissDependencyChanged(name);
+  } catch (e) {
+    message.error("Rebuild & Restart 提交失败：" + errMsg(e));
+  }
+}
 const startingCount = computed(
   () => store.configs.filter((c) => {
     const p = processOf(c.name);

@@ -389,6 +389,20 @@
     ],
     "onFailure": "continue"
   },
+  "DependencyChangedPayload": {
+    "affectedModules": [
+      "com.example:auth",
+      "com.example:common"
+    ],
+    "at": "2026-08-29T00:00:00Z",
+    "reason": "filesModified",
+    "repos": [
+      "/ws/repo-auth",
+      "/ws/repo-common"
+    ],
+    "runtimeName": "boot",
+    "workspaceId": 1
+  },
   "DependencyEdge": {
     "dependency": {
       "artifactId": "library",
@@ -1553,6 +1567,11 @@
       "/ws/repo"
     ],
     "pomPath": "/ws/.gitworkspace/runtime/app/pom.xml"
+  },
+  "RuntimeRunningBrief": {
+    "runtimeName": "boot",
+    "status": "running",
+    "workspaceId": 1
   },
   "RuntimeScope": [
     {

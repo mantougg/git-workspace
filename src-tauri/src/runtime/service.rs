@@ -498,6 +498,39 @@ impl RuntimeService {
         self.processes.get_process(process_id)
     }
 
+    /// R-21 §49 操作保护：全部工作区「运行中应用」摘要（轻量 DB 读，
+    /// 供前端 Checkout 前的确认弹窗；不做任何 git 操作）。
+    pub fn running_briefs(&self) -> Vec<crate::runtime::git_link::RuntimeRunningBrief> {
+        let conn = self.db.lock().unwrap();
+        let mut briefs = Vec::new();
+        if let Ok(workspaces) = dao::list_workspaces(&conn) {
+            for ws in workspaces {
+                if let Ok(rows) = crate::runtime::launch::store::list_processes(&conn, ws.id) {
+                    for row in rows {
+                        if row.status.is_active() {
+                            briefs.push(crate::runtime::git_link::RuntimeRunningBrief {
+                                workspace_id: ws.id,
+                                runtime_name: row.runtime_name,
+                                status: row.status.as_str().to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        briefs
+    }
+
+    /// R-21 §49 Stop & Switch：同步优雅停止（带默认宽限），供保护确认后
+    /// 在切换分支前调用；进程不存在返回 None。
+    pub fn stop_blocking(
+        &self,
+        workspace_id: i64,
+        runtime_name: &str,
+    ) -> AppResult<Option<RuntimeProcessInfo>> {
+        self.processes.stop_runtime(workspace_id, runtime_name, None)
+    }
+
     /// R-16 `runtime_get_health`：单进程健康快照（无探针为 None）。
     pub fn get_health(
         &self,

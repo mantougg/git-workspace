@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**20** · 进行中：**0** · 未开始：**6**
-- 完成度：**20 / 26（77%）**
+- 已完成：**21** · 进行中：**0** · 未开始：**5**
+- 完成度：**21 / 26（81%）**
 
 ## MVP 口径（源文档 §91 / §92）
 
@@ -72,7 +72,7 @@
 | R-18 | 构建加速：mvnd 与构建缓存分级 | P1 | ✅ | R-09, R-05 | [R-18-mvnd-build-cache.md](./R-18-mvnd-build-cache.md) |
 | R-19 | Runtime Templates | P1 | ✅ | R-07 | [R-19-runtime-templates.md](./R-19-runtime-templates.md) |
 | R-20 | Runtime 依赖图可视化 | P1 | ✅ | R-02, R-13 | [R-20-dependency-visualization.md](./R-20-dependency-visualization.md) |
-| R-21 | Git 联动（Status 提示 / Branch 联动 / 操作保护） | P1 | ⬜ | R-10, T-02, T-09 | [R-21-git-integration.md](./R-21-git-integration.md) |
+| R-21 | Git 联动（Status 提示 / Branch 联动 / 操作保护） | P1 | ✅ | R-10, T-02, T-09 | [R-21-git-integration.md](./R-21-git-integration.md) |
 
 ### Phase 3 · 扩展运行时（P2，5 个）
 

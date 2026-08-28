@@ -181,6 +181,14 @@ pub fn batch_branch_op(
         .collect();
     let task_ids = state.task_manager.submit(&requests)?;
 
+    // R-21 §48：批量 Checkout 提交后通知 Git 联动引擎复核 POM 变化
+    //（提交时刻记录 pre-fingerprint；重试窗口覆盖「重算先于切换完成」竞态）。
+    if matches!(op, BranchOpKind::Checkout) {
+        for p in &repo_paths {
+            state.git_link.notify_branch_switched(p);
+        }
+    }
+
     // T-34: record the accepted batch (best-effort; a log failure must not
     // fail the already-queued operation).
     if !snapshots.is_empty() {

@@ -4,6 +4,7 @@ pub mod build;
 pub mod config;
 pub mod environment;
 pub mod events;
+pub mod git_link;
 pub mod guard;
 pub mod health;
 pub mod launch;
@@ -61,3 +62,5 @@ pub use spring_boot::{
 };
 
 pub use watch::{ignore_path, RuntimeWatchEngine};
+
+pub use git_link::{GitLinkEngine, RuntimeRunningBrief};

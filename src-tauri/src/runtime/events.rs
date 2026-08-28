@@ -47,6 +47,7 @@ pub const EVENT_RESTART_STARTED: &str = "runtime_restart_started";
 pub const EVENT_RESTART_COMPLETED: &str = "runtime_restart_completed";
 pub const EVENT_ENVIRONMENT_PROGRESS: &str = "runtime_environment_progress";
 pub const EVENT_ENVIRONMENT_COMPLETED: &str = "runtime_environment_completed";
+pub const EVENT_DEPENDENCY_CHANGED: &str = "runtime_dependency_changed";
 
 /// Start 流水线的 UI 阶段（§65：Preparing ✓ / Resolving ✓ / Building ▓ /
 /// Starting ○）。与 `LifecycleStatus` 的前四个状态一一对应。
@@ -277,6 +278,23 @@ pub struct EnvironmentCompletedPayload {
     /// true = 全部服务 Ready；false = 存在 Failed（Skipped 不算失败）。
     pub success: bool,
     pub services: Vec<EnvironmentServiceOutcome>,
+    pub at: String,
+}
+
+/// `runtime_dependency_changed`：R-21 §47/§48 Git 联动提示——参与运行中
+/// 应用闭包的仓库出现 Modified，或分支切换后 POM 发生变化。事件是通知：
+/// UI 收到后展示提示条（可 snooze），[Rebuild & Restart] 由用户点击触发。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyChangedPayload {
+    pub workspace_id: i64,
+    pub runtime_name: String,
+    /// 触发原因：`filesModified`（§47 Status 联动）/ `branchSwitched`（§48）。
+    pub reason: String,
+    /// 发生变化的仓库路径（归一化为正斜杠）。
+    pub repos: Vec<String>,
+    /// 受影响模块 GA 列表（闭包内、按仓库归属推导）。
+    pub affected_modules: Vec<String>,
     pub at: String,
 }
 

@@ -12,6 +12,7 @@ import { RUNTIME_EVENTS } from "@/api/runtime";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type {
   BuildProgressPayload,
+  DependencyChangedPayload,
   FileChangedPayload,
   HealthChangedPayload,
   HealthStatus,
@@ -58,6 +59,9 @@ export const useRuntimeStore = defineStore("runtime", () => {
   const lastFileChange = ref<FileChangedPayload | null>(null);
   /** R-17：最近一次自动重建重启结果（restart_completed 事件驱动）。 */
   const lastRestart = ref<RestartCompletedPayload | null>(null);
+  /** R-21 §47/§48：Git 联动提示（runtimeName → 最近一条非空提示；
+   *  受影响仓库恢复干净或用户 snooze 后清除）。 */
+  const dependencyChanged = ref<Map<string, DependencyChangedPayload>>(new Map());
 
   let unlisteners: UnlistenFn[] = [];
 
@@ -201,6 +205,15 @@ export const useRuntimeStore = defineStore("runtime", () => {
     });
   }
 
+  /** R-17/R-21：Stop → 完整构建 → Start。 */
+  async function rebuildRestart(name: string): Promise<string> {
+    return runtimeApi.runtimeRebuildRestart({
+      workspaceId: requireWorkspace(),
+      runtimeName: name,
+      options: {},
+    });
+  }
+
   async function build(name: string): Promise<string> {
     return runtimeApi.runtimeBuild({
       workspaceId: requireWorkspace(),
@@ -306,6 +319,14 @@ export const useRuntimeStore = defineStore("runtime", () => {
       await listen<RestartCompletedPayload>(RUNTIME_EVENTS.restartCompleted, (e) => {
         lastRestart.value = e.payload;
       }),
+      // R-21：Git 联动提示——空列表 = 恢复干净，清除该应用的横幅。
+      await listen<DependencyChangedPayload>(RUNTIME_EVENTS.dependencyChanged, (e) => {
+        if (e.payload.repos.length === 0) {
+          dependencyChanged.value.delete(e.payload.runtimeName);
+        } else {
+          dependencyChanged.value.set(e.payload.runtimeName, e.payload);
+        }
+      }),
     ];
   }
 
@@ -333,6 +354,11 @@ export const useRuntimeStore = defineStore("runtime", () => {
     closureInfo,
     lastFileChange,
     lastRestart,
+    dependencyChanged,
+    /** R-21：用户点击「稍后」/ 处理完成 → 手动清除提示（snooze）。 */
+    dismissDependencyChanged(runtimeName: string) {
+      dependencyChanged.value.delete(runtimeName);
+    },
     reloadAll,
     loadConfigs,
     loadProjects,
@@ -343,6 +369,7 @@ export const useRuntimeStore = defineStore("runtime", () => {
     start,
     stop,
     restart,
+    rebuildRestart,
     build,
     resolveDependencies,
     startEnvironment,

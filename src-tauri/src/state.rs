@@ -79,6 +79,11 @@ pub struct AppState {
     /// Runtime 控制面（R-12）：§63 命令的读侧 + Runtime 任务的执行体
     /// （同时作为 T-05 TaskManager 的 `RuntimeTaskHandler` 装配）。
     pub runtime: Arc<RuntimeService>,
+
+    /// R-21 Git 联动引擎（§47/§48 提示与分支切换复核；§49 保护查询走
+    /// `runtime.running_briefs`）。lib.rs 装配时与 RuntimeService 共享
+    /// 同一批缓存实例。
+    pub git_link: Arc<crate::runtime::git_link::GitLinkEngine>,
 }
 
 /// Build the bounded LRU status cache.
@@ -107,6 +112,7 @@ impl AppState {
         task_manager: Arc<TaskManager>,
         runtime: Arc<RuntimeService>,
         pom_cache: Arc<PomCache>,
+        git_link: Arc<crate::runtime::git_link::GitLinkEngine>,
     ) -> Self {
         Self {
             db,
@@ -117,6 +123,7 @@ impl AppState {
             pom_cache,
             spring_boot_cache: Arc::new(SpringBootDetectionCache::new()),
             runtime,
+            git_link,
         }
     }
 }

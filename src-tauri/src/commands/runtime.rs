@@ -14,7 +14,8 @@ use crate::runtime::{
     resolve_environment, set_workspace_environment, update_config, ClosurePreview,
     CreateRuntimeConfigRequest, DependencyGraphView, LogExportOutcome, ProjectInspection,
     RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeLogQuery, RuntimeOperationRequest,
-    RuntimeProcessInfo, SchedulerConfig, ScriptApproval, UpdateRuntimeConfigRequest,
+    RuntimeProcessInfo, RuntimeRunningBrief, SchedulerConfig, ScriptApproval,
+    UpdateRuntimeConfigRequest,
 };
 use crate::runtime::logs::LogEntry;
 use crate::state::AppState;
@@ -234,6 +235,17 @@ pub fn runtime_restart(
     state: State<'_, AppState>,
 ) -> AppResult<String> {
     let req = state.runtime.operation_task_request(&req, RuntimeOp::Restart);
+    submit_one(&state, req)
+}
+
+/// R-17/R-21：Stop → 完整构建 → Start（源码/POM 变化后的重建重启入口，
+/// 区别于 `runtime_restart` 的 skip-build 复用）。
+#[command]
+pub fn runtime_rebuild_restart(
+    req: RuntimeOperationRequest,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let req = state.runtime.operation_task_request(&req, RuntimeOp::RebuildRestart);
     submit_one(&state, req)
 }
 
@@ -576,4 +588,22 @@ pub fn runtime_reset_script_approvals(
     state
         .runtime
         .reset_script_approvals(workspace_id, runtime_name.as_deref())
+}
+
+/// R-21 §49：全部工作区「运行中应用」摘要（轻量 DB 读，供 Checkout 前
+/// 的保护确认；不做任何 git 操作、不拖慢正常流程）。
+#[command]
+pub fn runtime_running_briefs(state: State<'_, AppState>) -> Vec<RuntimeRunningBrief> {
+    state.runtime.running_briefs()
+}
+
+/// R-21 §49 Stop & Switch：同步优雅停止指定 Runtime（默认宽限后升级
+/// 整树终止），供保护确认后、切换分支前调用。
+#[command]
+pub fn runtime_stop_blocking(
+    workspace_id: i64,
+    runtime_name: String,
+    state: State<'_, AppState>,
+) -> AppResult<Option<RuntimeProcessInfo>> {
+    state.runtime.stop_blocking(workspace_id, &runtime_name)
 }

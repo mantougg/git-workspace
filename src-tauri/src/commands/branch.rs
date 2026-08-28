@@ -53,9 +53,17 @@ pub fn create_branch(repo_path: String, name: String, target: Option<String>) ->
 }
 
 /// Checkout a local branch (safe checkout; dirty-conflict fails with an error).
+/// R-21 §48：成功后通知 Runtime Git 联动引擎做依赖模型重算与 POM 变化复核
+/// （不阻塞 checkout 本身，通知开销为一次 DB 读 + 一次任务提交）。
 #[tauri::command]
-pub fn checkout_branch(repo_path: String, name: String) -> AppResult<()> {
-    branch::checkout_branch(Path::new(&repo_path), &name)
+pub fn checkout_branch(
+    repo_path: String,
+    name: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    branch::checkout_branch(Path::new(&repo_path), &name)?;
+    state.git_link.notify_branch_switched(&repo_path);
+    Ok(())
 }
 
 /// Delete a local branch. Unmerged branches are refused unless `force`.

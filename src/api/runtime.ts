@@ -15,6 +15,7 @@ import type {
   RuntimeLogQuery,
   RuntimeOperationRequest,
   RuntimeProcessInfo,
+  RuntimeRunningBrief,
   RuntimeTemplate,
   SchedulerConfig,
   ScriptApproval,
@@ -40,6 +41,7 @@ export const RUNTIME_EVENTS = {
   restartCompleted: "runtime_restart_completed",
   environmentProgress: "runtime_environment_progress",
   environmentCompleted: "runtime_environment_completed",
+  dependencyChanged: "runtime_dependency_changed",
 } as const;
 
 export function createRuntimeConfig(
@@ -171,8 +173,29 @@ export function runtimeStop(
   return invoke<string>("runtime_stop", { workspaceId, runtimeName });
 }
 
+/** R-21 §49：全部工作区「运行中应用」摘要（Checkout 保护确认查询）。 */
+export function runtimeRunningBriefs(): Promise<RuntimeRunningBrief[]> {
+  return invoke<RuntimeRunningBrief[]>("runtime_running_briefs");
+}
+
+/** R-21 §49 Stop & Switch：同步优雅停止指定 Runtime。 */
+export function runtimeStopBlocking(
+  workspaceId: number,
+  runtimeName: string,
+): Promise<RuntimeProcessInfo | null> {
+  return invoke<RuntimeProcessInfo | null>("runtime_stop_blocking", {
+    workspaceId,
+    runtimeName,
+  });
+}
+
 export function runtimeRestart(req: RuntimeOperationRequest): Promise<string> {
   return invoke<string>("runtime_restart", { req });
+}
+
+/** R-17/R-21：Stop → 完整构建 → Start（区别于 restart 的 skip-build 复用）。 */
+export function runtimeRebuildRestart(req: RuntimeOperationRequest): Promise<string> {
+  return invoke<string>("runtime_rebuild_restart", { req });
 }
 
 export function runtimeListProcesses(
