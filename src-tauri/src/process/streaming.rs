@@ -88,39 +88,43 @@ pub fn spawn_streaming_ext(
     let mut exit_status = None;
     let mut timed_out = false;
     let mut cancelled = false;
+    // 两侧 reader 均已结束（EOF / 读取错误）。channel 已断开，不能再 recv
+    // （会立即返回 Disconnected 造成忙轮询），改为短睡轮询。
+    // F-12：绝不能在此处直接 child.wait() 阻塞——子进程在丢失输出 reader
+    // 后仍可能存活（如 JVM 输出 GBK 非法字节杀死 reader），阻塞期间
+    // cancel 与 timeout 将永远无人轮询。
+    let mut readers_done = false;
 
     loop {
-        match rx.recv_timeout(POLL_INTERVAL) {
-            Ok((stream, line)) => on_line(stream, &line),
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                // 两个 reader 都结束了：子进程已关闭输出流，收最终退出码。
-                if exit_status.is_none() {
-                    exit_status = Some(child.wait()?);
-                }
-                break;
+        if readers_done {
+            std::thread::sleep(POLL_INTERVAL);
+        } else {
+            match rx.recv_timeout(POLL_INTERVAL) {
+                Ok((stream, line)) => on_line(stream, &line),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => readers_done = true,
             }
         }
 
         if exit_status.is_none() {
             if let Some(status) = child.try_wait()? {
-                // 不 break：继续 drain channel 直到 reader 线程结束。
+                // 不立即退出：继续 drain 残余输出，直到 reader 线程结束。
                 exit_status = Some(status);
-                continue;
-            }
-            if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+            } else if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
                 cancelled = true;
                 crate::process::kill_tree::kill_process_tree(child.id());
                 exit_status = Some(child.wait()?);
-                continue;
-            }
-            if let Some(limit) = timeout {
+            } else if let Some(limit) = timeout {
                 if start.elapsed() >= limit {
                     timed_out = true;
                     crate::process::kill_tree::kill_process_tree(child.id());
                     exit_status = Some(child.wait()?);
                 }
             }
+        }
+
+        if readers_done && exit_status.is_some() {
+            break;
         }
     }
 
@@ -140,13 +144,18 @@ fn spawn_reader<R: std::io::Read + Send + 'static>(
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut reader = BufReader::new(reader);
-        let mut line = String::new();
+        let mut buf: Vec<u8> = Vec::new();
         loop {
-            line.clear();
-            match reader.read_line(&mut line) {
+            buf.clear();
+            match reader.read_until(b'\n', &mut buf) {
                 // 0 = EOF；>0 含不以换行结尾的最后一段。
                 Ok(0) => break,
                 Ok(_) => {
+                    // F-12：按字节读 + lossy 解码——非法 UTF-8（中文 Windows
+                    // 下 JVM 默认 GBK 输出）只把坏字节替换为 U+FFFD，不让
+                    // reader 早死。早死会丢光后续日志、管道写满后卡死被监控
+                    // 进程，并把主循环推入 Disconnected 分支。
+                    let line = String::from_utf8_lossy(&buf);
                     let trimmed = line.trim_end_matches(['\r', '\n']);
                     if tx.send((stream, trimmed.to_string())).is_err() {
                         break;
@@ -161,8 +170,9 @@ fn spawn_reader<R: std::io::Read + Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
+    #[cfg(unix)]
     fn sh_command(script: &str) -> Command {
         let mut cmd = Command::new("sh");
         cmd.args(["-c", script]);
@@ -270,5 +280,93 @@ mod tests {
         let exit = spawn_streaming(&mut cmd, None, None, &mut |_, _| {}).unwrap();
         assert_eq!(exit.exit_code, Some(3));
         assert!(!exit.timed_out && !exit.cancelled);
+    }
+
+    /// F-12 次级缺陷回归：非法 UTF-8（中文 Windows 上 JVM 的 GBK 输出）不应
+    /// 杀死 reader；lossy 解码后继续读后续行。修复前 `read_line` 遇非法字节
+    /// 直接 break，后续输出全丢且触发主循环 Disconnected 分支。
+    #[test]
+    fn reader_lossy_decodes_invalid_utf8_and_keeps_reading() {
+        let data: &[u8] = b"alpha\n\xff\xfegb\nbeta\n";
+        let (tx, rx) = mpsc::channel();
+        let handle = spawn_reader(std::io::Cursor::new(data), OutputStream::Stdout, tx);
+        handle.join().unwrap();
+        let lines: Vec<String> = rx.try_iter().map(|(_, line)| line).collect();
+        assert_eq!(lines, vec!["alpha", "\u{FFFD}\u{FFFD}gb", "beta"]);
+    }
+
+    /// 向 stdout 和 stderr 各写一段非法 UTF-8 后长驻的子进程：两个 reader
+    /// 都会死亡、channel 断开，复现 F-12「reader 全断后主循环阻塞在
+    /// child.wait()，cancel 失明」的场景（hussar JVM 的 GBK 输出同款）。
+    #[cfg(unix)]
+    fn stream_killing_command() -> Command {
+        // 用八进制转义保证 dash 等 POSIX printf 也能发出原始字节。
+        sh_command("printf '\\377\\376\\n'; printf '\\377\\376\\n' >&2; sleep 300")
+    }
+
+    /// Windows 等价物：powershell 经 OpenStandardOutput/Error 写原始字节。
+    #[cfg(windows)]
+    fn stream_killing_command() -> Command {
+        let mut cmd = Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-Command",
+            "$b=[byte[]](255,254,10); \
+             [Console]::OpenStandardOutput().Write($b,0,3); \
+             [Console]::OpenStandardError().Write($b,0,3); \
+             Start-Sleep -Seconds 300",
+        ]);
+        cmd
+    }
+
+    /// F-12 回归：reader 全部断开后，cancel 仍须被观察并杀掉进程树。
+    /// 看门狗 recv_timeout 保证修复前是「失败」而非「挂死」。
+    #[test]
+    fn cancel_kills_child_after_readers_disconnect() {
+        let mut cmd = stream_killing_command();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let pid_slot = Arc::new(Mutex::new(None));
+        let (done_tx, done_rx) = mpsc::channel();
+        {
+            let cancel = Arc::clone(&cancel);
+            let pid_slot = Arc::clone(&pid_slot);
+            std::thread::spawn(move || {
+                let exit = spawn_streaming_ext(
+                    &mut cmd,
+                    Some(&cancel),
+                    None,
+                    Some(&pid_slot),
+                    &mut |_, _| {},
+                );
+                let _ = done_tx.send(exit);
+            });
+        }
+
+        // 等 spawn 拿到 pid，再留出两个 reader 吃到非法字节死亡的时间。
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let pid = loop {
+            if let Some(pid) = *pid_slot.lock().unwrap() {
+                break pid;
+            }
+            assert!(Instant::now() < deadline, "spawn 后 10s 内应拿到 pid");
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        std::thread::sleep(Duration::from_millis(800));
+
+        cancel.store(true, Ordering::Relaxed);
+        let result = done_rx.recv_timeout(Duration::from_secs(15));
+        if result.is_err() {
+            // 清理卡住的监督线程与子进程，避免测试进程退出后残留。
+            crate::process::kill_tree::kill_process_tree(pid);
+        }
+        let exit = result
+            .expect("reader 断开后 cancel 也必须被观察（F-12）")
+            .expect("spawn 不应失败");
+        assert!(exit.cancelled);
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(
+            !crate::process::kill_tree::process_alive(pid, None),
+            "cancel 后进程树必须真实消失"
+        );
     }
 }

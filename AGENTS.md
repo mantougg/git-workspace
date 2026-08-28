@@ -92,6 +92,12 @@ This project is indexed by GitNexus as **git-workspace** (6606 symbols, 15045 re
   Windows 无 SIGTERM 语义，优雅停止用 `terminate_process`，超时升级整树终止。
 - **子进程 spawn**：Windows 必须设 `CREATE_NO_WINDOW`（`process/streaming.rs` 已有）；
   禁止依赖 shell 特定行为（`ls`、`pgrep` 等）编写业务逻辑。
+- **子进程输出监控（F-12）**：流式监控循环在输出 reader 全部断开后**不得阻塞
+  在 `child.wait()`**——被监控进程在 reader 死后仍可能存活，阻塞期间取消/超时
+  信号将无人轮询（Stop 杀不掉 JVM 的根因）。reader 必须按字节读 +
+  `from_utf8_lossy`：中文 Windows 下 JVM 默认 GBK 输出，`read_line` 遇非法
+  UTF-8 会直接杀死 reader（丢光后续日志，管道写满后还会卡死被监控进程）。
+  参照实现：`process/streaming.rs`。
 - **超长命令行（F-11）**：Windows CreateProcess 上限 32767 字符。`java -cp
   <数百 jar>` 会超限（os error 206）——走 `runtime/build/pathing_jar.rs`
   的 pathing jar（manifest Class-Path，JDK 8/17/21 均兼容；`@argfile` 需

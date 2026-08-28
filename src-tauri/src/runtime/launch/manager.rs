@@ -583,10 +583,11 @@ impl RuntimeProcessManager {
                          escalating to process-tree kill"
                     );
                     handle.force_kill.store(true, Ordering::Relaxed);
-                    if handle.adopted {
-                        if let Some(pid) = handle.pid() {
-                            kill_process_tree(pid);
-                        }
+                    // F-12：monitor 正常会消费 force_kill 杀树；此处直杀兜底
+                    // monitor 失联（如输出 reader 全断的旧路径）造成的进程残留。
+                    // kill_process_tree 对已死进程是 no-op，重复调用安全。
+                    if let Some(pid) = handle.pid() {
+                        kill_process_tree(pid);
                     }
                     self.wait_outcome(&handle, Duration::from_secs(5));
                 }
@@ -2252,6 +2253,33 @@ mod tests {
             let _ = std::fs::remove_dir_all(&fixture.root);
         }
 
+        /// F-12 回归（unix 变体）：忽略 SIGTERM 且两路输出均含非法 UTF-8
+        /// （reader 全死、channel 断开）的进程——grace 升级时置位的
+        /// force_kill 曾因 monitor 阻塞在 child.wait() 而无人消费。
+        #[test]
+        fn stop_kills_sigterm_ignoring_process_that_closed_streams() {
+            let fixture = mini_fixture("f12unix");
+            let manager = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_millis(50));
+            let info = start_sh(
+                &manager,
+                &fixture,
+                "trap '' TERM; printf '\\377\\376\\n'; printf '\\377\\376\\n' >&2; sleep 300",
+            );
+            let pid = info.pid.unwrap();
+
+            let stopped = manager
+                .stop(info.process_id, Some(Duration::from_millis(500)))
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(200));
+            let alive = process_alive(pid, None);
+            if alive {
+                crate::process::kill_tree::kill_process_tree(pid);
+            }
+            assert_eq!(stopped.status, LifecycleStatus::Stopped);
+            assert!(!alive, "F-12: reader 断开后升级杀树也必须生效");
+            let _ = std::fs::remove_dir_all(&fixture.root);
+        }
+
         #[test]
         fn graceful_stop_uses_sigterm_before_any_kill() {
             let fixture = mini_fixture("graceful");
@@ -2341,6 +2369,83 @@ mod tests {
             }
 
             manager.stop(info.process_id, None).unwrap();
+            let _ = std::fs::remove_dir_all(&fixture.root);
+        }
+    }
+
+    // --------------------------------------------------------------
+    // 真实进程（windows）：F-12 回归——reader 断开后 Stop 仍须杀树。
+    // Windows 无 SIGTERM（terminate 恒 false），停止全押在 force_kill
+    // 链路上，是本缺陷的必现平台。
+    // --------------------------------------------------------------
+
+    #[cfg(windows)]
+    mod real_process_windows {
+        use super::*;
+        use crate::process::process_alive;
+
+        /// powershell 向 stdout/stderr 各写一段非法 UTF-8 后长驻：两个 reader
+        /// 死亡曾令 monitor 阻塞在 child.wait()，force_kill 无人消费
+        /// （F-12 复现路径，等价于 hussar JVM 的 GBK 中文日志输出）。
+        fn gbk_output_plan(working_dir: &Path) -> crate::runtime::build::LaunchPlan {
+            crate::runtime::build::LaunchPlan::MavenGoal {
+                request: crate::maven::exec_model::MavenExecutionRequest {
+                    working_dir: working_dir.to_path_buf(),
+                    executable: "powershell".into(),
+                    goals: vec![
+                        "-NoProfile".into(),
+                        "-Command".into(),
+                        "$b=[byte[]](255,254,10); \
+                         [Console]::OpenStandardOutput().Write($b,0,3); \
+                         [Console]::OpenStandardError().Write($b,0,3); \
+                         Start-Sleep -Seconds 300".into(),
+                    ],
+                    extra_args: vec![],
+                    via_cmd_c: false,
+                    local_repository: None,
+                },
+                env: vec![],
+                preview: "powershell invalid-utf8 sleep".into(),
+            }
+        }
+
+        #[test]
+        fn stop_kills_process_whose_output_streams_closed_early() {
+            let fixture = mini_fixture("f12win");
+            let manager = test_manager(
+                fixture.db.clone(),
+                Arc::new(crate::runtime::launch::SystemLaunchRunner),
+                Arc::new(FakeMavenRunner::successful()),
+                Arc::new(VecEventSink::default()),
+                Duration::from_millis(50),
+            );
+            manager.seed_cached_launch(
+                fixture.workspace_id,
+                "app",
+                gbk_output_plan(&fixture.root),
+                RunStrategy::MavenRun,
+            );
+            // 非法字节杀死 reader → 等不到横幅，start_grace 到期按存活判 Running。
+            let info = manager
+                .start(fixture.workspace_id, "app", StartOptions {
+                    skip_build: true,
+                    start_grace: Duration::from_secs(3),
+                    ..Default::default()
+                })
+                .unwrap();
+            assert_eq!(info.status, LifecycleStatus::Running);
+            let pid = info.pid.expect("spawn 后应有 pid");
+
+            let stopped = manager
+                .stop(info.process_id, Some(Duration::from_secs(2)))
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(300));
+            let alive = process_alive(pid, None);
+            if alive {
+                crate::process::kill_tree::kill_process_tree(pid);
+            }
+            assert_eq!(stopped.status, LifecycleStatus::Stopped);
+            assert!(!alive, "F-12: stop 后进程必须真实消失，不得残留孤儿");
             let _ = std::fs::remove_dir_all(&fixture.root);
         }
     }
@@ -2640,6 +2745,90 @@ mod tests {
             assert_eq!(row.status, LifecycleStatus::Failed);
             assert!(row.exit_code.is_some_and(|code| code != 0));
             let _ = std::fs::remove_dir_all(&root);
+        }
+
+        /// F-12 真实场景复测（manual，需显式 opt-in）：
+        /// `cargo test manual_hussar_stop -- --ignored --nocapture`
+        /// 依赖本机 release.2 工作区（不存在则跳过）。链路：完整 mvn 构建
+        /// → ClasspathRun（F-11 pathing jar）→ Running → stop(15s) → JVM
+        /// 必须真实消失。修复前此场景 stop 返回成功但 JVM 残留（GBK 日志
+        /// 杀死输出 reader，monitor 阻塞 wait 无法消费 force_kill）。
+        #[test]
+        #[ignore = "manual: 依赖本机 release.2 工作区（F-12 真实场景复测）"]
+        fn manual_hussar_base_web_stop_kills_jvm() {
+            let env_root = Path::new(r"D:\AWork\Code\9.6.0-release.2\env");
+            let app_dir = env_root.join("hussar-base-web");
+            if !app_dir.join("pom.xml").exists() || !maven_available() {
+                eprintln!("F-12 manual: release.2 工作区或 mvn 不存在，跳过");
+                return;
+            }
+
+            let mut conn = Connection::open_in_memory().unwrap();
+            crate::db::init_db(&mut conn).unwrap();
+            conn.execute(
+                "INSERT INTO workspaces (name, path, created_at, updated_at) VALUES ('w', ?1, 't', 't')",
+                [env_root.to_string_lossy().to_string()],
+            )
+            .unwrap();
+            let workspace_id = conn.last_insert_rowid();
+            crate::db::dao::upsert_repositories_batch(
+                &mut conn,
+                workspace_id,
+                &[crate::models::repository::ScannedRepo {
+                    path: app_dir.to_string_lossy().to_string(),
+                    name: "hussar-base-web".into(),
+                    relative_path: "hussar-base-web".into(),
+                    git_dir_mtime: None,
+                }],
+            )
+            .unwrap();
+            let discovery = crate::maven::discover_poms(env_root, 5, None, None);
+            // 生产同源：Maven 原生 ~/.m2 本地仓库（§73）。
+            let m2 = PathBuf::from(std::env::var("USERPROFILE").expect("USERPROFILE")).join(".m2");
+            crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &m2).unwrap();
+
+            // 构建与运行同源 JDK（R-14）：hussar 场景绑 JAVA_HOME（temurin-8）。
+            let jdk_home =
+                std::env::var("JAVA_HOME").expect("manual 测试需要 JAVA_HOME（temurin-8）");
+            let mut jdk = crate::java::model::JdkInstallation::new(
+                jdk_home.clone(),
+                crate::java::model::JdkDiscoverySource::System,
+            );
+            jdk.is_valid = true;
+            crate::java::registry::upsert_jdk(&conn, &jdk).unwrap();
+
+            create_config(
+                &conn,
+                &CreateRuntimeConfigRequest {
+                    workspace_id,
+                    config: RuntimeApplicationConfig {
+                        name: "app".into(),
+                        project: app_dir.join("pom.xml").to_string_lossy().to_string(),
+                        // 缺省 → R-06 自动推断 mainClass（F-05 链路，复现原场景）。
+                        main_class: None,
+                        jdk: Some(jdk_home),
+                        ..Default::default()
+                    },
+                },
+            )
+            .unwrap();
+
+            let manager = real_manager(Arc::new(Mutex::new(conn)), Arc::new(VecEventSink::default()));
+            let info = manager
+                .start(workspace_id, "app", classpath_options())
+                .unwrap_or_else(|error| panic!("F-12 manual: start failed: {error}"));
+            assert_eq!(info.status, LifecycleStatus::Running);
+            let pid = info.pid.expect("Running 应有 pid");
+
+            let stopped = manager
+                .stop(info.process_id, Some(Duration::from_secs(15)))
+                .unwrap();
+            assert_eq!(stopped.status, LifecycleStatus::Stopped);
+            std::thread::sleep(Duration::from_millis(500));
+            assert!(
+                !crate::process::process_alive(pid, None),
+                "F-12: stop 后 JVM 必须真实消失（pid={pid}）"
+            );
         }
     }
 }
