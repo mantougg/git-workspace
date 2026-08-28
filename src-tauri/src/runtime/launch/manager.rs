@@ -2421,6 +2421,7 @@ mod tests {
         fn boot_fixture(
             name: &str,
             program_arguments: &[&str],
+            vm_options: &[&str],
         ) -> (PathBuf, Arc<Mutex<Connection>>, i64) {
             let root = unique_root(name);
             std::fs::create_dir_all(&root).unwrap();
@@ -2487,6 +2488,7 @@ mod tests {
                             .iter()
                             .map(|arg| arg.to_string())
                             .collect(),
+                        vm_options: vm_options.iter().map(|opt| opt.to_string()).collect(),
                         ..Default::default()
                     },
                 },
@@ -2526,7 +2528,7 @@ mod tests {
                 eprintln!("R-10: no `mvn` on PATH; skipping real spring boot start test");
                 return;
             }
-            let (root, db, workspace_id) = boot_fixture("bootcycle", &["--server.port=0"]);
+            let (root, db, workspace_id) = boot_fixture("bootcycle", &["--server.port=0"], &[]);
             let events = Arc::new(VecEventSink::default());
             let manager = real_manager(db.clone(), events.clone());
 
@@ -2578,6 +2580,42 @@ mod tests {
             let _ = std::fs::remove_dir_all(&root);
         }
 
+        /// F-04 端到端：「IDEA 启动」预设的 VM options 不影响真实启动——
+        /// 用预设参数把 fixture Spring Boot 应用起到 Running 再停掉。
+        /// 预设清单与前端 `src/config/launchPresets.ts` 保持一致（刻意排除
+        /// idea_rt.jar javaagent 与 @arg_file 等 IDEA 私有项）。
+        #[test]
+        fn idea_preset_vm_options_boot_real_spring_boot_app() {
+            if !maven_available() {
+                eprintln!("F-04: no `mvn` on PATH; skipping IDEA preset boot test");
+                return;
+            }
+            const IDEA_PRESET_VM_OPTIONS: &[&str] = &[
+                "-XX:TieredStopAtLevel=1",
+                "-Dspring.output.ansi.enabled=always",
+                "-Dcom.sun.management.jmxremote",
+                "-Dspring.jmx.enabled=true",
+                "-Dspring.liveBeansView.mbeanDomain",
+                "-Dspring.application.admin.enabled=true",
+                "-Dmanagement.endpoints.jmx.exposure.include=*",
+                "-Dfile.encoding=UTF-8",
+            ];
+            let (root, db, workspace_id) =
+                boot_fixture("bootpreset", &["--server.port=0"], IDEA_PRESET_VM_OPTIONS);
+            let manager = real_manager(db.clone(), Arc::new(VecEventSink::default()));
+
+            let info = manager
+                .start(workspace_id, "app", classpath_options())
+                .unwrap_or_else(|error| panic!("F-04 preset start failed: {error}"));
+            assert_eq!(info.status, LifecycleStatus::Running);
+
+            let stopped = manager
+                .stop(info.process_id, Some(Duration::from_secs(30)))
+                .unwrap();
+            assert_eq!(stopped.status, LifecycleStatus::Stopped);
+            let _ = std::fs::remove_dir_all(&root);
+        }
+
         /// 验收标准 4 端到端：非法端口 → 启动期退出 → ProcessStartFailed
         /// + 行落 Failed 且带非零退出码。
         #[test]
@@ -2586,7 +2624,7 @@ mod tests {
                 eprintln!("R-10: no `mvn` on PATH; skipping crash integration test");
                 return;
             }
-            let (root, db, workspace_id) = boot_fixture("bootcrash", &["--server.port=99999"]);
+            let (root, db, workspace_id) = boot_fixture("bootcrash", &["--server.port=99999"], &[]);
             let manager = real_manager(db.clone(), Arc::new(VecEventSink::default()));
 
             let error = manager

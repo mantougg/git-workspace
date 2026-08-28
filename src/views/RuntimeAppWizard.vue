@@ -100,6 +100,19 @@
         />
       </n-form-item>
 
+      <n-form-item label="启动预设">
+        <div class="preset-field">
+          <n-select
+            :options="presetOptions"
+            placeholder="选择预设模板，一键填充 VM Options（可选）"
+            clearable
+            style="width: 100%; max-width: 560px"
+            @update:value="applyPreset"
+          />
+          <div v-if="appliedPresetHint" class="field-hint">{{ appliedPresetHint }}</div>
+        </div>
+      </n-form-item>
+
       <n-form-item label="VM Options">
         <n-input
           v-model:value="vmOptionsText"
@@ -193,6 +206,7 @@ import {
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import { listJdks } from "@/api/jdk";
 import { detectSpringBoot } from "@/api/springBoot";
+import { LAUNCH_PRESETS } from "@/config/launchPresets";
 import type { JdkInstallation } from "@/types/jdk";
 import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
 import type { RuntimeApplicationConfig } from "@/types/runtime";
@@ -226,6 +240,25 @@ const originalScope = ref<RuntimeScope>({ mode: "auto" });
 
 const vmOptionsText = ref("");
 const programArgsText = ref("");
+
+/** F-04：启动预设（一键填充 VM Options；覆盖式填充，选择即生效）。 */
+const presetOptions = LAUNCH_PRESETS.map((p) => ({
+  label: p.label,
+  value: p.id,
+}));
+const appliedPresetHint = ref("");
+
+function applyPreset(id: string | null) {
+  if (!id) {
+    appliedPresetHint.value = "";
+    return;
+  }
+  const preset = LAUNCH_PRESETS.find((p) => p.id === id);
+  if (!preset) return;
+  vmOptionsText.value = preset.vmOptions.join("\n");
+  appliedPresetHint.value = preset.description;
+  message.success(`已应用预设「${preset.label}」`);
+}
 /** R-14 §75：Pre/Post Build Script（首次执行必须确认）。 */
 const preBuildScriptText = ref("");
 const postBuildScriptText = ref("");
@@ -534,6 +567,10 @@ onMounted(async () => {
   color: var(--gw-text-dim);
   margin-top: 4px;
   width: 100%;
+}
+.preset-field {
+  width: 100%;
+  max-width: 560px;
 }
 .field-hint.warn-hint {
   color: var(--gw-warning);
