@@ -20,8 +20,8 @@
 
 ## 总体进度
 
-- 任务总数：**12**（全部已转为正式任务）
-- 已完成：**12** · 修复中：**0** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**13**（全部已转为正式任务）
+- 已完成：**13** · 修复中：**0** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -41,6 +41,7 @@
 | F-10 | UI 客户端化：Desktop Skin + IDEA 式布局骨架（[改造方案](../desktop-skin-plan.md)） | P3 | ✅ | [F-10-native-ui-discussion.md](./F-10-native-ui-discussion.md) |
 | F-11 | Windows 超长 classpath 启动 spawn 失败（os error 206）→ pathing jar（JDK 8/17/21 兼容） | P0 | ✅ | [F-11-classpath-too-long.md](./F-11-classpath-too-long.md) |
 | F-12 | Stop 无法终止已启动的 JVM（Windows） | P0 | ✅ | [F-12-stop-jvm-leak.md](./F-12-stop-jvm-leak.md) |
+| F-13 | 内容区不可见（AppShell 列向布局把内容区挤到 0 高，只剩左侧菜单） | P0 | ✅ | [F-13-shell-content-zero-height.md](./F-13-shell-content-zero-height.md) |
 
 ---
 
