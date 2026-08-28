@@ -154,13 +154,33 @@ pub fn run() {
 
             // Create TaskManager with 8 workers (Runtime tasks dispatched to
             // the RuntimeService handler, R-12).
-            let task_manager = TaskManager::new(
+            let task_manager = Arc::new(TaskManager::new(
                 8,
                 git_ops,
                 app.handle().clone(),
                 Arc::clone(&db),
                 Some(runtime_handler),
+            ));
+
+            // R-17 File Watch 引擎：只监听「autoRestart 开启且进程活跃」应用的
+            // 闭包模块目录；变化 → 防抖 → 影响分析 → RebuildRestart 任务。
+            // 与 RuntimeService 共享同一批进程管理器 / 图 / 闭包缓存实例。
+            let (watch_processes, watch_graph_cache, watch_closure_cache) =
+                runtime_service.watch_shared_parts();
+            let watch_engine = crate::runtime::watch::RuntimeWatchEngine::spawn(
+                Arc::clone(&db),
+                watch_graph_cache,
+                watch_closure_cache,
+                Arc::new(crate::runtime::events::TauriRuntimeEmitter::new(
+                    app.handle().clone(),
+                )),
+                watch_processes,
             );
+            watch_engine.attach_task_manager({
+                let submitter: Arc<dyn crate::runtime::watch::WatchTaskSubmitter> =
+                    task_manager.clone();
+                submitter
+            });
 
             // Create and manage app state
             let state = AppState::new(db, task_manager, Arc::clone(&runtime_service), pom_cache);

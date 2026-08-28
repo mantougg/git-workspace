@@ -105,6 +105,7 @@ pub fn builtin_templates() -> Vec<RuntimeTemplate> {
             pre_build_script: None,
             post_build_script: None,
             health_check: None,
+            auto_restart: None,
         },
     }]
 }

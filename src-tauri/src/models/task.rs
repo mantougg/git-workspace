@@ -117,6 +117,10 @@ pub struct RuntimeTaskOptions {
     pub skip_tests: Option<bool>,
     #[serde(default)]
     pub offline: bool,
+    /// R-17 §44 增量构建：watch 影响分析给出的受影响模块 GA 子集（已含
+    /// 反向依赖传播）。非空时流水线以其为必建下限，与 R-18 指纹子集合并。
+    #[serde(default)]
+    pub affected_modules: Vec<String>,
 }
 
 /// Status of a background task.

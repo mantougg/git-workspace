@@ -12,10 +12,12 @@ import { RUNTIME_EVENTS } from "@/api/runtime";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type {
   BuildProgressPayload,
+  FileChangedPayload,
   HealthChangedPayload,
   HealthStatus,
   LogLine,
   ProcessOutputPayload,
+  RestartCompletedPayload,
   RuntimeApplicationConfig,
   RuntimeConfigSummary,
   RuntimeProcessInfo,
@@ -51,6 +53,11 @@ export const useRuntimeStore = defineStore("runtime", () => {
   /** F-23：runtimeName → 闭包摘要（源码依赖数与名称）；
    *  null = 依赖图未解析（未跑「解析依赖」）或计算失败。 */
   const closureInfo = ref<Map<string, { sourceCount: number; sourceNames: string[] } | null>>(new Map());
+  /** R-17：最近一次 File Watch 检测到的源码变更（file_changed 事件驱动）；
+   *  仅提示用途，自动重建由后端 watch 引擎完成。 */
+  const lastFileChange = ref<FileChangedPayload | null>(null);
+  /** R-17：最近一次自动重建重启结果（restart_completed 事件驱动）。 */
+  const lastRestart = ref<RestartCompletedPayload | null>(null);
 
   let unlisteners: UnlistenFn[] = [];
 
@@ -291,6 +298,14 @@ export const useRuntimeStore = defineStore("runtime", () => {
           console.error("R-13: project discovered refresh failed:", e);
         }
       }),
+      // R-17：watch 引擎检测到源码变更 / 自动重启完成——只记录展示，
+      // 重建与重启编排完全在后端（事件是通知，不是状态传输，§64）。
+      await listen<FileChangedPayload>(RUNTIME_EVENTS.fileChanged, (e) => {
+        lastFileChange.value = e.payload;
+      }),
+      await listen<RestartCompletedPayload>(RUNTIME_EVENTS.restartCompleted, (e) => {
+        lastRestart.value = e.payload;
+      }),
     ];
   }
 
@@ -316,6 +331,8 @@ export const useRuntimeStore = defineStore("runtime", () => {
     health,
     logBuffers,
     closureInfo,
+    lastFileChange,
+    lastRestart,
     reloadAll,
     loadConfigs,
     loadProjects,

@@ -476,6 +476,23 @@ impl RuntimeService {
         self.processes.list_processes(workspace_id)
     }
 
+    /// R-17：watch 引擎装配所需的共享设施（进程管理器 / 图缓存 / 闭包缓存）。
+    /// 返回的是与 RuntimeService 内部**同一批**实例（缓存与限流全局一致），
+    /// 仅供 lib.rs 装配 `RuntimeWatchEngine` 使用。
+    pub fn watch_shared_parts(
+        &self,
+    ) -> (
+        Arc<RuntimeProcessManager>,
+        Arc<DependencyGraphCache>,
+        Arc<RuntimeClosureCache>,
+    ) {
+        (
+            Arc::clone(&self.processes),
+            Arc::clone(&self.graph_cache),
+            Arc::clone(&self.closure_cache),
+        )
+    }
+
     /// `runtime_process_status`。
     pub fn process_status(&self, process_id: i64) -> AppResult<Option<RuntimeProcessInfo>> {
         self.processes.get_process(process_id)
@@ -1588,6 +1605,8 @@ pub fn build_options_of(options: &RuntimeTaskOptions) -> BuildOptions {
         strategy: options.strategy,
         skip_tests: options.skip_tests.unwrap_or(defaults.skip_tests),
         offline: options.offline,
+        // R-17：watch 影响分析的必建子集透传给流水线（与指纹子集合并）。
+        affected_modules: options.affected_modules.clone(),
         ..defaults
     }
 }

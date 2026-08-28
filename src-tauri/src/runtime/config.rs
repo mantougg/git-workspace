@@ -64,6 +64,11 @@ pub struct RuntimeApplicationConfig {
     /// up/down 语义）。配置持久化在本 JSON 内（向后兼容：缺字段有默认值）。
     #[serde(default)]
     pub health_check: Option<crate::runtime::health::HealthCheckConfig>,
+    /// R-17 §42 自动重启开关（File Watch 检测到源码变更 → 增量重建 →
+    /// 自动重启）。默认关（`None`/`false` 均视为关）；watch 引擎只监听
+    /// 开启了该开关且进程活跃的应用。
+    #[serde(default)]
+    pub auto_restart: Option<bool>,
 }
 
 fn default_schema_version() -> u32 {
@@ -92,6 +97,7 @@ impl Default for RuntimeApplicationConfig {
             pre_build_script: None,
             post_build_script: None,
             health_check: None,
+            auto_restart: None,
         }
     }
 }

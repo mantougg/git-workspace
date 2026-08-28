@@ -246,6 +246,7 @@ fn samples() -> Map<String, Value> {
             healthy_after: Some(1),
             unhealthy_after: Some(3),
         }),
+        auto_restart: Some(true),
     };
     m.insert(
         "RuntimeApplicationConfig".into(),
@@ -707,6 +708,7 @@ fn samples() -> Map<String, Value> {
                 pre_build_script: None,
                 post_build_script: None,
                 health_check: None,
+                auto_restart: None,
             },
         }),
     );
@@ -1091,6 +1093,7 @@ fn samples() -> Map<String, Value> {
                     skip_build: false,
                     skip_tests: Some(true),
                     offline: false,
+                    affected_modules: vec![],
                 },
             },
         ]),
@@ -1102,6 +1105,7 @@ fn samples() -> Map<String, Value> {
             skip_build: true,
             skip_tests: Some(false),
             offline: true,
+            affected_modules: vec!["com.example:auth".into()],
         }),
     );
     m.insert(

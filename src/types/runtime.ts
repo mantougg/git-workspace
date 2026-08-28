@@ -30,6 +30,8 @@ export interface RuntimeApplicationConfig {
   postBuildScript: string | null;
   /** R-16 §41 健康检查配置；null = 不探针（保持生命周期推导语义）。 */
   healthCheck: HealthCheckConfig | null;
+  /** R-17 §42 自动重启开关（File Watch → 增量重建 → 自动重启）；缺省关。 */
+  autoRestart: boolean | null;
 }
 
 export interface RuntimeConfigSummary {

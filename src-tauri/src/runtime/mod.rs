@@ -13,6 +13,7 @@ pub mod script_approval;
 pub mod service;
 pub mod spring_boot;
 pub mod templates;
+pub mod watch;
 
 pub use config::{
     create_config, delete_config, get_config, get_workspace_environment, list_configs,
@@ -58,3 +59,5 @@ pub use spring_boot::{
     detect_spring_boot_workspace, SpringBootCandidate, SpringBootDetectionCache, SpringBootProject,
     SpringBootWorkspaceResult,
 };
+
+pub use watch::{ignore_path, RuntimeWatchEngine};

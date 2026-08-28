@@ -243,6 +243,37 @@ pub fn execute_build(
             }
             dep_cache::RebuildPlan::RebuildAll => {}
         }
+
+        // R-17 §44：watch 影响分析的必建子集——显式变更信号优先于「指纹
+        // 未变」判断：非空时撤销 SkipAll 并与指纹子集取并集；RebuildAll
+        // 保持全量（全量已覆盖 affected 子集，不缩窄）。
+        if !request.options.affected_modules.is_empty() {
+            match build_subset.take() {
+                Some(subset) => {
+                    let mut merged: std::collections::BTreeSet<String> =
+                        subset.into_iter().collect();
+                    merged.extend(request.options.affected_modules.iter().cloned());
+                    build_subset = Some(merged.into_iter().collect());
+                }
+                None if skip_build_call => {
+                    log::info!(
+                        "R-17: watch affected {} module(s) override dependency-cache SkipAll",
+                        request.options.affected_modules.len()
+                    );
+                    redacting.on_line(
+                        OutputStream::Stdout,
+                        &format!(
+                            "[R-17] 文件变更：重建受影响模块（{}）",
+                            request.options.affected_modules.join(", ")
+                        ),
+                    );
+                    skip_build_call = false;
+                    build_subset = Some(request.options.affected_modules.clone());
+                }
+                // RebuildAll：保持全量构建。
+                None => {}
+            }
+        }
     }
 
     let mut build_request = strategy::build_maven_request_with_subset(
@@ -1833,6 +1864,58 @@ mod tests {
         real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
             .unwrap_or_else(|error| panic!("post-increment build failed: {error}\n{}", sink.tail.tail()));
         assert_eq!(sink.invocations, after_first + 1);
+        let _ = fs::remove_dir_all(fixture.root);
+    }
+
+    /// R-17 验收：watch 影响分析给出的 affected_modules 必建子集——即使
+    /// R-18 指纹判定 SkipAll，也必须执行一次 `-pl` 增量构建（显式变更
+    /// 信号优先于「指纹未变」），且 `-pl` 含受影响模块。
+    #[test]
+    fn affected_modules_override_dependency_cache_skip_with_real_maven() {
+        if !maven_available() {
+            eprintln!("R-17: no `mvn` on PATH; skipping affected-modules integration test");
+            return;
+        }
+        let mut fixture = setup_single_repo_boot("r17affected");
+        fixture.create_boot_runtime(&fixture.app_pom_path());
+        let mut sink = MavenCountingSink {
+            invocations: 0,
+            tail: RingTail::new(),
+        };
+
+        // 第一次构建：全量（写入指纹缓存）。
+        real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
+            .unwrap_or_else(|error| panic!("first build failed: {error}\n{}", sink.tail.tail()));
+
+        // 不改任何文件，但 watch 报告 lib 源码变更（R-17 影响分析结果）→
+        // 指纹本会 SkipAll；affected_modules 必须覆盖为一次 -pl 构建。
+        let outcome = real_build_opts(
+            &mut fixture,
+            BuildOptions {
+                strategy: Some(RunStrategy::MavenRun),
+                timeout: Some(INTEGRATION_TIMEOUT),
+                affected_modules: vec!["com.r09:lib".into()],
+                ..Default::default()
+            },
+            &mut sink,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("affected build failed: {error}\n{}", sink.tail.tail()));
+        assert_eq!(
+            sink.invocations,
+            2,
+            "affected_modules must override the SkipAll verdict with exactly one maven call"
+        );
+        assert!(
+            sink.tail.tail().contains("[R-17] 文件变更"),
+            "R-17 affected rebuild must be visible in build log: {}",
+            sink.tail.tail()
+        );
+        assert!(
+            outcome.build_command_preview.contains("com.r09:lib"),
+            "-pl subset must contain the affected module: {}",
+            outcome.build_command_preview
+        );
         let _ = fs::remove_dir_all(fixture.root);
     }
 

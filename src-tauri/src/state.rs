@@ -56,8 +56,9 @@ pub struct AppState {
     pub status_cache: Arc<Cache<String, RepoStatus>>,
 
     /// Background task manager for Git operations (fetch/pull/push/commit).
-    /// Thread-safe internally (uses DashMap + tokio channel).
-    pub task_manager: TaskManager,
+    /// Arc-shared so the R-17 watch engine can attach the same instance as
+    /// its task submitter (watch.rs `WatchTaskSubmitter`).
+    pub task_manager: Arc<TaskManager>,
 
     /// File watcher for real-time repository status updates.
     /// Mutex-protected because start/stop require &mut self.
@@ -103,7 +104,7 @@ impl AppState {
     /// Runtime service (R-12) and shared POM cache.
     pub fn new(
         db: Arc<Mutex<Connection>>,
-        task_manager: TaskManager,
+        task_manager: Arc<TaskManager>,
         runtime: Arc<RuntimeService>,
         pom_cache: Arc<PomCache>,
     ) -> Self {

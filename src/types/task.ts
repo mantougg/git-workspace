@@ -41,6 +41,8 @@ export interface RuntimeTaskOptions {
   skipBuild?: boolean;
   skipTests?: boolean | null;
   offline?: boolean;
+  /** R-17 §44：watch 影响分析给出的必建模块 GA 子集（增量 -pl 下限）。 */
+  affectedModules?: string[];
 }
 
 export type TaskStatus =

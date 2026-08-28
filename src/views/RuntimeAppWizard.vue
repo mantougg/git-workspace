@@ -256,6 +256,19 @@
           </div>
         </n-space>
       </n-form-item>
+
+      <n-form-item label="自动重启">
+        <n-space vertical style="width: 100%" :size="8">
+          <n-checkbox v-model:checked="autoRestartEnabled">
+            File Watch → 增量重建 → 自动重启（R-17）
+          </n-checkbox>
+          <div class="field-hint">
+            开启后监听本应用闭包内模块的源码变化（src/main/java、resources、pom.xml），
+            经依赖图影响分析只重建受影响模块并自动重启；pom 变化会先重算依赖模型。
+            重启防抖：构建中的新变化会排队合并，不打断进行中的构建。默认关闭。
+          </div>
+        </n-space>
+      </n-form-item>
     </n-form>
 
     <!-- R-19 另存为模板 -->
@@ -415,6 +428,7 @@ async function onApplyTemplate() {
       healthForm.path = payload.healthCheck.path ?? "";
       healthForm.intervalMs = payload.healthCheck.intervalMs ?? null;
     }
+    autoRestartEnabled.value = payload.autoRestart === true;
     message.success(`已应用模板「${template.name}」，请填写名称并选择项目`);
   } catch (e) {
     message.error("应用模板失败：" + errMsg(e));
@@ -457,6 +471,9 @@ const healthForm = reactive({
   path: "",
   intervalMs: null as number | null,
 });
+
+// R-17 §42：自动重启开关（缺省关；payload 里以 null 落盘表示未启用）。
+const autoRestartEnabled = ref(false);
 
 interface EnvRow {
   key: string;
@@ -587,6 +604,7 @@ function toConfig(): RuntimeApplicationConfig {
     preBuildScript: preBuildScriptText.value.trim() || null,
     postBuildScript: postBuildScriptText.value.trim() || null,
     healthCheck: healthConfig(),
+    autoRestart: autoRestartEnabled.value ? true : null,
   };
 }
 
@@ -624,6 +642,7 @@ function fillForm(config: RuntimeApplicationConfig) {
   postBuildScriptText.value = config.postBuildScript ?? "";
   const hc = config.healthCheck;
   healthEnabled.value = !!hc;
+  autoRestartEnabled.value = config.autoRestart === true;
   if (hc) {
     healthForm.kind = hc.kind ?? "auto";
     healthForm.port = hc.port ?? null;

@@ -106,6 +106,9 @@ pub struct BuildOptions {
     /// R-18 §73 第二阶段：Runtime Dependency Cache（模块输入指纹未变则
     /// 跳过重建）。默认开启；指纹设计「宁可重建不错过」。
     pub dependency_cache: bool,
+    /// R-17 §44：watch 影响分析给出的必建模块 GA 子集（非空时与指纹子集
+    /// 合并，且阻止 SkipAll——显式变更信号优先于「指纹未变」判断）。
+    pub affected_modules: Vec<String>,
 }
 
 impl Default for BuildOptions {
@@ -118,6 +121,7 @@ impl Default for BuildOptions {
             timeout: Some(Duration::from_secs(30 * 60)),
             main_class_override: None,
             dependency_cache: true,
+            affected_modules: Vec::new(),
         }
     }
 }

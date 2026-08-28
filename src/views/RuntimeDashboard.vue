@@ -84,6 +84,14 @@
           <span class="summary-value">{{ store.processes.length }}</span>
           <span class="summary-label">进程记录 · Maven 项目索引 {{ store.projects.length }} 个</span>
         </span>
+        <span
+          v-if="watchSummary"
+          class="summary-item"
+          :class="watchSummary.ok ? 'tone-ok' : 'tone-danger'"
+        >
+          <span class="summary-value">R-17</span>
+          <span class="summary-label">{{ watchSummary.label }}</span>
+        </span>
       </div>
     </n-spin>
 
@@ -483,6 +491,23 @@ const startingCount = computed(
 const failedCount = computed(
   () => store.configs.filter((c) => processOf(c.name)?.status === "failed").length,
 );
+
+// R-17：File Watch / 自动重启活动摘要（事件驱动；无活动时不显示该槽位）。
+const watchSummary = computed(() => {
+  const restart = store.lastRestart;
+  const change = store.lastFileChange;
+  if (!restart && !change) return null;
+  if (restart) {
+    const label = restart.success
+      ? `自动重启成功 · ${restart.runtimeName}`
+      : `自动重启失败 · ${restart.runtimeName}`;
+    return { label, ok: restart.success };
+  }
+  return {
+    label: `File Watch 变更 ${change!.paths.length} 个文件 · ${change!.at.slice(11, 19)}`,
+    ok: true,
+  };
+});
 
 function scopeLabel(scope: RuntimeScope): string {
   switch (scope.mode) {

@@ -257,6 +257,7 @@
   },
   "CreateRuntimeConfigRequest": {
     "config": {
+      "autoRestart": true,
       "buildEngine": "maven",
       "environment": {
         "SERVER_PORT": "8080"
@@ -1401,6 +1402,7 @@
     "summary": "ok"
   },
   "RuntimeApplicationConfig": {
+    "autoRestart": true,
     "buildEngine": "maven",
     "environment": {
       "SERVER_PORT": "8080"
@@ -1512,6 +1514,7 @@
   ],
   "RuntimeOperationRequest": {
     "options": {
+      "affectedModules": [],
       "offline": false,
       "skipBuild": false,
       "skipTests": null,
@@ -1579,6 +1582,9 @@
     "starting"
   ],
   "RuntimeTaskOptions": {
+    "affectedModules": [
+      "com.example:auth"
+    ],
     "offline": true,
     "skipBuild": true,
     "skipTests": false,
@@ -1588,6 +1594,7 @@
     "appliesTo": "spring-boot",
     "builtin": true,
     "config": {
+      "autoRestart": null,
       "buildEngine": "maven",
       "environment": {},
       "healthCheck": null,
@@ -1877,6 +1884,7 @@
     {
       "op": "start",
       "options": {
+        "affectedModules": [],
         "offline": false,
         "skipBuild": false,
         "skipTests": true,
@@ -1923,6 +1931,7 @@
   },
   "UpdateRuntimeConfigRequest": {
     "config": {
+      "autoRestart": true,
       "buildEngine": "maven",
       "environment": {
         "SERVER_PORT": "8080"
