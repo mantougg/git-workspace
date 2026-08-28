@@ -350,6 +350,11 @@ pub fn run() {
             commands::maven::preview_maven_command,
             commands::maven::list_maven_candidates,
             commands::maven::build_maven_command,
+            // F-16：Maven 扫描/手动添加/本地仓库覆盖
+            commands::maven::scan_maven_installations,
+            commands::maven::add_maven_executable,
+            commands::maven::get_maven_local_repo_override,
+            commands::maven::set_maven_local_repo_override,
             // Spring Boot application discovery (R-06)
             commands::spring_boot::detect_spring_boot,
             // Runtime configuration (R-07)

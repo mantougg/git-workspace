@@ -8,37 +8,24 @@ import { useRuntimeStore } from "@/stores/runtime";
 export function useRuntimeWorkspace() {
   const workspaceStore = useWorkspaceStore();
   const store = useRuntimeStore();
-  const selectedWorkspaceId = ref<number | null>(store.workspaceId);
   const ready = ref(false);
 
   async function ensureWorkspace() {
+    // F-15：runtime store 的 workspaceId 派生自全局当前工作区并随 watch
+    // 自动加载数据；这里只需保证工作区列表已加载（首个工作区自动选中）。
     await workspaceStore.loadWorkspaces();
-    let id = store.workspaceId;
-    if (id == null) {
-      id =
-        workspaceStore.currentWorkspace?.id ??
-        workspaceStore.workspaces[0]?.id ??
-        null;
-    }
-    if (id != null) {
-      selectedWorkspaceId.value = id;
-      if (id !== store.workspaceId) {
-        await store.setWorkspace(id);
-      }
-    }
     ready.value = true;
   }
 
-  async function selectWorkspace(id: number) {
-    selectedWorkspaceId.value = id;
-    const ws = workspaceStore.workspaces.find((w) => w.id === id);
-    if (ws) workspaceStore.selectWorkspace(ws);
-    await store.setWorkspace(id);
-  }
-
   onMounted(async () => {
-    await store.subscribe();
+    // F-15：先确保工作区与数据加载，再订阅事件——订阅失败（如事件名非法）
+    // 不得阻断数据展示。
     await ensureWorkspace();
+    try {
+      await store.subscribe();
+    } catch (e) {
+      console.error("R-13: runtime event subscribe failed:", e);
+    }
   });
 
   onUnmounted(() => {
@@ -48,9 +35,7 @@ export function useRuntimeWorkspace() {
   return {
     workspaceStore,
     store,
-    selectedWorkspaceId,
     ready,
     ensureWorkspace,
-    selectWorkspace,
   };
 }

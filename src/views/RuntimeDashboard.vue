@@ -3,6 +3,14 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
+        <n-button
+          type="primary"
+          :disabled="!workspaceStore.currentWorkspace"
+          @click="router.push({ name: 'runtime-app-wizard' })"
+        >
+          <template #icon><n-icon><AddOutline /></n-icon></template>
+          新建应用
+        </n-button>
         <n-button :loading="store.loading" @click="reload">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
@@ -243,6 +251,7 @@ import { computed, h, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NTag, NIcon, useMessage, useDialog } from "naive-ui";
 import {
+  AddOutline,
   RefreshOutline,
   PlayOutline,
   StopOutline,
@@ -934,9 +943,9 @@ async function onSaveScheduler() {
 // ------------------------------------------------------------------
 
 async function reload() {
-  const wsId = workspaceStore.currentWorkspace?.id;
-  if (!wsId) return;
-  await store.setWorkspace(wsId);
+  // F-15：store.workspaceId 派生自全局工作区并自动加载；显式刷新走 reloadAll。
+  if (store.workspaceId == null) return;
+  await store.reloadAll();
   try {
     scheduler.value = await runtimeApi.runtimeGetSchedulerConfig();
   } catch (e) {
@@ -983,8 +992,13 @@ function formatTime(iso: string): string {
 
 onMounted(async () => {
   await workspaceStore.loadWorkspaces();
-  await store.subscribe();
+  // F-15：先加载数据再订阅事件——订阅失败（如事件名非法）不得阻断数据展示。
   await reload();
+  try {
+    await store.subscribe();
+  } catch (e) {
+    console.error("R-13: runtime event subscribe failed:", e);
+  }
 });onUnmounted(() => {
   store.unsubscribe();
 });

@@ -76,6 +76,93 @@ pub fn detect_maven_candidates(
     out
 }
 
+/// F-16：全量扫描本机 Maven 安装（mise / SDKMAN / PATH），供设置页「扫描安装」。
+///
+/// 只检查路径存在性（不 fork `mvn -v`；版本探测与入库由命令层按需做）。
+/// 返回按路径归一化去重后的候选（source=System；用户手动添加的走
+/// `MavenSource::Configured`，见 `commands::maven::add_maven_executable`）。
+pub fn scan_maven_installations() -> Vec<MavenExecutable> {
+    let mut out: Vec<MavenExecutable> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut push = |exe: PathBuf, out: &mut Vec<MavenExecutable>| {
+        // 路径去重统一正斜杠归一化（平台规范 §1）。
+        let key = exe.to_string_lossy().replace('\\', "/");
+        if seen.insert(key) {
+            out.push(MavenExecutable::new(
+                exe.to_string_lossy().to_string(),
+                MavenSource::System,
+                None,
+            ));
+        }
+    };
+
+    if let Some(exe) = find_in_path("mvn") {
+        push(exe, &mut out);
+    }
+    for bin in managed_maven_bin_dirs() {
+        if let Some(exe) = find_mvn_in_bin(&bin) {
+            push(exe, &mut out);
+        }
+    }
+    out
+}
+
+/// 版本管理器安装目录下的 Maven bin 目录列表（mise + SDKMAN）。
+/// mise 目录布局与 F-03 `java::detect` 的 mise 扫描同源（installs/<tool>/<ver>）。
+fn managed_maven_bin_dirs() -> Vec<PathBuf> {
+    let mut parents = Vec::new();
+    // mise：Windows 默认 %LOCALAPPDATA%\mise；Unix $XDG_DATA_HOME/mise 或
+    // ~/.local/share/mise（另有 ~/.mise 兼容）。
+    if let Some(local) = dirs::data_local_dir() {
+        parents.push(local.join("mise").join("installs").join("maven"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        parents.push(home.join(".mise").join("installs").join("maven"));
+        parents.push(
+            home.join(".local")
+                .join("share")
+                .join("mise")
+                .join("installs")
+                .join("maven"),
+        );
+        // SDKMAN（Unix 系）：~/.sdkman/candidates/maven/<ver>/bin/mvn
+        parents.push(home.join(".sdkman").join("candidates").join("maven"));
+    }
+    let mut bins = Vec::new();
+    for parent in parents {
+        let entries = match std::fs::read_dir(&parent) {
+            Ok(e) => e,
+            Err(_) => continue, // 目录不存在属正常（未装该管理器），静默跳过
+        };
+        for entry in entries.flatten() {
+            let bin = entry.path().join("bin");
+            if bin.is_dir() {
+                bins.push(bin);
+            }
+        }
+    }
+    bins
+}
+
+/// bin 目录内按 Windows PATHEXT 语义找 mvn（`.exe → .cmd → .bat → 裸名`）——
+/// mise 会把不可执行的 Unix 脚本与 `mvn.cmd` 放同一目录，必须先命中扩展名
+/// 候选（R-14 教训，与 `java::detect::find_in_path` 同顺序）。
+fn find_mvn_in_bin(bin: &Path) -> Option<PathBuf> {
+    if cfg!(windows) {
+        for ext in [".exe", ".cmd", ".bat"] {
+            let exe = bin.join(format!("mvn{ext}"));
+            if exe.is_file() {
+                return Some(exe);
+            }
+        }
+    }
+    let bare = bin.join("mvn");
+    if bare.is_file() {
+        return Some(bare);
+    }
+    None
+}
+
 /// 候选是否可用：探测有效且版本 >= 最低支持版本。
 pub fn candidate_is_usable(info: &MavenVersionInfo) -> bool {
     info.is_valid()
@@ -275,7 +362,7 @@ fn is_executable_candidate(path: &Path) -> bool {
     path.is_file()
 }
 
-fn canonical_or_raw(path: &Path) -> String {
+pub(crate) fn canonical_or_raw(path: &Path) -> String {
     std::fs::canonicalize(path)
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| path.to_string_lossy().to_string())

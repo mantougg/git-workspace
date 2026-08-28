@@ -8,6 +8,14 @@ export const useRepositoryStore = defineStore("repository", () => {
   const loading = ref(false);
   const scanning = ref(false);
   const searchQuery = ref("");
+  // F-14：全局「当前仓库」（路径）。Desktop Shell 后 Git 视图是 SideNav 一级
+  // 导航，不能再依赖 route.query.repo 传参；由变更页的选中态同步写入，
+  // Git 视图按「query 优先 → 本状态回落」解析。
+  const currentRepoPath = ref("");
+
+  function setCurrentRepoPath(path: string) {
+    currentRepoPath.value = path;
+  }
 
   const filteredRepositories = computed(() => {
     if (!searchQuery.value.trim()) return repositories.value;
@@ -89,6 +97,8 @@ export const useRepositoryStore = defineStore("repository", () => {
     loading,
     scanning,
     searchQuery,
+    currentRepoPath,
+    setCurrentRepoPath,
     filteredRepositories,
     totalCount,
     cleanCount,

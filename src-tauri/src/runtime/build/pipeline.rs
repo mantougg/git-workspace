@@ -119,7 +119,8 @@ pub fn execute_build(
     let root = find_root_project(&graph, &config.project)?;
 
     // ---- 4. Validate Maven（经 runner seam，可测试）----
-    let local_repository = crate::maven::settings::resolve_local_repository(None);
+    // F-16：应用级本地仓库覆盖优先于 settings.xml 探测。
+    let local_repository = crate::maven::settings::resolve_local_repository_effective(None);
     let resolved = runner.resolve_maven(&strategy::module_directory(root), &local_repository)?;
 
     // ---- 5. Runtime Closure + Reactor ----

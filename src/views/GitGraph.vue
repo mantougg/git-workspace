@@ -159,6 +159,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useRepositoryStore } from "@/stores/repository";
 import { useMessage, useDialog } from "naive-ui";
 import { getCommitHistory, getBranches } from "@/api/graph";
 import {
@@ -177,6 +178,7 @@ import { errMsg } from "@/utils/error";
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
+const repoStore = useRepositoryStore();
 const dialog = useDialog();
 
 const repoPath = ref("");
@@ -207,13 +209,16 @@ const conflictDialog = reactive<{
 const PAGE_SIZE = 100;
 
 onMounted(async () => {
-  const repo = route.query.repo as string;
+  // F-14：query 优先（变更页跳转带参），否则回落全局当前仓库
+  // （SideNav 直达场景）；解析成功回写 store。
+  const repo = (route.query.repo as string) || repoStore.currentRepoPath;
   if (!repo) {
     message.warning("未指定仓库路径");
     router.push({ name: "changes" });
     return;
   }
   repoPath.value = repo;
+  repoStore.setCurrentRepoPath(repo);
   await loadHistory();
   await loadBranches();
   await refreshConflicts();

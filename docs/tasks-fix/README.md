@@ -20,8 +20,8 @@
 
 ## 总体进度
 
-- 任务总数：**13**（全部已转为正式任务）
-- 已完成：**13** · 修复中：**0** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**16**（全部已转为正式任务）
+- 已完成：**16** · 修复中：**0** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -42,6 +42,9 @@
 | F-11 | Windows 超长 classpath 启动 spawn 失败（os error 206）→ pathing jar（JDK 8/17/21 兼容） | P0 | ✅ | [F-11-classpath-too-long.md](./F-11-classpath-too-long.md) |
 | F-12 | Stop 无法终止已启动的 JVM（Windows） | P0 | ✅ | [F-12-stop-jvm-leak.md](./F-12-stop-jvm-leak.md) |
 | F-13 | 内容区不可见（AppShell 列向布局把内容区挤到 0 高，只剩左侧菜单） | P0 | ✅ | [F-13-shell-content-zero-height.md](./F-13-shell-content-zero-height.md) |
+| F-14 | Git 视图「未指定仓库路径」（当前仓库全局状态缺失，SideNav 直达全灭） | P0 | ✅ | [F-14-git-views-current-repo.md](./F-14-git-views-current-repo.md) |
+| F-15 | Runtime 分组无数据 + 无「新建应用」入口（事件名含 `.` 使 listen 抛错阻断加载；子视图 workspaceId 依赖总览写入） | P0 | ✅ | [F-15-runtime-no-data-no-create.md](./F-15-runtime-no-data-no-create.md) |
+| F-16 | Maven 可执行体扫描/手动添加 + 本地仓库路径可选 | P1 | ✅ | [F-16-maven-scan-and-local-repo.md](./F-16-maven-scan-and-local-repo.md) |
 
 ---
 

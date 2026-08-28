@@ -26,21 +26,25 @@ use crate::runtime::logs::LogLine;
 
 // ---------------------------------------------------------------------------
 // §64 event names
+//
+// F-15：Tauri listen 校验事件名只允许字母数字/`-`/`/`/`:`/`_`——不能用 `.`，
+// 带点会被前端 listen 拒绝（「invalid args `event` for command `listen`」），
+// 订阅链抛错曾阻断 Runtime 视图的数据加载。
 // ---------------------------------------------------------------------------
 
-pub const EVENT_PROJECT_DISCOVERED: &str = "runtime.project_discovered";
-pub const EVENT_DEPENDENCY_RESOLVED: &str = "runtime.dependency_resolved";
-pub const EVENT_BUILD_STARTED: &str = "runtime.build_started";
-pub const EVENT_BUILD_PROGRESS: &str = "runtime.build_progress";
-pub const EVENT_BUILD_COMPLETED: &str = "runtime.build_completed";
-pub const EVENT_PROCESS_STARTED: &str = "runtime.process_started";
-pub const EVENT_PROCESS_OUTPUT: &str = "runtime.process_output";
-pub const EVENT_PROCESS_STOPPED: &str = "runtime.process_stopped";
-pub const EVENT_PROCESS_FAILED: &str = "runtime.process_failed";
-pub const EVENT_HEALTH_CHANGED: &str = "runtime.health_changed";
-pub const EVENT_FILE_CHANGED: &str = "runtime.file_changed";
-pub const EVENT_RESTART_STARTED: &str = "runtime.restart_started";
-pub const EVENT_RESTART_COMPLETED: &str = "runtime.restart_completed";
+pub const EVENT_PROJECT_DISCOVERED: &str = "runtime_project_discovered";
+pub const EVENT_DEPENDENCY_RESOLVED: &str = "runtime_dependency_resolved";
+pub const EVENT_BUILD_STARTED: &str = "runtime_build_started";
+pub const EVENT_BUILD_PROGRESS: &str = "runtime_build_progress";
+pub const EVENT_BUILD_COMPLETED: &str = "runtime_build_completed";
+pub const EVENT_PROCESS_STARTED: &str = "runtime_process_started";
+pub const EVENT_PROCESS_OUTPUT: &str = "runtime_process_output";
+pub const EVENT_PROCESS_STOPPED: &str = "runtime_process_stopped";
+pub const EVENT_PROCESS_FAILED: &str = "runtime_process_failed";
+pub const EVENT_HEALTH_CHANGED: &str = "runtime_health_changed";
+pub const EVENT_FILE_CHANGED: &str = "runtime_file_changed";
+pub const EVENT_RESTART_STARTED: &str = "runtime_restart_started";
+pub const EVENT_RESTART_COMPLETED: &str = "runtime_restart_completed";
 
 /// Start 流水线的 UI 阶段（§65：Preparing ✓ / Resolving ✓ / Building ▓ /
 /// Starting ○）。与 `LifecycleStatus` 的前四个状态一一对应。

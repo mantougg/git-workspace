@@ -17,21 +17,22 @@ import type {
 } from "@/types/runtime";
 import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
 
-/** §64 Runtime 事件名（Tauri event）。 */
+/** §64 Runtime 事件名（Tauri event）。F-15：Tauri listen 校验只允许
+    字母数字/`-`/`/`/`:`/`_`——不能用 `.`，带点会被拒绝并阻断订阅链。 */
 export const RUNTIME_EVENTS = {
-  projectDiscovered: "runtime.project_discovered",
-  dependencyResolved: "runtime.dependency_resolved",
-  buildStarted: "runtime.build_started",
-  buildProgress: "runtime.build_progress",
-  buildCompleted: "runtime.build_completed",
-  processStarted: "runtime.process_started",
-  processOutput: "runtime.process_output",
-  processStopped: "runtime.process_stopped",
-  processFailed: "runtime.process_failed",
-  healthChanged: "runtime.health_changed",
-  fileChanged: "runtime.file_changed",
-  restartStarted: "runtime.restart_started",
-  restartCompleted: "runtime.restart_completed",
+  projectDiscovered: "runtime_project_discovered",
+  dependencyResolved: "runtime_dependency_resolved",
+  buildStarted: "runtime_build_started",
+  buildProgress: "runtime_build_progress",
+  buildCompleted: "runtime_build_completed",
+  processStarted: "runtime_process_started",
+  processOutput: "runtime_process_output",
+  processStopped: "runtime_process_stopped",
+  processFailed: "runtime_process_failed",
+  healthChanged: "runtime_health_changed",
+  fileChanged: "runtime_file_changed",
+  restartStarted: "runtime_restart_started",
+  restartCompleted: "runtime_restart_completed",
 } as const;
 
 export function createRuntimeConfig(

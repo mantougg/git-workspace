@@ -3,7 +3,15 @@
     <!-- Top toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button type="primary" :loading="pruning" @click="onPrune">
+        <n-button type="primary" :loading="scanning" @click="onScanInstallations">
+          <template #icon><n-icon><ScanOutline /></n-icon></template>
+          扫描安装
+        </n-button>
+        <n-button :loading="adding" @click="onAddManual">
+          <template #icon><n-icon><AddOutline /></n-icon></template>
+          手动添加
+        </n-button>
+        <n-button :loading="pruning" @click="onPrune">
           <template #icon><n-icon><TrashOutline /></n-icon></template>
           清理失效条目
         </n-button>
@@ -16,7 +24,7 @@
       </div>
     </div>
 
-    <!-- Local repository info -->
+    <!-- Local repository info（F-16：支持应用级目录覆盖） -->
     <n-alert
       class="repo-info"
       :type="localRepo ? 'info' : 'warning'"
@@ -25,8 +33,23 @@
     >
       <template #header>
         本地仓库路径：<b class="mono">{{ localRepo || "未探测" }}</b>
-        <span class="repo-hint">（来自 settings.xml 的 localRepository，无则 ~/.m2/repository）</span>
+        <n-tag v-if="repoOverride" size="small" type="warning" class="override-tag">已覆盖</n-tag>
+        <span class="repo-hint">（应用覆盖 &gt; settings.xml 的 localRepository &gt; ~/.m2/repository）</span>
       </template>
+      <div class="repo-actions">
+        <n-button size="small" :loading="savingRepo" @click="onPickLocalRepo">
+          选择目录…
+        </n-button>
+        <n-button
+          v-if="repoOverride"
+          size="small"
+          quaternary
+          :loading="savingRepo"
+          @click="onClearLocalRepoOverride"
+        >
+          清除覆盖
+        </n-button>
+      </div>
     </n-alert>
 
     <!-- Summary -->
@@ -109,14 +132,19 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from "vue";
 import { NButton, NIcon, NTag, useMessage } from "naive-ui";
-import { TrashOutline, SearchOutline } from "@vicons/ionicons5";
+import { TrashOutline, SearchOutline, ScanOutline, AddOutline } from "@vicons/ionicons5";
 import {
+  addMavenExecutableByPicker,
   buildMavenCommand,
   detectMavenByPicker,
+  getMavenLocalRepoOverride,
   listMavenExecutables,
+  pickMavenLocalRepoOverride,
   pruneInvalidMaven,
   removeMavenExecutable,
   resolveLocalRepo,
+  scanMavenInstallations,
+  setMavenLocalRepoOverride,
   validateMavenExecutable,
 } from "@/api/maven";
 import type { MavenExecutable, MavenSource } from "@/types/maven";
@@ -126,9 +154,13 @@ const message = useMessage();
 
 const executables = ref<MavenExecutable[]>([]);
 const localRepo = ref("");
+const repoOverride = ref<string | null>(null);
 const loading = ref(false);
 const detecting = ref(false);
 const pruning = ref(false);
+const scanning = ref(false);
+const adding = ref(false);
+const savingRepo = ref(false);
 const validatingId = ref<number | null>(null);
 
 const validCount = computed(() => executables.value.filter((e) => e.isValid).length);
@@ -255,16 +287,81 @@ const tableColumns = [
 async function reload() {
   loading.value = true;
   try {
-    const [exes, repo] = await Promise.all([
+    const [exes, repo, override] = await Promise.all([
       listMavenExecutables(),
       resolveLocalRepo(),
+      getMavenLocalRepoOverride(),
     ]);
     executables.value = exes;
     localRepo.value = repo;
+    repoOverride.value = override;
   } catch (e) {
     message.error("加载 Maven 列表失败：" + errMsg(e));
   } finally {
     loading.value = false;
+  }
+}
+
+/** F-16：全量扫描本机 Maven 安装（mise / SDKMAN / PATH）并入库。 */
+async function onScanInstallations() {
+  scanning.value = true;
+  try {
+    const found = await scanMavenInstallations();
+    if (found.length === 0) {
+      message.info("未发现 Maven 安装（mise / SDKMAN / PATH 均无）");
+    } else {
+      const valid = found.filter((e) => e.isValid).length;
+      message.success(`扫描完成：发现 ${found.length} 个 Maven，有效 ${valid} 个`);
+    }
+    await reload();
+  } catch (e) {
+    message.error("扫描 Maven 安装失败：" + errMsg(e));
+  } finally {
+    scanning.value = false;
+  }
+}
+
+/** F-16：手动添加一个 Maven 可执行路径（文件选择器）。 */
+async function onAddManual() {
+  adding.value = true;
+  try {
+    const added = await addMavenExecutableByPicker();
+    if (!added) return; // 用户取消
+    message.success(`已添加：${added.fullVersion ?? added.executablePath}`);
+    await reload();
+  } catch (e) {
+    message.error("添加 Maven 失败：" + errMsg(e));
+  } finally {
+    adding.value = false;
+  }
+}
+
+/** F-16：选择目录覆盖本地仓库路径。 */
+async function onPickLocalRepo() {
+  savingRepo.value = true;
+  try {
+    const effective = await pickMavenLocalRepoOverride();
+    if (effective == null) return; // 用户取消
+    message.success("本地仓库覆盖已生效");
+    await reload();
+  } catch (e) {
+    message.error("设置本地仓库失败：" + errMsg(e));
+  } finally {
+    savingRepo.value = false;
+  }
+}
+
+/** F-16：清除本地仓库覆盖，恢复 settings.xml 探测。 */
+async function onClearLocalRepoOverride() {
+  savingRepo.value = true;
+  try {
+    await setMavenLocalRepoOverride(null);
+    message.success("已恢复 settings.xml 探测");
+    await reload();
+  } catch (e) {
+    message.error("清除覆盖失败：" + errMsg(e));
+  } finally {
+    savingRepo.value = false;
   }
 }
 
@@ -378,6 +475,14 @@ onMounted(reload);
 }
 .repo-info {
   margin-bottom: 12px;
+}
+.override-tag {
+  margin-left: var(--gw-space-2);
+}
+.repo-actions {
+  margin-top: var(--gw-space-2);
+  display: flex;
+  gap: var(--gw-space-2);
 }
 .repo-hint {
   color: var(--gw-text-dim);

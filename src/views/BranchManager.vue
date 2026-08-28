@@ -223,6 +223,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useRepositoryStore } from "@/stores/repository";
 import { EllipsisVerticalOutline, AddOutline, RefreshOutline, SwapHorizontalOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
@@ -252,6 +253,7 @@ import { errMsg } from "@/utils/error";
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
+const repoStore = useRepositoryStore();
 const dialog = useDialog();
 
 const repoPath = ref("");
@@ -349,13 +351,15 @@ function remoteBranchOptions() {
 }
 
 onMounted(async () => {
-  const repo = route.query.repo as string;
+  // F-14：query 优先，回落全局当前仓库（SideNav 直达）；成功回写 store。
+  const repo = (route.query.repo as string) || repoStore.currentRepoPath;
   if (!repo) {
     message.warning("未指定仓库路径");
     router.push({ name: "changes" });
     return;
   }
   repoPath.value = repo;
+  repoStore.setCurrentRepoPath(repo);
   await load();
 });
 

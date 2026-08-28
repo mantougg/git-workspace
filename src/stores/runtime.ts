@@ -5,10 +5,11 @@
 // 触发进程列表刷新）。
 
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import * as runtimeApi from "@/api/runtime";
 import { RUNTIME_EVENTS } from "@/api/runtime";
+import { useWorkspaceStore } from "@/stores/workspace";
 import type {
   BuildProgressPayload,
   HealthChangedPayload,
@@ -25,7 +26,11 @@ import type { MavenProjectNode } from "@/types/maven";
 const MAX_BUFFER_LINES = 5000;
 
 export const useRuntimeStore = defineStore("runtime", () => {
-  const workspaceId = ref<number | null>(null);
+  const workspaceStore = useWorkspaceStore();
+  // F-15：workspaceId 派生自全局当前工作区（StatusBar 统一切换入口）。
+  // 修复前它是独立 ref、只由 RuntimeDashboard 调 setWorkspace 写入——直接
+  // 从 SideNav 进依赖/作用域/日志视图时永远为 null，数据加载全部早退。
+  const workspaceId = computed(() => workspaceStore.currentWorkspace?.id ?? null);
   const loading = ref(false);
 
   /** 配置元数据列表（R-07 快索引）。 */
@@ -49,10 +54,24 @@ export const useRuntimeStore = defineStore("runtime", () => {
   // 加载（事件驱动 + 显式刷新双通道）
   // ------------------------------------------------------------------
 
-  async function setWorkspace(id: number) {
-    workspaceId.value = id;
-    await reloadAll();
-  }
+  // 当前工作区变化（含首次赋值）→ 重拉本 store 数据；置空时清空。
+  watch(
+    workspaceId,
+    async (id) => {
+      if (id == null) {
+        configs.value = [];
+        configDetails.value.clear();
+        projects.value = [];
+        processes.value = [];
+        stages.value.clear();
+        health.value.clear();
+        logBuffers.value.clear();
+        return;
+      }
+      await reloadAll();
+    },
+    { immediate: true },
+  );
 
   async function reloadAll() {
     if (workspaceId.value == null) return;
@@ -257,7 +276,6 @@ export const useRuntimeStore = defineStore("runtime", () => {
     stages,
     health,
     logBuffers,
-    setWorkspace,
     reloadAll,
     loadConfigs,
     loadProjects,

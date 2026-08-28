@@ -18,6 +18,65 @@ pub fn default_local_repository() -> PathBuf {
     crate::maven::resolver::default_local_repository()
 }
 
+/// 生效的本地仓库路径：应用级覆盖（F-16，Maven 设置页可选）> settings.xml
+/// 探测 > `~/.m2/repository`。
+pub fn resolve_local_repository_effective(global_settings_path: Option<&Path>) -> PathBuf {
+    resolve_with_override(global_settings_path, local_repository_override())
+}
+
+/// 覆盖优先级判断（纯函数，便于单测）。
+fn resolve_with_override(
+    global_settings_path: Option<&Path>,
+    override_path: Option<PathBuf>,
+) -> PathBuf {
+    if let Some(override_path) = override_path {
+        return override_path;
+    }
+    resolve_local_repository(global_settings_path)
+}
+
+// ---------------------------------------------------------------------------
+// F-16：应用级本地仓库覆盖，持久化到 `<app_data>/maven-settings.json`
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct MavenAppSettings {
+    /// 应用级本地仓库覆盖（绝对路径）；None/空串 = 不覆盖。
+    local_repository: Option<String>,
+}
+
+fn app_settings_path() -> PathBuf {
+    crate::get_app_data_dir().join("maven-settings.json")
+}
+
+/// 读取应用级本地仓库覆盖（文件不存在/损坏时视为无覆盖）。
+pub fn local_repository_override() -> Option<PathBuf> {
+    read_override_from(&app_settings_path())
+}
+
+/// 写入/清除应用级本地仓库覆盖（None = 恢复 settings.xml 探测）。
+pub fn set_local_repository_override(path: Option<&str>) -> std::io::Result<()> {
+    write_override_to(&app_settings_path(), path)
+}
+
+fn read_override_from(path: &Path) -> Option<PathBuf> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let settings: MavenAppSettings = serde_json::from_str(&content).ok()?;
+    settings
+        .local_repository
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+}
+
+fn write_override_to(path: &Path, value: Option<&str>) -> std::io::Result<()> {
+    let settings = MavenAppSettings {
+        local_repository: value.map(str::to_string),
+    };
+    let content = serde_json::to_string_pretty(&settings)
+        .map_err(std::io::Error::other)?;
+    std::fs::write(path, content)
+}
+
 /// 探测生效的本地仓库路径：先查 `settings.xml` 的 `localRepository`，没有则
 /// 回退 `~/.m2/repository`。
 ///
@@ -217,6 +276,56 @@ mod tests {
         .unwrap();
         let resolved = resolve_local_repository(Some(&settings));
         assert_eq!(resolved, PathBuf::from("/from/settings/repo"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn override_beats_settings_and_default() {
+        let tmp = std::env::temp_dir().join(format!(
+            "gw_mvn_override_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let settings = tmp.join("settings.xml");
+        std::fs::write(
+            &settings,
+            r#"<settings><localRepository>/from/settings/repo</localRepository></settings>"#,
+        )
+        .unwrap();
+        // 无覆盖 → settings.xml 生效
+        assert_eq!(
+            resolve_with_override(Some(&settings), None),
+            PathBuf::from("/from/settings/repo")
+        );
+        // 有覆盖 → 覆盖最优先
+        assert_eq!(
+            resolve_with_override(Some(&settings), Some(PathBuf::from("/override/repo"))),
+            PathBuf::from("/override/repo")
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn override_file_roundtrip() {
+        let tmp = std::env::temp_dir().join(format!(
+            "gw_mvn_override_rw_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let file = tmp.join("maven-settings.json");
+
+        assert_eq!(read_override_from(&file), None);
+        write_override_to(&file, Some("D:/m2/repo")).unwrap();
+        assert_eq!(
+            read_override_from(&file),
+            Some(PathBuf::from("D:/m2/repo"))
+        );
+        // 空白串视为无覆盖
+        write_override_to(&file, Some("  ")).unwrap();
+        assert_eq!(read_override_from(&file), None);
+        // 清除覆盖
+        write_override_to(&file, None).unwrap();
+        assert_eq!(read_override_from(&file), None);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

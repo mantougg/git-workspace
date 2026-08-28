@@ -1173,6 +1173,16 @@ const selectedRepoPath = computed(() =>
     : "",
 );
 
+// F-14：变更页的仓库选中态即「全局当前仓库」——同步进 repository store，
+// 供 SideNav 直达的 Git 视图（无 route.query.repo）回落使用。
+watch(
+  selectedRepoPath,
+  (path) => {
+    if (path) repoStore.setCurrentRepoPath(path);
+  },
+  { immediate: true },
+);
+
 // --- DataTable columns ---
 
 const dryRunColumns = [

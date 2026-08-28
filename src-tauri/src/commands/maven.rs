@@ -20,14 +20,14 @@ use tauri::State;
 
 use crate::error::{AppError, AppResult};
 use crate::maven::detect_exec::{detect_maven_candidates, probe_version};
-use crate::maven::exec_model::{MavenExecutable, MavenExecutionRequest, ResolvedMaven};
+use crate::maven::exec_model::{MavenExecutable, MavenExecutionRequest, MavenSource, ResolvedMaven};
 use crate::maven::executor::{build_command, preview_command};
 use crate::maven::registry::{
     apply_version as apply_maven_version, get_maven_executable, list_maven_executables,
     mark_validity as mark_maven_validity, prune_invalid_paths, remove_maven_executable,
     upsert_maven_executable,
 };
-use crate::maven::settings::resolve_local_repository;
+use crate::maven::settings::resolve_local_repository_effective;
 use crate::state::AppState;
 
 fn lock_db<'r>(state: &'r State<'_, AppState>) -> AppResult<std::sync::MutexGuard<'r, Connection>> {
@@ -54,7 +54,7 @@ pub fn detect_maven(
             "项目目录不存在：{project_dir}。请在 Settings 中配置正确的项目路径。"
         )));
     }
-    let local_repo = resolve_local_repository(None);
+    let local_repo = resolve_local_repository_effective(None);
     let resolved = crate::maven::detect_exec::resolve_maven_for_project(
         project,
         configured_path.as_deref(),
@@ -141,10 +141,99 @@ pub fn remove_maven_executable_cmd(state: State<'_, AppState>, id: i64) -> AppRe
     remove_maven_executable(&conn, id)
 }
 
-/// 探测生效本地仓库路径（settings.xml 覆盖 `~/.m2/repository`）。
+/// 探测生效本地仓库路径（应用覆盖 > settings.xml 覆盖 `~/.m2/repository`）。
 #[tauri::command]
 pub fn resolve_local_repo(global_settings_path: Option<String>) -> AppResult<PathBuf> {
-    Ok(resolve_local_repository(global_settings_path.as_deref().map(Path::new)))
+    Ok(crate::maven::settings::resolve_local_repository_effective(
+        global_settings_path.as_deref().map(Path::new),
+    ))
+}
+
+/// F-16：查询应用级本地仓库覆盖（None = 未覆盖，按 settings.xml 探测）。
+#[tauri::command]
+pub fn get_maven_local_repo_override() -> Option<String> {
+    crate::maven::settings::local_repository_override()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+/// F-16：设置/清除应用级本地仓库覆盖（None = 恢复 settings.xml 探测）。
+#[tauri::command]
+pub fn set_maven_local_repo_override(path: Option<String>) -> AppResult<()> {
+    if let Some(p) = &path {
+        if !p.trim().is_empty() && !Path::new(p).is_dir() {
+            return Err(AppError::Other(format!(
+                "目录不存在：{p}。请选择一个已存在的目录作为本地仓库。"
+            )));
+        }
+    }
+    crate::maven::settings::set_local_repository_override(path.as_deref())?;
+    Ok(())
+}
+
+/// F-16：全量扫描本机 Maven 安装（mise / SDKMAN / PATH），逐个 `mvn -v`
+/// 探测版本后入库。探测失败的条目以失效状态入库（UI 可复检/删除）。
+#[tauri::command]
+pub fn scan_maven_installations(state: State<'_, AppState>) -> AppResult<Vec<MavenExecutable>> {
+    let found = crate::maven::detect_exec::scan_maven_installations();
+    let now = chrono::Utc::now().to_rfc3339();
+    let conn = lock_db(&state)?;
+    let mut out = Vec::with_capacity(found.len());
+    for mut exe in found {
+        let (info, is_valid) = probe_version(&exe.executable_path);
+        exe.major_version = info.major_version;
+        exe.full_version = info.full_version;
+        exe.is_valid = is_valid;
+        exe.last_checked = now.clone();
+        exe.raw_version = if info.raw.is_empty() {
+            None
+        } else {
+            Some(info.raw)
+        };
+        let id = upsert_maven_executable(&conn, &exe)?;
+        exe.id = Some(id);
+        out.push(exe);
+    }
+    Ok(out)
+}
+
+/// F-16：手动添加 Maven 可执行路径（source=configured）。`mvn -v` 探测失败
+/// 返回可行动错误（不入库）。
+#[tauri::command]
+pub fn add_maven_executable(
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<MavenExecutable> {
+    let p = Path::new(&path);
+    if !p.is_file() {
+        return Err(AppError::MavenNotFound(format!(
+            "路径不存在或不是文件：{path}。请选择 mvn / mvn.cmd 可执行文件。"
+        )));
+    }
+    let mut exe = MavenExecutable::new(
+        crate::maven::detect_exec::canonical_or_raw(p),
+        MavenSource::Configured,
+        None,
+    );
+    let (info, is_valid) = probe_version(&exe.executable_path);
+    if !is_valid {
+        return Err(AppError::MavenNotFound(format!(
+            "{path} 不是可用的 Maven（`mvn -v` 探测失败）。\
+             请确认选择的是 Maven 可执行文件（Windows 上通常是 bin\\\\mvn.cmd）。"
+        )));
+    }
+    exe.major_version = info.major_version;
+    exe.full_version = info.full_version;
+    exe.is_valid = true;
+    exe.last_checked = chrono::Utc::now().to_rfc3339();
+    exe.raw_version = if info.raw.is_empty() {
+        None
+    } else {
+        Some(info.raw)
+    };
+    let conn = lock_db(&state)?;
+    let id = upsert_maven_executable(&conn, &exe)?;
+    exe.id = Some(id);
+    Ok(exe)
 }
 
 /// 预览 Maven 命令行（§75 可追溯）：给定请求结构，返回完整命令字符串。
