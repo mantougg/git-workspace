@@ -682,6 +682,34 @@ fn samples() -> Map<String, Value> {
             crate::runtime::events::ServiceExecState::Stopped,
         ]),
     );
+    // R-19 模板
+    m.insert(
+        "RuntimeTemplate".into(),
+        json!(crate::runtime::templates::RuntimeTemplate {
+            schema_version: 1,
+            name: "Spring Boot Development".into(),
+            description: Some("Spring Boot 开发默认".into()),
+            applies_to: Some("spring-boot".into()),
+            builtin: true,
+            config: runtime_config::RuntimeApplicationConfig {
+                schema_version: 1,
+                name: String::new(),
+                project: String::new(),
+                main_class: None,
+                jdk: Some("21".into()),
+                profile: Some("dev".into()),
+                vm_options: vec!["-Xms512m".into(), "-Xmx2048m".into()],
+                program_arguments: vec![],
+                environment: BTreeMap::new(),
+                runtime_environment: BTreeMap::new(),
+                build_engine: Some("maven".into()),
+                scope: maven_closure::RuntimeScope::Auto,
+                pre_build_script: None,
+                post_build_script: None,
+                health_check: None,
+            },
+        }),
+    );
     m.insert(
         "EnvironmentServiceOutcome".into(),
         json!(runtime_events::EnvironmentServiceOutcome {
@@ -2325,6 +2353,7 @@ const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "EnvironmentCompletedPayload",
     ),
     ("EnvironmentServiceOutcome", "types/runtime.ts", "EnvironmentServiceOutcome"),
+    ("RuntimeTemplate", "types/runtime.ts", "RuntimeTemplate"),
     // R-13 Runtime Scope 预览
     ("ClosurePreview", "types/runtime.ts", "ClosurePreview"),
     // R-14 §75 Command Safety 脚本确认

@@ -6,6 +6,9 @@
         <span class="page-title">{{ isEdit ? `编辑应用 · ${form.name}` : "新建 Runtime 应用" }}</span>
       </div>
       <div class="toolbar-right">
+        <n-button v-if="isEdit" :loading="savingTemplate" @click="saveAsTemplateShow = true">
+          另存为模板
+        </n-button>
         <n-button @click="goBack">取消</n-button>
         <n-button type="primary" :loading="saving" @click="onSave">
           <template #icon><n-icon><CheckmarkOutline /></n-icon></template>
@@ -29,6 +32,20 @@
           placeholder="例如 boot-app（运行时唯一标识）"
           style="max-width: 320px"
         />
+      </n-form-item>
+      <n-form-item v-if="!isEdit" label="从模板创建">
+        <n-space>
+          <n-select
+            v-model:value="selectedTemplate"
+            :options="templateOptions"
+            placeholder="选择模板预填配置（可选，§83）"
+            style="width: 320px"
+            clearable
+          />
+          <n-button :disabled="!selectedTemplate" :loading="applyingTemplate" @click="onApplyTemplate">
+            应用模板
+          </n-button>
+        </n-space>
       </n-form-item>
 
       <n-form-item label="Maven 项目" path="project">
@@ -240,13 +257,40 @@
         </n-space>
       </n-form-item>
     </n-form>
+
+    <!-- R-19 另存为模板 -->
+    <n-modal
+      v-model:show="saveAsTemplateShow"
+      preset="card"
+      title="另存为模板（R-19）"
+      :style="{ width: '460px' }"
+    >
+      <n-space vertical :size="12">
+        <n-form-item label="模板名称" :show-feedback="false">
+          <n-input v-model:value="saveAsName" placeholder="如 team-spring-boot-default" />
+        </n-form-item>
+        <n-form-item label="描述" :show-feedback="false">
+          <n-input v-model:value="saveAsDescription" placeholder="可选" />
+        </n-form-item>
+        <div class="field-hint">
+          模板与应用配置解耦：另存后修改应用不影响模板；同名用户模板会遮蔽内置模板。
+          模板文件存于 .gitworkspace/templates/，可提交 Git 团队共享。
+        </div>
+      </n-space>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="saveAsTemplateShow = false">取消</n-button>
+          <n-button type="primary" :loading="savingTemplate" @click="onSaveAsTemplate">保存模板</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { NButton, NIcon, NInput, NTag, useMessage } from "naive-ui";
+import { NButton, NIcon, NInput, NModal, NFormItem, NSelect, NSpace, NTag, useMessage } from "naive-ui";
 import {
   AddOutline,
   CheckmarkOutline,
@@ -256,10 +300,15 @@ import {
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import { listJdks } from "@/api/jdk";
 import { detectSpringBoot } from "@/api/springBoot";
+import {
+  runtimeApplyTemplate,
+  runtimeListTemplates,
+  runtimeSaveConfigAsTemplate,
+} from "@/api/runtime";
 import { LAUNCH_PRESETS } from "@/config/launchPresets";
 import type { JdkInstallation } from "@/types/jdk";
 import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
-import type { RuntimeApplicationConfig } from "@/types/runtime";
+import type { RuntimeApplicationConfig, RuntimeTemplate } from "@/types/runtime";
 import { errMsg } from "@/utils/error";
 
 const message = useMessage();
@@ -318,6 +367,79 @@ const buildEngineOptions = [
   { label: "Maven", value: "maven" },
   { label: "Maven Daemon (mvnd)", value: "mvnd" },
 ];
+
+// R-19 §83：模板（创建模式预填 + 编辑模式另存为）。
+const templates = ref<RuntimeTemplate[]>([]);
+const selectedTemplate = ref<string | null>(null);
+const applyingTemplate = ref(false);
+const savingTemplate = ref(false);
+const saveAsTemplateShow = ref(false);
+const saveAsName = ref("");
+const saveAsDescription = ref("");
+
+const templateOptions = computed(() =>
+  templates.value.map((t) => ({
+    label: `${t.name}${t.builtin ? "（内置）" : ""}`,
+    value: t.name,
+  })),
+);
+
+/** 应用模板：把模板载荷预填进表单（名称/项目仍由用户填写）。 */
+async function onApplyTemplate() {
+  if (!selectedTemplate.value || !store.workspaceId) return;
+  applyingTemplate.value = true;
+  try {
+    const template = templates.value.find((t) => t.name === selectedTemplate.value);
+    if (!template) return;
+    const payload = template.config;
+    form.jdk = payload.jdk ?? "";
+    form.profile = payload.profile ?? "";
+    form.buildEngine = payload.buildEngine ?? "maven";
+    vmOptionsText.value = payload.vmOptions.join("\n");
+    programArgsText.value = payload.programArguments.join("\n");
+    preBuildScriptText.value = payload.preBuildScript ?? "";
+    postBuildScriptText.value = payload.postBuildScript ?? "";
+    envRows.value = Object.entries(payload.environment).map(([key, value]) => ({ key, value }));
+    if (payload.healthCheck) {
+      healthEnabled.value = true;
+      healthForm.kind = payload.healthCheck.kind ?? "auto";
+      healthForm.port = payload.healthCheck.port ?? null;
+      healthForm.path = payload.healthCheck.path ?? "";
+      healthForm.intervalMs = payload.healthCheck.intervalMs ?? null;
+    }
+    message.success(`已应用模板「${template.name}」，请填写名称并选择项目`);
+  } catch (e) {
+    message.error("应用模板失败：" + errMsg(e));
+  } finally {
+    applyingTemplate.value = false;
+  }
+}
+
+/** 另存为模板：以当前编辑的配置为蓝本（后端剥离身份字段）。 */
+async function onSaveAsTemplate() {
+  if (!store.workspaceId || !isEdit.value) return;
+  if (!saveAsName.value.trim()) {
+    message.warning("请填写模板名称");
+    return;
+  }
+  savingTemplate.value = true;
+  try {
+    await runtimeSaveConfigAsTemplate(
+      store.workspaceId,
+      form.name,
+      saveAsName.value.trim(),
+      saveAsDescription.value.trim() || null,
+    );
+    message.success(`模板「${saveAsName.value.trim()}」已保存`);
+    saveAsTemplateShow.value = false;
+    saveAsName.value = "";
+    saveAsDescription.value = "";
+  } catch (e) {
+    message.error("保存模板失败：" + errMsg(e));
+  } finally {
+    savingTemplate.value = false;
+  }
+}
 
 // R-16 §41：健康检查（未启用 → healthCheck = null，保持生命周期推导语义）。
 const healthEnabled = ref(false);
@@ -583,7 +705,12 @@ async function onSave() {
   }
   saving.value = true;
   try {
-    await store.saveConfig(toConfig());
+    if (!isEdit.value && selectedTemplate.value) {
+      // R-19：从模板创建——后端校验模板存在性并落盘。
+      await runtimeApplyTemplate(store.workspaceId, selectedTemplate.value, toConfig());
+    } else {
+      await store.saveConfig(toConfig());
+    }
     message.success(isEdit.value ? "配置已保存" : "应用已创建");
     router.push({ name: "runtime-dashboard" });
   } catch (e) {
@@ -617,6 +744,11 @@ onMounted(async () => {
     jdks.value = await listJdks();
   } catch (e) {
     console.error("R-13: load JDKs failed:", e);
+  }
+  try {
+    templates.value = await runtimeListTemplates(store.workspaceId!);
+  } catch (e) {
+    console.error("R-19: load templates failed:", e);
   }
   if (isEdit.value) {
     const name = String(route.query.edit ?? "");

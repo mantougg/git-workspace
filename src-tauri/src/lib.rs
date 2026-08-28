@@ -401,6 +401,12 @@ pub fn run() {
             commands::runtime::runtime_delete_environment,
             commands::runtime::runtime_start_named_environment,
             commands::runtime::runtime_stop_named_environment,
+            // R-19 §83：Runtime Templates
+            commands::runtime::runtime_list_templates,
+            commands::runtime::runtime_save_template,
+            commands::runtime::runtime_delete_template,
+            commands::runtime::runtime_save_config_as_template,
+            commands::runtime::runtime_apply_template,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

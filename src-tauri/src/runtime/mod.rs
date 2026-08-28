@@ -12,6 +12,7 @@ pub mod port_manager;
 pub mod script_approval;
 pub mod service;
 pub mod spring_boot;
+pub mod templates;
 
 pub use config::{
     create_config, delete_config, get_config, get_workspace_environment, list_configs,
@@ -46,6 +47,11 @@ pub use port_manager::{kill_external_process, PortCheckResult, PortKillOutcome};
 pub use environment::{
     delete_environment, get_environment, list_environments, save_environment,
     topo_sort_services, RuntimeEnvironment,
+};
+
+pub use templates::{
+    delete_template, get_template, list_templates, save_config_as_template, save_template,
+    RuntimeTemplate,
 };
 
 pub use spring_boot::{

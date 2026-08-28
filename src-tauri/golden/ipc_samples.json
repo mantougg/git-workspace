@@ -1584,6 +1584,35 @@
     "skipTests": false,
     "strategy": "packageRun"
   },
+  "RuntimeTemplate": {
+    "appliesTo": "spring-boot",
+    "builtin": true,
+    "config": {
+      "buildEngine": "maven",
+      "environment": {},
+      "healthCheck": null,
+      "jdk": "21",
+      "mainClass": null,
+      "name": "",
+      "postBuildScript": null,
+      "preBuildScript": null,
+      "profile": "dev",
+      "programArguments": [],
+      "project": "",
+      "runtimeEnvironment": {},
+      "schemaVersion": 1,
+      "scope": {
+        "mode": "auto"
+      },
+      "vmOptions": [
+        "-Xms512m",
+        "-Xmx2048m"
+      ]
+    },
+    "description": "Spring Boot 开发默认",
+    "name": "Spring Boot Development",
+    "schemaVersion": 1
+  },
   "SaveWorkspaceStashResult": {
     "id": 1,
     "items": [

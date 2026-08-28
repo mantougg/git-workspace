@@ -15,6 +15,7 @@ import type {
   RuntimeLogQuery,
   RuntimeOperationRequest,
   RuntimeProcessInfo,
+  RuntimeTemplate,
   SchedulerConfig,
   ScriptApproval,
   UpdateRuntimeConfigRequest,
@@ -219,6 +220,63 @@ export function runtimeGetSchedulerConfig(): Promise<SchedulerConfig> {
 
 export function runtimeSetSchedulerConfig(config: SchedulerConfig): Promise<void> {
   return invoke<void>("runtime_set_scheduler_config", { config });
+}
+
+// ---------------------------------------------------------------------------
+// R-19 §83：Runtime Templates
+// ---------------------------------------------------------------------------
+
+/** 用户模板 + 未被遮蔽的内置模板。 */
+export function runtimeListTemplates(
+  workspaceId: number,
+): Promise<RuntimeTemplate[]> {
+  return invoke<RuntimeTemplate[]>("runtime_list_templates", { workspaceId });
+}
+
+/** 创建 / 覆盖用户模板（builtin 标记被忽略；同名用户文件遮蔽内置）。 */
+export function runtimeSaveTemplate(
+  workspaceId: number,
+  template: RuntimeTemplate,
+): Promise<RuntimeTemplate> {
+  return invoke<RuntimeTemplate>("runtime_save_template", {
+    workspaceId,
+    template,
+  });
+}
+
+export function runtimeDeleteTemplate(
+  workspaceId: number,
+  name: string,
+): Promise<void> {
+  return invoke<void>("runtime_delete_template", { workspaceId, name });
+}
+
+/** 另存为模板：从现有 Runtime 配置生成模板（身份字段剥离）。 */
+export function runtimeSaveConfigAsTemplate(
+  workspaceId: number,
+  configName: string,
+  templateName: string,
+  description?: string | null,
+): Promise<RuntimeTemplate> {
+  return invoke<RuntimeTemplate>("runtime_save_config_as_template", {
+    workspaceId,
+    configName,
+    templateName,
+    description: description ?? null,
+  });
+}
+
+/** 从模板创建 Runtime 配置（后端校验模板存在性 + R-07 全量校验）。 */
+export function runtimeApplyTemplate(
+  workspaceId: number,
+  templateName: string,
+  config: RuntimeApplicationConfig,
+): Promise<RuntimeApplicationConfig> {
+  return invoke<RuntimeApplicationConfig>("runtime_apply_template", {
+    workspaceId,
+    templateName,
+    config,
+  });
 }
 
 // ---------------------------------------------------------------------------

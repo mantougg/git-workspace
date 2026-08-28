@@ -203,6 +203,24 @@ export interface EnvironmentCompletedPayload {
   at: string;
 }
 
+// ---------------------------------------------------------------------------
+// R-19 §83：Runtime Templates
+// ---------------------------------------------------------------------------
+
+/** 一个 Runtime 配置模板（§83）：与 R-07 配置同构的预填载荷 + 元信息。 */
+export interface RuntimeTemplate {
+  schemaVersion: number;
+  /** 模板名（workspace 内唯一）。 */
+  name: string;
+  description: string | null;
+  /** 适用类型（如 spring-boot）。 */
+  appliesTo: string | null;
+  /** true = 内置模板（无用户文件时列出，不可删除；同名用户文件遮蔽）。 */
+  builtin: boolean;
+  /** 预填配置（name / project 通常为空，应用时填写）。 */
+  config: RuntimeApplicationConfig;
+}
+
 /** 日志级别（R-11，序数语义：越大越严重）。 */
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
 

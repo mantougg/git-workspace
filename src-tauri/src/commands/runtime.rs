@@ -461,6 +461,86 @@ pub fn runtime_stop_named_environment(
 }
 
 // ---------------------------------------------------------------------------
+// R-19 §83：Runtime Templates
+// ---------------------------------------------------------------------------
+
+/// R-19 `runtime.list_templates`：用户模板 + 未被遮蔽的内置模板。
+#[command]
+pub fn runtime_list_templates(
+    workspace_id: i64,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::runtime::templates::RuntimeTemplate>> {
+    let conn = lock_db(&state)?;
+    let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+    Ok(crate::runtime::templates::list_templates(&root))
+}
+
+/// R-19 `runtime.save_template`：创建 / 覆盖用户模板（`builtin` 标记被
+/// 忽略——内置模板只由代码提供；用户同名文件自动遮蔽内置）。
+#[command]
+pub fn runtime_save_template(
+    workspace_id: i64,
+    template: crate::runtime::templates::RuntimeTemplate,
+    state: State<'_, AppState>,
+) -> AppResult<crate::runtime::templates::RuntimeTemplate> {
+    let conn = lock_db(&state)?;
+    let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+    crate::runtime::templates::save_template(&root, &template)
+}
+
+/// R-19 `runtime.delete_template`：删除用户模板（内置模板拒绝）。
+#[command]
+pub fn runtime_delete_template(workspace_id: i64, name: String, state: State<'_, AppState>) -> AppResult<()> {
+    let conn = lock_db(&state)?;
+    let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+    crate::runtime::templates::delete_template(&root, &name)
+}
+
+/// R-19「另存为模板」：从现有 Runtime 配置生成模板（身份字段剥离）。
+#[command]
+pub fn runtime_save_config_as_template(
+    workspace_id: i64,
+    config_name: String,
+    template_name: String,
+    description: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<crate::runtime::templates::RuntimeTemplate> {
+    let conn = lock_db(&state)?;
+    let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+    let config = crate::runtime::config::load_config_unredacted(&conn, workspace_id, &config_name)?;
+    crate::runtime::templates::save_config_as_template(&root, config, &template_name, description)
+}
+
+/// R-19 `runtime.apply_template`：从模板创建 Runtime 配置。前端负责把
+/// 模板载荷预填进向导表单（`get_runtime_config` 同构字段），本命令校验
+/// 模板存在性并经 R-07 `create_config` 全量校验落盘。返回创建后的配置
+/// （秘密已掩码）。
+#[command]
+pub fn runtime_apply_template(
+    workspace_id: i64,
+    template_name: String,
+    config: RuntimeApplicationConfig,
+    state: State<'_, AppState>,
+) -> AppResult<RuntimeApplicationConfig> {
+    let conn = lock_db(&state)?;
+    let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+    // 模板必须存在（含内置），防止拼错名字静默落盘。
+    let _template = crate::runtime::templates::get_template(&root, &template_name)?;
+    if config.name.trim().is_empty() || config.project.trim().is_empty() {
+        return Err(AppError::RuntimeConfig(
+            "应用模板前请填写应用名称并选择 Maven 项目".into(),
+        ));
+    }
+    crate::runtime::config::create_config(
+        &conn,
+        &CreateRuntimeConfigRequest {
+            workspace_id,
+            config,
+        },
+    )
+}
+
+// ---------------------------------------------------------------------------
 // R-14 §75 Command Safety：Pre/Post Build Script 确认状态
 // ---------------------------------------------------------------------------
 
