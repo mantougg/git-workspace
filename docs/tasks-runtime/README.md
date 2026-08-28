@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**17** · 进行中：**0** · 未开始：**9**
-- 完成度：**17 / 26（65%）**
+- 已完成：**18** · 进行中：**0** · 未开始：**8**
+- 完成度：**18 / 26（69%）**
 
 ## MVP 口径（源文档 §91 / §92）
 
@@ -69,7 +69,7 @@
 | R-15 | Multi-Service Runtime 与 Runtime Environment | P1 | ✅ | R-10, R-13 | [R-15-multi-service.md](./R-15-multi-service.md) |
 | R-16 | Health Check 与 Port Manager | P1 | ✅ | R-10 | [R-16-health-port.md](./R-16-health-port.md) |
 | R-17 | File Watch / 增量构建 / 自动重启 | P1 | ⬜ | R-09, R-02, T-06 | [R-17-watch-incremental-restart.md](./R-17-watch-incremental-restart.md) |
-| R-18 | 构建加速：mvnd 与构建缓存分级 | P1 | ⬜ | R-09, R-05 | [R-18-mvnd-build-cache.md](./R-18-mvnd-build-cache.md) |
+| R-18 | 构建加速：mvnd 与构建缓存分级 | P1 | ✅ | R-09, R-05 | [R-18-mvnd-build-cache.md](./R-18-mvnd-build-cache.md) |
 | R-19 | Runtime Templates | P1 | ✅ | R-07 | [R-19-runtime-templates.md](./R-19-runtime-templates.md) |
 | R-20 | Runtime 依赖图可视化 | P1 | ⬜ | R-02, R-13 | [R-20-dependency-visualization.md](./R-20-dependency-visualization.md) |
 | R-21 | Git 联动（Status 提示 / Branch 联动 / 操作保护） | P1 | ⬜ | R-10, T-02, T-09 | [R-21-git-integration.md](./R-21-git-integration.md) |

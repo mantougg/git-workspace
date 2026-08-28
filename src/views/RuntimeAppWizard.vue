@@ -305,6 +305,7 @@ import {
   runtimeListTemplates,
   runtimeSaveConfigAsTemplate,
 } from "@/api/runtime";
+import { detectMvnd } from "@/api/maven";
 import { LAUNCH_PRESETS } from "@/config/launchPresets";
 import type { JdkInstallation } from "@/types/jdk";
 import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
@@ -362,11 +363,18 @@ function applyPreset(id: string | null) {
 const preBuildScriptText = ref("");
 const postBuildScriptText = ref("");
 
-// R-18 §20：构建引擎（maven / mvnd；mvnd 缺失时后端自动回退）。
-const buildEngineOptions = [
+// R-18 §20：构建引擎（maven / mvnd；mvnd 缺失时后端自动回退并提示）。
+const mvndAvailable = ref<boolean | null>(null);
+const buildEngineOptions = computed(() => [
   { label: "Maven", value: "maven" },
-  { label: "Maven Daemon (mvnd)", value: "mvnd" },
-];
+  {
+    label:
+      mvndAvailable.value === false
+        ? "Maven Daemon (mvnd)——未安装，选择后自动回退 Maven"
+        : "Maven Daemon (mvnd)",
+    value: "mvnd",
+  },
+]);
 
 // R-19 §83：模板（创建模式预填 + 编辑模式另存为）。
 const templates = ref<RuntimeTemplate[]>([]);
@@ -749,6 +757,12 @@ onMounted(async () => {
     templates.value = await runtimeListTemplates(store.workspaceId!);
   } catch (e) {
     console.error("R-19: load templates failed:", e);
+  }
+  try {
+    mvndAvailable.value = (await detectMvnd()).available;
+  } catch (e) {
+    console.error("R-18: detect mvnd failed:", e);
+    mvndAvailable.value = false;
   }
   if (isEdit.value) {
     const name = String(route.query.edit ?? "");

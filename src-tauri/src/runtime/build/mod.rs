@@ -17,6 +17,7 @@
 //! 直接暴露到 IPC（全局约束 §4）。
 
 pub mod classpath;
+pub mod dep_cache;
 pub mod pathing_jar;
 pub mod pipeline;
 pub mod runner;
@@ -102,6 +103,9 @@ pub struct BuildOptions {
     /// R-10 Launcher 注入：R-06 检测推断出的 mainClass（配置 `mainClass`
     /// 缺省时）；`Some` 时在加载配置后覆盖生效，不改动用户配置文件。
     pub main_class_override: Option<String>,
+    /// R-18 §73 第二阶段：Runtime Dependency Cache（模块输入指纹未变则
+    /// 跳过重建）。默认开启；指纹设计「宁可重建不错过」。
+    pub dependency_cache: bool,
 }
 
 impl Default for BuildOptions {
@@ -113,6 +117,7 @@ impl Default for BuildOptions {
             extra_maven_args: Vec::new(),
             timeout: Some(Duration::from_secs(30 * 60)),
             main_class_override: None,
+            dependency_cache: true,
         }
     }
 }
@@ -250,11 +255,13 @@ pub trait BuildEngine {
 }
 
 /// 按 id 分发 Build Engine；未知 id → `RuntimeConfig` 可行动错误。
+/// `mvnd`（R-18）与 `maven` 共用 Maven 构建流水线——差异只在可执行体解析
+/// （[`runner::BuildEngineHint`]）与 daemon 回退，Engine 抽象不变。
 pub fn engine_for(id: &str) -> AppResult<Box<dyn BuildEngine>> {
     match id {
-        "maven" => Ok(Box::new(pipeline::MavenBuildEngine)),
+        "maven" | "mvnd" => Ok(Box::new(pipeline::MavenBuildEngine)),
         other => Err(AppError::RuntimeConfig(format!(
-            "未知的 Build Engine '{other}'；当前仅支持 'maven'（mvnd / Gradle 由 R-18 / R-22 预留）"
+            "未知的 Build Engine '{other}'；当前支持 'maven' / 'mvnd'（Gradle 由 R-22 预留）"
         ))),
     }
 }
@@ -314,8 +321,10 @@ mod tests {
     #[test]
     fn engine_for_rejects_unknown_ids_actionably() {
         assert_eq!(engine_for("maven").unwrap().id(), "maven");
-        let error = engine_for("mvnd").err().expect("unknown engine must fail");
+        // R-18：mvnd 与 maven 共用流水线，是合法 engine id。
+        assert_eq!(engine_for("mvnd").unwrap().id(), "maven");
+        let error = engine_for("gradle").err().expect("unknown engine must fail");
         assert_eq!(error.code(), "RuntimeConfigError");
-        assert!(error.to_string().contains("mvnd"));
+        assert!(error.to_string().contains("gradle"));
     }
 }

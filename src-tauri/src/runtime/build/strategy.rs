@@ -36,7 +36,56 @@ pub fn build_maven_request(
     options: &BuildOptions,
     local_repository: Option<PathBuf>,
 ) -> MavenExecutionRequest {
-    let mut extra_args = reactor.arguments.clone();
+    build_maven_request_with_subset(
+        executable,
+        workspace_root,
+        reactor,
+        strategy,
+        options,
+        local_repository,
+        None,
+    )
+}
+
+/// 构造 Maven 构建请求的子集变体（R-17/R-18）。
+///
+/// `module_subset`：`Some(ga 列表)` 时把 reactor 的 `-pl <root> -am` 替换为
+/// `-pl <subset>`（**不带 -am**——增量重建集已含全部受影响模块，其上游无需
+/// 重跑）。多模块 reactor 才有 `-pl`；单项目 reactor 忽略子集（全量即单模块）。
+pub fn build_maven_request_with_subset(
+    executable: &MavenExecutable,
+    workspace_root: &Path,
+    reactor: &RuntimeReactorPlan,
+    strategy: RunStrategy,
+    options: &BuildOptions,
+    local_repository: Option<PathBuf>,
+    module_subset: Option<&[String]>,
+) -> MavenExecutionRequest {
+    let mut extra_args = match module_subset {
+        Some(subset) if reactor.module_paths.len() > 1 => {
+            // 摘掉原 -pl/-am 组，替换为子集。
+            let mut args: Vec<String> = Vec::with_capacity(reactor.arguments.len());
+            let mut i = 0;
+            while i < reactor.arguments.len() {
+                if reactor.arguments[i] == "-pl" {
+                    // 跳过 -pl <值> 及紧随的 -am。
+                    i += 2;
+                    if i - 1 < reactor.arguments.len()
+                        && reactor.arguments.get(i) == Some(&"-am".to_string())
+                    {
+                        i += 1;
+                    }
+                    continue;
+                }
+                args.push(reactor.arguments[i].clone());
+                i += 1;
+            }
+            args.push("-pl".into());
+            args.push(subset.join(","));
+            args
+        }
+        _ => reactor.arguments.clone(),
+    };
     if strategy == RunStrategy::PackageRun && options.skip_tests {
         extra_args.push("-DskipTests".into());
     }
@@ -316,6 +365,52 @@ mod tests {
         );
         assert_eq!(compile.goals, ["compile"]);
         assert!(!compile.extra_args.contains(&"-DskipTests".to_string()));
+    }
+
+    /// R-18：`build_maven_request_with_subset` 把 `-pl <root> -am` 替换为
+    /// `-pl <subset>`（不带 -am）；单项目 reactor 忽略子集。
+    #[test]
+    fn module_subset_replaces_pl_and_drops_am() {
+        let reactor = multi_module_reactor();
+        let request = build_maven_request_with_subset(
+            &executable(),
+            Path::new("/ws"),
+            &reactor,
+            RunStrategy::ClasspathRun,
+            &options(),
+            None,
+            Some(&["com.example:lib".to_string(), "com.example:app".to_string()]),
+        );
+        assert!(request.extra_args.contains(&"-pl".to_string()));
+        assert!(request.extra_args.contains(&"com.example:lib,com.example:app".to_string()));
+        assert!(!request.extra_args.contains(&"-am".to_string()), "subset must not carry -am");
+        assert!(request.extra_args.contains(&"-f".to_string()));
+        // 保留 -f 与策略无关参数（无 skipTests/offline）。
+        assert!(request.extra_args.contains(&"/ws/repo/pom.xml".to_string()));
+
+        // 子集为 None → 原参数（-pl app -am）。
+        let full = build_maven_request_with_subset(
+            &executable(),
+            Path::new("/ws"),
+            &reactor,
+            RunStrategy::ClasspathRun,
+            &options(),
+            None,
+            None,
+        );
+        assert!(full.extra_args.contains(&"-am".to_string()));
+
+        // 单项目 reactor：忽略子集（无 -pl 语义）。
+        let single = build_maven_request_with_subset(
+            &executable(),
+            Path::new("/ws"),
+            &single_module_reactor(),
+            RunStrategy::ClasspathRun,
+            &options(),
+            None,
+            Some(&["com.example:app".to_string()]),
+        );
+        assert!(!single.extra_args.contains(&"-pl".to_string()));
     }
 
     #[test]

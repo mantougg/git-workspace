@@ -341,6 +341,7 @@ pub fn run() {
             commands::jdk::remove_jdk,
             // Maven 检测与执行策略 commands (R-05)
             commands::maven::detect_maven,
+            commands::maven::detect_mvnd,
             commands::maven::list_maven_executables_cmd,
             commands::maven::get_maven_executable_cmd,
             commands::maven::validate_maven_executable,

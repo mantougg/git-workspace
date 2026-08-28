@@ -905,6 +905,212 @@ pub fn run_build_benchmark(
     })
 }
 
+/// R-18 mvnd 对比基准结果：同一合成工作区、同一 Runtime 配置，分别以
+/// mvn / mvnd 驱动多次构建（Build / Restart 场景的量化收益）。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MvndBenchmarkResult {
+    pub repositories: usize,
+    pub modules_per_repository: usize,
+    pub generated_at: String,
+    pub mvnd_available: bool,
+    /// mvn 驱动的 N 次构建耗时（ms）。
+    pub mvn_builds_ms: Vec<u128>,
+    /// mvnd 驱动的 N 次构建耗时（ms）；mvnd 不可用时为空。
+    pub mvnd_builds_ms: Vec<u128>,
+}
+
+/// R-18 mvnd 收益测量（§20/§73）：`runs` 次连续构建（无源码变化，即
+/// 「频繁 Build / Restart」场景）。mvnd 不可用时 `mvnd_builds_ms` 为空
+/// 并返回 `mvnd_available=false`（环境相关基准，调用方记录 skip）。
+pub fn run_mvnd_build_benchmark(
+    repositories: usize,
+    modules_per_repository: usize,
+    runs: usize,
+) -> Option<MvndBenchmarkResult> {
+    use crate::runtime::build::pipeline::execute_build;
+    use crate::runtime::build::runner::{BuildEngineHint, MavenRunner, SpawningMavenRunner};
+    use crate::runtime::build::scheduler::BuildScheduler;
+    use crate::runtime::build::{BuildOptions, BuildRequest, RingTail, RunStrategy};
+    use crate::runtime::{create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig};
+
+    assert!(runs >= 1);
+    let maven = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
+    if std::process::Command::new(maven).arg("-version").output().is_err() {
+        eprintln!("mvnd benchmark: `{maven}` unavailable, skipping");
+        return None;
+    }
+    let mvnd = crate::maven::mvnd::detect_mvnd();
+    if !mvnd.available {
+        eprintln!("mvnd benchmark: mvnd not installed; measuring mvn baseline only");
+    }
+
+    static MVND_RUN_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let run_id = MVND_RUN_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = std::env::temp_dir().join(format!("gw_bench_mvnd_{}_{}", std::process::id(), run_id));
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    let repository_paths =
+        generate_buildable_workspace(&tmp, repositories, modules_per_repository).expect("workspace");
+    let db_path = tmp.join("bench.db");
+    let mut conn = rusqlite::Connection::open(&db_path).expect("open bench db");
+    crate::db::init_db(&mut conn).expect("init bench db");
+    conn.execute(
+        "INSERT INTO workspaces (name, path, created_at, updated_at) VALUES ('bench', ?1, 't', 't')",
+        [tmp.to_string_lossy().to_string()],
+    )
+    .expect("insert workspace");
+    let workspace_id = conn.last_insert_rowid();
+    let scanned: Vec<crate::models::repository::ScannedRepo> = repository_paths
+        .iter()
+        .map(|path| crate::models::repository::ScannedRepo {
+            path: path.to_string_lossy().to_string(),
+            name: path.file_name().unwrap().to_string_lossy().to_string(),
+            relative_path: path.file_name().unwrap().to_string_lossy().to_string(),
+            git_dir_mtime: None,
+        })
+        .collect();
+    crate::db::dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned).expect("repos");
+    let discovery = discover_poms(&tmp, 5, None, None);
+    assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
+    sync_workspace_index(&mut conn, workspace_id, &discovery, &tmp.join("m2")).expect("index sync");
+    let graph = query_dependency_graph(&conn, workspace_id).expect("graph");
+    let root_artifact = format!("module-{:03}-{:02}", repositories - 1, modules_per_repository - 1);
+    let root_project = graph
+        .projects
+        .iter()
+        .find(|p| p.coordinates.artifact_id == root_artifact)
+        .expect("root module")
+        .clone();
+    let root_pom_path = root_project.path.to_string_lossy().to_string();
+    // reactor pom = 仓库父 pom；构建目标 = -pl <root ga> -am（compile 全上游）。
+    let reactor_pom = root_project
+        .path
+        .parent()
+        .and_then(|dir| dir.parent())
+        .map(|repo_dir| repo_dir.join("pom.xml"))
+        .expect("repo parent pom");
+    let root_ga = format!(
+        "{}:{}",
+        root_project.coordinates.group_id, root_project.coordinates.artifact_id
+    );
+    create_config(
+        &conn,
+        &CreateRuntimeConfigRequest {
+            workspace_id,
+            config: RuntimeApplicationConfig {
+                name: "bench-mvnd".into(),
+                project: root_pom_path,
+                main_class: Some("com.benchbuild.App".into()),
+                build_engine: Some("maven".into()),
+                ..Default::default()
+            },
+        },
+    )
+    .expect("config create failed");
+
+    let scheduler = BuildScheduler::new(1);
+    let conn = std::sync::Arc::new(std::sync::Mutex::new(conn));
+
+    let build_once = |engine_hint: BuildEngineHint| -> u128 {
+        let graph_cache = DependencyGraphCache::new();
+        let closure_cache = RuntimeClosureCache::new();
+        let request = BuildRequest {
+            workspace_id,
+            runtime_name: "bench-mvnd".into(),
+            options: BuildOptions {
+                strategy: Some(RunStrategy::ClasspathRun),
+                timeout: Some(Duration::from_secs(15 * 60)),
+                dependency_cache: false,
+                ..Default::default()
+            },
+        };
+        let mut sink = RingTail::new();
+        let stage = Instant::now();
+        let resolved = SpawningMavenRunner
+            .resolve_maven_for_engine(
+                &tmp,
+                &crate::maven::settings::resolve_local_repository_effective(None),
+                engine_hint,
+            )
+            .expect("resolve engine")
+            .unwrap_or_else(|| {
+                panic!("engine {engine_hint:?} unavailable");
+            });
+        // 直接驱动 Maven 调用（compile）以隔离引擎差异：ClasspathRun 的
+        // compile 步骤 = goals + reactor 参数（与 execute_build 相同形态）。
+        let request2 = crate::maven::executor::build_request(
+            &resolved.executable,
+            &tmp,
+            vec!["compile".into()],
+            vec![
+                "-f".into(),
+                reactor_pom.to_string_lossy().into_owned(),
+                "-pl".into(),
+                root_ga.clone(),
+                "-am".into(),
+            ],
+            Some(resolved.local_repository.clone()),
+        );
+        let exit = SpawningMavenRunner
+            .run(&request2, &[], &mut sink, None, Some(Duration::from_secs(15 * 60)))
+            .expect("maven run");
+        assert_eq!(exit.exit_code, Some(0), "benchmark build failed: {}", sink.tail());
+        stage.elapsed().as_millis()
+    };
+
+    // 每引擎各跑 runs 次；第一轮预热本地仓库（不计入对比也不计入 baseline ——
+    // 两引擎各自预热，保证公平）。
+    let _ = build_once(BuildEngineHint::Maven);
+    let mut mvn_builds = Vec::with_capacity(runs);
+    for _ in 0..runs {
+        mvn_builds.push(build_once(BuildEngineHint::Maven));
+    }
+    let mut mvnd_builds = Vec::new();
+    if mvnd.available {
+        let _ = build_once(BuildEngineHint::Mvnd);
+        for _ in 0..runs {
+            mvnd_builds.push(build_once(BuildEngineHint::Mvnd));
+        }
+    }
+
+    drop(conn);
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    Some(MvndBenchmarkResult {
+        repositories,
+        modules_per_repository,
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        mvnd_available: mvnd.available,
+        mvn_builds_ms: mvn_builds,
+        mvnd_builds_ms: mvnd_builds,
+    })
+}
+
+/// R-18 mvnd 对比报告（有 mvnd 时量化收益；无 mvnd 时仅基线）。
+pub fn format_mvnd_report(r: &MvndBenchmarkResult) -> String {
+    let avg = |xs: &[u128]| -> u128 {
+        if xs.is_empty() { 0 } else { xs.iter().sum::<u128>() / xs.len() as u128 }
+    };
+    let mvn_avg = avg(&r.mvn_builds_ms);
+    let mvnd_avg = avg(&r.mvnd_builds_ms);
+    let mut s = String::new();
+    s.push_str(&format!(
+        "## mvnd Benchmark (R-18): {} repositories × {} modules × {} runs\n\n",
+        r.repositories,
+        r.modules_per_repository,
+        r.mvn_builds_ms.len()
+    ));
+    s.push_str(&format!("- mvn avg: {mvn_avg} ms\n"));
+    if r.mvnd_available {
+        s.push_str(&format!("- mvnd avg: {mvnd_avg} ms\n"));
+        let gain = (mvn_avg as f64 - mvnd_avg as f64) / mvn_avg.max(1) as f64 * 100.0;
+        s.push_str(&format!("- mvnd 收益: {gain:+.1}%\n"));
+    } else {
+        s.push_str("- mvnd: 未安装（收益测量跳过）\n");
+    }
+    s
+}
+
 /// Render the R-09 Build benchmark report（趋势由人工读，不设 PASS/FAIL）。
 pub fn format_build_report(r: &BuildBenchmarkResult) -> String {
     let mut s = String::new();
@@ -928,6 +1134,29 @@ pub fn format_build_report(r: &BuildBenchmarkResult) -> String {
 /// Serialize a build benchmark result to pretty JSON.
 pub fn build_to_json(r: &BuildBenchmarkResult) -> String {
     serde_json::to_string_pretty(r).expect("build benchmark result serialization")
+}
+
+#[cfg(test)]
+mod mvnd_tests {
+    use super::*;
+
+    /// R-18 验收：mvnd 模式构建功能正确且可量化（mvnd 未安装时打印 skip
+    /// 原因，仅测 mvn 基线——环境相关基准按全局约束 §4 处理）。
+    #[test]
+    fn mvnd_benchmark_measures_engine_comparison() {
+        let result = run_mvnd_build_benchmark(1, 2, 2).expect("benchmark must run (mvn available)");
+        assert_eq!(result.mvn_builds_ms.len(), 2, "mvn baseline runs recorded");
+        if !result.mvnd_available {
+            eprintln!("R-18: mvnd not installed; skipping mvnd comparison (mvn baseline only)");
+            eprintln!("{}", format_mvnd_report(&result));
+            return;
+        }
+        assert_eq!(result.mvnd_builds_ms.len(), 2, "mvnd runs recorded");
+        eprintln!("{}", format_mvnd_report(&result));
+        // 只断言形态有效（收益大小取决于环境，不设硬阈值——报告供人工读）。
+        assert!(result.mvn_builds_ms.iter().all(|&ms| ms > 0));
+        assert!(result.mvnd_builds_ms.iter().all(|&ms| ms > 0));
+    }
 }
 
 #[cfg(test)]

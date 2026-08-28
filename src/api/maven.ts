@@ -146,3 +146,15 @@ export async function detectMavenByPicker(
     configuredPath: configuredPath ?? null,
   });
 }
+
+// R-18 §20：Maven Daemon（mvnd）检测。
+export interface MvndDetection {
+  available: boolean;
+  executablePath: string | null;
+  fullVersion: string | null;
+  raw: string | null;
+}
+
+export function detectMvnd(): Promise<MvndDetection> {
+  return invoke<MvndDetection>("detect_mvnd");
+}

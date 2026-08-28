@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use crate::error::AppResult;
-use crate::maven::exec_model::{MavenExecutionRequest, ResolvedMaven};
+use crate::maven::exec_model::{MavenExecutionRequest, MavenSource, ResolvedMaven};
 use crate::maven::executor;
 use crate::process::streaming::{spawn_streaming, StreamingExit};
 use crate::runtime::build::BuildOutputSink;
@@ -38,6 +38,18 @@ pub trait MavenRunner: Send + Sync {
             })
     }
 
+    /// R-18：带 Build Engine 偏好的解析。默认忽略偏好（测试 fake 不受影响）；
+    /// 生产实现 [`SpawningMavenRunner`] 在 `Mvnd` 偏好下尝试 PATH 检测 mvnd，
+    /// 未安装返回 `None`（调用方回退普通 mvn 并提示）。
+    fn resolve_maven_for_engine(
+        &self,
+        project_dir: &Path,
+        local_repository: &Path,
+        _engine: BuildEngineHint,
+    ) -> AppResult<Option<ResolvedMaven>> {
+        Ok(Some(self.resolve_maven(project_dir, local_repository)?))
+    }
+
     /// 执行一次 Maven 调用，把输出按行转发给 `sink`。
     fn run(
         &self,
@@ -49,10 +61,47 @@ pub trait MavenRunner: Send + Sync {
     ) -> AppResult<StreamingExit>;
 }
 
+/// Build Engine 偏好（R-18）：决定可执行体解析走 mvn 还是 mvnd。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildEngineHint {
+    Maven,
+    Mvnd,
+}
+
 /// 生产实现：真实 spawn Maven 子进程。
 pub struct SpawningMavenRunner;
 
 impl MavenRunner for SpawningMavenRunner {
+    /// R-18：`Mvnd` 偏好 → PATH 检测 mvnd（PATHEXT 语义在 find_in_path 内）；
+    /// 未安装 / 探测失败返回 `None`，调用方回退普通 mvn。
+    fn resolve_maven_for_engine(
+        &self,
+        project_dir: &Path,
+        local_repository: &Path,
+        engine: BuildEngineHint,
+    ) -> AppResult<Option<ResolvedMaven>> {
+        if engine == BuildEngineHint::Maven {
+            return Ok(Some(self.resolve_maven(project_dir, local_repository)?));
+        }
+        let detection = crate::maven::mvnd::detect_mvnd();
+        if !detection.available {
+            return Ok(None);
+        }
+        let Some(path) = &detection.executable_path else {
+            return Ok(None);
+        };
+        let mut exe =
+            crate::maven::exec_model::MavenExecutable::new(path, MavenSource::System, None);
+        exe.is_valid = true;
+        exe.raw_version = detection.raw.clone();
+        exe.full_version = detection.full_version.clone();
+        Ok(Some(ResolvedMaven {
+            executable: exe,
+            local_repository: local_repository.to_path_buf(),
+            uses_wrapper: false,
+        }))
+    }
+
     fn run(
         &self,
         request: &MavenExecutionRequest,

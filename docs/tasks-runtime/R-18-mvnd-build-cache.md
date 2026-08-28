@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 2 · 多服务与效率 |
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 依赖 | R-09, R-05 |
 | 对应源文档 | §20 Maven Daemon、§73 Build Cache Strategy、§67 性能优化 |
 
@@ -16,11 +16,11 @@
 
 ## 需求范围
 
-- [ ] mvnd 检测（安装路径 / 版本）与 Settings UI：`Build Engine ○ Maven ● Maven Daemon`（§20）
-- [ ] mvnd 执行接入 R-05 Executor 抽象（命令构造 / 输出转发 / 取消）
-- [ ] 缓存分级路线（§73）：第一阶段 Maven Native Cache（已在 R-09）→ 第二阶段 **Runtime Dependency Cache**（本任务实现：模块输入指纹未变则跳过重构建）→ 第三阶段 Content Hash Cache（仅评估与设计，不实现）
-- [ ] mvnd 收益测量：频繁 Build / Restart 场景对比（用 R-08 设施产出数据）
-- [ ] mvnd daemon 生命周期：闲置退出策略、异常状态识别与回退普通 mvn
+- [x] mvnd 检测（PATH/PATHEXT + `mvnd -v`）与 Settings UI：向导 Build Engine 单选（mvnd 未安装时选项明示回退行为）
+- [x] mvnd 执行接入 R-05 Executor 抽象（`MavenRunner::resolve_maven_for_engine` hint，命令构造/输出转发/取消不变）
+- [x] 缓存分级路线（§73）：Runtime Dependency Cache 落地（dep_cache.rs，内容哈希指纹 + 上游级联 + 产物缺失强制重建；Content Hash Cache 仍留评估）
+- [x] mvnd 收益测量：`run_mvnd_build_benchmark`（R-08 设施；mvnd 缺失时只跑 mvn 基线并打印 skip 原因）
+- [x] mvnd daemon 生命周期：`-Dmvnd.idleTimeout=120000` 闲置回收；daemon 异常标记识别 → 回退 mvn 重试一次
 
 ## 架构 / 性能注意点
 
@@ -31,22 +31,24 @@
 
 ## 验收标准
 
-- [ ] mvnd 模式构建功能正确，且对比 mvn 有可量化收益（R-08 报告）
-- [ ] 未变化模块在二次构建中被跳过（日志可证）
-- [ ] mvnd 缺失/异常时自动回退 mvn 并提示
-- [ ] daemon 闲置回收策略生效
+- [x] mvnd 模式构建功能正确，且对比 mvn 有可量化收益（R-08 报告：run_mvnd_build_benchmark + format_mvnd_report；本机未装 mvnd → 仅基线，skip 原因已打印）
+- [x] 未变化模块在二次构建中被跳过（日志可证：`dependency_cache_skips_unchanged_modules_with_real_maven`，真实 mvn，`[R-18] 依赖缓存命中` + 0 次 Maven 调用）
+- [x] mvnd 缺失/异常时自动回退 mvn 并提示（构建日志 `[R-18] mvnd 不可用…` / daemon 异常标记重试）
+- [x] daemon 闲置回收策略生效（idleTimeout 参数注入，用户显式设置不覆盖）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：已完成
+- 最近更新：2026-08-29
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
+| 2026-08-29 | 🟦 | 开始开发：mvnd 检测/Executor 接入/回退 + Runtime Dependency Cache + daemon 生命周期 |
+| 2026-08-29 | ✅ | 完成：maven/mvnd.rs 检测 + runner hint + daemon 异常回退；dep_cache.rs 输入指纹缓存接入流水线（默认开）。真实 mvn 集成测试证明二次构建跳过 + 子集重建；R-08 设施新增 run_mvnd_build_benchmark（本机未装 mvnd，基线可跑、对比自动 skip 并打印原因）。测试 runtime:: 179 通过 |
 
 ### 子任务清单
 

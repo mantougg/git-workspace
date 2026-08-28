@@ -22,6 +22,7 @@ pub mod executor;
 pub mod discovery;
 pub mod index;
 pub mod model;
+pub mod mvnd;
 pub mod parser;
 pub mod reactor;
 pub mod registry;

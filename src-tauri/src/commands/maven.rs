@@ -40,6 +40,13 @@ fn lock_db<'r>(state: &'r State<'_, AppState>) -> AppResult<std::sync::MutexGuar
 /// 对项目跑优先级链检测 + `mvn -v` 探测，返回 `ResolvedMaven` 并缓存。
 ///
 /// `project_dir` 为项目根（`pom.xml` 所在目录）；`configured_path` 为用户配置
+/// R-18 §20：检测 Maven Daemon（mvnd）——PATH 探测 + 版本解析。
+/// 可选增强能力的前置：未安装返回 `available=false`（构建自动回退 mvn）。
+#[tauri::command]
+pub fn detect_mvnd() -> AppResult<crate::maven::mvnd::MvndDetection> {
+    Ok(crate::maven::mvnd::detect_mvnd())
+}
+
 /// 的 Maven 路径（可选）。任一候选探测成功即返回；全部失败返回 `MavenNotFound`
 /// 可行动错误（指向 Settings 页）。
 #[tauri::command]

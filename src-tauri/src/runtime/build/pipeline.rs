@@ -21,6 +21,7 @@ use crate::maven::index::{DependencyGraph, DependencyGraphCache, MavenProjectNod
 use crate::maven::reactor::prepare_runtime_reactor;
 use crate::process::streaming::{spawn_streaming, OutputStream, StreamingExit};
 use crate::runtime::build::classpath;
+use crate::runtime::build::dep_cache;
 use crate::runtime::build::runner::MavenRunner;
 use crate::runtime::build::scheduler::BuildScheduler;
 use crate::runtime::build::strategy;
@@ -95,8 +96,14 @@ pub fn execute_build(
             config.main_class = Some(main_class.clone());
         }
     }
-    // 只认 "maven"；mvnd（R-18）/ Gradle（R-22）将来在这里分发。
-    let _engine = engine_for(config.build_engine.as_deref().unwrap_or("maven"))?;
+    // 只认 "maven" / "mvnd"（R-18）；Gradle（R-22）将来在这里分发。
+    let engine_id = config.build_engine.as_deref().unwrap_or("maven");
+    let _engine = engine_for(engine_id)?;
+    let engine_hint = if engine_id == "mvnd" {
+        crate::runtime::build::runner::BuildEngineHint::Mvnd
+    } else {
+        crate::runtime::build::runner::BuildEngineHint::Maven
+    };
     let strategy = request
         .options
         .strategy
@@ -121,7 +128,24 @@ pub fn execute_build(
     // ---- 4. Validate Maven（经 runner seam，可测试）----
     // F-16：应用级本地仓库覆盖优先于 settings.xml 探测。
     let local_repository = crate::maven::settings::resolve_local_repository_effective(None);
-    let resolved = runner.resolve_maven(&strategy::module_directory(root), &local_repository)?;
+    let project_dir = strategy::module_directory(root);
+    // R-18：mvnd 偏好解析；不可用回退 mvn（可选增强，不构成硬依赖）。
+    let mut resolved = match runner.resolve_maven_for_engine(
+        &project_dir,
+        &local_repository,
+        engine_hint,
+    )? {
+        Some(resolved) => resolved,
+        None => {
+            log::warn!("R-18: build_engine=mvnd 但 mvnd 不可用，回退普通 Maven");
+            // 固定提示行（无秘密），直接进 sink 供日志可证。
+            sink.on_line(
+                OutputStream::Stdout,
+                "[R-18] mvnd 不可用（未安装或探测失败），本次构建回退普通 Maven",
+            );
+            runner.resolve_maven(&project_dir, &local_repository)?
+        }
+    };
 
     // ---- 5. Runtime Closure + Reactor ----
     // Scope 来自 Runtime 配置（R-03 §15，缺省 Auto；R-13 起 UI 可调）。
@@ -158,14 +182,89 @@ pub fn execute_build(
     }
 
     // ---- 7. Maven Build（限流闸内）----
-    let build_request = strategy::build_maven_request(
+    // R-18 §73 第二阶段：Runtime Dependency Cache——模块输入指纹未变则
+    // 跳过重建；全部未变则跳过整个 Maven 构建调用。
+    let mut build_subset: Option<Vec<String>> = None;
+    let mut skip_build_call = false;
+    if request.options.dependency_cache {
+        let closure_modules: Vec<MavenProjectNode> = closure.projects.clone();
+        let stored = dep_cache::load_state(workspace_root, &request.runtime_name);
+        let plan = dep_cache::compute_rebuild_plan(
+            &graph,
+            &closure_modules,
+            stored.as_ref(),
+            &graph.fingerprint,
+            |module| {
+                dep_cache::compute_module_fingerprint(
+                    &module.path,
+                    &strategy::module_directory(module),
+                )
+            },
+            |module| {
+                // 产物存在性：jar 模块看 target/classes（compile 产物）。
+                strategy::module_directory(module).join("target").join("classes").is_dir()
+            },
+        );
+        match plan {
+            dep_cache::RebuildPlan::SkipAll => {
+                log::info!(
+                    "R-18: dependency cache hit for '{}': all {} module(s) unchanged, \
+                     skipping Maven build",
+                    request.runtime_name,
+                    closure.projects.len()
+                );
+                redacting.on_line(
+                    OutputStream::Stdout,
+                    &format!(
+                        "[R-18] 依赖缓存命中：{} 个模块输入未变化，跳过 Maven 构建",
+                        closure.projects.len()
+                    ),
+                );
+                skip_build_call = true;
+            }
+            dep_cache::RebuildPlan::Subset(subset) => {
+                log::info!(
+                    "R-18: dependency cache for '{}': rebuilding {} of {} module(s): {}",
+                    request.runtime_name,
+                    subset.len(),
+                    closure.projects.len(),
+                    subset.join(", ")
+                );
+                redacting.on_line(
+                    OutputStream::Stdout,
+                    &format!(
+                        "[R-18] 依赖缓存：仅重建 {}/{} 个模块（{}）",
+                        subset.len(),
+                        closure.projects.len(),
+                        subset.join(", ")
+                    ),
+                );
+                build_subset = Some(subset);
+            }
+            dep_cache::RebuildPlan::RebuildAll => {}
+        }
+    }
+
+    let mut build_request = strategy::build_maven_request_with_subset(
         &resolved.executable,
         workspace_root,
         &reactor,
         strategy,
         &request.options,
         Some(resolved.local_repository.clone()),
+        build_subset.as_deref(),
     );
+    // R-18：mvnd daemon 闲置超时回收（用户显式设置时不重复注入）。
+    if engine_hint == crate::runtime::build::runner::BuildEngineHint::Mvnd
+        && !build_request
+            .extra_args
+            .iter()
+            .any(|arg| arg.starts_with("-Dmvnd.idleTimeout="))
+    {
+        build_request
+            .extra_args
+            .push(crate::maven::mvnd::idle_timeout_arg());
+    }
     let build_preview = executor::preview_command(&build_request);
     // R-12：等 permit 期间响应任务取消（排队取消），拿到 permit 后的构建
     // 取消由 runner 的 50ms 轮询负责。
@@ -176,14 +275,81 @@ pub fn execute_build(
         None => scheduler.acquire(),
     };
     let start = Instant::now();
-    let exit = runner.run(
-        &build_request,
-        &env,
-        &mut redacting,
-        cancel,
-        request.options.timeout,
-    )?;
-    check_exit(&exit, root, &redacting, "build", request.options.timeout)?;
+    let exit = if skip_build_call {
+        StreamingExit {
+            exit_code: Some(0),
+            timed_out: false,
+            cancelled: false,
+        }
+    } else {
+        runner.run(
+            &build_request,
+            &env,
+            &mut redacting,
+            cancel,
+            request.options.timeout,
+        )?
+    };
+    if let Err(error) = check_exit(&exit, root, &redacting, "build", request.options.timeout) {
+        // R-18：mvnd daemon 异常识别 → 回退普通 mvn 重试一次。
+        let retry_with_maven = engine_hint == crate::runtime::build::runner::BuildEngineHint::Mvnd
+            && crate::maven::mvnd::looks_like_daemon_failure(&redacting.tail());
+        if !retry_with_maven {
+            return Err(error);
+        }
+        log::warn!("R-18: mvnd daemon failure detected; retrying with plain Maven");
+        redacting.on_line(
+            OutputStream::Stdout,
+            "[R-18] 检测到 mvnd daemon 异常，回退普通 Maven 重试一次",
+        );
+        resolved = runner.resolve_maven(&project_dir, &local_repository)?;
+        let retry_request = strategy::build_maven_request_with_subset(
+            &resolved.executable,
+            workspace_root,
+            &reactor,
+            strategy,
+            &request.options,
+            Some(resolved.local_repository.clone()),
+            build_subset.as_deref(),
+        );
+        let retry_exit = runner.run(
+            &retry_request,
+            &env,
+            &mut redacting,
+            cancel,
+            request.options.timeout,
+        )?;
+        check_exit(&retry_exit, root, &redacting, "build", request.options.timeout)?;
+    }
+    // 构建成功：写入/刷新依赖缓存状态（R-18）。
+    if request.options.dependency_cache && !skip_build_call {
+        let mut modules = std::collections::BTreeMap::new();
+        let mut all_fingerprinted = true;
+        for module in &closure.projects {
+            match dep_cache::compute_module_fingerprint(
+                &module.path,
+                &strategy::module_directory(module),
+            ) {
+                Some(fp) => {
+                    modules.insert(strategy::module_ga(module), fp);
+                }
+                None => {
+                    all_fingerprinted = false;
+                    break;
+                }
+            }
+        }
+        if all_fingerprinted {
+            dep_cache::store_state(
+                workspace_root,
+                &request.runtime_name,
+                &dep_cache::BuildCacheState {
+                    graph_fingerprint: graph.fingerprint.clone(),
+                    modules,
+                },
+            );
+        }
+    }
 
     // ---- 8. Classpath Run：解析/复用 classpath 缓存 ----
     let mut dependency_classpath = None;
@@ -1484,10 +1650,8 @@ mod tests {
         sink: &mut dyn BuildOutputSink,
         cancel: Option<&AtomicBool>,
     ) -> AppResult<BuildOutcome> {
-        let runner = crate::runtime::build::runner::SpawningMavenRunner;
-        build_with(
+        real_build_opts(
             fixture,
-            &runner,
             BuildOptions {
                 strategy: Some(strategy),
                 timeout: Some(INTEGRATION_TIMEOUT),
@@ -1496,6 +1660,16 @@ mod tests {
             sink,
             cancel,
         )
+    }
+
+    fn real_build_opts(
+        fixture: &mut Fixture,
+        options: BuildOptions,
+        sink: &mut dyn BuildOutputSink,
+        cancel: Option<&AtomicBool>,
+    ) -> AppResult<BuildOutcome> {
+        let runner = crate::runtime::build::runner::SpawningMavenRunner;
+        build_with(fixture, &runner, options, sink, cancel)
     }
 
     #[test]
@@ -1569,17 +1743,96 @@ mod tests {
 
         // 第二/三次：classpath 缓存稳定后命中，只剩 compile 一次调用。
         // （首次构建后的依赖来源刷新可能翻转图指纹 → 第二次可能仍重算；
-        //   第三次必定命中。）
-        real_build(&mut fixture, RunStrategy::ClasspathRun, &mut sink, None)
-            .unwrap_or_else(|error| panic!("second build failed: {error}\n{}", sink.tail.tail()));
+        //   第三次必定命中。）关闭 R-18 依赖缓存，单独验证 R-09 classpath
+        // 缓存语义；依赖缓存跳过行为由下方 dep-cache 专项测试覆盖。
+        real_build_opts(
+            &mut fixture,
+            BuildOptions {
+                strategy: Some(RunStrategy::ClasspathRun),
+                timeout: Some(INTEGRATION_TIMEOUT),
+                dependency_cache: false,
+                ..Default::default()
+            },
+            &mut sink,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("second build failed: {error}\n{}", sink.tail.tail()));
         let before_third = sink.invocations;
-        real_build(&mut fixture, RunStrategy::ClasspathRun, &mut sink, None)
-            .unwrap_or_else(|error| panic!("third build failed: {error}\n{}", sink.tail.tail()));
+        real_build_opts(
+            &mut fixture,
+            BuildOptions {
+                strategy: Some(RunStrategy::ClasspathRun),
+                timeout: Some(INTEGRATION_TIMEOUT),
+                dependency_cache: false,
+                ..Default::default()
+            },
+            &mut sink,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("third build failed: {error}\n{}", sink.tail.tail()));
         assert_eq!(
             sink.invocations - before_third,
             1,
             "third build must be compile-only (classpath cache hit)"
         );
+        let _ = fs::remove_dir_all(fixture.root);
+    }
+
+    /// R-18 验收：未变化模块在二次构建中被跳过（构建日志可证
+    /// `[R-18] 依赖缓存命中`，Maven 调用数为 0）；修改源码后仅重建
+    /// 受影响子集。
+    #[test]
+    fn dependency_cache_skips_unchanged_modules_with_real_maven() {
+        if !maven_available() {
+            eprintln!("R-18: no `mvn` on PATH; skipping dependency cache integration test");
+            return;
+        }
+        let mut fixture = setup_single_repo_boot("depcache");
+        fixture.create_boot_runtime(&fixture.app_pom_path());
+        let mut sink = MavenCountingSink {
+            invocations: 0,
+            tail: RingTail::new(),
+        };
+
+        // 第一次构建：全量（写入指纹缓存）。
+        real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
+            .unwrap_or_else(|error| panic!("first build failed: {error}\n{}", sink.tail.tail()));
+        let after_first = sink.invocations;
+        assert!(after_first >= 1);
+
+        // 第二次构建：全部模块未变化 → 跳过 Maven 调用，日志可证。
+        real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
+            .unwrap_or_else(|error| panic!("second build failed: {error}\n{}", sink.tail.tail()));
+        assert_eq!(
+            sink.invocations,
+            after_first,
+            "unchanged modules must skip the maven build entirely"
+        );
+        assert!(
+            sink.tail.tail().contains("[R-18] 依赖缓存命中"),
+            "cache hit must be visible in build log: {}",
+            sink.tail.tail()
+        );
+
+        // 修改 lib 源码 → 只重建 lib + app（-pl 子集，一次 Maven 调用）。
+        let lib_java = fixture.root.join("repo/lib/src/main/java/com/r09/lib/Lib.java");
+        std::fs::write(&lib_java, "package com.r09.lib;\n\npublic final class Lib {\n    public static String greet() { return \"hi v2\"; }\n}\n").unwrap();
+        real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
+            .unwrap_or_else(|error| panic!("incremental build failed: {error}\n{}", sink.tail.tail()));
+        assert_eq!(
+            sink.invocations,
+            after_first + 1,
+            "incremental build must be exactly one maven call (-pl subset)"
+        );
+        assert!(
+            sink.tail.tail().contains("[R-18] 依赖缓存：仅重建"),
+            "subset rebuild must be visible in build log: {}",
+            sink.tail.tail()
+        );
+        // 第三次：增量构建后全部未变 → 再次跳过。
+        real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
+            .unwrap_or_else(|error| panic!("post-increment build failed: {error}\n{}", sink.tail.tail()));
+        assert_eq!(sink.invocations, after_first + 1);
         let _ = fs::remove_dir_all(fixture.root);
     }
 
