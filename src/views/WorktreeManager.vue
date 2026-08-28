@@ -2,7 +2,7 @@
   <div class="worktree-manager">
     <!-- Header -->
     <div class="wt-header">
-      <span class="repo-path">{{ repoPath }}</span>
+      <RepoSwitcher @change="onRepoSwitch" />
       <div class="wt-header-actions">
         <n-button size="small" :loading="loading" @click="load">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
@@ -68,8 +68,9 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { useRepositoryStore } from "@/stores/repository";
+import { useRouter } from "vue-router";
+import { useCurrentRepo } from "@/composables/useCurrentRepo";
+import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
 import { AddOutline, RefreshOutline } from "@vicons/ionicons5";
 import { open as openPath } from "@tauri-apps/plugin-shell";
 import { listWorktrees, createWorktree, removeWorktree } from "@/api/worktree";
@@ -79,10 +80,9 @@ import { errMsg } from "@/utils/error";
 import { useMessage, useDialog, NTag, NButton } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 
-const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const repoStore = useRepositoryStore();
+const { resolveCurrentRepo } = useCurrentRepo();
 const dialog = useDialog();
 
 const repoPath = ref("");
@@ -174,15 +174,14 @@ const columns = computed<DataTableColumns<WorktreeInfo>>(() => [
 ]);
 
 onMounted(async () => {
-  // F-14：query 优先，回落全局当前仓库（SideNav 直达）；成功回写 store。
-  const repo = (route.query.repo as string) || repoStore.currentRepoPath;
+  // F-14/F-17：query → 全局当前仓库 → 工作区首仓库兜底（SideNav 直达）。
+  const repo = await resolveCurrentRepo();
   if (!repo) {
-    message.warning("未指定仓库路径");
+    message.warning("当前工作区没有可用仓库，请先在变更页扫描");
     router.push({ name: "changes" });
     return;
   }
   repoPath.value = repo;
-  repoStore.setCurrentRepoPath(repo);
   await load();
 });
 
@@ -195,6 +194,14 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+
+// F-22：切换仓库后重置视图状态并重载。
+async function onRepoSwitch(path: string) {
+  repoPath.value = path;
+  worktrees.value = [];
+  localBranches.value = [];
+  await load();
 }
 
 /** Default target path: sibling directory named `<repo>-<branch|wt>`. */

@@ -75,9 +75,13 @@
         </div>
 
         <!-- Change tree -->
-        <n-spin :show="changesLoading">
+        <!-- F-20：n-spin 加 tree-spin 参与 flex 布局（同 F-18/F-09b 模式）；
+             空数据时不渲染树，空状态统一由下方 view 级 .empty-state 展示，
+             避免 n-tree 默认「无数据」与内联空状态同时出现。 -->
+        <n-spin :show="changesLoading" class="tree-spin">
           <div class="tree-container">
             <ChangeTree
+              v-if="changes.length > 0"
               ref="changeTreeRef"
               :changes="changes"
               @selection-change="onTreeSelection"
@@ -111,7 +115,7 @@
       <div
         v-if="selectedRepoPath && graphCommits.length > 0"
         class="resize-handle"
-        @mousedown="startResize('graph')"
+        @mousedown="startResize('graph', $event)"
       ></div>
       <div
         v-if="selectedRepoPath && graphCommits.length > 0"
@@ -147,7 +151,7 @@
       <div
         v-if="selectedDiff"
         class="resize-handle"
-        @mousedown="startResize('diff')"
+        @mousedown="startResize('diff', $event)"
       ></div>
       <div
         v-if="selectedDiff"
@@ -1092,18 +1096,18 @@ let resizePane: ResizePane | null = null;
 let resizeStartX = 0;
 let resizeStartWidth = 0;
 
-function startResize(pane: ResizePane) {
-  return (e: MouseEvent) => {
-    e.preventDefault();
-    resizePane = pane;
-    resizeStartX = e.clientX;
-    resizeStartWidth =
-      pane === "diff"
-        ? diffPaneEl.value?.offsetWidth ?? 600
-        : graphPaneEl.value?.offsetWidth ?? 320;
-    document.addEventListener("mousemove", onResizeMove);
-    document.addEventListener("mouseup", endResize);
-  };
+// F-20：直接去柯里化——旧写法 startResize(pane) 只返回闭包，模板里
+// @mousedown="startResize('graph')" 拿到处理器后被丢弃，拖拽从未生效。
+function startResize(pane: ResizePane, e: MouseEvent) {
+  e.preventDefault();
+  resizePane = pane;
+  resizeStartX = e.clientX;
+  resizeStartWidth =
+    pane === "diff"
+      ? diffPaneEl.value?.offsetWidth ?? 600
+      : graphPaneEl.value?.offsetWidth ?? 320;
+  document.addEventListener("mousemove", onResizeMove);
+  document.addEventListener("mouseup", endResize);
 }
 
 function onResizeMove(e: MouseEvent) {
@@ -2300,11 +2304,22 @@ function viewConflicts() {
 }
 
 .tree-container {
-  flex: 1;
+  height: 100%;
   overflow: hidden;
   border: 1px solid var(--gw-border);
   border-radius: 4px;
   min-height: 0;
+}
+
+/* F-20：树区 n-spin 参与 .tree-pane 的 flex 布局，高度链经 .n-spin-content
+   打通到 .tree-container（同 F-18 / F-09b 模式），空状态得以竖直居中。 */
+.tree-spin {
+  flex: 1;
+  min-height: 0;
+}
+
+.tree-spin :deep(.n-spin-content) {
+  height: 100%;
 }
 
 .commit-panel {

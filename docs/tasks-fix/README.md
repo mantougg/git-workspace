@@ -1,6 +1,6 @@
 # GitWorkspace 问题修复任务总览
 
-> 来源：2026-08-27 用户实测反馈的问题清单（10 项）。
+> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）。
 > 拆分原则：**每个问题一个独立文档**（同目录下 `F-XX-<slug>.md`），可独立跟踪修复进度与验收。
 > 本文件是唯一的修复进度索引；每个任务文档内另有自己的「进度」章节。
 >
@@ -20,8 +20,8 @@
 
 ## 总体进度
 
-- 任务总数：**16**（全部已转为正式任务）
-- 已完成：**16** · 修复中：**0** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**23**（全部已转为正式任务）
+- 已完成：**20** · 修复中：**3** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -45,6 +45,13 @@
 | F-14 | Git 视图「未指定仓库路径」（当前仓库全局状态缺失，SideNav 直达全灭） | P0 | ✅ | [F-14-git-views-current-repo.md](./F-14-git-views-current-repo.md) |
 | F-15 | Runtime 分组无数据 + 无「新建应用」入口（事件名含 `.` 使 listen 抛错阻断加载；子视图 workspaceId 依赖总览写入） | P0 | ✅ | [F-15-runtime-no-data-no-create.md](./F-15-runtime-no-data-no-create.md) |
 | F-16 | Maven 可执行体扫描/手动添加 + 本地仓库路径可选 | P1 | ✅ | [F-16-maven-scan-and-local-repo.md](./F-16-maven-scan-and-local-repo.md) |
+| F-17 | Git 视图「未指定仓库路径」复现（当前仓库缺少工作区兜底） | P0 | 🟦 | [F-17-git-views-repo-auto-fallback.md](./F-17-git-views-repo-auto-fallback.md) |
+| F-18 | Change Set 页空状态未占满（n-spin 容器不参与 flex 布局） | P1 | 🟦 | [F-18-changeset-empty-layout.md](./F-18-changeset-empty-layout.md) |
+| F-19 | 总览热力图未横向占满且悬浮无提示 | P1 | 🟦 | [F-19-heatmap-width-tooltip.md](./F-19-heatmap-width-tooltip.md) |
+| F-20 | 变更页 graph/diff 分隔条无法拖拽 + 双空状态 + 空状态不居中 | P1 | ✅ | [F-20-changes-splitter-empty-state.md](./F-20-changes-splitter-empty-state.md) |
+| F-21 | 概览热力图缺横纵坐标 + 摘要行未跟踪未水平对齐 | P1 | ✅ | [F-21-dashboard-heatmap-axis-alignment.md](./F-21-dashboard-heatmap-axis-alignment.md) |
+| F-22 | Git 视图（提交图/分支/Stash/Worktree/Reflog）支持切换仓库 | P1 | ✅ | [F-22-git-views-repo-switcher.md](./F-22-git-views-repo-switcher.md) |
+| F-23 | Runtime 总览加「启动方式」列（直接启动 vs 源码启动 ×n） | P1 | ✅ | [F-23-runtime-dashboard-launch-mode.md](./F-23-runtime-dashboard-launch-mode.md) |
 
 ---
 

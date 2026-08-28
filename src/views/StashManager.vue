@@ -2,7 +2,7 @@
   <div class="stash-manager">
     <!-- Header -->
     <div class="stash-header">
-      <span class="repo-path">{{ repoPath }}</span>
+      <RepoSwitcher @change="onRepoSwitch" />
       <n-button size="small" :loading="loading" @click="load">
         <template #icon><n-icon><RefreshOutline /></n-icon></template>
         刷新
@@ -87,8 +87,9 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { useRepositoryStore } from "@/stores/repository";
+import { useRouter } from "vue-router";
+import { useCurrentRepo } from "@/composables/useCurrentRepo";
+import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
 import { CloudUploadOutline, EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
@@ -107,10 +108,9 @@ import type { FileDiff } from "@/types/git";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import { errMsg } from "@/utils/error";
 
-const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const repoStore = useRepositoryStore();
+const { resolveCurrentRepo } = useCurrentRepo();
 const dialog = useDialog();
 
 const repoPath = ref("");
@@ -132,15 +132,14 @@ const moreDropdownOptions = [
 ];
 
 onMounted(async () => {
-  // F-14：query 优先，回落全局当前仓库（SideNav 直达）；成功回写 store。
-  const repo = (route.query.repo as string) || repoStore.currentRepoPath;
+  // F-14/F-17：query → 全局当前仓库 → 工作区首仓库兜底（SideNav 直达）。
+  const repo = await resolveCurrentRepo();
   if (!repo) {
-    message.warning("未指定仓库路径");
+    message.warning("当前工作区没有可用仓库，请先在变更页扫描");
     router.push({ name: "changes" });
     return;
   }
   repoPath.value = repo;
-  repoStore.setCurrentRepoPath(repo);
   await load();
 });
 
@@ -153,6 +152,14 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+
+// F-22：切换仓库后重置视图状态并重载。
+async function onRepoSwitch(path: string) {
+  repoPath.value = path;
+  entries.value = [];
+  diffDialog.show = false;
+  await load();
 }
 
 function statusIcon(status: string): string {

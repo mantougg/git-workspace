@@ -249,7 +249,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { NButton, NTag, NIcon, useMessage, useDialog } from "naive-ui";
+import { NButton, NTag, NIcon, NTooltip, useMessage, useDialog } from "naive-ui";
 import {
   AddOutline,
   RefreshOutline,
@@ -505,6 +505,41 @@ const configColumns = [
     ellipsis: { tooltip: true },
     render(row: RuntimeConfigSummary) {
       return h("span", { class: "mono" }, row.project);
+    },
+  },
+  // F-23：启动方式 = 闭包是否含工作区源码依赖（与 Build 流水线同一数据源）。
+  {
+    title: "启动方式",
+    key: "launchMode",
+    width: 120,
+    render(row: RuntimeConfigSummary) {
+      const info = store.closureInfo.get(row.name);
+      if (!info) {
+        return h(
+          NTooltip,
+          { trigger: "hover" },
+          {
+            trigger: () => h("span", { class: "muted" }, "—"),
+            default: () => "未解析依赖，点上方「解析依赖」后可见",
+          },
+        );
+      }
+      if (info.sourceCount === 0) {
+        return h(NTag, { size: "small" }, { default: () => "直接启动" });
+      }
+      return h(
+        NTooltip,
+        { trigger: "hover" },
+        {
+          trigger: () =>
+            h(
+              NTag,
+              { size: "small", type: "success" },
+              { default: () => `源码启动 ×${info.sourceCount}` },
+            ),
+          default: () => `源码依赖：${info.sourceNames.join("、")}`,
+        },
+      );
     },
   },
   {

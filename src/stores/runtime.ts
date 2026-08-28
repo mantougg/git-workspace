@@ -47,6 +47,9 @@ export const useRuntimeStore = defineStore("runtime", () => {
   const health = ref<Map<string, "up" | "down">>(new Map());
   /** runtimeName → 进程输出环形缓冲（process_output 事件驱动，已脱敏）。 */
   const logBuffers = ref<Map<string, LogLine[]>>(new Map());
+  /** F-23：runtimeName → 闭包摘要（源码依赖数与名称）；
+   *  null = 依赖图未解析（未跑「解析依赖」）或计算失败。 */
+  const closureInfo = ref<Map<string, { sourceCount: number; sourceNames: string[] } | null>>(new Map());
 
   let unlisteners: UnlistenFn[] = [];
 
@@ -66,6 +69,7 @@ export const useRuntimeStore = defineStore("runtime", () => {
         stages.value.clear();
         health.value.clear();
         logBuffers.value.clear();
+        closureInfo.value.clear();
         return;
       }
       await reloadAll();
@@ -78,6 +82,7 @@ export const useRuntimeStore = defineStore("runtime", () => {
     loading.value = true;
     try {
       await Promise.all([loadConfigs(), loadProjects(), loadProcesses()]);
+      await loadClosureInfo();
     } catch (e) {
       console.error("R-13: runtime workspace reload failed:", e);
     } finally {
@@ -118,6 +123,35 @@ export const useRuntimeStore = defineStore("runtime", () => {
     const config = await runtimeApi.getRuntimeConfig(workspaceId.value, name);
     configDetails.value.set(name, config);
     return config;
+  }
+
+  /**
+   * F-23：逐配置计算闭包摘要（判定「直接启动 / 源码启动 + 源码依赖名」）。
+   * 闭包走 R-03 服务端双层缓存（依赖图 + closure fingerprint），额外成本
+   * 只是读 N 个配置 JSON；单个配置失败记 null，不影响其他配置。
+   */
+  async function loadClosureInfo() {
+    const ws = workspaceId.value;
+    if (ws == null) return;
+    const map = new Map<string, { sourceCount: number; sourceNames: string[] } | null>();
+    await Promise.all(
+      configs.value.map(async (c) => {
+        try {
+          const detail = await loadConfigDetail(c.name);
+          const preview = await runtimeApi.runtimeGetClosure(ws, c.project, detail.scope);
+          const sources = preview.closure.projects.filter(
+            (p) => p.projectId !== preview.closure.rootProjectId,
+          );
+          map.set(c.name, {
+            sourceCount: sources.length,
+            sourceNames: sources.map((p) => p.coordinates.artifactId),
+          });
+        } catch {
+          map.set(c.name, null);
+        }
+      }),
+    );
+    closureInfo.value = map;
   }
 
   async function refreshProcess(processId: number) {
@@ -192,12 +226,14 @@ export const useRuntimeStore = defineStore("runtime", () => {
     }
     configDetails.value.set(config.name, config);
     await loadConfigs();
+    await loadClosureInfo();
   }
 
   async function removeConfig(name: string): Promise<void> {
     await runtimeApi.deleteRuntimeConfig(requireWorkspace(), name);
     configDetails.value.delete(name);
     await loadConfigs();
+    await loadClosureInfo();
   }
 
   // ------------------------------------------------------------------
@@ -241,6 +277,8 @@ export const useRuntimeStore = defineStore("runtime", () => {
       await listen(RUNTIME_EVENTS.dependencyResolved, async () => {
         try {
           await loadProjects();
+          // 依赖图变化 → 各配置闭包可能变化，闭包摘要一并刷新。
+          await loadClosureInfo();
         } catch (e) {
           console.error("R-13: dependency resolved refresh failed:", e);
         }
@@ -276,11 +314,13 @@ export const useRuntimeStore = defineStore("runtime", () => {
     stages,
     health,
     logBuffers,
+    closureInfo,
     reloadAll,
     loadConfigs,
     loadProjects,
     loadProcesses,
     loadConfigDetail,
+    loadClosureInfo,
     refreshProcess,
     start,
     stop,

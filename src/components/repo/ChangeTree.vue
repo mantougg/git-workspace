@@ -16,10 +16,6 @@
       @update:expanded-keys="onExpandedChange"
       class="tree"
     />
-
-    <div v-if="changes.length === 0" class="empty-tree">
-      <n-empty description="暂无仓库数据" />
-    </div>
   </div>
 </template>
 
@@ -541,9 +537,5 @@ defineExpose({
 
 .status-typechange {
   color: var(--gw-warning);
-}
-
-.empty-tree {
-  padding: 40px 0;
 }
 </style>

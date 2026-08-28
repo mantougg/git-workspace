@@ -2,7 +2,7 @@
   <div class="git-graph-view">
     <!-- Header -->
     <div class="graph-header">
-      <span class="repo-path">{{ repoPath }}</span>
+      <RepoSwitcher @change="onRepoSwitch" />
       <n-button
         type="primary"
         size="small"
@@ -158,8 +158,9 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { useRepositoryStore } from "@/stores/repository";
+import { useRouter } from "vue-router";
+import { useCurrentRepo } from "@/composables/useCurrentRepo";
+import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
 import { useMessage, useDialog } from "naive-ui";
 import { getCommitHistory, getBranches } from "@/api/graph";
 import {
@@ -175,10 +176,9 @@ import CommitGraph from "@/components/graph/CommitGraph.vue";
 import ContextMenu from "@/components/shell/ContextMenu.vue";
 import { errMsg } from "@/utils/error";
 
-const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const repoStore = useRepositoryStore();
+const { resolveCurrentRepo } = useCurrentRepo();
 const dialog = useDialog();
 
 const repoPath = ref("");
@@ -209,16 +209,14 @@ const conflictDialog = reactive<{
 const PAGE_SIZE = 100;
 
 onMounted(async () => {
-  // F-14：query 优先（变更页跳转带参），否则回落全局当前仓库
-  // （SideNav 直达场景）；解析成功回写 store。
-  const repo = (route.query.repo as string) || repoStore.currentRepoPath;
+  // F-14/F-17：query → 全局当前仓库 → 工作区首仓库兜底（SideNav 直达）。
+  const repo = await resolveCurrentRepo();
   if (!repo) {
-    message.warning("未指定仓库路径");
+    message.warning("当前工作区没有可用仓库，请先在变更页扫描");
     router.push({ name: "changes" });
     return;
   }
   repoPath.value = repo;
-  repoStore.setCurrentRepoPath(repo);
   await loadHistory();
   await loadBranches();
   await refreshConflicts();
@@ -285,6 +283,21 @@ async function refreshConflicts() {
   } catch {
     conflictFiles.value = [];
   }
+}
+
+// F-22：切换仓库后重置视图状态并重载（切换时不会重新挂载，
+// 不能再走 resolveCurrentRepo，显式重调各加载入口）。
+async function onRepoSwitch(path: string) {
+  repoPath.value = path;
+  commits.value = [];
+  branches.value = [];
+  conflictFiles.value = [];
+  hasMore.value = false;
+  showDetail.value = false;
+  selectedCommit.value = null;
+  await loadHistory();
+  await loadBranches();
+  await refreshConflicts();
 }
 
 function onCommitAction(action: string, commit: CommitInfo) {

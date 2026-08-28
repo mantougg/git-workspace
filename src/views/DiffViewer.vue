@@ -242,7 +242,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useRepositoryStore } from "@/stores/repository";
+import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import { SparklesOutline } from "@vicons/ionicons5";
 import { useMessage } from "naive-ui";
 import {
@@ -272,7 +272,7 @@ import { startFrameMeter, type FrameStats } from "@/utils/frameTime";
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
-const repoStore = useRepositoryStore();
+const { resolveCurrentRepo } = useCurrentRepo();
 
 const repoPath = ref("");
 const files = ref<FileDiff[]>([]);
@@ -309,16 +309,15 @@ const apiKeyValue = ref("");
 
 onMounted(async () => {
   stopFrameMeter = startFrameMeter("diff-viewer");
-  // F-14：repo 支持 query 优先、全局当前仓库回落；commit/base/other
-  // 仍为任务页必带 query（此页不进 SideNav，正常不会无参直达）。
-  const repo = (route.query.repo as string) || repoStore.currentRepoPath;
+  // F-14/F-17：repo 走 query → 全局当前仓库 → 工作区首仓库兜底；
+  // commit/base/other 仍为任务页必带 query（此页不进 SideNav，正常不会无参直达）。
+  const repo = await resolveCurrentRepo();
   if (!repo) {
-    message.warning("未指定仓库路径");
+    message.warning("当前工作区没有可用仓库，请先在变更页扫描");
     router.push({ name: "changes" });
     return;
   }
   repoPath.value = repo;
-  repoStore.setCurrentRepoPath(repo);
   const commit = route.query.commit as string | undefined;
   const base = route.query.base as string | undefined;
   const other = route.query.other as string | undefined;

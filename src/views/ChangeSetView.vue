@@ -26,7 +26,9 @@
 
     <div class="main-body">
       <!-- Left: change set list -->
-      <n-spin :show="store.loading">
+      <!-- F-18：n-spin 渲染为 .n-spin-container，是 .main-body 的直接 flex
+           子项，必须显式参与布局（同 F-09b），否则内部高度塌陷、空状态挤左上角 -->
+      <n-spin :show="store.loading" class="list-spin">
         <div class="set-list">
           <div
             v-for="cs in store.changeSets"
@@ -65,7 +67,7 @@
       </n-spin>
 
       <!-- Right: selected change set detail -->
-      <n-spin :show="store.summaryLoading">
+      <n-spin :show="store.summaryLoading" class="detail-spin">
         <div class="set-detail">
           <template v-if="summary">
             <div class="detail-header">
@@ -1221,12 +1223,39 @@ async function doPushAll() {
   overflow: hidden;
 }
 
-.set-list {
+/* F-18：两个 n-spin 容器作为 .main-body 的 flex 子项参与布局，
+   高度链经 .n-spin-content 打通到内部面板。 */
+.list-spin {
   width: 280px;
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.detail-spin {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.list-spin :deep(.n-spin-content),
+.detail-spin :deep(.n-spin-content) {
+  height: 100%;
+}
+
+.set-list {
+  height: 100%;
   border-right: 1px solid var(--gw-border);
   overflow-y: auto;
   background: var(--gw-bg-hover);
   padding: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* F-18：空状态时 n-empty 在列表区居中（有数据时不影响列表项流式排列） */
+.set-list > .n-empty {
+  flex: 1;
+  justify-content: center;
 }
 
 .set-item {
@@ -1277,9 +1306,15 @@ async function doPushAll() {
 }
 
 .set-detail {
-  flex: 1;
+  height: 100%;
   overflow-y: auto;
   padding: 16px;
+}
+
+/* F-18：未选中 Change Set 时，右侧空状态在详情区居中 */
+.set-detail > .n-empty {
+  height: 100%;
+  justify-content: center;
 }
 
 .detail-header {

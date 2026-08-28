@@ -64,6 +64,7 @@ declare module 'vue' {
     PanelHeader: typeof import('./components/shell/PanelHeader.vue')['default']
     RebaseDialog: typeof import('./components/branch/RebaseDialog.vue')['default']
     RepoCard: typeof import('./components/repo/RepoCard.vue')['default']
+    RepoSwitcher: typeof import('./components/shell/RepoSwitcher.vue')['default']
     RepoTable: typeof import('./components/repo/RepoTable.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

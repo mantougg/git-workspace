@@ -641,12 +641,14 @@ onMounted(async () => {
   font-size: var(--gw-text-sm);
   color: var(--gw-text-dim);
   white-space: nowrap;
+  /* F-21：padding 对可点击/不可点击项统一生效，
+     否则「未跟踪」等不可点击项的数值与其他项不在同一水平线上 */
+  padding: var(--gw-space-1) var(--gw-space-2);
+  border-radius: var(--gw-radius-sm);
 }
 
 .summary-item.clickable {
   cursor: pointer;
-  padding: var(--gw-space-1) var(--gw-space-2);
-  border-radius: var(--gw-radius-sm);
   transition: background 0.15s;
 }
 
