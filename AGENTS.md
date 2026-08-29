@@ -57,7 +57,7 @@ This project is indexed by GitNexus as **git-workspace** (8399 symbols, 18591 re
   的匹配必须两侧归一化：`p.replace('\\', "/")` 后再比较或做 `ends_with`。
   - 参照实现：`src-tauri/src/runtime/build/pipeline/mod.rs::find_root_project`、
     `src-tauri/src/runtime/service/mod.rs::find_project`、
-    `src-tauri/src/runtime/launch/manager/mod.rs::infer_main_class`、
+    `src-tauri/src/runtime/launch/manager/start.rs::infer_main_class`、
     `exec_resolve` 的 `known_paths` 增量 diff。
   - 新增路径匹配点时，直接复用/仿写归一化，不要手写裸 `==`。
 - **拼接用 `Path::join`，不要字符串拼接**；向用户/日志展示路径用 `display()`，
