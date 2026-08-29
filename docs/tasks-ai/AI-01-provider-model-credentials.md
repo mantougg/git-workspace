@@ -59,6 +59,7 @@
 |---|---|---|
 | 2026-08-29 | 🟦 | 开始开发 |
 | 2026-08-30 | ✅ | 完成。迁移 v13（ai_providers/ai_models/ai_task_defaults，ai_reviews/ai_tasks 兼容保留）；`src-tauri/src/ai/{mod,provider,model,credentials,error}.rs`；`AppError::Ai(String)` → 结构化 `AiError`（§17 code + suggestedActions）；`ai_review` 原型移除前端传 Key 与模型硬编码（gitReview 链解析 + 能力前置校验）；12 个新 IPC 命令；AI Settings 六区块 + Workspace「AI 模型」覆盖入口；DiffViewer/ChangeSetView 移除 Key 输入、未配置时引导设置页。验证：`cargo test --lib`（ai/db/error/ipc_golden 37 项全过；全量 511 过，3 个失败为干净 master 上复现的存量环境/时序失败，与本次无关）；`GW_UPDATE_GOLDEN=1` 再生成 golden；`pnpm build`（vue-tsc + vite）通过。安全走查：Key 仅存 OS 凭证存储/会话内存（不可用时不回退文件），前端为组件本地状态、无 Pinia/localStorage 持久化、无回显；后端错误与日志仅含 provider/model id 与归一化网络错误；Key 不进 URL/进程命令行（Authorization 头内存流经）。 |
+| 2026-08-30 | ✅ | 设计修订（§6.1 / §21 决策 9）：Provider 模型由 `kind` 厂商枚举调整为 `apiType` 协议枚举（`openaiChatCompletions` / `openaiResponses` / `anthropicMessages`）；本任务已交付的 `kind` 实现与 v13 schema 的迁移改造由 AI-02 承载，本任务验收记录保持原样。 |
 
 ### 子任务清单
 

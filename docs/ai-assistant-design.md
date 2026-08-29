@@ -276,8 +276,9 @@ AI 是增强能力。AI Provider 不可达不能影响状态刷新、Diff、Comm
 └───────────────────────────────┬─────────────────────────────┘
                                 │ ProviderAdapter
 ┌───────────────────────────────▼─────────────────────────────┐
-│ Providers                                                    │
-│ OpenAI-compatible | Ark | Ollama/local | Enterprise Gateway  │
+│ Providers (custom endpoint + apiType)                        │
+│ OpenAI Chat Completions | OpenAI Responses                   │
+│ Anthropic Messages                                           │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -334,14 +335,16 @@ src-tauri/src/
 
 Provider 表示一个 API 服务来源，不等同于某个模型。一个 Provider 可以提供多个模型。
 
+Provider 采用**完全自定义**形式：不内置厂商清单，用户只填名称、baseUrl、接口协议类型和凭证引用。任何服务（OpenAI 官方、火山 Ark、DeepSeek、Ollama、vLLM、企业网关等）只要兼容下列三种协议之一即可接入。
+
 推荐字段：
 
 | 字段 | 说明 |
 |---|---|
 | `id` | 本地稳定 ID，不使用 API Key 作为标识 |
-| `name` | UI 展示名称 |
-| `kind` | `openaiCompatible` / `ark` / `ollama` / `custom` |
-| `baseUrl` | API 基础地址，不包含 Secret |
+| `name` | UI 展示名称（用户自定义） |
+| `apiType` | 接口协议类型：`openaiChatCompletions` / `openaiResponses` / `anthropicMessages` |
+| `baseUrl` | API 基础地址，不包含 Secret；按 `apiType` 推断默认端点路径（`/chat/completions`、`/responses`、`/messages`），允许覆盖 |
 | `credentialRef` | OS Credential Store 的引用 |
 | `enabled` | 是否允许使用 |
 | `networkPolicy` | `onlineOnly` / `localOnly` |
@@ -461,12 +464,13 @@ trait AiProvider {
 }
 ```
 
-第一期可先实现 OpenAI-compatible Adapter；其他 Provider 通过相同接口接入。Adapter 应处理：
+第一期实现三种协议 Adapter：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages。Provider 只区分协议（§6.1 `apiType`）、不区分厂商；同一协议的所有自定义 Endpoint 共用同一个 Adapter。Adapter 应处理：
 
-- URL 和认证头；
-- chat completion 请求格式；
-- structured output 参数映射；
-- 流式 chunk 解析；
+- URL 和认证头（`Authorization: Bearer` 与 `x-api-key` + `anthropic-version` 等协议差异）；
+- 请求/响应格式映射（messages 结构、system 字段位置、`max_tokens` 是否必填、usage 字段名）；
+- structured output 参数映射（`response_format` / `text.format` / Anthropic 无原生支持时经能力校验前置拦截或工具约束降级）；
+- 流式事件归一化：Chat Completions delta chunk、Responses 事件流（`response.output_text.delta` 等）、Anthropic `content_block_delta` 统一映射为内部 chunk；
+- tool calling 格式映射（`tool_calls` / function tool / `tool_use`，为工具调用场景预留）；
 - Provider 错误归一化；
 - 请求取消和网络超时。
 
@@ -756,7 +760,7 @@ ActionProposal {
 
 ```text
 ai_providers
-- id, name, kind, base_url, credential_ref, enabled, created_at, updated_at
+- id, name, api_type, base_url, credential_ref, enabled, created_at, updated_at
 
 ai_models
 - id, provider_id, display_name, capabilities_json,
@@ -1094,7 +1098,7 @@ AiActionConfirmationRequired
 
 ### 18.2 集成测试
 
-- 使用 fake OpenAI-compatible Provider 测试成功、流式、超时、取消、429、5xx 和非法 JSON；
+- 使用 fake Provider 按三种协议（OpenAI Chat Completions / OpenAI Responses / Anthropic Messages）分别测试成功、流式、超时、取消、429、5xx 和非法 JSON；
 - Runtime 端口占用、依赖缺失、JDK/Maven 不可用和进程崩溃均能生成正确上下文；
 - AI 未配置时 Runtime/Git 核心操作仍可用；
 - AI 请求前发现 AWS Key、JWT、私钥、密码和 Token 时阻断；
@@ -1171,4 +1175,5 @@ AiActionConfirmationRequired
 6. **所有写操作都通过 Action Proposal 接入现有命令和任务系统**，由用户确认后执行。
 7. **外部 AI Agent 与应用内 Assistant 共用 Tool Registry**，避免维护两套能力和安全边界。
 8. **AI 调用链自研 Rust 薄层，不引入外部 Agent 框架**（AgentScope / LangGraph / Mastra / Vercel AI SDK 等）。原因：运行时不兼容——Python/Node 框架需嵌入 sidecar 进程，前端框架会把 API Key 与网络调用引入 webview，二者都违反 §6.4 与 §7.3；框架主打的自治编排与多 Agent 能力属于 §2.3 非目标和 §9.4 明确排除的范围；Provider 适配、SSE 流式与有界 tool-calling 循环在 reqwest 之上只是薄实现（§7.2），Framework 覆盖率远低于其引入成本。允许按需引入**协议级库**（如 OpenAI-compatible client crate、MCP 官方 Rust SDK），禁止引入框架级运行时。若产品形态变为云端服务/纯 JS 栈，或 Phase 3+ 确需多 Agent 编排，再重新评估本决策。
+9. **Provider 采用自定义 Endpoint + 协议类型**，第一期支持三种接口协议：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages。不内置厂商清单（§6.1），任何兼容这三类协议的服务（OpenAI 官方、火山 Ark、DeepSeek、Ollama、vLLM、企业网关等）都可接入；协议差异收敛在 Provider Adapter 层（§7.2），上层业务无感知。本决策替代 AI-01 已交付的 `kind` 厂商枚举（`openaiCompatible/ark/ollama/custom`），存量实现与 v13 schema 的迁移改造由 AI-02 承载（存量行一律映射为 `openaiChatCompletions`）。
 
