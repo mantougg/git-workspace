@@ -63,7 +63,7 @@ This project is indexed by GitNexus as **git-workspace** (8399 symbols, 18591 re
 - **拼接用 `Path::join`，不要字符串拼接**；向用户/日志展示路径用 `display()`，
   展示与比较分离（显示可用原始形式，比较必须归一化）。
 - Windows 的 `to_string_lossy()` 结果可能是 `\\?\` 前缀（verbatim 路径），
-  需要展示/比较前经 `strip_windows_verbatim_prefix`（见 `maven/index/mod.rs::path_key`）。
+  需要展示/比较前经 `strip_windows_verbatim_prefix`（见 `maven/index/path.rs::path_key`）。
 - 大小写：Windows 与 macOS（默认）文件系统大小写不敏感。路径**相等比较**建议
   归一化分隔符即可；如做集合/去重语义，可考虑小写化（当前实现以分隔符归一化为主，
   改动需在任务文档说明边界）。

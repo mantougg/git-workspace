@@ -1,8 +1,14 @@
+use std::path::{Path, PathBuf};
+
+use rusqlite::{params, Connection};
+
+use super::cache::GRAPH_CACHE_CAPACITY;
+use super::path::{path_key, strip_windows_verbatim_prefix};
 use super::*;
 use crate::db;
+use crate::maven::resolver::{local_artifact_path, DependencySource};
 use crate::maven::{discover_poms, PomCache};
 use crate::test_support::write;
-
 
 fn fixture() -> (PathBuf, Connection, i64) {
     let root = std::env::temp_dir().join(format!(
@@ -124,10 +130,7 @@ fn unchanged_models_reuse_graph_and_pom_change_invalidates_cache() {
     assert_eq!(sync.recomputed_projects, 0);
 
     let cache = DependencyGraphCache::new();
-    assert_eq!(
-        cache.inner.policy().max_capacity(),
-        Some(GRAPH_CACHE_CAPACITY)
-    );
+    assert_eq!(cache.max_capacity(), Some(GRAPH_CACHE_CAPACITY));
     assert!(!cache.get_or_load(&conn, workspace_id).unwrap().cache_hit);
     assert!(cache.get_or_load(&conn, workspace_id).unwrap().cache_hit);
 
@@ -207,8 +210,7 @@ fn removed_project_reclassifies_dependents_without_stale_mapping() {
         .iter()
         .any(|mapping| mapping.coordinates.artifact_id == "common"));
     assert!(graph.dependencies.iter().all(|edge| {
-        edge.dependency.artifact_id != "common"
-            || edge.source != DependencySource::WorkspaceSource
+        edge.dependency.artifact_id != "common" || edge.source != DependencySource::WorkspaceSource
     }));
 
     let _ = std::fs::remove_dir_all(root);
