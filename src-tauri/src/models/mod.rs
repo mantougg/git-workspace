@@ -5,4 +5,4 @@ pub mod task;
 pub mod workspace;
 
 #[cfg(test)]
-mod ipc_golden_tests;
+mod ipc_golden;

@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**10**
-- 已完成：**0** · 进行中：**0** · 未开始：**10**
-- 完成度：**0 / 10（0%）**
+- 已完成：**1** · 进行中：**1** · 未开始：**8**
+- 完成度：**1 / 10（10%）**
 
 ## 总体口径（设计文档 §1 / §11）
 
@@ -43,7 +43,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| B-01 | 基线固定与测试外移（含 ipc_golden 按领域拆） | P0 | ⬜ | — | [B-01-baseline-test-extraction.md](./B-01-baseline-test-extraction.md) |
+| B-01 | 基线固定与测试外移（含 ipc_golden 按领域拆） | P0 | ✅ | — | [B-01-baseline-test-extraction.md](./B-01-baseline-test-extraction.md) |
 
 ### Phase 1/2 · Runtime 核心（P0，2 个）
 
@@ -51,7 +51,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| B-02 | 拆 RuntimeService（service.rs → service/） | P0 | ⬜ | B-01 | [B-02-runtime-service.md](./B-02-runtime-service.md) |
+| B-02 | 拆 RuntimeService（service.rs → service/） | P0 | 🟦 | B-01 | [B-02-runtime-service.md](./B-02-runtime-service.md) |
 | B-03 | 拆 RuntimeProcessManager（manager.rs → manager/） | P0 | ⬜ | B-01（建议 B-02 后） | [B-03-runtime-process-manager.md](./B-03-runtime-process-manager.md) |
 
 ### Phase 3 · 数据索引与日志引擎（P1，2 个）

@@ -12,6 +12,9 @@ pub mod runtime;
 
 pub mod benchmark;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;

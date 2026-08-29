@@ -2,7 +2,7 @@
 //!
 //! 这些结构是纯数据（serde 序列化），作为 JDK 检测、注册表持久化与 IPC/UI
 //! 消费的基础。IPC 类型单一事实来源沿用全局约束 §6：Rust serde 结构为权威，
-//! `models/ipc_golden_tests.rs` 用 golden 快照守卫 TS 类型不漂移。
+//! `models/ipc_golden/` 用 golden 快照守卫 TS 类型不漂移。
 
 use serde::{Deserialize, Serialize};
 

@@ -2,7 +2,7 @@
 //!
 //! 这些结构是纯数据（serde 序列化），作为 Maven 检测、版本探测缓存与 IPC/UI
 //! 消费的基础。IPC 类型单一事实来源沿用全局约束 §6：Rust serde 结构为权威，
-//! `models/ipc_golden_tests.rs` 用 golden 快照守卫 TS 类型不漂移。
+//! `models/ipc_golden/` 用 golden 快照守卫 TS 类型不漂移。
 //!
 //! 本模块只描述「用哪个 Maven 可执行体 + 它的版本信息」，不描述 POM 内容
 //! （POM 模型在 `model.rs`）。
