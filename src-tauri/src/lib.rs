@@ -450,6 +450,8 @@ pub fn run() {
             commands::runtime::runtime_delete_template,
             commands::runtime::runtime_save_config_as_template,
             commands::runtime::runtime_apply_template,
+            // Application lifecycle commands
+            commands::app::restart_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitWorkspace");

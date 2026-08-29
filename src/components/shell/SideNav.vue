@@ -58,6 +58,7 @@ import {
   FolderOutline,
   BuildOutline,
   OptionsOutline,
+  InformationCircleOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
 } from "@vicons/ionicons5";
@@ -101,6 +102,7 @@ const ICON_MAP: Record<string, any> = {
   workspaces: FolderOutline,
   "jdk-manager": BuildOutline,
   "maven-settings": OptionsOutline,
+  about: InformationCircleOutline,
 };
 
 // 分组顺序

@@ -140,6 +140,12 @@ const router = createRouter({
       component: () => import("@/views/MavenSettingsView.vue"),
       meta: { group: "设置", title: "Maven 设置" },
     },
+    {
+      path: "/about",
+      name: "about",
+      component: () => import("@/views/AboutView.vue"),
+      meta: { group: "设置", title: "关于" },
+    },
     // ── 任务型页面（不进 SideNav） ──────────────────────────
     {
       path: "/diff",

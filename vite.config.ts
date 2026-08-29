@@ -14,6 +14,8 @@ export default defineConfig(async () => ({
     // F-07：版本号/作者单一数据源是 package.json，构建期注入全局常量。
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_AUTHOR__: JSON.stringify(pkg.author),
+    __APP_LICENSE__: JSON.stringify(pkg.license),
+    __APP_REPOSITORY__: JSON.stringify(pkg.repository),
   },
   plugins: [
     vue(),

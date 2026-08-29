@@ -3,6 +3,8 @@
   "private": true,
   "version": "0.2.0",
   "author": "mantougg",
+  "license": "MIT",
+  "repository": "github:mantougg/git-workspace",
   "type": "module",
   "scripts": {
     "dev": "vite",

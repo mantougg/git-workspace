@@ -38,6 +38,11 @@
   --gw-font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas,
     monospace;
 
+  // ── 关于页尺寸 ──
+  --gw-icon-xl: 64px;
+  --gw-about-label-w: 120px;
+  --gw-about-body-max-h: 240px;
+
   // ── 骨架尺寸 ──
   --gw-statusbar-h: 24px;
   --gw-sidenav-w: 188px;
