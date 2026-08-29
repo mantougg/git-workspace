@@ -1170,4 +1170,5 @@ AiActionConfirmationRequired
 5. **AI 模型管理必须进入 Settings/AI**，但模型管理不等于模型下载。第一期管理 Provider、模型 ID、能力和默认任务，不负责托管模型权重。
 6. **所有写操作都通过 Action Proposal 接入现有命令和任务系统**，由用户确认后执行。
 7. **外部 AI Agent 与应用内 Assistant 共用 Tool Registry**，避免维护两套能力和安全边界。
+8. **AI 调用链自研 Rust 薄层，不引入外部 Agent 框架**（AgentScope / LangGraph / Mastra / Vercel AI SDK 等）。原因：运行时不兼容——Python/Node 框架需嵌入 sidecar 进程，前端框架会把 API Key 与网络调用引入 webview，二者都违反 §6.4 与 §7.3；框架主打的自治编排与多 Agent 能力属于 §2.3 非目标和 §9.4 明确排除的范围；Provider 适配、SSE 流式与有界 tool-calling 循环在 reqwest 之上只是薄实现（§7.2），Framework 覆盖率远低于其引入成本。允许按需引入**协议级库**（如 OpenAI-compatible client crate、MCP 官方 Rust SDK），禁止引入框架级运行时。若产品形态变为云端服务/纯 JS 栈，或 Phase 3+ 确需多 Agent 编排，再重新评估本决策。
 
