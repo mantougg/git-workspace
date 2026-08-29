@@ -683,7 +683,38 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_task_defaults_unique
     ON ai_task_defaults(task_kind, COALESCE(workspace_id, -1));
 "#;
 
+/// v14 (AI-02): `ai_providers.kind` 厂商枚举 → `api_type` 协议枚举
+/// （设计修订 §6.1 / §21 决策 9：`openaiChatCompletions` / `openaiResponses` /
+/// `anthropicMessages`，不内置厂商清单）。
+///
+/// SQLite 无法修改列 CHECK 约束，需重建表。存量行**一律映射为
+/// `openaiChatCompletions`**（Ollama / Ark / custom 均可按 OpenAI 兼容协议
+/// 配置，厂商特判逻辑随之移除；Ollama 用户需把 baseUrl 调整为带 `/v1` 的
+/// 兼容端点）。本迁移由 `db::migrate` 特判在**事务外关闭 foreign_keys**
+/// 执行：`ai_models` 以外键引用本表，`DROP TABLE` 的隐式 DELETE 在外键
+/// 开启时会级联误删模型行。
+pub const SCHEMA_V14: &str = r#"
+CREATE TABLE ai_providers_v14 (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    api_type       TEXT NOT NULL CHECK(api_type IN ('openaiChatCompletions', 'openaiResponses', 'anthropicMessages')),
+    base_url       TEXT NOT NULL,
+    credential_ref TEXT,
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    network_policy TEXT NOT NULL DEFAULT 'onlineOnly' CHECK(network_policy IN ('onlineOnly', 'localOnly')),
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+
+INSERT INTO ai_providers_v14 (id, name, api_type, base_url, credential_ref, enabled, network_policy, created_at, updated_at)
+SELECT id, name, 'openaiChatCompletions', base_url, credential_ref, enabled, network_policy, created_at, updated_at
+FROM ai_providers;
+
+DROP TABLE ai_providers;
+ALTER TABLE ai_providers_v14 RENAME TO ai_providers;
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
-    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13,
+    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14,
 ];

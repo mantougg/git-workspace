@@ -88,6 +88,11 @@ pub struct AppState {
     /// AI-01（§6.4）：AI 凭证管理器。OS Credential Store 优先、会话内存兜底，
     /// API Key 只经它进出，不落盘、不进日志。
     pub ai_credentials: Arc<crate::ai::CredentialManager>,
+
+    /// AI-02（§7）：统一 AI Gateway——唯一允许访问 AI 网络的地方。
+    /// 默认装配 Noop 出口；lib.rs 装配时替换为 Tauri 事件出口
+    /// （`ai-request://progress`）。
+    pub ai_gateway: Arc<crate::ai::AiGateway>,
 }
 
 /// Build the bounded LRU status cache.
@@ -129,6 +134,11 @@ impl AppState {
             runtime,
             git_link,
             ai_credentials: Arc::new(crate::ai::CredentialManager::production()),
+            ai_gateway: Arc::new(crate::ai::AiGateway::new(
+                crate::ai::GatewayConfig::default(),
+                Arc::new(crate::ai::transport::ReqwestTransport::new().expect("reqwest transport")),
+                Arc::new(crate::ai::events::NoopAiEventSink),
+            )),
         }
     }
 }

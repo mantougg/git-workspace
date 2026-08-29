@@ -1,7 +1,7 @@
 <template>
   <div class="section">
     <div class="section-toolbar">
-      <span class="section-hint">Provider 是 API 服务来源（OpenAI 兼容 / Ark / Ollama / 自定义），一个 Provider 可提供多个模型。</span>
+      <span class="section-hint">Provider 是 API 服务来源，按接口协议接入（OpenAI Chat Completions / OpenAI Responses / Anthropic Messages），一个 Provider 可提供多个模型。</span>
       <n-button type="primary" @click="openCreate">
         <template #icon><n-icon><AddOutline /></n-icon></template>
         新增 Provider
@@ -26,8 +26,9 @@
         <n-form-item label="名称" required>
           <n-input v-model:value="form.name" placeholder="如 Team OpenAI" />
         </n-form-item>
-        <n-form-item label="类型" required>
-          <n-select v-model:value="form.kind" :options="kindOptions" />
+        <n-form-item label="接口协议" required>
+          <n-select v-model:value="form.apiType" :options="apiTypeOptions" />
+          <template #feedback>baseUrl 含版本段，端点路径按协议自动拼接（/chat/completions、/responses、/messages）</template>
         </n-form-item>
         <n-form-item label="Base URL" required>
           <n-input
@@ -63,7 +64,7 @@ import { useDialog, useMessage, NButton, NSwitch, NTag } from "naive-ui";
 import { AddOutline } from "@vicons/ionicons5";
 import { aiRemoveProvider, aiSaveProvider, aiTestProvider } from "@/api/ai";
 import { errMsg } from "@/utils/error";
-import type { AiProvider, NetworkPolicy, ProviderKind } from "@/types/ai";
+import type { AiProvider, ApiType, NetworkPolicy } from "@/types/ai";
 
 defineProps<{ providers: AiProvider[] }>();
 const emit = defineEmits<{ refresh: [] }>();
@@ -71,34 +72,30 @@ const emit = defineEmits<{ refresh: [] }>();
 const message = useMessage();
 const dialog = useDialog();
 
-const kindOptions = [
-  { label: "OpenAI 兼容", value: "openaiCompatible" },
-  { label: "Ark（火山方舟）", value: "ark" },
-  { label: "Ollama（本机）", value: "ollama" },
-  { label: "自定义", value: "custom" },
+const apiTypeOptions = [
+  { label: "OpenAI Chat Completions", value: "openaiChatCompletions" },
+  { label: "OpenAI Responses", value: "openaiResponses" },
+  { label: "Anthropic Messages", value: "anthropicMessages" },
 ];
 const policyOptions = [
   { label: "在线（onlineOnly）", value: "onlineOnly" },
   { label: "仅本机（localOnly）", value: "localOnly" },
 ];
 
-const kindLabel: Record<ProviderKind, string> = {
-  openaiCompatible: "OpenAI 兼容",
-  ark: "Ark",
-  ollama: "Ollama",
-  custom: "自定义",
+const apiTypeLabel: Record<ApiType, string> = {
+  openaiChatCompletions: "OpenAI Chat Completions",
+  openaiResponses: "OpenAI Responses",
+  anthropicMessages: "Anthropic Messages",
 };
 
-const urlPlaceholder = computed(() =>
-  form.kind === "ollama" ? "http://localhost:11434" : "https://api.openai.com/v1",
-);
+const urlPlaceholder = computed(() => "https://api.openai.com/v1");
 
 const form = reactive({
   show: false,
   saving: false,
   id: null as string | null,
   name: "",
-  kind: "openaiCompatible" as ProviderKind,
+  apiType: "openaiChatCompletions" as ApiType,
   baseUrl: "",
   networkPolicy: "onlineOnly" as NetworkPolicy,
   enabled: true,
@@ -112,7 +109,7 @@ function openCreate() {
     saving: false,
     id: null,
     name: "",
-    kind: "openaiCompatible",
+    apiType: "openaiChatCompletions",
     baseUrl: "",
     networkPolicy: "onlineOnly",
     enabled: true,
@@ -125,7 +122,7 @@ function openEdit(p: AiProvider) {
     saving: false,
     id: p.id,
     name: p.name,
-    kind: p.kind,
+    apiType: p.apiType,
     baseUrl: p.baseUrl,
     networkPolicy: p.networkPolicy,
     enabled: p.enabled,
@@ -138,7 +135,7 @@ async function save() {
     await aiSaveProvider({
       id: form.id,
       name: form.name.trim(),
-      kind: form.kind,
+      apiType: form.apiType,
       baseUrl: form.baseUrl.trim(),
       enabled: form.enabled,
       networkPolicy: form.networkPolicy,
@@ -198,7 +195,7 @@ async function toggleEnabled(p: AiProvider, enabled: boolean) {
     await aiSaveProvider({
       id: p.id,
       name: p.name,
-      kind: p.kind,
+      apiType: p.apiType,
       baseUrl: p.baseUrl,
       enabled,
       networkPolicy: p.networkPolicy,
@@ -227,7 +224,7 @@ const columns = [
     render: (p: AiProvider) =>
       h("div", { class: "name-cell" }, [
         h("span", { class: "name" }, p.name),
-        h(NTag, { size: "small", bordered: false }, { default: () => kindLabel[p.kind] }),
+        h(NTag, { size: "small", bordered: false }, { default: () => apiTypeLabel[p.apiType] }),
       ]),
   },
   {

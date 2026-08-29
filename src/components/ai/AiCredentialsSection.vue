@@ -15,7 +15,7 @@
       <div class="cred-head">
         <span class="cred-name">{{ p.name }}</span>
         <n-tag size="small" :bordered="false">
-          {{ kindLabel[p.kind] }}
+          {{ apiTypeLabel[p.apiType] }}
         </n-tag>
         <n-tag
           size="small"
@@ -83,7 +83,7 @@ import { reactive } from "vue";
 import { useDialog, useMessage } from "naive-ui";
 import { aiClearCredential, aiSetCredential } from "@/api/ai";
 import { errMsg } from "@/utils/error";
-import type { AiProvider, ProviderKind } from "@/types/ai";
+import type { AiProvider, ApiType } from "@/types/ai";
 
 const props = defineProps<{ providers: AiProvider[]; osStoreAvailable: boolean }>();
 const emit = defineEmits<{ refresh: [] }>();
@@ -91,11 +91,10 @@ const emit = defineEmits<{ refresh: [] }>();
 const message = useMessage();
 const dialog = useDialog();
 
-const kindLabel: Record<ProviderKind, string> = {
-  openaiCompatible: "OpenAI 兼容",
-  ark: "Ark",
-  ollama: "Ollama",
-  custom: "自定义",
+const apiTypeLabel: Record<ApiType, string> = {
+  openaiChatCompletions: "OpenAI Chat Completions",
+  openaiResponses: "OpenAI Responses",
+  anthropicMessages: "Anthropic Messages",
 };
 
 /** Key 输入为组件本地状态：保存后立即清空，绝不持久化/回显。 */

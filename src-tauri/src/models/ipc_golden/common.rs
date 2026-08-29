@@ -188,7 +188,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         json!(crate::ai::AiProvider {
             id: "p1".into(),
             name: "Team OpenAI".into(),
-            kind: crate::ai::ProviderKind::OpenaiCompatible,
+            api_type: crate::ai::ApiType::OpenaiChatCompletions,
             base_url: "https://api.openai.com/v1".into(),
             credential_ref: Some("ai-provider:p1".into()),
             has_credential: true,
@@ -204,7 +204,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         json!(crate::ai::SaveAiProviderRequest {
             id: Some("p1".into()),
             name: "Team OpenAI".into(),
-            kind: crate::ai::ProviderKind::OpenaiCompatible,
+            api_type: crate::ai::ApiType::OpenaiChatCompletions,
             base_url: "https://api.openai.com/v1".into(),
             enabled: true,
             network_policy: crate::ai::NetworkPolicy::OnlineOnly,
@@ -295,6 +295,133 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             has_credential: true,
             session_only: false,
             os_store_available: true,
+        }),
+    );
+    // AI-02 Gateway（设计文档 §7 / §8.4 / §16.1）：请求模型 / 结果模型 /
+    // 流式事件契约 / 状态快照。
+    m.insert(
+        "AiMessage".into(),
+        json!(crate::ai::AiMessage {
+            role: crate::ai::MessageRole::User,
+            content: "请解释这段构建日志".into(),
+        }),
+    );
+    m.insert(
+        "ContextItem".into(),
+        json!(crate::ai::ContextItem {
+            kind: crate::ai::ContextKind::Log,
+            source_id: "runtime/app:latest".into(),
+            display_name: "应用启动日志（最近 200 行）".into(),
+            char_count: 8192,
+            estimated_tokens: 2048,
+            redacted: true,
+            excluded: false,
+        }),
+    );
+    m.insert(
+        "AiTokenUsage".into(),
+        json!(crate::ai::AiTokenUsage {
+            input_tokens: Some(1024),
+            output_tokens: Some(256),
+        }),
+    );
+    m.insert(
+        "AiRequest".into(),
+        json!(crate::ai::AiRequest {
+            request_id: "req-1".into(),
+            session_id: Some("sess-1".into()),
+            task_kind: crate::ai::AiTaskKind::RuntimeDiagnostic,
+            provider_id: None,
+            model_id: None,
+            system_instruction: "你是构建排障助手".into(),
+            messages: vec![crate::ai::AiMessage {
+                role: crate::ai::MessageRole::User,
+                content: "启动失败，日志如下".into(),
+            }],
+            context_manifest: vec![crate::ai::ContextItem {
+                kind: crate::ai::ContextKind::Log,
+                source_id: "runtime/app:latest".into(),
+                display_name: "应用启动日志（最近 200 行）".into(),
+                char_count: 8192,
+                estimated_tokens: 2048,
+                redacted: true,
+                excluded: false,
+            }],
+            response_format: crate::ai::ResponseFormat::Json,
+            tool_policy: crate::ai::ToolPolicy::ReadOnlyWhitelist,
+            token_budget: 32000,
+            temperature: Some(0.2),
+            stream: true,
+        }),
+    );
+    // 结果模型（§8.4）：枚举类型按 golden 约定序列化为全部变体数组。
+    m.insert(
+        "AiResult".into(),
+        json!([
+            crate::ai::AiResult::Answer {
+                text: "直接的解释文本".into(),
+            },
+            crate::ai::AiResult::DiagnosticReport {
+                payload: json!({"cause": "port occupied", "evidence": []}),
+            },
+            crate::ai::AiResult::ReviewReport {
+                payload: json!({"summary": "ok", "issues": []}),
+            },
+            crate::ai::AiResult::GeneratedText {
+                text: "feat: add gateway".into(),
+            },
+            crate::ai::AiResult::ConflictProposal {
+                payload: json!({"proposedContent": "merged"}),
+            },
+            crate::ai::AiResult::ActionProposal {
+                payload: json!({"action": "none"}),
+            },
+        ]),
+    );
+    m.insert(
+        "AiStreamChunk".into(),
+        json!([
+            crate::ai::events::AiStreamChunk::TextDelta {
+                text: "启动".into(),
+            },
+            crate::ai::events::AiStreamChunk::End {
+                finish_reason: Some("stop".into()),
+            },
+        ]),
+    );
+    m.insert(
+        "AiRequestEvent".into(),
+        json!(crate::ai::events::AiRequestEvent {
+            request_id: "req-1".into(),
+            phase: crate::ai::RequestPhase::Streaming,
+            chunk: Some(crate::ai::events::AiStreamChunk::TextDelta {
+                text: "启动".into(),
+            }),
+            output_chars: 42,
+        }),
+    );
+    m.insert(
+        "AiRequestSnapshot".into(),
+        json!(crate::ai::AiRequestSnapshot {
+            request_id: "req-1".into(),
+            session_id: Some("sess-1".into()),
+            task_kind: crate::ai::AiTaskKind::RuntimeDiagnostic,
+            provider_id: "p1".into(),
+            model_id: "gpt-4o-mini".into(),
+            phase: crate::ai::RequestPhase::Succeeded,
+            stream: true,
+            estimated_prompt_tokens: 2048,
+            output_chars: 42,
+            attempts: 1,
+            usage: Some(crate::ai::AiTokenUsage {
+                input_tokens: Some(1024),
+                output_tokens: Some(256),
+            }),
+            result: Some(crate::ai::AiResult::Answer {
+                text: "端口被占用".into(),
+            }),
+            error: None,
+            error_code: None,
         }),
     );
     // AI 结构化错误（§17）：details 内含 suggestedActions。
@@ -437,4 +564,13 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("AiTaskDefault", "types/ai.ts", "AiTaskDefault"),
     ("AiSettingsSummary", "types/ai.ts", "AiSettingsSummary"),
     ("AiCredentialStatus", "types/ai.ts", "AiCredentialStatus"),
+    // AI-02 Gateway（§7 / §8.4 / 事件契约）
+    ("AiMessage", "types/ai.ts", "AiMessage"),
+    ("ContextItem", "types/ai.ts", "ContextItem"),
+    ("AiTokenUsage", "types/ai.ts", "AiTokenUsage"),
+    ("AiRequest", "types/ai.ts", "AiRequest"),
+    ("AiResult", "types/ai.ts", "AiResult"),
+    ("AiStreamChunk", "types/ai.ts", "AiStreamChunk"),
+    ("AiRequestEvent", "types/ai.ts", "AiRequestEvent"),
+    ("AiRequestSnapshot", "types/ai.ts", "AiRequestSnapshot"),
 ];

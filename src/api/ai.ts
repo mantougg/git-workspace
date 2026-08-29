@@ -4,6 +4,8 @@ import type {
   AiModel,
   AiProvider,
   AiProviderTestResult,
+  AiRequest,
+  AiRequestSnapshot,
   AiSettingsSummary,
   AiTaskDefault,
   AiTaskKind,
@@ -123,4 +125,31 @@ export function aiSetCredential(
 
 export function aiClearCredential(providerId: string): Promise<AiCredentialStatus> {
   return invoke<AiCredentialStatus>("ai_clear_credential", { providerId });
+}
+
+// ---------------------------------------------------------------------------
+// AI-02：Gateway 请求生命周期（§7.3 / §12.1）
+// ---------------------------------------------------------------------------
+
+/**
+ * 提交 AI 请求：模型解析 + 能力/Secret/预算前置校验，停在 PreviewRequired。
+ * 本命令不发起任何网络请求；联网必须经 aiApproveRequest（Preview 闸门）。
+ */
+export function aiSubmitRequest(request: AiRequest): Promise<AiRequestSnapshot> {
+  return invoke<AiRequestSnapshot>("ai_submit_request", { request });
+}
+
+/** 确认 Preview 并开始执行（Gateway 唯一联网入口）。 */
+export function aiApproveRequest(requestId: string): Promise<AiRequestSnapshot> {
+  return invoke<AiRequestSnapshot>("ai_approve_request", { requestId });
+}
+
+/** 取消请求（幂等）：中断进行中的流式响应。 */
+export function aiCancelRequest(requestId: string): Promise<AiRequestSnapshot> {
+  return invoke<AiRequestSnapshot>("ai_cancel_request", { requestId });
+}
+
+/** 查询请求状态快照（不存在返回 null；不含 Prompt 内容）。 */
+export function aiGetRequestStatus(requestId: string): Promise<AiRequestSnapshot | null> {
+  return invoke<AiRequestSnapshot | null>("ai_get_request_status", { requestId });
 }

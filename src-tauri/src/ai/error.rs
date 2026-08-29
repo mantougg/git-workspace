@@ -8,8 +8,10 @@
 
 use serde::Serialize;
 
-/// 结构化 AI 错误（§17）。AI-01 落地前四个配置类 code，另含原型 `ai_review`
-/// 迁移所需的 Provider/认证/Secret code；其余 code 随后续任务补充。
+/// 结构化 AI 错误（§17）。AI-01 落地配置类 code；AI-02 补齐 Gateway
+/// 请求生命周期的 code（`AiRateLimited` / `AiRequestCancelled` / …）。
+/// `AiSecretDetected` / `AiActionConfirmationRequired` 分别随 AI-03 / AI-11
+/// 的策略与提案流程进一步完善。
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AiError {
     /// AI 未配置：没有任何可用 Provider/模型，或任务默认链解析不到模型。
@@ -35,9 +37,12 @@ pub enum AiError {
         capability: String,
     },
 
-    /// Provider 不可达或返回非成功状态（网络/TLS/5xx，归一化，不含响应正文）。
+    /// Provider 不可达或返回非成功状态（网络/TLS/5xx/4xx，归一化，不含响应正文）。
+    ///
+    /// `transient` 标记是否为临时故障（连接失败/5xx/流式中断）——Gateway
+    /// 据此决定是否自动重试（§7.4）；超时与确定性 4xx 为 false。
     #[error("AI Provider 不可用: {message}")]
-    ProviderUnavailable { message: String },
+    ProviderUnavailable { message: String, transient: bool },
 
     /// Provider 返回 401/403：Key 无效或权限不足。
     #[error("AI 认证失败: {message}")]
@@ -46,6 +51,33 @@ pub enum AiError {
     /// 发送前 Secret 扫描命中（T-08 复用，AI-03 前原型链路保留阻断行为）。
     #[error("检测到敏感信息（{kinds}），已阻止发送给 AI。请先移除或排除相关文件。")]
     SecretDetected { kinds: String },
+
+    /// Provider 返回 429：请求过于频繁（可自动重试，退避由 Gateway 控制）。
+    #[error("AI 请求过于频繁（429）: {message}")]
+    RateLimited { message: String },
+
+    /// 用户或系统取消了请求（§7.3 任意阶段可入 Cancelled）。
+    #[error("AI 请求已取消")]
+    RequestCancelled { request_id: String },
+
+    /// 请求内容估算 token 超出预算/模型上下文限制（§6.3 请求前报错）。
+    #[error("请求内容超出上下文预算（估算 {estimated_tokens} token > 预算 {budget_tokens}）")]
+    ContextTooLarge {
+        estimated_tokens: i64,
+        budget_tokens: i64,
+    },
+
+    /// Provider 响应不是合法协议数据（非法 JSON / 缺字段 / 流式协议违规）。
+    #[error("AI 响应无法解析: {message}")]
+    ResponseInvalid { message: String },
+
+    /// Preview 未确认时尝试发送（§7.3 硬闸门；正常流程不可达，防御性保留）。
+    #[error("请求尚未经用户确认 Preview，禁止发送")]
+    PreviewRequired { request_id: String },
+
+    /// Provider 返回策略拒绝（内容策略 / 权限策略等 4xx）。
+    #[error("Provider 拒绝了请求: {message}")]
+    PolicyRejected { message: String },
 }
 
 impl AiError {
@@ -59,6 +91,12 @@ impl AiError {
             AiError::ProviderUnavailable { .. } => "AiProviderUnavailable",
             AiError::AuthenticationFailed { .. } => "AiAuthenticationFailed",
             AiError::SecretDetected { .. } => "AiSecretDetected",
+            AiError::RateLimited { .. } => "AiRateLimited",
+            AiError::RequestCancelled { .. } => "AiRequestCancelled",
+            AiError::ContextTooLarge { .. } => "AiContextTooLarge",
+            AiError::ResponseInvalid { .. } => "AiResponseInvalid",
+            AiError::PreviewRequired { .. } => "AiPreviewRequired",
+            AiError::PolicyRejected { .. } => "AiPolicyRejected",
         }
     }
 
@@ -66,6 +104,17 @@ impl AiError {
     /// 修复（配置 Provider、录入凭证、另选模型），故均可恢复。
     pub fn recoverable(&self) -> bool {
         true
+    }
+
+    /// Gateway 自动重试判定（§7.4）。可重试 = 临时网络错误 / 429 / 5xx /
+    /// 流式连接中断（尚未产生输出时）；其余（Key 无效、模型不存在、超时、
+    /// 策略拒绝、协议违规等）不自动重试。
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            AiError::ProviderUnavailable { transient, .. } => *transient,
+            AiError::RateLimited { .. } => true,
+            _ => false,
+        }
     }
 
     /// 建议的下一步行动（§17：配置 / 缩小范围 / 排除文件 / 重新发送等）。
@@ -93,6 +142,24 @@ impl AiError {
             AiError::SecretDetected { .. } => {
                 vec!["移除或排除包含敏感信息的文件后重试"]
             }
+            AiError::RateLimited { .. } => {
+                vec!["稍后重试", "降低请求频率或更换 Provider"]
+            }
+            AiError::RequestCancelled { .. } => {
+                vec!["重新发送请求"]
+            }
+            AiError::ContextTooLarge { .. } => {
+                vec!["缩小上下文范围或排除部分内容", "更换上下文预算更大的模型"]
+            }
+            AiError::ResponseInvalid { .. } => {
+                vec!["重试请求", "在模型管理中确认模型支持所需输出格式"]
+            }
+            AiError::PreviewRequired { .. } => {
+                vec!["在 Preview 中确认发送"]
+            }
+            AiError::PolicyRejected { .. } => {
+                vec!["调整请求内容后重试", "检查 Provider 的内容策略与账户权限"]
+            }
         }
     }
 
@@ -118,6 +185,22 @@ impl AiError {
             }),
             AiError::SecretDetected { kinds } => serde_json::json!({
                 "secretKinds": kinds,
+            }),
+            AiError::ProviderUnavailable { transient, .. } => serde_json::json!({
+                "transient": transient,
+            }),
+            AiError::RequestCancelled { request_id } => serde_json::json!({
+                "requestId": request_id,
+            }),
+            AiError::PreviewRequired { request_id } => serde_json::json!({
+                "requestId": request_id,
+            }),
+            AiError::ContextTooLarge {
+                estimated_tokens,
+                budget_tokens,
+            } => serde_json::json!({
+                "estimatedTokens": estimated_tokens,
+                "budgetTokens": budget_tokens,
             }),
             _ => serde_json::json!({}),
         };
@@ -169,6 +252,7 @@ mod tests {
             (
                 AiError::ProviderUnavailable {
                     message: "connect timeout".into(),
+                    transient: true,
                 },
                 "AiProviderUnavailable",
             ),
@@ -184,6 +268,43 @@ mod tests {
                 },
                 "AiSecretDetected",
             ),
+            (
+                AiError::RateLimited {
+                    message: "429".into(),
+                },
+                "AiRateLimited",
+            ),
+            (
+                AiError::RequestCancelled {
+                    request_id: "r1".into(),
+                },
+                "AiRequestCancelled",
+            ),
+            (
+                AiError::ContextTooLarge {
+                    estimated_tokens: 100,
+                    budget_tokens: 50,
+                },
+                "AiContextTooLarge",
+            ),
+            (
+                AiError::ResponseInvalid {
+                    message: "not json".into(),
+                },
+                "AiResponseInvalid",
+            ),
+            (
+                AiError::PreviewRequired {
+                    request_id: "r1".into(),
+                },
+                "AiPreviewRequired",
+            ),
+            (
+                AiError::PolicyRejected {
+                    message: "policy".into(),
+                },
+                "AiPolicyRejected",
+            ),
         ];
         for (err, code) in cases {
             assert_eq!(err.code(), code);
@@ -197,6 +318,52 @@ mod tests {
                 serde_json::from_str(&err.details_json()).expect("details must be JSON");
             assert!(details["suggestedActions"].is_array());
         }
+    }
+
+    /// 重试分类（§7.4）：临时网络/429 可重试；Key 无效、超时、策略拒绝等
+    /// 直接失败。
+    #[test]
+    fn retryable_classification_matches_design() {
+        assert!(
+            AiError::ProviderUnavailable {
+                message: "connect reset".into(),
+                transient: true
+            }
+            .is_retryable()
+        );
+        assert!(
+            AiError::RateLimited {
+                message: "429".into()
+            }
+            .is_retryable()
+        );
+        assert!(
+            !AiError::ProviderUnavailable {
+                message: "请求超时".into(),
+                transient: false
+            }
+            .is_retryable(),
+            "超时不自动重试，避免长等待翻倍"
+        );
+        assert!(
+            !AiError::AuthenticationFailed {
+                message: "401".into()
+            }
+            .is_retryable()
+        );
+        assert!(
+            !AiError::ModelNotFound {
+                provider_id: "p".into(),
+                model_id: "m".into()
+            }
+            .is_retryable()
+        );
+        assert!(
+            !AiError::PolicyRejected {
+                message: "policy".into()
+            }
+            .is_retryable()
+        );
     }
 
     /// 结构化变体的 details 必须带上下文字段（不含敏感内容）。
@@ -218,5 +385,13 @@ mod tests {
         };
         let details: serde_json::Value = serde_json::from_str(&not_found.details_json()).unwrap();
         assert_eq!(details["modelId"], "gone");
+
+        let too_large = AiError::ContextTooLarge {
+            estimated_tokens: 120,
+            budget_tokens: 100,
+        };
+        let details: serde_json::Value = serde_json::from_str(&too_large.details_json()).unwrap();
+        assert_eq!(details["estimatedTokens"], 120);
+        assert_eq!(details["budgetTokens"], 100);
     }
 }

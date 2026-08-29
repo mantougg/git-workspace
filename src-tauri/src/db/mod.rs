@@ -27,16 +27,42 @@ pub fn apply_pragmas(conn: &Connection) -> AppResult<()> {
 /// applied atomically inside a transaction: the SQL and the `user_version`
 /// bump commit together, so a crash mid-migration leaves the DB at the old
 /// version and the migration is retried on next startup.
+///
+/// FK-sensitive migrations (v14) are the exception: they rebuild a table that
+/// other tables reference, and `DROP TABLE` would cascade-delete child rows
+/// under an active foreign-key check. `PRAGMA foreign_keys` is a no-op inside
+/// a transaction, so those steps run outside the transaction with foreign
+/// keys temporarily disabled, followed by an integrity check.
+const FK_SENSITIVE_VERSION: i64 = 14;
+
 pub fn migrate(conn: &mut Connection) -> AppResult<()> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
 
     for (i, sql) in schema::MIGRATIONS.iter().enumerate() {
         let target = (i + 1) as i64;
         if current < target {
-            let tx = conn.transaction()?;
-            tx.execute_batch(sql)?;
-            tx.execute_batch(&format!("PRAGMA user_version = {};", target))?;
-            tx.commit()?;
+            if target == FK_SENSITIVE_VERSION {
+                conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
+                conn.execute_batch(sql)?;
+                conn.execute_batch(&format!("PRAGMA user_version = {};", target))?;
+                let violations: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM pragma_foreign_key_check",
+                    [],
+                    |row| row.get(0),
+                )?;
+                conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+                if violations > 0 {
+                    return Err(crate::error::AppError::Other(format!(
+                        "migration v14 left {} dangling foreign keys",
+                        violations
+                    )));
+                }
+            } else {
+                let tx = conn.transaction()?;
+                tx.execute_batch(sql)?;
+                tx.execute_batch(&format!("PRAGMA user_version = {};", target))?;
+                tx.commit()?;
+            }
             log::info!("Applied schema migration -> version {}", target);
         }
     }
@@ -475,5 +501,71 @@ mod tests {
         dao::set_repo_identity(&conn, "D:/w/a", None, None).unwrap();
         let id = dao::resolve_commit_identity(&conn, "D:/w/a").unwrap().unwrap();
         assert_eq!(id.source, "group");
+    }
+
+    /// v14 (AI-02): `kind` → `api_type` table rebuild must map every legacy
+    /// vendor kind to `openaiChatCompletions` and must NOT cascade-delete
+    /// `ai_models` rows (the table is rebuilt under a disabled foreign-key
+    /// check precisely for that reason).
+    #[test]
+    fn v14_maps_kind_to_api_type_and_preserves_models() {
+        let mut conn = open_memory();
+        // Build schema only up to v13, then seed legacy-shaped rows.
+        for sql in &schema::MIGRATIONS[..13] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.execute_batch("PRAGMA user_version = 13;").unwrap();
+        apply_pragmas(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO ai_providers (id, name, kind, base_url, credential_ref, enabled, network_policy, created_at, updated_at)
+             VALUES ('p1', 'Local Ollama', 'ollama', 'http://localhost:11434', 'ai-provider:p1', 1, 'localOnly', 't', 't')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ai_models (provider_id, id, display_name, capabilities_json, max_context_tokens, defaults_json, enabled, created_at, updated_at)
+             VALUES ('p1', 'llama3', 'Llama 3', '[\"chat\"]', 8192, '{}', 1, 't', 't')",
+            [],
+        )
+        .unwrap();
+
+        migrate(&mut conn).unwrap();
+
+        let (api_type, base_url): (String, String) = conn
+            .query_row(
+                "SELECT api_type, base_url FROM ai_providers WHERE id = 'p1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            api_type, "openaiChatCompletions",
+            "存量行一律映射为 openaiChatCompletions"
+        );
+        assert_eq!(base_url, "http://localhost:11434");
+
+        let models: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ai_models WHERE provider_id = 'p1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(models, 1, "重建表不得级联删除 ai_models 行");
+
+        // The new CHECK constraint rejects vendor-kind values outside §6.1.
+        let bad = conn.execute(
+            "INSERT INTO ai_providers (id, name, api_type, base_url, enabled, network_policy, created_at, updated_at)
+             VALUES ('p2', 'x', 'ark', 'https://x', 1, 'onlineOnly', 't', 't')",
+            [],
+        );
+        assert!(bad.is_err(), "厂商枚举值必须被新 CHECK 约束拒绝");
+
+        // Foreign keys must be re-enabled after the FK-sensitive migration.
+        let fk: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(fk, 1);
     }
 }

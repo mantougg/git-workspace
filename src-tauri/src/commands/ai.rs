@@ -88,7 +88,7 @@ pub fn ai_save_provider(
     log::info!(
         "ai provider saved: id={} kind={} enabled={}",
         provider.id,
-        provider.kind.as_str(),
+        provider.api_type.as_str(),
         provider.enabled
     );
     Ok(provider)
@@ -321,6 +321,52 @@ pub fn ai_clear_credential(
 }
 
 // ---------------------------------------------------------------------------
+// AI-02：AI Gateway 请求生命周期（§7.3 / §12.1）
+// ---------------------------------------------------------------------------
+
+/// 提交 AI 请求：模型解析 + 能力/Secret/预算前置校验，停在 PreviewRequired。
+/// **本命令不发起任何网络请求**；网络访问只能经 `ai_approve_request`
+/// （§7.3 Preview 闸门）。请求内容不落盘，仅驻留 Gateway 内存。
+#[tauri::command]
+pub fn ai_submit_request(
+    state: tauri::State<'_, crate::state::AppState>,
+    request: ai::AiRequest,
+) -> AppResult<ai::AiRequestSnapshot> {
+    let conn = lock_db(&state)?;
+    state.ai_gateway.submit(&conn, request)
+}
+
+/// 确认 Preview 并开始执行（Gateway 唯一联网入口）。返回提交时快照，
+/// 后续状态经 `ai_get_request_status` 轮询或监听 `ai-request://progress`。
+#[tauri::command]
+pub fn ai_approve_request(
+    state: tauri::State<'_, crate::state::AppState>,
+    request_id: String,
+) -> AppResult<ai::AiRequestSnapshot> {
+    state
+        .ai_gateway
+        .approve(state.ai_credentials.clone(), &request_id)
+}
+
+/// 取消请求（幂等）：排队/执行中触发协作取消，中断进行中的流式响应。
+#[tauri::command]
+pub fn ai_cancel_request(
+    state: tauri::State<'_, crate::state::AppState>,
+    request_id: String,
+) -> AppResult<ai::AiRequestSnapshot> {
+    state.ai_gateway.cancel(&request_id)
+}
+
+/// 查询请求状态快照（不存在返回 None；不含 Prompt 内容）。
+#[tauri::command]
+pub fn ai_get_request_status(
+    state: tauri::State<'_, crate::state::AppState>,
+    request_id: String,
+) -> AppResult<Option<ai::AiRequestSnapshot>> {
+    Ok(state.ai_gateway.status(&request_id))
+}
+
+// ---------------------------------------------------------------------------
 // 原型命令（Phase A 兼容保留）：ai_review 移除「前端直接传 Key + 模型硬编码」
 // （§4.2 Phase A），改走任务默认模型解析 + 凭证存储。
 // ---------------------------------------------------------------------------
@@ -480,13 +526,26 @@ pub async fn ai_review(
     Ok(result)
 }
 
-/// 调用 Provider 的 chat completion（OpenAI 兼容或 Ollama），返回文本内容。
+/// 调用 Provider 的 chat completion，返回文本内容。
 /// URL 结构化拼接；错误归一化，不回显响应正文（可能含敏感内容）。
+///
+/// 原型兼容路径（Phase A 兼容保留）：仅支持 openaiChatCompletions 协议；
+/// 其余协议返回可行动错误。统一 Gateway 链路由 AI-02 落地，本函数的直连
+/// HTTP 调用随 AI-03 的 Preview 流程一并下线（§2 统一调用链）。
 async fn call_chat_completion(
     resolved: &ai::ResolvedModel,
     api_key: Option<&str>,
     prompt: &str,
 ) -> Result<String, AppError> {
+    if resolved.provider.api_type != ai::provider::ApiType::OpenaiChatCompletions {
+        return Err(AppError::Ai(AiError::NotConfigured {
+            message: format!(
+                "原型命令暂不支持协议 {}：请为该任务配置 openaiChatCompletions 协议的 Provider",
+                resolved.provider.api_type.as_str()
+            ),
+        }));
+    }
+
     let base = reqwest::Url::parse(&resolved.provider.base_url).map_err(|_| {
         AppError::Ai(AiError::NotConfigured {
             message: format!("Provider baseUrl 不是合法 URL: {}", resolved.provider.base_url),
@@ -500,40 +559,21 @@ async fn call_chat_completion(
         u
     };
 
-    let is_ollama = resolved.provider.kind == ai::ProviderKind::Ollama;
-    let url = base
-        .join(if is_ollama {
-            "api/chat"
-        } else {
-            "chat/completions"
+    let url = base.join("chat/completions").map_err(|e| {
+        AppError::Ai(AiError::NotConfigured {
+            message: format!("baseUrl 无法拼接端点: {}", e),
         })
-        .map_err(|e| {
-            AppError::Ai(AiError::NotConfigured {
-                message: format!("baseUrl 无法拼接端点: {}", e),
-            })
-        })?;
+    })?;
 
     let temperature = resolved.model.defaults.temperature.unwrap_or(0.3);
-    let body = if is_ollama {
-        serde_json::json!({
-            "model": resolved.model.id,
-            "messages": [
-                {"role": "system", "content": "You are a code reviewer. Respond only with JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            "stream": false,
-            "options": {"temperature": temperature}
-        })
-    } else {
-        serde_json::json!({
-            "model": resolved.model.id,
-            "messages": [
-                {"role": "system", "content": "You are a code reviewer. Respond only with JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": temperature
-        })
-    };
+    let body = serde_json::json!({
+        "model": resolved.model.id,
+        "messages": [
+            {"role": "system", "content": "You are a code reviewer. Respond only with JSON."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": temperature
+    });
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
@@ -541,6 +581,7 @@ async fn call_chat_completion(
         .map_err(|e| {
             AppError::Ai(AiError::ProviderUnavailable {
                 message: format!("HTTP 客户端初始化失败: {}", e),
+                transient: false,
             })
         })?;
 
@@ -558,6 +599,7 @@ async fn call_chat_completion(
             } else {
                 "网络错误".to_string()
             },
+            transient: e.is_connect(),
         })
     })?;
 
@@ -571,32 +613,25 @@ async fn call_chat_completion(
     if !status.is_success() {
         return Err(AppError::Ai(AiError::ProviderUnavailable {
             message: format!("Provider 返回 HTTP {}", status.as_u16()),
+            transient: status.is_server_error(),
         }));
     }
 
     let response_json: serde_json::Value = response.json().await.map_err(|_| {
         AppError::Ai(AiError::ProviderUnavailable {
             message: "Provider 响应不是合法 JSON".to_string(),
+            transient: false,
         })
     })?;
 
-    let content = if is_ollama {
-        response_json
-            .get("message")
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .unwrap_or("{}")
-            .to_string()
-    } else {
-        response_json
-            .get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .unwrap_or("{}")
-            .to_string()
-    };
+    let content = response_json
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+        .unwrap_or("{}")
+        .to_string();
     Ok(content)
 }
 

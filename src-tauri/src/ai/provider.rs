@@ -11,32 +11,35 @@ use crate::error::{AppError, AppResult};
 
 use super::error::AiError;
 
-/// Provider 类型（§6.1）。序列化为 camelCase 字符串，与 TS 字符串联合对齐。
+/// Provider 接口协议类型（§6.1 / §21 决策 9）。只区分协议、不区分厂商；
+/// 同一协议的所有自定义 Endpoint（OpenAI 官方、火山 Ark、DeepSeek、Ollama、
+/// vLLM、企业网关等）共用同一个 Adapter（§7.2）。
+///
+/// baseUrl 约定包含版本段（如 `https://api.openai.com/v1`、
+/// `https://api.anthropic.com/v1`），Adapter 在其后拼接协议端点
+/// （`chat/completions` / `responses` / `messages`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum ProviderKind {
-    OpenaiCompatible,
-    Ark,
-    Ollama,
-    Custom,
+pub enum ApiType {
+    OpenaiChatCompletions,
+    OpenaiResponses,
+    AnthropicMessages,
 }
 
-impl ProviderKind {
+impl ApiType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ProviderKind::OpenaiCompatible => "openaiCompatible",
-            ProviderKind::Ark => "ark",
-            ProviderKind::Ollama => "ollama",
-            ProviderKind::Custom => "custom",
+            ApiType::OpenaiChatCompletions => "openaiChatCompletions",
+            ApiType::OpenaiResponses => "openaiResponses",
+            ApiType::AnthropicMessages => "anthropicMessages",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "openaiCompatible" => Some(ProviderKind::OpenaiCompatible),
-            "ark" => Some(ProviderKind::Ark),
-            "ollama" => Some(ProviderKind::Ollama),
-            "custom" => Some(ProviderKind::Custom),
+            "openaiChatCompletions" => Some(ApiType::OpenaiChatCompletions),
+            "openaiResponses" => Some(ApiType::OpenaiResponses),
+            "anthropicMessages" => Some(ApiType::AnthropicMessages),
             _ => None,
         }
     }
@@ -76,7 +79,8 @@ pub struct AiProvider {
     /// 本地稳定 ID（UUID），不使用 API Key 作为标识。
     pub id: String,
     pub name: String,
-    pub kind: ProviderKind,
+    /// 接口协议类型（§6.1 / §21 决策 9），决定使用哪个 Provider Adapter。
+    pub api_type: ApiType,
     /// API 基础地址，不包含 Secret。
     pub base_url: String,
     pub credential_ref: Option<String>,
@@ -98,7 +102,7 @@ pub struct AiProvider {
 pub struct SaveAiProviderRequest {
     pub id: Option<String>,
     pub name: String,
-    pub kind: ProviderKind,
+    pub api_type: ApiType,
     pub base_url: String,
     pub enabled: bool,
     pub network_policy: NetworkPolicy,
@@ -127,12 +131,12 @@ pub fn credential_ref_for(provider_id: &str) -> String {
 }
 
 fn row_to_provider(row: &rusqlite::Row) -> rusqlite::Result<AiProvider> {
-    let kind_str: String = row.get("kind")?;
+    let api_type_str: String = row.get("api_type")?;
     let policy_str: String = row.get("network_policy")?;
     Ok(AiProvider {
         id: row.get("id")?,
         name: row.get("name")?,
-        kind: ProviderKind::parse(&kind_str).unwrap_or(ProviderKind::Custom),
+        api_type: ApiType::parse(&api_type_str).unwrap_or(ApiType::OpenaiChatCompletions),
         base_url: row.get("base_url")?,
         credential_ref: row.get("credential_ref")?,
         has_credential: false,
@@ -145,7 +149,7 @@ fn row_to_provider(row: &rusqlite::Row) -> rusqlite::Result<AiProvider> {
 }
 
 const PROVIDER_COLS: &str =
-    "id, name, kind, base_url, credential_ref, enabled, network_policy, created_at, updated_at";
+    "id, name, api_type, base_url, credential_ref, enabled, network_policy, created_at, updated_at";
 
 pub fn list_providers(conn: &Connection) -> AppResult<Vec<AiProvider>> {
     let mut stmt = conn.prepare(&format!(
@@ -211,13 +215,13 @@ pub fn save_provider(conn: &Connection, input: &SaveAiProviderRequest) -> AppRes
         Some(id) => {
             let updated = conn.execute(
                 "UPDATE ai_providers
-                 SET name = ?2, kind = ?3, base_url = ?4, enabled = ?5,
+                 SET name = ?2, api_type = ?3, base_url = ?4, enabled = ?5,
                      network_policy = ?6, updated_at = ?7
                  WHERE id = ?1",
                 params![
                     id,
                     name,
-                    input.kind.as_str(),
+                    input.api_type.as_str(),
                     base_url,
                     input.enabled as i64,
                     input.network_policy.as_str(),
@@ -235,12 +239,12 @@ pub fn save_provider(conn: &Connection, input: &SaveAiProviderRequest) -> AppRes
             let id = uuid::Uuid::new_v4().to_string();
             conn.execute(
                 "INSERT INTO ai_providers
-                 (id, name, kind, base_url, credential_ref, enabled, network_policy, created_at, updated_at)
+                 (id, name, api_type, base_url, credential_ref, enabled, network_policy, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
                 params![
                     id,
                     name,
-                    input.kind.as_str(),
+                    input.api_type.as_str(),
                     base_url,
                     credential_ref_for(&id),
                     input.enabled as i64,
@@ -263,7 +267,8 @@ pub fn delete_provider(conn: &Connection, id: &str) -> AppResult<()> {
 /// 连接测试（§12.2）：只返回成功/失败原因/模型 ID 清单。
 ///
 /// - `api_key` 由调用方从凭证存储取出传入；本函数不记录、不回显 Key。
-/// - ollama 走 `GET {base}/api/tags`；其余走 OpenAI 兼容的 `GET {base}/models`。
+/// - 统一走 `GET {base}/models`（三种协议的列表端点同形，返回 `{data:[{id}]}`；
+///   Anthropic 认证用 `x-api-key` + `anthropic-version`，其余用 `Bearer`）。
 /// - URL 用结构化拼接（`reqwest::Url`），不手写字符串。
 pub async fn test_connection(provider: &AiProvider, api_key: Option<&str>) -> AiProviderTestResult {
     let started = std::time::Instant::now();
@@ -283,12 +288,7 @@ pub async fn test_connection(provider: &AiProvider, api_key: Option<&str>) -> Ai
             }
         }
     };
-    let path = if provider.kind == ProviderKind::Ollama {
-        "api/tags"
-    } else {
-        "models"
-    };
-    let url = match base.join(path) {
+    let url = match base.join("models") {
         Ok(u) => u,
         Err(e) => {
             return AiProviderTestResult {
@@ -317,7 +317,7 @@ pub async fn test_connection(provider: &AiProvider, api_key: Option<&str>) -> Ai
 
     let mut req = client.get(url);
     if let Some(key) = api_key {
-        req = req.header("Authorization", format!("Bearer {}", key));
+        req = apply_auth_headers(req, provider.api_type, key);
     }
 
     let response = match req.send().await {
@@ -364,26 +364,16 @@ pub async fn test_connection(provider: &AiProvider, api_key: Option<&str>) -> Ai
         }
     };
 
-    // OpenAI 兼容：{data: [{id, ...}]}；Ollama：{models: [{name, ...}]}
-    let mut models: Vec<String> = if provider.kind == ProviderKind::Ollama {
-        body.get("models")
-            .and_then(|m| m.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default()
-    } else {
-        body.get("data")
-            .and_then(|d| d.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|m| m.get("id").and_then(|n| n.as_str()).map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
+    // 模型清单三种协议同形：{data: [{id, ...}]}
+    let mut models: Vec<String> = body
+        .get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m.get("id").and_then(|n| n.as_str()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
     models.sort();
     models.truncate(100);
 
@@ -394,6 +384,26 @@ pub async fn test_connection(provider: &AiProvider, api_key: Option<&str>) -> Ai
         latency_ms,
     }
 }
+
+/// 按协议附加认证头（§7.2 协议差异）：Anthropic Messages 用
+/// `x-api-key` + `anthropic-version`，其余协议用 `Authorization: Bearer`。
+/// Key 只经内存进入请求头，不进日志/URL/进程命令行。
+pub(crate) fn apply_auth_headers(
+    mut req: reqwest::RequestBuilder,
+    api_type: ApiType,
+    api_key: &str,
+) -> reqwest::RequestBuilder {
+    match api_type {
+        ApiType::AnthropicMessages => {
+            req = req.header("x-api-key", api_key);
+            req.header("anthropic-version", ANTHROPIC_API_VERSION)
+        }
+        _ => req.header("Authorization", format!("Bearer {}", api_key)),
+    }
+}
+
+/// Anthropic Messages API 的版本头（§7.2）。
+pub(crate) const ANTHROPIC_API_VERSION: &str = "2023-06-01";
 
 /// 网络错误归一化（§16.2）：只保留错误类别，不带 URL/头信息（可能含 Key）。
 fn sanitize_reqwest_error(e: &reqwest::Error) -> String {
@@ -422,7 +432,7 @@ mod tests {
         SaveAiProviderRequest {
             id: None,
             name: "Team OpenAI".into(),
-            kind: ProviderKind::OpenaiCompatible,
+            api_type: ApiType::OpenaiChatCompletions,
             base_url: "https://api.openai.com/v1".into(),
             enabled: true,
             network_policy: NetworkPolicy::OnlineOnly,
@@ -434,7 +444,7 @@ mod tests {
         let conn = open_memory();
         let saved = save_provider(&conn, &provider_input()).unwrap();
         assert!(!saved.id.is_empty());
-        assert_eq!(saved.kind, ProviderKind::OpenaiCompatible);
+        assert_eq!(saved.api_type, ApiType::OpenaiChatCompletions);
         assert_eq!(
             saved.credential_ref.as_deref(),
             Some(credential_ref_for(&saved.id).as_str())
@@ -491,13 +501,19 @@ mod tests {
     }
 
     #[test]
-    fn provider_kind_and_policy_serde_names_match_design() {
+    fn api_type_and_policy_serde_names_match_design() {
         assert_eq!(
-            serde_json::to_value(ProviderKind::OpenaiCompatible).unwrap(),
-            "openaiCompatible"
+            serde_json::to_value(ApiType::OpenaiChatCompletions).unwrap(),
+            "openaiChatCompletions"
         );
-        assert_eq!(serde_json::to_value(ProviderKind::Ark).unwrap(), "ark");
-        assert_eq!(serde_json::to_value(ProviderKind::Ollama).unwrap(), "ollama");
+        assert_eq!(
+            serde_json::to_value(ApiType::OpenaiResponses).unwrap(),
+            "openaiResponses"
+        );
+        assert_eq!(
+            serde_json::to_value(ApiType::AnthropicMessages).unwrap(),
+            "anthropicMessages"
+        );
         assert_eq!(
             serde_json::to_value(NetworkPolicy::OnlineOnly).unwrap(),
             "onlineOnly"

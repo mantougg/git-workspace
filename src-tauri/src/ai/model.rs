@@ -504,7 +504,7 @@ pub fn resolve_model(
 mod tests {
     use super::*;
     use crate::ai::provider::{
-        save_provider, NetworkPolicy, ProviderKind, SaveAiProviderRequest,
+        save_provider, ApiType, NetworkPolicy, SaveAiProviderRequest,
     };
 
     fn open_memory() -> Connection {
@@ -532,7 +532,7 @@ mod tests {
             &SaveAiProviderRequest {
                 id: None,
                 name: name.into(),
-                kind: ProviderKind::OpenaiCompatible,
+                api_type: ApiType::OpenaiChatCompletions,
                 base_url: "https://api.example.com/v1".into(),
                 enabled: true,
                 network_policy: NetworkPolicy::OnlineOnly,
@@ -694,7 +694,7 @@ mod tests {
         let mut off = crate::ai::provider::SaveAiProviderRequest {
             id: Some(p.id.clone()),
             name: "p".into(),
-            kind: ProviderKind::OpenaiCompatible,
+            api_type: ApiType::OpenaiChatCompletions,
             base_url: "https://api.example.com/v1".into(),
             enabled: false,
             network_policy: NetworkPolicy::OnlineOnly,

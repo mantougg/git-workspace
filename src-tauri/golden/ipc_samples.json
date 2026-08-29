@@ -20,6 +20,10 @@
     "recoverable": true,
     "repository": null
   },
+  "AiMessage": {
+    "content": "请解释这段构建日志",
+    "role": "user"
+  },
   "AiModel": {
     "capabilities": [
       "chat",
@@ -64,13 +68,13 @@
     "repository": null
   },
   "AiProvider": {
+    "apiType": "openaiChatCompletions",
     "baseUrl": "https://api.openai.com/v1",
     "createdAt": "2026-01-01T00:00:00Z",
     "credentialRef": "ai-provider:p1",
     "enabled": true,
     "hasCredential": true,
     "id": "p1",
-    "kind": "openaiCompatible",
     "name": "Team OpenAI",
     "networkPolicy": "onlineOnly",
     "sessionOnlyCredential": false,
@@ -85,6 +89,103 @@
     ],
     "success": true
   },
+  "AiRequest": {
+    "contextManifest": [
+      {
+        "charCount": 8192,
+        "displayName": "应用启动日志（最近 200 行）",
+        "estimatedTokens": 2048,
+        "excluded": false,
+        "kind": "log",
+        "redacted": true,
+        "sourceId": "runtime/app:latest"
+      }
+    ],
+    "messages": [
+      {
+        "content": "启动失败，日志如下",
+        "role": "user"
+      }
+    ],
+    "modelId": null,
+    "providerId": null,
+    "requestId": "req-1",
+    "responseFormat": "json",
+    "sessionId": "sess-1",
+    "stream": true,
+    "systemInstruction": "你是构建排障助手",
+    "taskKind": "runtimeDiagnostic",
+    "temperature": 0.2,
+    "tokenBudget": 32000,
+    "toolPolicy": "readOnlyWhitelist"
+  },
+  "AiRequestEvent": {
+    "chunk": {
+      "text": "启动",
+      "type": "textDelta"
+    },
+    "outputChars": 42,
+    "phase": "streaming",
+    "requestId": "req-1"
+  },
+  "AiRequestSnapshot": {
+    "attempts": 1,
+    "error": null,
+    "errorCode": null,
+    "estimatedPromptTokens": 2048,
+    "modelId": "gpt-4o-mini",
+    "outputChars": 42,
+    "phase": "succeeded",
+    "providerId": "p1",
+    "requestId": "req-1",
+    "result": {
+      "text": "端口被占用",
+      "type": "answer"
+    },
+    "sessionId": "sess-1",
+    "stream": true,
+    "taskKind": "runtimeDiagnostic",
+    "usage": {
+      "inputTokens": 1024,
+      "outputTokens": 256
+    }
+  },
+  "AiResult": [
+    {
+      "text": "直接的解释文本",
+      "type": "answer"
+    },
+    {
+      "payload": {
+        "cause": "port occupied",
+        "evidence": []
+      },
+      "type": "diagnosticReport"
+    },
+    {
+      "payload": {
+        "issues": [],
+        "summary": "ok"
+      },
+      "type": "reviewReport"
+    },
+    {
+      "text": "feat: add gateway",
+      "type": "generatedText"
+    },
+    {
+      "payload": {
+        "proposedContent": "merged"
+      },
+      "type": "conflictProposal"
+    },
+    {
+      "payload": {
+        "action": "none"
+      },
+      "type": "actionProposal"
+    }
+  ],
   "AiSettingsSummary": {
     "enabledModelCount": 2,
     "enabledProviderCount": 1,
@@ -104,12 +205,26 @@
       }
     ]
   },
+  "AiStreamChunk": [
+    {
+      "text": "启动",
+      "type": "textDelta"
+    },
+    {
+      "finishReason": "stop",
+      "type": "end"
+    }
+  ],
   "AiTaskDefault": {
     "modelId": "gpt-4o-mini",
     "providerId": "p1",
     "taskKind": "gitReview",
     "updatedAt": "2026-01-01T00:00:00Z",
     "workspaceId": 1
+  },
+  "AiTokenUsage": {
+    "inputTokens": 1024,
+    "outputTokens": 256
   },
   "BranchEntry": {
     "ahead": 1,
@@ -343,6 +458,15 @@
   "ConflictFile": {
     "conflictType": "both-modified",
     "path": "a.rs"
+  },
+  "ContextItem": {
+    "charCount": 8192,
+    "displayName": "应用启动日志（最近 200 行）",
+    "estimatedTokens": 2048,
+    "excluded": false,
+    "kind": "log",
+    "redacted": true,
+    "sourceId": "runtime/app:latest"
   },
   "CreateChangeSetRequest": {
     "description": "desc",
@@ -1758,10 +1882,10 @@
     "providerId": "p1"
   },
   "SaveAiProviderRequest": {
+    "apiType": "openaiChatCompletions",
     "baseUrl": "https://api.openai.com/v1",
     "enabled": true,
     "id": "p1",
-    "kind": "openaiCompatible",
     "name": "Team OpenAI",
     "networkPolicy": "onlineOnly"
   },
