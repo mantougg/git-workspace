@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**10**
-- 已完成：**6** · 进行中：**0** · 未开始：**4**
-- 完成度：**6 / 10（60%）**
+- 已完成：**7** · 进行中：**0** · 未开始：**3**
+- 完成度：**7 / 10（70%）**
 
 ## 总体口径（设计文档 §1 / §11）
 
@@ -68,7 +68,7 @@
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
 | B-06 | 拆 Runtime Config（config.rs → config/） | P1 | ✅ | B-01 | [B-06-runtime-config.md](./B-06-runtime-config.md) |
-| B-07 | 拆 Watch（watch.rs → watch/） | P1 | ⬜ | B-01 | [B-07-watch.md](./B-07-watch.md) |
+| B-07 | 拆 Watch（watch.rs → watch/） | P1 | ✅ | B-01 | [B-07-watch.md](./B-07-watch.md) |
 | B-08 | 拆 GitOps（git_ops.rs → git_ops/） | P1 | ⬜ | B-01 | [B-08-git-ops.md](./B-08-git-ops.md) |
 | B-09 | 拆 Operation Log（operation_log.rs → operation_log/） | P1 | ⬜ | B-01 | [B-09-operation-log.md](./B-09-operation-log.md) |
 
