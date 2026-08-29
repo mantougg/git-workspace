@@ -1,9 +1,14 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use super::storage::segment_paths;
 use super::*;
+use crate::error::AppError;
+use crate::process::streaming::OutputStream;
 use crate::runtime::config::MASKED_VALUE;
-use crate::runtime::launch::VecEventSink;
+use crate::runtime::launch::{RuntimeEvent, VecEventSink};
+use crate::runtime::logs::{LogLine, LogPhase};
 
 fn temp_root(tag: &str) -> PathBuf {
     let root = crate::test_support::temp_root("gw_r11", tag);
@@ -207,7 +212,9 @@ fn search_filters_by_query_and_min_level() {
     }
     engine.finish_session(5);
 
-    let all = engine.search(&root, "app", 5, &LogFilter::default()).unwrap();
+    let all = engine
+        .search(&root, "app", 5, &LogFilter::default())
+        .unwrap();
     assert_eq!(all.len(), 4);
     assert_eq!(all[0].level, Some(LogLevel::Info));
     assert_eq!(all[1].level, Some(LogLevel::Warn));
@@ -229,7 +236,11 @@ fn search_filters_by_query_and_min_level() {
     let texts: Vec<&str> = filtered.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(
         texts,
-        ["[WARN] disk low", "[ERROR] boom happened", "    at com.example.Trace"],
+        [
+            "[WARN] disk low",
+            "[ERROR] boom happened",
+            "    at com.example.Trace"
+        ],
         "级别过滤不淘汰，无级别行（stack trace 续行）保持可见"
     );
 
@@ -307,7 +318,13 @@ fn logs_remain_queryable_after_process_ends() {
     let tail = engine.tail(&root, "app", 7, 2).unwrap();
     let texts: Vec<&str> = tail.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(texts, ["line 3", "line 4"]);
-    assert_eq!(engine.search(&root, "app", 7, &LogFilter::default()).unwrap().len(), 5);
+    assert_eq!(
+        engine
+            .search(&root, "app", 7, &LogFilter::default())
+            .unwrap()
+            .len(),
+        5
+    );
 
     engine.clear(&root, "app", 7).unwrap();
     assert!(

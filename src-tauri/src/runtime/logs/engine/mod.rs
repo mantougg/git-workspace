@@ -1,37 +1,45 @@
-//! 日志引擎核心（R-11）：会话生命周期、落盘滚动切分、环形缓冲、批量
-//! 聚合推送、流式搜索 / 导出 / 清空。
+//! Runtime 日志引擎门面（R-11，B-05 拆分，设计文档 §4.5）。
 //!
-//! 线程模型：
-//! - `on_line` 捕获路径（[`LogSession::log`]）只做脱敏 + 级别解析 +
-//!   `mpsc` 发送，不触碰磁盘——日志洪水不会反压进程输出读取；
+//! 文件布局：
+//! - 本文件（`mod.rs`）：公共类型（LogFilter / LogExportOutcome /
+//!   LogLimits）与 [`RuntimeLogEngine`] 公共门面（会话表管理）；
+//! - `session`：LogSession、有界环形缓冲 Ring、SessionMsg——捕获路径
+//!   （`LogSession::log`）只做脱敏 + 级别解析 + `mpsc` 发送，不触碰磁盘；
+//! - `worker`：批量聚合、落盘、事件推送、滚动切分（每会话一个线程）；
+//! - `query`：search / tail / export / clear，全部流式读取；
+//! - `storage`：日志目录、段文件清单、路径安全守卫。
+//!
+//! 线程模型（不变）：
 //! - 每个会话一个 worker 线程按 [`LogLimits::aggregate_interval`] 聚合：
 //!   批量写盘（BufWriter + 每批 flush，不逐行 sync）→ 更新有界环形缓冲
 //!   → 回调 [`LogAnalyzer`]（§37 预留）→ 分块发出 `RuntimeEvent::Logs`；
 //! - [`LogSession::finish`]（幂等）断开发送端并 join worker，进程结束时
 //!   日志完整落盘、之后可回查（验收标准）。
 
-use std::collections::{HashMap, VecDeque};
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::collections::HashMap;
+use std::fs::File;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
 use std::time::Duration;
 
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{AppError, AppResult};
-use crate::process::streaming::OutputStream;
-use crate::runtime::launch::{RuntimeEvent, RuntimeEventSink};
-use crate::runtime::logs::level::parse_level;
+use crate::error::AppResult;
+use crate::runtime::launch::RuntimeEventSink;
 use crate::runtime::logs::redact::LogRedactor;
-use crate::runtime::logs::{LogAnalyzer, LogEntry, LogLevel, LogLine, LogPhase};
+use crate::runtime::logs::{LogAnalyzer, LogLevel};
 
-/// 日志目录：`<workspace>/.gitworkspace/logs/<runtime_name>/`。
-const LOGS_DIR: &str = "logs";
+mod query;
+mod session;
+mod storage;
+mod worker;
+
+pub use session::LogSession;
+use session::Ring;
+use storage::{current_segment_path, ensure_logs_dir};
+use worker::{worker_main, WorkerCtx};
 
 /// 日志查询 / 过滤条件。`query` 为大小写敏感的子串匹配（对齐 IDEA 默认）。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -87,121 +95,6 @@ impl Default for LogLimits {
 }
 
 const DEFAULT_SEARCH_LIMIT: usize = 1000;
-/// 落盘写缓冲：批量 flush 的粒度上限。
-const WRITE_BUFFER_BYTES: usize = 64 * 1024;
-
-// ------------------------------------------------------------------
-// LogSession：单进程日志会话
-// ------------------------------------------------------------------
-
-enum SessionMsg {
-    Line(LogLine),
-    Clear,
-}
-
-/// 有界环形缓冲（模式对齐 R-09 `RingTail`：行数 + 字节双上限）。
-#[derive(Default)]
-struct Ring {
-    lines: VecDeque<LogLine>,
-    bytes: usize,
-}
-
-impl Ring {
-    fn push(&mut self, line: LogLine, limits: &LogLimits) {
-        self.bytes += line.line.len() + 1;
-        self.lines.push_back(line);
-        while self.lines.len() > limits.ring_max_lines || self.bytes > limits.ring_max_bytes {
-            if let Some(evicted) = self.lines.pop_front() {
-                self.bytes = self.bytes.saturating_sub(evicted.line.len() + 1);
-            } else {
-                self.bytes = 0;
-                break;
-            }
-        }
-    }
-
-    fn clear(&mut self) {
-        self.lines.clear();
-        self.bytes = 0;
-    }
-}
-
-/// 单进程日志会话：构建（Build 阶段）与应用运行（Run 阶段）输出统一
-/// 经 [`log`][Self::log] 进入。捕获线程与进程生命周期绑定——进程结束
-/// 由 manager 调 [`finish`][Self::finish] 收口（幂等）。
-pub struct LogSession {
-    process_id: i64,
-    runtime_name: String,
-    dir: PathBuf,
-    redactor: LogRedactor,
-    seq: AtomicU64,
-    tx: Mutex<Option<Sender<SessionMsg>>>,
-    ring: Arc<Mutex<Ring>>,
-    worker: Mutex<Option<JoinHandle<()>>>,
-    finished: AtomicBool,
-}
-
-impl LogSession {
-    pub fn process_id(&self) -> i64 {
-        self.process_id
-    }
-
-    pub fn runtime_name(&self) -> &str {
-        &self.runtime_name
-    }
-
-    /// 本会话日志目录（`<workspace>/.gitworkspace/logs/<runtime>/`）。
-    pub fn directory(&self) -> &Path {
-        &self.dir
-    }
-
-    /// 捕获一行输出：脱敏（落盘前，验收标准「磁盘无明文」）→ 级别解析
-    /// → 发送给 worker。会话结束后调用是静默 no-op（幂等收尾的边界）。
-    pub fn log(&self, phase: LogPhase, stream: OutputStream, line: &str) {
-        let tx = self.tx.lock().unwrap().clone();
-        let Some(tx) = tx else { return };
-        let masked = self.redactor.mask(line);
-        let entry = LogLine {
-            seq: self.seq.fetch_add(1, Ordering::Relaxed) + 1,
-            at: Utc::now().to_rfc3339(),
-            phase,
-            stream,
-            level: parse_level(&masked),
-            line: masked,
-        };
-        // worker 已退出（finish 竞态）时静默丢弃，不 panic。
-        let _ = tx.send(SessionMsg::Line(entry));
-    }
-
-    /// 结束会话：断开发送端，join worker（drain 完残余批次后退出），
-    /// 保证落盘完整。幂等。
-    pub fn finish(&self) {
-        let tx = self.tx.lock().unwrap().take();
-        drop(tx);
-        if let Some(handle) = self.worker.lock().unwrap().take() {
-            let _ = handle.join();
-        }
-        self.finished.store(true, Ordering::Relaxed);
-    }
-
-    pub fn is_finished(&self) -> bool {
-        self.finished.load(Ordering::Relaxed)
-    }
-
-    /// live tail：环形缓冲最后 `n` 行。
-    pub fn tail(&self, n: usize) -> Vec<LogLine> {
-        let ring = self.ring.lock().unwrap();
-        let skip = ring.lines.len().saturating_sub(n);
-        ring.lines.iter().skip(skip).cloned().collect()
-    }
-
-    /// 清空（§36）：经 channel 按序到达 worker——清空后到达的行不受影响。
-    fn request_clear(&self) {
-        if let Some(tx) = self.tx.lock().unwrap().as_ref() {
-            let _ = tx.send(SessionMsg::Clear);
-        }
-    }
-}
 
 // ------------------------------------------------------------------
 // RuntimeLogEngine
@@ -294,160 +187,6 @@ impl RuntimeLogEngine {
             session.finish();
         }
     }
-
-    /// 搜索（§36）：跨滚动段按时间序流式扫描，过滤后返回，最多
-    /// `filter.limit`（默认 [`DEFAULT_SEARCH_LIMIT`]）行。
-    pub fn search(
-        &self,
-        workspace_root: &Path,
-        runtime_name: &str,
-        process_id: i64,
-        filter: &LogFilter,
-    ) -> AppResult<Vec<LogEntry>> {
-        let paths = self.require_segments(workspace_root, runtime_name, process_id)?;
-        let limit = filter.limit.unwrap_or(DEFAULT_SEARCH_LIMIT);
-        let mut out = Vec::new();
-        for_each_file_line(&paths, |line_number, text| {
-            let level = parse_level(text);
-            if matches_filter(filter, level, text) {
-                out.push(LogEntry {
-                    line_number,
-                    level,
-                    text: text.to_string(),
-                });
-            }
-            out.len() < limit
-        })?;
-        Ok(out)
-    }
-
-    /// 实时滚动初始视图 / tail：活跃会话读环形缓冲，否则流式读文件尾部。
-    pub fn tail(
-        &self,
-        workspace_root: &Path,
-        runtime_name: &str,
-        process_id: i64,
-        n: usize,
-    ) -> AppResult<Vec<LogEntry>> {
-        if let Some(session) = self.session(process_id) {
-            return Ok(session
-                .tail(n)
-                .into_iter()
-                .map(|line| LogEntry {
-                    line_number: line.seq,
-                    level: line.level,
-                    text: line.line,
-                })
-                .collect());
-        }
-        let paths = self.require_segments(workspace_root, runtime_name, process_id)?;
-        tail_paths(&paths, n)
-    }
-
-    /// 导出（§36）：与 `search` 共用同一过滤管道（导出内容与显示一致），
-    /// 流式写出，不整文件载入内存。全量导出匹配行（忽略 `filter.limit`）。
-    pub fn export(
-        &self,
-        workspace_root: &Path,
-        runtime_name: &str,
-        process_id: i64,
-        filter: &LogFilter,
-        dest: &Path,
-    ) -> AppResult<LogExportOutcome> {
-        let paths = self.require_segments(workspace_root, runtime_name, process_id)?;
-        let mut writer = BufWriter::new(File::create(dest)?);
-        let mut lines = 0u64;
-        for_each_file_line(&paths, |_, text| {
-            if matches_filter(filter, parse_level(text), text) {
-                if writeln!(writer, "{text}").is_ok() {
-                    lines += 1;
-                }
-            }
-            true
-        })?;
-        writer.flush()?;
-        Ok(LogExportOutcome {
-            path: dest.display().to_string(),
-            lines,
-        })
-    }
-
-    /// 清空（§36）：活跃会话按序经 worker 截断；已结束会话直接清理段文件。
-    pub fn clear(
-        &self,
-        workspace_root: &Path,
-        runtime_name: &str,
-        process_id: i64,
-    ) -> AppResult<()> {
-        if let Some(session) = self.session(process_id) {
-            session.request_clear();
-            return Ok(());
-        }
-        let dir = logs_dir(workspace_root, runtime_name)?;
-        for path in segment_paths(&dir, process_id, self.limits.segments_kept) {
-            if path == current_segment_path(&dir, process_id) {
-                let _ = File::create(&path)?;
-            } else {
-                let _ = fs::remove_file(&path);
-            }
-        }
-        Ok(())
-    }
-
-    /// §35：读取应用自身 `application.log`（用户项目只读原则——只读不写）。
-    /// 与进程日志同一过滤管道。
-    pub fn search_file(&self, path: &Path, filter: &LogFilter) -> AppResult<Vec<LogEntry>> {
-        if !path.is_file() {
-            return Err(AppError::NotFound(format!(
-                "日志文件不存在：{}。请确认应用日志路径配置",
-                path.display()
-            )));
-        }
-        let limit = filter.limit.unwrap_or(DEFAULT_SEARCH_LIMIT);
-        let mut out = Vec::new();
-        for_each_file_line(&[path.to_path_buf()], |line_number, text| {
-            let level = parse_level(text);
-            if matches_filter(filter, level, text) {
-                out.push(LogEntry {
-                    line_number,
-                    level,
-                    text: text.to_string(),
-                });
-            }
-            out.len() < limit
-        })?;
-        Ok(out)
-    }
-
-    /// §35：应用自身 `application.log` 的 tail（只读）。
-    pub fn tail_file(&self, path: &Path, n: usize) -> AppResult<Vec<LogEntry>> {
-        if !path.is_file() {
-            return Err(AppError::NotFound(format!(
-                "日志文件不存在：{}。请确认应用日志路径配置",
-                path.display()
-            )));
-        }
-        tail_paths(&[path.to_path_buf()], n)
-    }
-
-    /// 段文件清单（最旧 → 最新）；一个段都不存在时报可行动错误。
-    fn require_segments(
-        &self,
-        workspace_root: &Path,
-        runtime_name: &str,
-        process_id: i64,
-    ) -> AppResult<Vec<PathBuf>> {
-        let dir = logs_dir(workspace_root, runtime_name)?;
-        let paths = segment_paths(&dir, process_id, self.limits.segments_kept);
-        if paths.is_empty() {
-            return Err(AppError::NotFound(format!(
-                "进程 #{process_id} 暂无日志文件（目录 {}）。该进程可能是接管的历史进程，\
-                 其输出未被本会话捕获",
-                dir.display()
-            )));
-        }
-        Ok(paths)
-    }
 }
 
 impl Default for RuntimeLogEngine {
@@ -458,295 +197,17 @@ impl Default for RuntimeLogEngine {
 
 impl Drop for RuntimeLogEngine {
     fn drop(&mut self) {
-        let sessions: Vec<Arc<LogSession>> =
-            self.sessions.lock().unwrap().drain().map(|(_, s)| s).collect();
+        let sessions: Vec<Arc<LogSession>> = self
+            .sessions
+            .lock()
+            .unwrap()
+            .drain()
+            .map(|(_, s)| s)
+            .collect();
         for session in sessions {
             session.finish();
         }
     }
-}
-
-// ------------------------------------------------------------------
-// worker：聚合 / 落盘 / 推送
-// ------------------------------------------------------------------
-
-struct WorkerCtx {
-    process_id: i64,
-    runtime_name: String,
-    dir: PathBuf,
-    limits: LogLimits,
-    events: Arc<dyn RuntimeEventSink>,
-    analyzers: Vec<Arc<dyn LogAnalyzer>>,
-    ring: Arc<Mutex<Ring>>,
-}
-
-fn worker_main(ctx: WorkerCtx, rx: Receiver<SessionMsg>, file: File) {
-    let mut writer = BufWriter::with_capacity(WRITE_BUFFER_BYTES, file);
-    let mut current_bytes: u64 = 0;
-    let mut pending: Vec<LogLine> = Vec::new();
-    let mut disconnected = false;
-
-    // 聚合节流：每个周期先等首条消息，再用完 interval 的剩余时间收集突发，
-    // 保证事件速率有界（≤ 1/interval）且稀疏行也在一个 interval 内推送。
-    loop {
-        match rx.recv_timeout(ctx.limits.aggregate_interval) {
-            Ok(SessionMsg::Line(line)) => pending.push(line),
-            Ok(SessionMsg::Clear) => do_clear(&ctx, &mut writer, &mut current_bytes, &mut pending),
-            Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-        let deadline = std::time::Instant::now() + ctx.limits.aggregate_interval;
-        loop {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            match rx.recv_timeout(remaining) {
-                Ok(SessionMsg::Line(line)) => pending.push(line),
-                Ok(SessionMsg::Clear) => {
-                    do_clear(&ctx, &mut writer, &mut current_bytes, &mut pending)
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => break,
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    disconnected = true;
-                    break;
-                }
-            }
-        }
-        flush_batch(&ctx, &mut writer, &mut current_bytes, &mut pending);
-        if disconnected {
-            break;
-        }
-    }
-    let _ = writer.flush();
-}
-
-/// 清空：丢弃待写批次，删除历史段，截断当前段，清环形缓冲。
-/// 按 channel 顺序处理——Clear 之后到达的行不受影响。
-fn do_clear(
-    ctx: &WorkerCtx,
-    writer: &mut BufWriter<File>,
-    current_bytes: &mut u64,
-    pending: &mut Vec<LogLine>,
-) {
-    pending.clear();
-    for i in 1..=ctx.limits.segments_kept {
-        let _ = fs::remove_file(ctx.dir.join(format!("{}.{i}.log", ctx.process_id)));
-    }
-    match reopen_segment(&ctx.dir, ctx.process_id) {
-        Ok(fresh) => {
-            *writer = fresh;
-            *current_bytes = 0;
-        }
-        Err(error) => log::error!("R-11: log clear failed for #{}: {error}", ctx.process_id),
-    }
-    ctx.ring.lock().unwrap().clear();
-}
-
-/// 批量落盘（每批一次 flush）→ 环形缓冲 → §37 分析器 → 分块发事件。
-fn flush_batch(
-    ctx: &WorkerCtx,
-    writer: &mut BufWriter<File>,
-    current_bytes: &mut u64,
-    pending: &mut Vec<LogLine>,
-) {
-    if pending.is_empty() {
-        return;
-    }
-    let batch = std::mem::take(pending);
-    for line in &batch {
-        if *current_bytes >= ctx.limits.segment_max_bytes {
-            if let Err(error) = rotate_segments(ctx, writer, current_bytes) {
-                log::error!("R-11: log rotation failed for #{}: {error}", ctx.process_id);
-            }
-        }
-        if let Err(error) = writeln!(writer, "{}", line.line) {
-            log::error!("R-11: log write failed for #{}: {error}", ctx.process_id);
-        }
-        *current_bytes += line.line.len() as u64 + 1;
-        ctx.ring.lock().unwrap().push(line.clone(), &ctx.limits);
-        for analyzer in &ctx.analyzers {
-            analyzer.analyze(line);
-        }
-    }
-    // 批量 flush，不逐行 sync（任务文档「架构/性能注意点」）。
-    if let Err(error) = writer.flush() {
-        log::error!("R-11: log flush failed for #{}: {error}", ctx.process_id);
-    }
-    for chunk in batch.chunks(ctx.limits.batch_max_lines.max(1)) {
-        ctx.events.emit(RuntimeEvent::Logs {
-            process_id: ctx.process_id,
-            runtime_name: ctx.runtime_name.clone(),
-            lines: chunk.to_vec(),
-        });
-    }
-}
-
-/// 滚动切分：删最旧段，逐段移位（`N-1→N … 1→2，当前段→1`），重开当前段。
-fn rotate_segments(
-    ctx: &WorkerCtx,
-    writer: &mut BufWriter<File>,
-    current_bytes: &mut u64,
-) -> AppResult<()> {
-    let keep = ctx.limits.segments_kept;
-    if keep > 0 {
-        let _ = fs::remove_file(ctx.dir.join(format!("{}.{keep}.log", ctx.process_id)));
-        for i in (1..keep).rev() {
-            let from = ctx.dir.join(format!("{}.{i}.log", ctx.process_id));
-            if from.exists() {
-                fs::rename(&from, ctx.dir.join(format!("{}.{}.log", ctx.process_id, i + 1)))?;
-            }
-        }
-        let current = current_segment_path(&ctx.dir, ctx.process_id);
-        if current.exists() {
-            fs::rename(&current, ctx.dir.join(format!("{}.1.log", ctx.process_id)))?;
-        }
-    } else {
-        // 不保留历史段：直接截断当前段。
-        let _ = writer.flush();
-    }
-    *writer = reopen_segment(&ctx.dir, ctx.process_id)?;
-    *current_bytes = 0;
-    Ok(())
-}
-
-fn reopen_segment(dir: &Path, process_id: i64) -> std::io::Result<BufWriter<File>> {
-    File::create(current_segment_path(dir, process_id))
-        .map(|file| BufWriter::with_capacity(WRITE_BUFFER_BYTES, file))
-}
-
-// ------------------------------------------------------------------
-// 文件查询管道（search / export / tail 共用）
-// ------------------------------------------------------------------
-
-/// 跨段按时间序（最旧段 → 当前段）流式逐行回调；`f` 返回 `false` 提前停。
-/// 全局行号跨段连续（1 起）。
-fn for_each_file_line(paths: &[PathBuf], mut f: impl FnMut(u64, &str) -> bool) -> AppResult<()> {
-    let mut line_number = 0u64;
-    for path in paths {
-        let reader = BufReader::new(File::open(path)?);
-        for line in reader.lines() {
-            let line = line?;
-            line_number += 1;
-            if !f(line_number, &line) {
-                return Ok(());
-            }
-        }
-    }
-    Ok(())
-}
-
-/// 过滤判定：级别过滤（未识别级别不受影响）+ 子串过滤。
-fn matches_filter(filter: &LogFilter, level: Option<LogLevel>, text: &str) -> bool {
-    if let Some(min) = filter.min_level {
-        if let Some(level) = level {
-            if level < min {
-                return false;
-            }
-        }
-    }
-    if let Some(query) = &filter.query {
-        if !query.is_empty() && !text.contains(query.as_str()) {
-            return false;
-        }
-    }
-    true
-}
-
-/// 流式 tail：全程只保留最后 `n` 行的滑动窗口，内存有界。
-fn tail_paths(paths: &[PathBuf], n: usize) -> AppResult<Vec<LogEntry>> {
-    if n == 0 {
-        return Ok(Vec::new());
-    }
-    let mut window: VecDeque<(u64, String)> = VecDeque::with_capacity(n.min(1024));
-    for_each_file_line(paths, |line_number, text| {
-        if window.len() >= n {
-            window.pop_front();
-        }
-        window.push_back((line_number, text.to_string()));
-        true
-    })?;
-    Ok(window
-        .into_iter()
-        .map(|(line_number, text)| {
-            let level = parse_level(&text);
-            LogEntry {
-                line_number,
-                level,
-                text,
-            }
-        })
-        .collect())
-}
-
-// ------------------------------------------------------------------
-// 路径与目录守卫
-// ------------------------------------------------------------------
-
-fn current_segment_path(dir: &Path, process_id: i64) -> PathBuf {
-    dir.join(format!("{process_id}.log"))
-}
-
-/// 段文件清单（最旧 → 最新），只含实际存在的段。
-fn segment_paths(dir: &Path, process_id: i64, keep: u32) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    for i in (1..=keep).rev() {
-        let path = dir.join(format!("{process_id}.{i}.log"));
-        if path.is_file() {
-            paths.push(path);
-        }
-    }
-    let current = current_segment_path(dir, process_id);
-    if current.is_file() {
-        paths.push(current);
-    }
-    paths
-}
-
-fn logs_dir(workspace_root: &Path, runtime_name: &str) -> AppResult<PathBuf> {
-    validate_runtime_name(runtime_name)?;
-    Ok(workspace_root
-        .join(".gitworkspace")
-        .join(LOGS_DIR)
-        .join(runtime_name))
-}
-
-/// 创建日志目录（写路径）；先校验名再落任何目录，沿用 R-07 配置的
-/// 符号链接拒绝守卫。
-fn ensure_logs_dir(workspace_root: &Path, runtime_name: &str) -> AppResult<PathBuf> {
-    validate_runtime_name(runtime_name)?;
-    let gitworkspace = workspace_root.join(".gitworkspace");
-    // R-14 §78 只读护栏：日志目录必须在 workspace/.gitworkspace 下。
-    crate::runtime::guard::assert_workspace_write_path(&gitworkspace, workspace_root, "日志落盘")?;
-    reject_symlink(&gitworkspace)?;
-    let logs = gitworkspace.join(LOGS_DIR);
-    reject_symlink(&logs)?;
-    fs::create_dir_all(&logs)?;
-    let dir = logs.join(runtime_name);
-    reject_symlink(&dir)?;
-    fs::create_dir_all(&dir)?;
-    Ok(dir)
-}
-
-fn validate_runtime_name(name: &str) -> AppResult<()> {
-    if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
-        return Err(AppError::RuntimeConfig(format!(
-            "Runtime 名称 '{name}' 不能用作日志目录名（禁止空名、路径分隔符与 . / ..）"
-        )));
-    }
-    Ok(())
-}
-
-fn reject_symlink(path: &Path) -> AppResult<()> {
-    if let Ok(metadata) = fs::symlink_metadata(path) {
-        if metadata.file_type().is_symlink() {
-            return Err(AppError::Permission(format!(
-                "拒绝通过符号链接写入日志目录：{}",
-                path.display()
-            )));
-        }
-    }
-    Ok(())
 }
 
 // ------------------------------------------------------------------

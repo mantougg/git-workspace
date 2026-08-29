@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**10**
-- 已完成：**4** · 进行中：**0** · 未开始：**6**
-- 完成度：**4 / 10（40%）**
+- 已完成：**5** · 进行中：**0** · 未开始：**5**
+- 完成度：**5 / 10（50%）**
 
 ## 总体口径（设计文档 §1 / §11）
 
@@ -59,7 +59,7 @@
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
 | B-04 | 拆 Maven Index（index.rs → index/） | P1 | ✅ | B-01 | [B-04-maven-index.md](./B-04-maven-index.md) |
-| B-05 | 拆 Log Engine（logs/engine.rs → engine/） | P1 | ⬜ | B-01 | [B-05-log-engine.md](./B-05-log-engine.md) |
+| B-05 | 拆 Log Engine（logs/engine.rs → engine/） | P1 | ✅ | B-01 | [B-05-log-engine.md](./B-05-log-engine.md) |
 
 ### Phase 4 · 支撑模块（P1，4 个）
 
