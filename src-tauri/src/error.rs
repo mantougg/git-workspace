@@ -124,8 +124,11 @@ pub enum AppError {
         log_tail: String,
     },
 
-    #[error("AI error: {0}")]
-    Ai(String),
+    /// AI 错误（设计文档 §17）：结构化 code（AiNotConfigured 等）+ details
+    /// （含 suggestedActions）。严禁携带 API Key 或 Secret 原文。
+    /// Display 直接透传 AiError 的用户可读 message，不再加前缀。
+    #[error("{0}")]
+    Ai(#[from] crate::ai::AiError),
 
     #[error("Permission error: {0}")]
     Permission(String),
@@ -161,7 +164,7 @@ impl AppError {
             AppError::BuildFailed { .. } => "BuildFailed",
             AppError::ProcessStartFailed { .. } => "ProcessStartFailed",
             AppError::ProcessCrashed { .. } => "ProcessCrashed",
-            AppError::Ai(_) => "AIError",
+            AppError::Ai(e) => e.code(),
             AppError::Permission(_) => "PermissionError",
             AppError::Other(_) => "Other",
         }
@@ -169,14 +172,17 @@ impl AppError {
 
     /// Whether the error is recoverable by retry or user action.
     pub fn recoverable(&self) -> bool {
-        !matches!(
-            self,
-            AppError::NotFound(_)
-                | AppError::Permission(_)
-                | AppError::Other(_)
-                // InvalidPom 需用户修复 pom 后重新解析，非自动可恢复。
-                | AppError::InvalidPom { .. }
-        )
+        match self {
+            AppError::Ai(e) => e.recoverable(),
+            _ => !matches!(
+                self,
+                AppError::NotFound(_)
+                    | AppError::Permission(_)
+                    | AppError::Other(_)
+                    // InvalidPom 需用户修复 pom 后重新解析，非自动可恢复。
+                    | AppError::InvalidPom { .. }
+            ),
+        }
     }
 }
 
@@ -290,6 +296,8 @@ impl Serialize for AppError {
                 })
                 .to_string(),
             ),
+            // AI（§17）：details 携带非敏感上下文 + suggestedActions。
+            AppError::Ai(e) => Some(e.details_json()),
             _ => None,
         };
         ErrorResponse {

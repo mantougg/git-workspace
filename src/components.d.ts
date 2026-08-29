@@ -11,6 +11,13 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AiCredentialsSection: typeof import('./components/ai/AiCredentialsSection.vue')['default']
+    AiModelsSection: typeof import('./components/ai/AiModelsSection.vue')['default']
+    AiPrivacySection: typeof import('./components/ai/AiPrivacySection.vue')['default']
+    AiProvidersSection: typeof import('./components/ai/AiProvidersSection.vue')['default']
+    AiTaskDefaultsSection: typeof import('./components/ai/AiTaskDefaultsSection.vue')['default']
+    AiUsageSection: typeof import('./components/ai/AiUsageSection.vue')['default']
+    AiWorkspaceDefaultsDialog: typeof import('./components/ai/AiWorkspaceDefaultsDialog.vue')['default']
     AppShell: typeof import('./components/shell/AppShell.vue')['default']
     BatchActionBar: typeof import('./components/repo/BatchActionBar.vue')['default']
     ChangeTree: typeof import('./components/repo/ChangeTree.vue')['default']
@@ -24,6 +31,7 @@ declare module 'vue' {
     NButton: typeof import('naive-ui')['NButton']
     NButtonGroup: typeof import('naive-ui')['NButtonGroup']
     NCheckbox: typeof import('naive-ui')['NCheckbox']
+    NCheckboxGroup: typeof import('naive-ui')['NCheckboxGroup']
     NCollapse: typeof import('naive-ui')['NCollapse']
     NCollapseItem: typeof import('naive-ui')['NCollapseItem']
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
@@ -54,6 +62,7 @@ declare module 'vue' {
     NSelect: typeof import('naive-ui')['NSelect']
     NSpace: typeof import('naive-ui')['NSpace']
     NSpin: typeof import('naive-ui')['NSpin']
+    NStatistic: typeof import('naive-ui')['NStatistic']
     NStep: typeof import('naive-ui')['NStep']
     NSteps: typeof import('naive-ui')['NSteps']
     NSwitch: typeof import('naive-ui')['NSwitch']

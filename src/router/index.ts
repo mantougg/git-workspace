@@ -141,6 +141,12 @@ const router = createRouter({
       meta: { group: "设置", title: "Maven 设置" },
     },
     {
+      path: "/ai-settings",
+      name: "ai-settings",
+      component: () => import("@/views/AiSettingsView.vue"),
+      meta: { group: "设置", title: "AI 设置" },
+    },
+    {
       path: "/about",
       name: "about",
       component: () => import("@/views/AboutView.vue"),

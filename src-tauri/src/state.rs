@@ -84,6 +84,10 @@ pub struct AppState {
     /// `runtime.running_briefs`）。lib.rs 装配时与 RuntimeService 共享
     /// 同一批缓存实例。
     pub git_link: Arc<crate::runtime::git_link::GitLinkEngine>,
+
+    /// AI-01（§6.4）：AI 凭证管理器。OS Credential Store 优先、会话内存兜底，
+    /// API Key 只经它进出，不落盘、不进日志。
+    pub ai_credentials: Arc<crate::ai::CredentialManager>,
 }
 
 /// Build the bounded LRU status cache.
@@ -124,6 +128,7 @@ impl AppState {
             spring_boot_cache: Arc::new(SpringBootDetectionCache::new()),
             runtime,
             git_link,
+            ai_credentials: Arc::new(crate::ai::CredentialManager::production()),
         }
     }
 }

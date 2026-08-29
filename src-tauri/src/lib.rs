@@ -2,6 +2,7 @@ mod commands;
 mod core;
 mod db;
 mod error;
+pub mod ai;
 pub mod java;
 pub mod maven;
 mod models;
@@ -334,6 +335,19 @@ pub fn run() {
             commands::ai::build_code_index,
             commands::ai::ai_search,
             commands::ai::clear_code_index,
+            // AI-01：Provider / Model / Credential / 任务默认值 / Settings
+            commands::ai::ai_list_providers,
+            commands::ai::ai_save_provider,
+            commands::ai::ai_remove_provider,
+            commands::ai::ai_test_provider,
+            commands::ai::ai_list_models,
+            commands::ai::ai_save_model,
+            commands::ai::ai_remove_model,
+            commands::ai::ai_set_task_default_model,
+            commands::ai::ai_clear_task_default_model,
+            commands::ai::ai_get_settings_summary,
+            commands::ai::ai_set_credential,
+            commands::ai::ai_clear_credential,
             // Log commands
             commands::logs::list_log_files,
             commands::logs::open_logs,

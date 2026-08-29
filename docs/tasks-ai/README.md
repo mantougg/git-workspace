@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**12**
-- 已完成：**0** · 进行中：**0** · 未开始：**12**
-- 完成度：**0 / 12（0%）**
+- 已完成：**1** · 进行中：**0** · 未开始：**11**
+- 完成度：**1 / 12（8%）**
 
 ## 第一阶段口径（设计文档 §21）
 
@@ -43,7 +43,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| AI-01 | Provider / Model / Credential 与 AI Settings | P0 | ⬜ | T-08 | [AI-01-provider-model-credentials.md](./AI-01-provider-model-credentials.md) |
+| AI-01 | Provider / Model / Credential 与 AI Settings | P0 | ✅ | T-08 | [AI-01-provider-model-credentials.md](./AI-01-provider-model-credentials.md) |
 | AI-02 | AI Gateway（请求生命周期 / Provider Adapter / 流式） | P0 | ⬜ | AI-01, T-08 | [AI-02-ai-gateway.md](./AI-02-ai-gateway.md) |
 | AI-03 | Context Builder / Preview / Secret / Token 预算 | P0 | ⬜ | AI-02, T-04, R-11 | [AI-03-context-builder-preview.md](./AI-03-context-builder-preview.md) |
 | AI-04 | Session / Message / Request Audit / 结果缓存 | P0 | ⬜ | AI-02, T-03 | [AI-04-session-audit-cache.md](./AI-04-session-audit-cache.md) |

@@ -164,22 +164,6 @@
       </div>
     </n-modal>
 
-    <!-- API Key input dialog (replaces ElMessageBox.prompt) -->
-    <n-modal v-model:show="showApiKeyDialog" preset="card" title="AI Code Review" style="width: 400px">
-      <n-input
-        v-model:value="apiKeyValue"
-        type="password"
-        placeholder="OpenAI API Key"
-        show-password-on="click"
-      />
-      <template #footer>
-        <div style="display: flex; justify-content: flex-end; gap: 8px">
-          <n-button @click="showApiKeyDialog = false">取消</n-button>
-          <n-button type="primary" @click="handleApiKeyConfirm">开始审查</n-button>
-        </div>
-      </template>
-    </n-modal>
-
     <!-- Body -->
     <n-spin :show="loading">
       <div class="diff-body">
@@ -304,8 +288,6 @@ const diffOptions = ref<DiffOptions>({
 const reviewLoading = ref(false);
 const showReview = ref(false);
 const reviewResult = ref<ReviewResult | null>(null);
-const showApiKeyDialog = ref(false);
-const apiKeyValue = ref("");
 
 onMounted(async () => {
   stopFrameMeter = startFrameMeter("diff-viewer");
@@ -546,21 +528,23 @@ async function submitStagedCommit(allowUnsafe: boolean) {
   }
 }
 
-function handleAiReview() {
-  apiKeyValue.value = "";
-  showApiKeyDialog.value = true;
-}
-
-async function handleApiKeyConfirm() {
-  const key = apiKeyValue.value.trim();
-  if (!key) return;
-  showApiKeyDialog.value = false;
+/**
+ * AI-01：Provider/模型/凭证由 AI 设置解析（gitReview 任务默认链），
+ * 不再前端传 Key。未配置/凭证缺失时引导打开 AI 设置（§12.4）。
+ */
+async function handleAiReview() {
   reviewLoading.value = true;
   try {
-    reviewResult.value = await aiReview(repoPath.value, key);
+    reviewResult.value = await aiReview(repoPath.value);
     showReview.value = true;
   } catch (e) {
-    message.error("AI Review 失败: " + errMsg(e));
+    const code = (e as { code?: string })?.code;
+    if (code === "AiNotConfigured" || code === "AiCredentialUnavailable") {
+      message.error(errMsg(e));
+      router.push({ name: "ai-settings" });
+    } else {
+      message.error("AI Review 失败: " + errMsg(e));
+    }
   } finally {
     reviewLoading.value = false;
   }

@@ -483,6 +483,7 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NTag, type DataTableColumns } from "naive-ui";
 import { useMessage, useDialog } from "naive-ui";
+import { useRouter } from "vue-router";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
 import { useChangeSetStore } from "@/stores/changeSet";
@@ -503,6 +504,7 @@ import type { FileDiff } from "@/types/git";
 
 const message = useMessage();
 const dialog = useDialog();
+const router = useRouter();
 
 const workspaceStore = useWorkspaceStore();
 const taskStore = useTaskStore();
@@ -1064,16 +1066,20 @@ function statusIcon(status: string): string {
 async function startAiReview() {
   const repoPath = aiPicker.value.repoPath;
   if (!repoPath) return;
-  // Naive UI has no built-in prompt dialog; use native prompt as a lightweight fallback
-  const apiKey = window.prompt("请输入您的 AI API Key\nOpenAI API Key");
-  if (!apiKey) return;
+  // AI-01：Provider/模型/凭证由 AI 设置解析，不再弹窗索要 Key（§12.4）。
   aiPicker.value.loading = true;
   try {
-    aiPicker.value.result = await aiReview(repoPath, apiKey);
+    aiPicker.value.result = await aiReview(repoPath);
     aiPicker.value.show = false;
     aiPicker.value.showResult = true;
   } catch (e) {
-    message.error("AI Review 失败: " + errMsg(e));
+    const code = (e as { code?: string })?.code;
+    if (code === "AiNotConfigured" || code === "AiCredentialUnavailable") {
+      message.error(errMsg(e));
+      router.push({ name: "ai-settings" });
+    } else {
+      message.error("AI Review 失败: " + errMsg(e));
+    }
   } finally {
     aiPicker.value.loading = false;
   }

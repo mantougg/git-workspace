@@ -105,6 +105,9 @@ mod tests {
             "runtime_dependencies",
             "jdks",
             "runtime_processes",
+            "ai_providers",
+            "ai_models",
+            "ai_task_defaults",
         ] {
             let count: i64 = conn
                 .query_row(

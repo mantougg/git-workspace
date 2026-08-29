@@ -6,6 +6,111 @@
     "repoName": "repo",
     "repoPath": "/ws/repo"
   },
+  "AiCredentialStatus": {
+    "hasCredential": true,
+    "osStoreAvailable": true,
+    "providerId": "p1",
+    "sessionOnly": false
+  },
+  "AiCredentialUnavailableError": {
+    "code": "AiCredentialUnavailable",
+    "details": "{\"suggestedActions\":[\"在 AI 设置-凭证中录入 API Key\",\"凭证存储不可用时选择仅本次会话保存\"]}",
+    "message": "AI 凭证不可用: OS 凭证存储不可用",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
+  "AiModel": {
+    "capabilities": [
+      "chat",
+      "structuredOutput"
+    ],
+    "createdAt": "2026-01-01T00:00:00Z",
+    "defaults": {
+      "temperature": 0.2
+    },
+    "displayName": "GPT-4o mini",
+    "enabled": true,
+    "id": "gpt-4o-mini",
+    "maxContextTokens": 128000,
+    "providerId": "p1",
+    "updatedAt": "2026-01-01T00:00:00Z"
+  },
+  "AiModelCapabilityMismatchError": {
+    "code": "AiModelCapabilityMismatch",
+    "details": "{\"capability\":\"structuredOutput\",\"modelId\":\"m1\",\"providerId\":\"p1\",\"suggestedActions\":[\"为该任务选择具备所需能力的模型\",\"在模型管理中调整能力标记\"]}",
+    "message": "模型 m1 不支持所需能力 structuredOutput",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
+  "AiModelDefaults": {
+    "temperature": 0.2
+  },
+  "AiModelNotFoundError": {
+    "code": "AiModelNotFound",
+    "details": "{\"modelId\":\"gone\",\"providerId\":\"p1\",\"suggestedActions\":[\"在 AI 设置-模型中检查模型配置\",\"重新选择任务默认模型\"]}",
+    "message": "AI 模型不存在: p1/gone",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
+  "AiNotConfiguredError": {
+    "code": "AiNotConfigured",
+    "details": "{\"suggestedActions\":[\"打开 AI 设置添加 Provider 与模型\",\"配置任务默认模型\"]}",
+    "message": "AI 未配置: 没有可用的 AI 模型",
+    "operation": null,
+    "recoverable": true,
+    "repository": null
+  },
+  "AiProvider": {
+    "baseUrl": "https://api.openai.com/v1",
+    "createdAt": "2026-01-01T00:00:00Z",
+    "credentialRef": "ai-provider:p1",
+    "enabled": true,
+    "hasCredential": true,
+    "id": "p1",
+    "kind": "openaiCompatible",
+    "name": "Team OpenAI",
+    "networkPolicy": "onlineOnly",
+    "sessionOnlyCredential": false,
+    "updatedAt": "2026-01-01T00:00:00Z"
+  },
+  "AiProviderTestResult": {
+    "latencyMs": 120,
+    "message": "连接成功，发现 2 个模型",
+    "models": [
+      "gpt-4o",
+      "gpt-4o-mini"
+    ],
+    "success": true
+  },
+  "AiSettingsSummary": {
+    "enabledModelCount": 2,
+    "enabledProviderCount": 1,
+    "legacyReviewCount": 3,
+    "legacyTaskCount": 4,
+    "modelCount": 2,
+    "osCredentialStoreAvailable": true,
+    "providerCount": 1,
+    "sessionCredentialCount": 0,
+    "taskDefaults": [
+      {
+        "modelId": "gpt-4o-mini",
+        "providerId": "p1",
+        "taskKind": "chat",
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "workspaceId": null
+      }
+    ]
+  },
+  "AiTaskDefault": {
+    "modelId": "gpt-4o-mini",
+    "providerId": "p1",
+    "taskKind": "gitReview",
+    "updatedAt": "2026-01-01T00:00:00Z",
+    "workspaceId": 1
+  },
   "BranchEntry": {
     "ahead": 1,
     "behind": 2,
@@ -1638,6 +1743,27 @@
     "description": "Spring Boot 开发默认",
     "name": "Spring Boot Development",
     "schemaVersion": 1
+  },
+  "SaveAiModelRequest": {
+    "capabilities": [
+      "chat"
+    ],
+    "defaults": {
+      "temperature": 0.2
+    },
+    "displayName": "GPT-4o mini",
+    "enabled": true,
+    "id": "gpt-4o-mini",
+    "maxContextTokens": 128000,
+    "providerId": "p1"
+  },
+  "SaveAiProviderRequest": {
+    "baseUrl": "https://api.openai.com/v1",
+    "enabled": true,
+    "id": "p1",
+    "kind": "openaiCompatible",
+    "name": "Team OpenAI",
+    "networkPolicy": "onlineOnly"
   },
   "SaveWorkspaceStashResult": {
     "id": 1,

@@ -182,6 +182,150 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         }),
     );
 
+    // ai/provider.rs + ai/model.rs + commands/ai.rs（AI-01，设计文档 §6 / §12.2）
+    m.insert(
+        "AiProvider".into(),
+        json!(crate::ai::AiProvider {
+            id: "p1".into(),
+            name: "Team OpenAI".into(),
+            kind: crate::ai::ProviderKind::OpenaiCompatible,
+            base_url: "https://api.openai.com/v1".into(),
+            credential_ref: Some("ai-provider:p1".into()),
+            has_credential: true,
+            session_only_credential: false,
+            enabled: true,
+            network_policy: crate::ai::NetworkPolicy::OnlineOnly,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "SaveAiProviderRequest".into(),
+        json!(crate::ai::SaveAiProviderRequest {
+            id: Some("p1".into()),
+            name: "Team OpenAI".into(),
+            kind: crate::ai::ProviderKind::OpenaiCompatible,
+            base_url: "https://api.openai.com/v1".into(),
+            enabled: true,
+            network_policy: crate::ai::NetworkPolicy::OnlineOnly,
+        }),
+    );
+    m.insert(
+        "AiProviderTestResult".into(),
+        json!(crate::ai::AiProviderTestResult {
+            success: true,
+            message: "连接成功，发现 2 个模型".into(),
+            models: vec!["gpt-4o".into(), "gpt-4o-mini".into()],
+            latency_ms: 120,
+        }),
+    );
+    m.insert(
+        "AiModel".into(),
+        json!(crate::ai::AiModel {
+            provider_id: "p1".into(),
+            id: "gpt-4o-mini".into(),
+            display_name: "GPT-4o mini".into(),
+            capabilities: vec![
+                crate::ai::ModelCapability::Chat,
+                crate::ai::ModelCapability::StructuredOutput,
+            ],
+            max_context_tokens: 128000,
+            defaults: crate::ai::AiModelDefaults {
+                temperature: Some(0.2),
+            },
+            enabled: true,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "AiModelDefaults".into(),
+        json!(crate::ai::AiModelDefaults {
+            temperature: Some(0.2),
+        }),
+    );
+    m.insert(
+        "SaveAiModelRequest".into(),
+        json!(crate::ai::SaveAiModelRequest {
+            provider_id: "p1".into(),
+            id: "gpt-4o-mini".into(),
+            display_name: "GPT-4o mini".into(),
+            capabilities: vec![crate::ai::ModelCapability::Chat],
+            max_context_tokens: 128000,
+            defaults: crate::ai::AiModelDefaults {
+                temperature: Some(0.2),
+            },
+            enabled: true,
+        }),
+    );
+    m.insert(
+        "AiTaskDefault".into(),
+        json!(crate::ai::AiTaskDefault {
+            task_kind: crate::ai::AiTaskKind::GitReview,
+            workspace_id: Some(1),
+            provider_id: "p1".into(),
+            model_id: "gpt-4o-mini".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "AiSettingsSummary".into(),
+        json!(ai::AiSettingsSummary {
+            provider_count: 1,
+            enabled_provider_count: 1,
+            model_count: 2,
+            enabled_model_count: 2,
+            task_defaults: vec![crate::ai::AiTaskDefault {
+                task_kind: crate::ai::AiTaskKind::Chat,
+                workspace_id: None,
+                provider_id: "p1".into(),
+                model_id: "gpt-4o-mini".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+            }],
+            os_credential_store_available: true,
+            session_credential_count: 0,
+            legacy_review_count: 3,
+            legacy_task_count: 4,
+        }),
+    );
+    m.insert(
+        "AiCredentialStatus".into(),
+        json!(ai::AiCredentialStatus {
+            provider_id: "p1".into(),
+            has_credential: true,
+            session_only: false,
+            os_store_available: true,
+        }),
+    );
+    // AI 结构化错误（§17）：details 内含 suggestedActions。
+    m.insert(
+        "AiNotConfiguredError".into(),
+        json!(AppError::Ai(crate::ai::AiError::NotConfigured {
+            message: "没有可用的 AI 模型".into(),
+        })),
+    );
+    m.insert(
+        "AiCredentialUnavailableError".into(),
+        json!(AppError::Ai(crate::ai::AiError::CredentialUnavailable {
+            message: "OS 凭证存储不可用".into(),
+        })),
+    );
+    m.insert(
+        "AiModelNotFoundError".into(),
+        json!(AppError::Ai(crate::ai::AiError::ModelNotFound {
+            provider_id: "p1".into(),
+            model_id: "gone".into(),
+        })),
+    );
+    m.insert(
+        "AiModelCapabilityMismatchError".into(),
+        json!(AppError::Ai(crate::ai::AiError::ModelCapabilityMismatch {
+            provider_id: "p1".into(),
+            model_id: "m1".into(),
+            capability: "structuredOutput".into(),
+        })),
+    );
+
     // error.rs — AppError serializes as the structured ErrorResponse.
     m.insert(
         "ErrorResponse".into(),
@@ -280,4 +424,17 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("WorkspaceManifest", "types/manifest.ts", "WorkspaceManifest"),
     ("ClonePlanItem", "types/manifest.ts", "ClonePlanItem"),
     ("ClonePlan", "types/manifest.ts", "ClonePlan"),
+    // AI（types/ai.ts：本文件注册的每个 interface 都必须有 Rust 样本）
+    ("ReviewResult", "types/ai.ts", "ReviewResult"),
+    ("ReviewIssue", "types/ai.ts", "ReviewIssue"),
+    ("SearchResult", "types/ai.ts", "SearchResult"),
+    ("AiProvider", "types/ai.ts", "AiProvider"),
+    ("SaveAiProviderRequest", "types/ai.ts", "SaveAiProviderRequest"),
+    ("AiProviderTestResult", "types/ai.ts", "AiProviderTestResult"),
+    ("AiModel", "types/ai.ts", "AiModel"),
+    ("AiModelDefaults", "types/ai.ts", "AiModelDefaults"),
+    ("SaveAiModelRequest", "types/ai.ts", "SaveAiModelRequest"),
+    ("AiTaskDefault", "types/ai.ts", "AiTaskDefault"),
+    ("AiSettingsSummary", "types/ai.ts", "AiSettingsSummary"),
+    ("AiCredentialStatus", "types/ai.ts", "AiCredentialStatus"),
 ];

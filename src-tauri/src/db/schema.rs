@@ -634,7 +634,56 @@ CREATE INDEX IF NOT EXISTS idx_runtime_processes_status
     ON runtime_processes(status);
 "#;
 
+/// v13 (AI-01): AI Provider / Model / 任务级默认模型配置表（设计文档 §6 / §11.2）。
+///
+/// 只存配置元数据：API Key 一律进 OS Credential Store（§6.4），SQLite 只保存
+/// `credential_ref` 引用。`ai_reviews` / `ai_tasks` 历史表保留不动（向后兼容，
+/// 不做破坏性删除）。
+///
+/// `ai_task_defaults.workspace_id` 可空：NULL = 全局默认。SQLite 唯一约束把 NULL
+/// 视为互不相等，故唯一性用 `COALESCE(workspace_id, -1)` 表达式索引保证
+/// （全局每 task_kind 仅一行，Workspace 覆盖每 (task_kind, workspace_id) 仅一行）。
+pub const SCHEMA_V13: &str = r#"
+CREATE TABLE IF NOT EXISTS ai_providers (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    kind           TEXT NOT NULL CHECK(kind IN ('openaiCompatible', 'ark', 'ollama', 'custom')),
+    base_url       TEXT NOT NULL,
+    credential_ref TEXT,
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    network_policy TEXT NOT NULL DEFAULT 'onlineOnly' CHECK(network_policy IN ('onlineOnly', 'localOnly')),
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_models (
+    provider_id        TEXT NOT NULL REFERENCES ai_providers(id) ON DELETE CASCADE,
+    id                 TEXT NOT NULL,
+    display_name       TEXT NOT NULL,
+    capabilities_json  TEXT NOT NULL DEFAULT '[]',
+    max_context_tokens INTEGER NOT NULL DEFAULT 0,
+    defaults_json      TEXT NOT NULL DEFAULT '{}',
+    enabled            INTEGER NOT NULL DEFAULT 1,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL,
+    PRIMARY KEY (provider_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models(provider_id);
+
+CREATE TABLE IF NOT EXISTS ai_task_defaults (
+    task_kind    TEXT NOT NULL CHECK(task_kind IN ('chat', 'runtimeDiagnostic', 'gitReview', 'commitMessage', 'conflict')),
+    workspace_id INTEGER REFERENCES workspaces(id) ON DELETE CASCADE,
+    provider_id  TEXT NOT NULL,
+    model_id     TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_task_defaults_unique
+    ON ai_task_defaults(task_kind, COALESCE(workspace_id, -1));
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
-    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12,
+    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13,
 ];

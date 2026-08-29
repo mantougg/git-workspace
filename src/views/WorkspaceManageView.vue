@@ -43,6 +43,9 @@
               <template #icon><n-icon><CreateOutline /></n-icon></template>
               编辑
             </n-button>
+            <n-button size="small" @click="openAiDefaults(ws)">
+              AI 模型
+            </n-button>
             <n-button size="small" quaternary type="error" @click="confirmRemove(ws)">
               <template #icon><n-icon><TrashOutline /></n-icon></template>
               删除
@@ -59,6 +62,9 @@
 
     <!-- Add workspace（复用现有组件） -->
     <WorkspaceManager v-model="showAdd" @added="onAdded" />
+
+    <!-- AI-01（§6.3）：Workspace 级任务默认模型覆盖入口（缺省继承全局） -->
+    <AiWorkspaceDefaultsDialog v-model="aiDefaultsDialog.show" :workspace="aiDefaultsDialog.ws" />
 
     <!-- Edit dialog：路径不可改（改动路径等同于新建工作区） -->
     <n-modal v-model:show="editDialog.show" preset="card" title="编辑工作区" style="width: 460px">
@@ -99,6 +105,7 @@ import {
   TrashOutline,
 } from "@vicons/ionicons5";
 import WorkspaceManager from "@/components/common/WorkspaceManager.vue";
+import AiWorkspaceDefaultsDialog from "@/components/ai/AiWorkspaceDefaultsDialog.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { errMsg } from "@/utils/error";
 import type { Workspace } from "@/types/workspace";
@@ -109,6 +116,17 @@ const dialog = useDialog();
 const workspaceStore = useWorkspaceStore();
 
 const showAdd = ref(false);
+
+/** AI-01：Workspace 任务默认模型覆盖对话框状态。 */
+const aiDefaultsDialog = reactive({
+  show: false,
+  ws: null as Workspace | null,
+});
+
+function openAiDefaults(ws: Workspace) {
+  aiDefaultsDialog.ws = ws;
+  aiDefaultsDialog.show = true;
+}
 
 const editDialog = reactive({
   show: false,
