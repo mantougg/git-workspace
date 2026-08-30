@@ -66,7 +66,7 @@ pub use provider::{
 };
 pub use request::{
     parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, ContextItem, ContextKind,
-    ExclusionReason, MessageRole, ResponseFormat, ToolPolicy,
+    ExclusionReason, GitAssistantScenario, MessageRole, ResponseFormat, ToolPolicy,
 };
 pub use cache::{AiResultCache, CacheKeyParts, CachedResult};
 pub use diagnose::{

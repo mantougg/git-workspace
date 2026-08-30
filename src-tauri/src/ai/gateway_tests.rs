@@ -18,7 +18,10 @@ use super::gateway::{AiGateway, GatewayConfig};
 use super::model::{save_model, AiModelDefaults, ModelCapability, SaveAiModelRequest};
 use super::provider::{save_provider, ApiType, NetworkPolicy, SaveAiProviderRequest};
 use super::model::AiTaskKind;
-use super::request::{AiMessage, AiRequest, MessageRole, ResponseFormat, ToolPolicy};
+use super::request::{
+    AiMessage, AiRequest, AiResult, GitAssistantScenario, MessageRole, ResponseFormat,
+    ToolPolicy,
+};
 use super::transport::{
     BoxFuture, ByteStream, CancelToken, HttpTransport, TransportError, TransportRequest,
     TransportResponse,
@@ -261,6 +264,7 @@ fn make_request(request_id: &str, stream: bool) -> AiRequest {
         request_id: request_id.into(),
         session_id: None,
         task_kind: AiTaskKind::RuntimeDiagnostic,
+        git_scenario: None,
         provider_id: None,
         model_id: None,
         system_instruction: "你是构建排障助手".into(),
@@ -742,6 +746,30 @@ async fn approve_is_the_only_network_entry() {
     let again = gateway.approve(credentials, &id);
     assert!(again.is_err(), "重复 approve 必须被拒绝");
     assert_eq!(transport.call_count(), 1, "拒绝后无新增网络调用");
+}
+
+/// AI-08：fake Provider 的 JSON 结果经既有 Gateway/Preview 闸门按场景解析，
+/// 不创建第二套 HTTP 调用链。
+#[tokio::test]
+async fn git_scenario_uses_gateway_and_parses_structured_review() {
+    let conn = open_db();
+    let provider = add_provider(&conn, ApiType::OpenaiChatCompletions);
+    add_model(&conn, &provider.id);
+    let transport = Arc::new(FakeTransport::new(vec![Step::Respond {
+        status: 200,
+        body: Body::Full(chat_json(r#"{"summary":"reviewed","issues":[]}"#)),
+    }]));
+    let (gateway, _sink) = test_gateway(test_config(), transport.clone());
+    let credentials = credentials_for_ref(provider.credential_ref.as_deref().unwrap(), KEY);
+    let mut request = make_request("git-scenario", false);
+    request.task_kind = AiTaskKind::GitReview;
+    request.git_scenario = Some(GitAssistantScenario::SecurityReview);
+    request.response_format = ResponseFormat::Json;
+
+    let snapshot = run_to_end(&gateway, &conn, &credentials, request).await;
+    assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::Succeeded);
+    assert!(matches!(snapshot.result, Some(AiResult::ReviewReport { .. })));
+    assert_eq!(transport.call_count(), 1);
 }
 
 // ---------------------------------------------------------------------------

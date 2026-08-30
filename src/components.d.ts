@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AiCredentialsSection: typeof import('./components/ai/AiCredentialsSection.vue')['default']
     AiDiffSelection: typeof import('./components/ai/AiDiffSelection.vue')['default']
+    AiGitAssistantDialog: typeof import('./components/ai/AiGitAssistantDialog.vue')['default']
     AiModelsSection: typeof import('./components/ai/AiModelsSection.vue')['default']
     AiPrivacySection: typeof import('./components/ai/AiPrivacySection.vue')['default']
     AiProvidersSection: typeof import('./components/ai/AiProvidersSection.vue')['default']

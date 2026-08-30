@@ -27,7 +27,8 @@ use super::prompt;
 use super::provider::NetworkPolicy;
 use super::redact::{self, SecretPolicyChoice, SecretReport, SecretStrategyKind};
 use super::request::{
-    AiRequest, ContextItem, ContextKind, ExclusionReason, ResponseFormat, ToolPolicy,
+    AiRequest, ContextItem, ContextKind, ExclusionReason, GitAssistantScenario, ResponseFormat,
+    ToolPolicy,
 };
 
 /// 默认日志尾部行数（§8.2 日志尾部；大日志分块的一环）。
@@ -59,6 +60,10 @@ pub struct SupplementaryContext {
 #[serde(rename_all = "camelCase")]
 pub struct ContextPreviewRequest {
     pub task_kind: AiTaskKind,
+    /// Git Assistant 的具体场景。只影响受信 prompt 与结构化结果 Schema，
+    /// `None` 保持既有任务的 Preview 契约不变。
+    #[serde(default)]
+    pub git_scenario: Option<GitAssistantScenario>,
     /// 显式 Provider/模型；为空走任务默认解析链（§6.3）。
     pub provider_id: Option<String>,
     pub model_id: Option<String>,
@@ -130,6 +135,8 @@ pub struct PreviewTarget {
 pub struct AiContextPreview {
     pub request_id: String,
     pub task_kind: AiTaskKind,
+    #[serde(default)]
+    pub git_scenario: Option<GitAssistantScenario>,
     pub provider_id: String,
     pub provider_name: String,
     pub model_id: String,
@@ -169,7 +176,28 @@ pub struct AiContextPreview {
 // ---------------------------------------------------------------------------
 
 /// 各任务种类的默认受信任务指令（§8.3 第 3 层；后端定义，非用户输入）。
-fn default_task_instruction(task_kind: AiTaskKind) -> &'static str {
+fn default_task_instruction(
+    task_kind: AiTaskKind,
+    git_scenario: Option<GitAssistantScenario>,
+) -> &'static str {
+    if let Some(scenario) = git_scenario {
+        return match scenario {
+            GitAssistantScenario::CommitMessage => {
+                "根据选定的 diff、文件状态与可用的历史风格生成一条可编辑的 CommitSuggestion"
+            }
+            GitAssistantScenario::CommitSummary => {
+                "根据已选多个 Repository 的变更生成结构化 Commit Summary 与风险摘要"
+            }
+            GitAssistantScenario::CodeReview => "对选定 diff 执行代码审查",
+            GitAssistantScenario::SecurityReview => "对选定 diff 执行安全审查",
+            GitAssistantScenario::BugDetection => "对选定 diff 识别潜在缺陷与回归",
+            GitAssistantScenario::PrDescription => {
+                "根据已选多个 Repository 的变更生成可编辑的 PR Description"
+            }
+            GitAssistantScenario::CommitExplanation => "解释给定提交的历史与变更意图",
+            GitAssistantScenario::FileExplanation => "解释给定文件变更的意图与影响",
+        };
+    }
     match task_kind {
         AiTaskKind::RuntimeDiagnostic => {
             "诊断该 Runtime 的失败/异常原因，给出证据、排查路径与修复建议"
@@ -202,6 +230,18 @@ pub fn build(
     };
     let resolved = resolve_model(conn, req.task_kind, req.workspace_id, explicit)?;
     ensure_task_capability(&resolved.model, req.task_kind)?;
+    if req
+        .git_scenario
+        .is_some_and(GitAssistantScenario::requires_structured_output)
+        && !resolved.model.capabilities.contains(&ModelCapability::StructuredOutput)
+    {
+        return Err(AiError::ModelCapabilityMismatch {
+            provider_id: resolved.model.provider_id.clone(),
+            model_id: resolved.model.id.clone(),
+            capability: ModelCapability::StructuredOutput.as_str().to_string(),
+        }
+        .into());
+    }
 
     let estimator = TokenEstimator::new(req.token_estimate_factor);
     let budget_tokens = req
@@ -244,14 +284,17 @@ pub fn build(
     let outcome = policy::apply_budget(drafts, strategy, budget_tokens, &estimator);
 
     // 6. Prompt 分层组装（§8.3）。
-    let response_format = if required_capabilities(req.task_kind).contains(&ModelCapability::StructuredOutput) {
+    let response_format = if required_capabilities(req.task_kind).contains(&ModelCapability::StructuredOutput)
+        || req.git_scenario.is_some_and(GitAssistantScenario::requires_structured_output)
+    {
         ResponseFormat::Json
     } else {
         ResponseFormat::Text
     };
     let system = prompt::assemble_system(
         req.task_kind,
-        default_task_instruction(req.task_kind),
+        req.git_scenario,
+        default_task_instruction(req.task_kind, req.git_scenario),
         response_format,
     );
     let messages = prompt::assemble_messages(outcome.items.iter(), &req.user_instruction);
@@ -281,6 +324,7 @@ pub fn build(
         request_id: request_id.clone(),
         session_id: None,
         task_kind: req.task_kind,
+        git_scenario: req.git_scenario,
         provider_id: Some(resolved.provider.id.clone()),
         model_id: Some(resolved.model.id.clone()),
         system_instruction: system,
@@ -339,6 +383,7 @@ pub fn build(
     Ok(AiContextPreview {
         request_id,
         task_kind: req.task_kind,
+        git_scenario: req.git_scenario,
         provider_id: resolved.provider.id.clone(),
         provider_name: resolved.provider.name.clone(),
         model_id: resolved.model.id.clone(),
@@ -540,6 +585,7 @@ mod tests {
     fn chat_request(supplementary: Vec<SupplementaryContext>) -> ContextPreviewRequest {
         ContextPreviewRequest {
             task_kind: AiTaskKind::Chat,
+            git_scenario: None,
             provider_id: None,
             model_id: None,
             workspace_id: None,
@@ -741,6 +787,29 @@ mod tests {
         assert_eq!(preview.request.task_kind, AiTaskKind::GitReview);
         assert_eq!(preview.request.response_format, ResponseFormat::Json);
         let _ = repo;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn git_commit_scenario_uses_structured_schema_and_shared_preview() {
+        let conn = open_db();
+        seed_model(&conn);
+        let dir = crate::test_support::temp_root("ai_preview", "commit-scenario");
+        std::fs::create_dir_all(&dir).unwrap();
+        let _repo = git2::Repository::init(&dir).unwrap();
+        crate::test_support::write(&dir.join("src/main.rs"), "fn main() {}\n");
+
+        let mut req = chat_request(vec![]);
+        req.task_kind = AiTaskKind::CommitMessage;
+        req.git_scenario = Some(GitAssistantScenario::CommitMessage);
+        req.repo_path = Some(dir.to_string_lossy().to_string());
+        req.diff_scope = Some(DiffScope::Workdir);
+        let preview = build(&conn, None, req).unwrap();
+
+        assert_eq!(preview.request.git_scenario, Some(GitAssistantScenario::CommitMessage));
+        assert_eq!(preview.request.response_format, ResponseFormat::Json);
+        assert!(preview.request.system_instruction.contains("CommitSuggestion"));
+        assert!(preview.items.iter().any(|item| item.kind == ContextKind::Diff));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

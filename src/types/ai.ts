@@ -15,6 +15,7 @@ export interface ReviewIssue {
   severity: string;
   category: string;
   file: string;
+  line?: number | null;
   description: string;
 }
 
@@ -38,6 +39,16 @@ export type AiTaskKind =
   | "gitReview"
   | "commitMessage"
   | "conflict";
+/** AI-08 Git Assistant scenario; it shares the existing task-level model defaults. */
+export type GitAssistantScenario =
+  | "commitMessage"
+  | "commitSummary"
+  | "codeReview"
+  | "securityReview"
+  | "bugDetection"
+  | "prDescription"
+  | "commitExplanation"
+  | "fileExplanation";
 export type ModelResolutionSource =
   | "explicit"
   | "workspaceTask"
@@ -246,6 +257,8 @@ export interface AiRequest {
   /** 会话 ID（AI-04 落地后由会话层填充）。 */
   sessionId: string | null;
   taskKind: AiTaskKind;
+  /** AI-08 scene-specific prompt/result schema; null keeps legacy behavior. */
+  gitScenario?: GitAssistantScenario | null;
   /** 显式指定 Provider/模型；为空时走任务默认模型解析链。 */
   providerId: string | null;
   modelId: string | null;
@@ -275,6 +288,10 @@ export type AiResult =
   | { type: "diagnosticReport"; payload: Record<string, unknown> }
   | { type: "reviewReport"; payload: Record<string, unknown> }
   | { type: "generatedText"; text: string }
+  | { type: "commitSuggestion"; payload: CommitSuggestion }
+  | { type: "commitSummary"; payload: CommitSummary }
+  | { type: "prDescription"; payload: PrDescription }
+  | { type: "explanation"; payload: ExplanationResult }
   | { type: "conflictProposal"; payload: Record<string, unknown> }
   | { type: "actionProposal"; payload: Record<string, unknown> };
 
@@ -404,6 +421,7 @@ export interface SupplementaryContext {
 /** Preview 构建请求（`ai_build_context_preview` 入参）。 */
 export interface ContextPreviewRequest {
   taskKind: AiTaskKind;
+  gitScenario?: GitAssistantScenario | null;
   /** 显式 Provider/模型；为空走任务默认解析链（§6.3）。 */
   providerId: string | null;
   modelId: string | null;
@@ -472,6 +490,42 @@ export interface DiagnosticReport {
   sourceContext: string[];
 }
 
+/** AI-08 structured Commit Message suggestion; shown in an editable existing Commit input. */
+export interface CommitSuggestion {
+  title: string;
+  body: string[];
+  type?: string | null;
+  scope?: string | null;
+  changedRepositories: string[];
+  rationale: string;
+}
+
+export interface CommitSummaryRepository {
+  path: string;
+  summary: string;
+  risk: string;
+}
+
+export interface CommitSummary {
+  summary: string;
+  repositories: CommitSummaryRepository[];
+  risks: string[];
+}
+
+export interface PrDescription {
+  title: string;
+  description: string;
+  summary: string[];
+  testing: string[];
+  risks: string[];
+}
+
+export interface ExplanationResult {
+  summary: string;
+  details: string[];
+  riskNotes: string[];
+}
+
 /** 目标范围（§10.1「目标 Workspace/Repository/Runtime」）。 */
 export interface PreviewTarget {
   workspaceId: number | null;
@@ -508,6 +562,7 @@ export interface SecretReport {
 export interface AiContextPreview {
   requestId: string;
   taskKind: AiTaskKind;
+  gitScenario?: GitAssistantScenario | null;
   providerId: string;
   providerName: string;
   modelId: string;

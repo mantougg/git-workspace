@@ -10,6 +10,34 @@ use serde::{Deserialize, Serialize};
 
 use super::model::AiTaskKind;
 
+/// AI-08 Git Assistant 的具体建议场景。它只决定受信 prompt 与结果 Schema；
+/// Provider、Preview、Secret 与缓存仍由同一条 `AiRequest` 链路处理。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GitAssistantScenario {
+    CommitMessage,
+    CommitSummary,
+    CodeReview,
+    SecurityReview,
+    BugDetection,
+    PrDescription,
+    CommitExplanation,
+    FileExplanation,
+}
+
+impl GitAssistantScenario {
+    pub fn is_review(self) -> bool {
+        matches!(
+            self,
+            Self::CodeReview | Self::SecurityReview | Self::BugDetection
+        )
+    }
+
+    pub fn requires_structured_output(self) -> bool {
+        true
+    }
+}
+
 /// 上下文条目类别（§7.1）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -146,6 +174,10 @@ pub struct AiRequest {
     /// 会话 ID（AI-04 落地后由会话层填充）。
     pub session_id: Option<String>,
     pub task_kind: AiTaskKind,
+    /// Git Assistant 的细分场景（AI-08）。`None` 保持 AI-01/AI-07 的旧
+    /// gitReview / commitMessage 请求契约兼容。
+    #[serde(default)]
+    pub git_scenario: Option<GitAssistantScenario>,
     /// 显式指定 Provider/模型；为空时走任务默认模型解析链（§6.3）。
     pub provider_id: Option<String>,
     pub model_id: Option<String>,
@@ -197,6 +229,14 @@ pub enum AiResult {
     ReviewReport { payload: serde_json::Value },
     /// commit message、PR description 等生成文本。
     GeneratedText { text: String },
+    /// AI-08 Commit Message 建议（title/body/type/scope/repositories/rationale）。
+    CommitSuggestion { payload: serde_json::Value },
+    /// AI-08 多仓库 Commit Summary。
+    CommitSummary { payload: serde_json::Value },
+    /// AI-08 PR Description（title/summary/testing/risks/description）。
+    PrDescription { payload: serde_json::Value },
+    /// AI-08 Commit / File Explanation（summary/details/riskNotes）。
+    Explanation { payload: serde_json::Value },
     /// 冲突解决建议（proposed content + diff）。
     ConflictProposal { payload: serde_json::Value },
     /// 未来的结构化待确认动作。第一期 Gateway 不产生（§9.4 只读）。
@@ -211,7 +251,23 @@ pub fn estimate_tokens(text: &str) -> i64 {
 
 /// taskKind → 期望的结构化结果类别（§8.4）；chat/commitMessage 的常规输出
 /// 走 Answer/GeneratedText 文本路径。
-fn structured_variant_for(task_kind: AiTaskKind) -> fn(serde_json::Value) -> AiResult {
+fn structured_variant_for(
+    task_kind: AiTaskKind,
+    git_scenario: Option<GitAssistantScenario>,
+) -> fn(serde_json::Value) -> AiResult {
+    if let Some(scenario) = git_scenario {
+        return match scenario {
+            GitAssistantScenario::CommitMessage => |v| AiResult::CommitSuggestion { payload: v },
+            GitAssistantScenario::CommitSummary => |v| AiResult::CommitSummary { payload: v },
+            GitAssistantScenario::PrDescription => |v| AiResult::PrDescription { payload: v },
+            GitAssistantScenario::CommitExplanation | GitAssistantScenario::FileExplanation => {
+                |v| AiResult::Explanation { payload: v }
+            }
+            GitAssistantScenario::CodeReview
+            | GitAssistantScenario::SecurityReview
+            | GitAssistantScenario::BugDetection => |v| AiResult::ReviewReport { payload: v },
+        };
+    }
     match task_kind {
         AiTaskKind::RuntimeDiagnostic => |v| AiResult::DiagnosticReport { payload: v },
         AiTaskKind::GitReview => |v| AiResult::ReviewReport { payload: v },
@@ -257,6 +313,7 @@ fn strip_code_fences(text: &str) -> &str {
 /// - 其余按文本任务处理：commitMessage → GeneratedText，其余 → Answer。
 pub fn parse_result(
     task_kind: AiTaskKind,
+    git_scenario: Option<GitAssistantScenario>,
     response_format: ResponseFormat,
     text: &str,
 ) -> AiResult {
@@ -264,12 +321,12 @@ pub fn parse_result(
     if response_format == ResponseFormat::Json {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
             if v.is_object() {
-                return structured_variant_for(task_kind)(v);
+                return structured_variant_for(task_kind, git_scenario)(v);
             }
         }
     }
     match task_kind {
-        AiTaskKind::CommitMessage => AiResult::GeneratedText {
+        AiTaskKind::CommitMessage if git_scenario.is_none() => AiResult::GeneratedText {
             text: text.to_string(),
         },
         _ => AiResult::Answer {
@@ -295,15 +352,15 @@ mod tests {
     fn parse_result_maps_json_by_task_kind() {
         let json = r#"{"summary":"ok","issues":[]}"#;
         assert!(matches!(
-            parse_result(AiTaskKind::GitReview, ResponseFormat::Json, json),
+            parse_result(AiTaskKind::GitReview, None, ResponseFormat::Json, json),
             AiResult::ReviewReport { .. }
         ));
         assert!(matches!(
-            parse_result(AiTaskKind::RuntimeDiagnostic, ResponseFormat::Json, json),
+            parse_result(AiTaskKind::RuntimeDiagnostic, None, ResponseFormat::Json, json),
             AiResult::DiagnosticReport { .. }
         ));
         assert!(matches!(
-            parse_result(AiTaskKind::Conflict, ResponseFormat::Json, json),
+            parse_result(AiTaskKind::Conflict, None, ResponseFormat::Json, json),
             AiResult::ConflictProposal { .. }
         ));
     }
@@ -312,14 +369,14 @@ mod tests {
     fn parse_result_degrades_invalid_json_to_answer() {
         let bad = "这不是 JSON";
         assert_eq!(
-            parse_result(AiTaskKind::GitReview, ResponseFormat::Json, bad),
+            parse_result(AiTaskKind::GitReview, None, ResponseFormat::Json, bad),
             AiResult::Answer {
                 text: bad.to_string()
             }
         );
         // JSON 数组不是 object，同样降级
         assert!(matches!(
-            parse_result(AiTaskKind::GitReview, ResponseFormat::Json, "[1,2]"),
+            parse_result(AiTaskKind::GitReview, None, ResponseFormat::Json, "[1,2]"),
             AiResult::Answer { .. }
         ));
     }
@@ -328,7 +385,7 @@ mod tests {
     fn parse_result_strips_code_fences() {
         let fenced = "```json\n{\"a\":1}\n```";
         assert!(matches!(
-            parse_result(AiTaskKind::GitReview, ResponseFormat::Json, fenced),
+            parse_result(AiTaskKind::GitReview, None, ResponseFormat::Json, fenced),
             AiResult::ReviewReport { .. }
         ));
     }
@@ -336,13 +393,13 @@ mod tests {
     #[test]
     fn parse_result_text_tasks() {
         assert_eq!(
-            parse_result(AiTaskKind::CommitMessage, ResponseFormat::Text, "feat: x"),
+            parse_result(AiTaskKind::CommitMessage, None, ResponseFormat::Text, "feat: x"),
             AiResult::GeneratedText {
                 text: "feat: x".to_string()
             }
         );
         assert_eq!(
-            parse_result(AiTaskKind::Chat, ResponseFormat::Text, "hello"),
+            parse_result(AiTaskKind::Chat, None, ResponseFormat::Text, "hello"),
             AiResult::Answer {
                 text: "hello".to_string()
             }
@@ -365,6 +422,57 @@ mod tests {
             .unwrap(),
             serde_json::json!({"type": "diagnosticReport", "payload": {"a": 1}})
         );
+    }
+
+    #[test]
+    fn git_scenarios_parse_to_their_structured_results() {
+        let json = r#"{"summary":"ok","issues":[]}"#;
+        assert!(matches!(
+            parse_result(
+                AiTaskKind::CommitMessage,
+                Some(GitAssistantScenario::CommitMessage),
+                ResponseFormat::Json,
+                json,
+            ),
+            AiResult::CommitSuggestion { .. }
+        ));
+        assert!(matches!(
+            parse_result(
+                AiTaskKind::CommitMessage,
+                Some(GitAssistantScenario::CommitSummary),
+                ResponseFormat::Json,
+                json,
+            ),
+            AiResult::CommitSummary { .. }
+        ));
+        for scenario in [
+            GitAssistantScenario::CodeReview,
+            GitAssistantScenario::SecurityReview,
+            GitAssistantScenario::BugDetection,
+        ] {
+            assert!(matches!(
+                parse_result(AiTaskKind::GitReview, Some(scenario), ResponseFormat::Json, json),
+                AiResult::ReviewReport { .. }
+            ));
+        }
+        assert!(matches!(
+            parse_result(
+                AiTaskKind::GitReview,
+                Some(GitAssistantScenario::PrDescription),
+                ResponseFormat::Json,
+                json,
+            ),
+            AiResult::PrDescription { .. }
+        ));
+        for scenario in [
+            GitAssistantScenario::CommitExplanation,
+            GitAssistantScenario::FileExplanation,
+        ] {
+            assert!(matches!(
+                parse_result(AiTaskKind::GitReview, Some(scenario), ResponseFormat::Json, json),
+                AiResult::Explanation { .. }
+            ));
+        }
     }
 
     #[test]

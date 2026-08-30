@@ -557,6 +557,8 @@ pub struct ReviewIssue {
     pub severity: String,  // "high", "medium", "low"
     pub category: String,  // "bug", "security", "optimization"
     pub file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<i64>,
     pub description: String,
 }
 
@@ -584,6 +586,7 @@ pub async fn ai_review(
 ) -> AppResult<ReviewResult> {
     let request = ai::preview::ContextPreviewRequest {
         task_kind: ai::AiTaskKind::GitReview,
+        git_scenario: None,
         provider_id: None,
         model_id: None,
         workspace_id: None,

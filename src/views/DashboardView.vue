@@ -20,6 +20,12 @@
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
         </n-button>
+        <n-button
+          :disabled="repoStore.repositories.length === 0"
+          @click="gitAssistantVisible = true"
+        >
+          AI 变更摘要
+        </n-button>
       </div>
     </div>
 
@@ -179,6 +185,13 @@
       </div>
     </Panel>
 
+    <AiGitAssistantDialog
+      v-model="gitAssistantVisible"
+      :workspace-id="currentWorkspaceId"
+      :repositories="assistantRepositories"
+      initial-scenario="prDescription"
+    />
+
   </div>
 </template>
 
@@ -209,6 +222,7 @@ import type { CommitHeatmap as CommitHeatmapData } from "@/types/heatmap";
 import type { WorkspaceHealth } from "@/types/health";
 import type { RuntimeConfigSummary } from "@/types/runtime";
 import CommitHeatmap from "@/components/repo/CommitHeatmap.vue";
+import AiGitAssistantDialog from "@/components/ai/AiGitAssistantDialog.vue";
 import { errMsg } from "@/utils/error";
 import { useMessage } from "naive-ui";
 
@@ -252,6 +266,12 @@ const health = ref<WorkspaceHealth | null>(null);
 const healthLoading = ref(false);
 const apps = ref<RuntimeConfigSummary[]>([]);
 const appsLoading = ref(false);
+const gitAssistantVisible = ref(false);
+const assistantRepositories = computed(() => repoStore.repositories.map((entry) => ({
+  repoPath: entry.repository.path,
+  name: entry.repository.name,
+  files: [],
+})));
 
 const healthScoreClass = computed(() => {
   const score = health.value?.score ?? 100;

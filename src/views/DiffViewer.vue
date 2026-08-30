@@ -43,11 +43,10 @@
         v-if="files.length > 0"
         type="primary"
         size="small"
-        :loading="reviewLoading"
-        @click="handleAiReview"
+        @click="gitAssistantVisible = true"
       >
         <template #icon><n-icon><SparklesOutline /></n-icon></template>
-        AI Review
+        AI Assistant
       </n-button>
     </div>
 
@@ -164,6 +163,13 @@
       </div>
     </n-modal>
 
+    <AiGitAssistantDialog
+      v-model="gitAssistantVisible"
+      :repositories="assistantRepositories"
+      :source="assistantSource"
+      @apply-commit-suggestion="applyAiCommitSuggestion"
+    />
+
     <!-- Body -->
     <n-spin :show="loading">
       <div class="diff-body">
@@ -245,11 +251,11 @@ import { batchCommit } from "@/api/git_ops";
 import { scanCommit } from "@/api/commit";
 import type { CommitScanFinding } from "@/types/commit";
 import type { StageOp } from "@/components/diff/UnifiedDiff.vue";
-import { aiReview } from "@/api/ai";
 import type { ReviewResult } from "@/types/ai";
 import type { FileDiff } from "@/types/git";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import SideBySideDiff from "@/components/diff/SideBySideDiff.vue";
+import AiGitAssistantDialog from "@/components/ai/AiGitAssistantDialog.vue";
 import { errMsg } from "@/utils/error";
 import { startFrameMeter, type FrameStats } from "@/utils/frameTime";
 
@@ -285,9 +291,17 @@ const diffOptions = ref<DiffOptions>({
   ignoreWhitespaceEol: false,
   ignoreCase: false,
 });
-const reviewLoading = ref(false);
 const showReview = ref(false);
 const reviewResult = ref<ReviewResult | null>(null);
+const gitAssistantVisible = ref(false);
+const assistantRepositories = computed(() => repoPath.value ? [{
+  repoPath: repoPath.value,
+  name: repoPath.value.split(/[\\/]/).filter(Boolean).pop() ?? "repository",
+  files: files.value.map((file) => file.newPath || file.oldPath),
+}] : []);
+const assistantSource = computed<"workdir" | "staged" | "unstaged">(
+  () => source.value === "staged" ? "staged" : source.value === "unstaged" ? "unstaged" : "workdir",
+);
 
 onMounted(async () => {
   stopFrameMeter = startFrameMeter("diff-viewer");
@@ -532,22 +546,9 @@ async function submitStagedCommit(allowUnsafe: boolean) {
  * AI-01：Provider/模型/凭证由 AI 设置解析（gitReview 任务默认链），
  * 不再前端传 Key。未配置/凭证缺失时引导打开 AI 设置（§12.4）。
  */
-async function handleAiReview() {
-  reviewLoading.value = true;
-  try {
-    reviewResult.value = await aiReview(repoPath.value);
-    showReview.value = true;
-  } catch (e) {
-    const code = (e as { code?: string })?.code;
-    if (code === "AiNotConfigured" || code === "AiCredentialUnavailable") {
-      message.error(errMsg(e));
-      router.push({ name: "ai-settings" });
-    } else {
-      message.error("AI Review 失败: " + errMsg(e));
-    }
-  } finally {
-    reviewLoading.value = false;
-  }
+function applyAiCommitSuggestion(commitMessage: string) {
+  stagedCommitDialog.value.message = commitMessage;
+  stagedCommitDialog.value.show = true;
 }
 
 function statusIcon(status: string): string {

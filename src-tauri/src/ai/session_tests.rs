@@ -149,6 +149,7 @@ impl Harness {
             request_id: request_id.into(),
             session_id: None,
             task_kind: AiTaskKind::RuntimeDiagnostic,
+            git_scenario: None,
             provider_id: Some(self.provider_id.clone()),
             model_id: Some("test-model".into()),
             system_instruction: "你是排障助手".into(),

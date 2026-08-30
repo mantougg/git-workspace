@@ -15,6 +15,7 @@
     "contentHash": "0123456789abcdef",
     "costEstimate": null,
     "estimatedRequests": 1,
+    "gitScenario": "codeReview",
     "items": [
       {
         "charCount": 200,
@@ -34,6 +35,7 @@
     "providerName": "Team OpenAI",
     "request": {
       "contextManifest": [],
+      "gitScenario": "codeReview",
       "messages": [
         {
           "content": "<context-item kind=\"diff\" source=\"diff:workdir:/ws/repo:summary\" name=\"diff 摘要\">...</context-item>",
@@ -175,6 +177,7 @@
         "truncated": false
       }
     ],
+    "gitScenario": null,
     "messages": [
       {
         "content": "启动失败，日志如下",
@@ -280,6 +283,39 @@
     {
       "text": "feat: add gateway",
       "type": "generatedText"
+    },
+    {
+      "payload": {
+        "body": [],
+        "title": "feat: add gateway"
+      },
+      "type": "commitSuggestion"
+    },
+    {
+      "payload": {
+        "repositories": [],
+        "risks": [],
+        "summary": "one repository"
+      },
+      "type": "commitSummary"
+    },
+    {
+      "payload": {
+        "description": "",
+        "risks": [],
+        "summary": [],
+        "testing": [],
+        "title": "AI-08"
+      },
+      "type": "prDescription"
+    },
+    {
+      "payload": {
+        "details": [],
+        "riskNotes": [],
+        "summary": "intent"
+      },
+      "type": "explanation"
     },
     {
       "payload": {
@@ -650,6 +686,36 @@
     "kind": "secret",
     "path": "a.rs"
   },
+  "CommitSuggestion": {
+    "body": [
+      "Add structured Git Assistant outputs"
+    ],
+    "changedRepositories": [
+      "/ws/repo"
+    ],
+    "rationale": "The selected diff adds scenario handling.",
+    "scope": "ai",
+    "title": "feat(ai): add git assistant scenarios",
+    "type": "feat"
+  },
+  "CommitSummary": {
+    "repositories": [
+      {
+        "path": "/ws/repo",
+        "risk": "Review generated prompt changes.",
+        "summary": "Adds AI scenario contracts."
+      }
+    ],
+    "risks": [
+      "AI output quality needs user review."
+    ],
+    "summary": "One repository changes AI behavior."
+  },
+  "CommitSummaryRepository": {
+    "path": "/ws/repo",
+    "risk": "Review generated prompt changes.",
+    "summary": "Adds AI scenario contracts."
+  },
   "CompareResult": {
     "ahead": [],
     "base": "main",
@@ -698,6 +764,7 @@
     "exclusions": [
       "log:1:app:12:tail"
     ],
+    "gitScenario": null,
     "includeRuntimeLogs": true,
     "logTailLines": 200,
     "modelId": null,
@@ -1144,6 +1211,15 @@
     "operation": null,
     "recoverable": false,
     "repository": null
+  },
+  "ExplanationResult": {
+    "details": [
+      "It adds structured output schemas."
+    ],
+    "riskNotes": [
+      "Verify suggested changes before applying them."
+    ],
+    "summary": "The commit introduces Git Assistant scenarios."
   },
   "FileChange": {
     "path": "src/a.rs",
@@ -1663,6 +1739,20 @@
     "pid": 4242,
     "processName": "java"
   },
+  "PrDescription": {
+    "description": "Adds structured assistant results.",
+    "risks": [
+      "AI-derived guidance requires user review."
+    ],
+    "summary": [
+      "Adds preview-driven Git AI entry points."
+    ],
+    "testing": [
+      "cargo test",
+      "pnpm build"
+    ],
+    "title": "Add Git Assistant scenarios"
+  },
   "PreviewTarget": {
     "processId": 12,
     "repoPath": "/ws/repo",
@@ -1958,6 +2048,7 @@
     "category": "bug",
     "description": "desc",
     "file": "a.rs",
+    "line": 42,
     "severity": "high"
   },
   "ReviewResult": {

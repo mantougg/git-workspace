@@ -317,6 +317,7 @@ pub fn build_diagnostic_preview(
 
     let ctx_req = ContextPreviewRequest {
         task_kind: AiTaskKind::RuntimeDiagnostic,
+        git_scenario: None,
         provider_id: None,
         model_id: None,
         workspace_id: Some(req.workspace_id),

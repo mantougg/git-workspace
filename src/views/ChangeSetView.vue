@@ -123,10 +123,10 @@
               <n-button
                 size="small"
                 :disabled="summary.repositories === 0"
-                @click="openAiReviewPicker"
+                @click="openGitAssistant"
               >
                 <template #icon><n-icon><SparklesOutline /></n-icon></template>
-                AI Review
+                AI Assistant
               </n-button>
               <n-button
                 size="small"
@@ -349,6 +349,13 @@
       @confirm-warn="confirmAiReviewWarn"
     />
 
+    <AiGitAssistantDialog
+      v-model="gitAssistant.show"
+      :workspace-id="workspaceStore.currentWorkspace?.id ?? null"
+      :repositories="gitAssistant.repositories"
+      initial-scenario="commitSummary"
+    />
+
     <!-- AI Review result -->
     <n-modal
       v-model:show="aiPicker.showResult"
@@ -508,6 +515,7 @@ import { scanCommit } from "@/api/commit";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import AiDiffSelection from "@/components/ai/AiDiffSelection.vue";
 import AiRequestPreview from "@/components/ai/AiRequestPreview.vue";
+import AiGitAssistantDialog from "@/components/ai/AiGitAssistantDialog.vue";
 import { errMsg } from "@/utils/error";
 import type { ChangeSet, ChangeSetRepoSummary } from "@/types/changeSet";
 import type { RepositoryWithStatus } from "@/types/repository";
@@ -515,7 +523,6 @@ import type {
   AiContextPreview,
   AiRequestSnapshot,
   ContextPreviewRequest,
-  DiffRepositorySelection,
   GitDiffSelection,
   ReviewIssue,
   ReviewResult,
@@ -606,6 +613,11 @@ const aiPicker = ref({
   pollTimer: null as ReturnType<typeof setTimeout> | null,
   showResult: false,
   result: null as ReviewResult | null,
+});
+
+const gitAssistant = ref({
+  show: false,
+  repositories: [] as AiDiffRepositoryOption[],
 });
 
 // --- Commit All ---
@@ -1100,13 +1112,12 @@ function statusIcon(status: string): string {
 // AI Review（选择范围后复用统一 Diff/Secret/Preview 管道）
 // ---------------------------------------------------------------------------
 
-async function openAiReviewPicker() {
-  aiPicker.value.show = true;
-  aiPicker.value.collecting = true;
-  aiPicker.value.selection = { repositories: [] };
+async function openGitAssistant() {
+  const rows = summary.value?.repos ?? [];
+  if (rows.length === 0) return;
   try {
-    const repositories = await Promise.all(
-      (summary.value?.repos ?? []).map(async (row) => {
+    gitAssistant.value.repositories = await Promise.all(
+      rows.map(async (row) => {
         try {
           const files = await getDiff(row.repo.repoPath);
           return {
@@ -1119,18 +1130,9 @@ async function openAiReviewPicker() {
         }
       }),
     );
-    aiPicker.value.repositories = repositories;
-    // Materialize the component's default "all" selection so removing the
-    // last repository remains distinguishable from the default state.
-    aiPicker.value.selection = {
-      repositories: repositories.map<DiffRepositorySelection>((repo) => ({
-        repoPath: repo.repoPath,
-        includePaths: [],
-        excludePaths: [],
-      })),
-    };
-  } finally {
-    aiPicker.value.collecting = false;
+    gitAssistant.value.show = true;
+  } catch (error) {
+    message.error("加载 AI 范围失败: " + errMsg(error));
   }
 }
 

@@ -38,7 +38,7 @@ use super::credentials::CredentialManager;
 use super::error::AiError;
 use super::events::{AiEventSink, AiRequestEvent, AiStreamChunk};
 use super::lifecycle::{invalid_transition_error, Lifecycle, RequestPhase};
-use super::model::{ensure_task_capability, resolve_model, AiModel};
+use super::model::{ensure_task_capability, resolve_model, AiModel, ModelCapability};
 use super::provider::AiProvider;
 use super::request::{
     estimate_tokens, parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, MessageRole,
@@ -268,6 +268,17 @@ impl AiGateway {
         };
         let resolved = resolve_model(conn, request.task_kind, None, explicit)?;
         ensure_task_capability(&resolved.model, request.task_kind)?;
+        if request
+            .git_scenario
+            .is_some_and(super::request::GitAssistantScenario::requires_structured_output)
+            && !resolved.model.capabilities.contains(&ModelCapability::StructuredOutput)
+        {
+            return Err(AppError::Ai(AiError::ModelCapabilityMismatch {
+                provider_id: resolved.model.provider_id.clone(),
+                model_id: resolved.model.id.clone(),
+                capability: ModelCapability::StructuredOutput.as_str().to_string(),
+            }));
+        }
 
         // 2. 生命周期：Created → ContextBuilding → SecretScanning。
         //    上下文正文已由调用方组装进 messages（清单见 context_manifest）；
@@ -573,8 +584,12 @@ impl AiGateway {
                 Ok((text, usage)) => {
                     // Parsing → Succeeded（§8.4：非法 JSON 降级 Answer）。
                     self.transition_by_id(&request_id, RequestPhase::Parsing, None);
-                    let result =
-                        parse_result(request.task_kind, request.response_format, &text);
+                    let result = parse_result(
+                        request.task_kind,
+                        request.git_scenario,
+                        request.response_format,
+                        &text,
+                    );
                     if let Some(u) = usage {
                         self.record_usage(&request_id, u);
                     }

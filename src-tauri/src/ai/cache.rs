@@ -472,6 +472,7 @@ mod tests {
             request_id: "r".into(),
             session_id: None,
             task_kind: AiTaskKind::GitReview,
+            git_scenario: None,
             provider_id: Some("p1".into()),
             model_id: Some("m1".into()),
             system_instruction: "sys".into(),

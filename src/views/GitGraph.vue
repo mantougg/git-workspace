@@ -142,27 +142,42 @@
               <pre class="commit-message-full">{{ selectedCommit.message }}</pre>
             </n-descriptions-item>
           </n-descriptions>
-          <n-button
-            type="primary"
-            dashed
-            style="margin-top: 12px"
-            @click="viewCommitDiff"
-          >
-            查看 Diff
-          </n-button>
+          <div class="commit-detail-actions">
+            <n-button
+              type="primary"
+              dashed
+              @click="viewCommitDiff"
+            >
+              查看 Diff
+            </n-button>
+            <n-button
+              type="primary"
+              @click="openCommitExplanation"
+            >
+              AI 解释提交
+            </n-button>
+          </div>
         </div>
       </n-drawer-content>
     </n-drawer>
+
+    <AiGitAssistantDialog
+      v-model="gitAssistantVisible"
+      :repositories="assistantRepositories"
+      initial-scenario="commitExplanation"
+      :supplementary="assistantSupplementary"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
 import { useMessage, useDialog } from "naive-ui";
 import { getCommitHistory, getBranches } from "@/api/graph";
+import { getCommitDiff } from "@/api/git";
 import {
   abortPick,
   cherryPick,
@@ -172,8 +187,11 @@ import {
 } from "@/api/history";
 import type { PickOutcome } from "@/types/history";
 import type { CommitInfo, BranchInfo } from "@/types/graph";
+import type { FileDiff } from "@/types/git";
 import CommitGraph from "@/components/graph/CommitGraph.vue";
 import ContextMenu from "@/components/shell/ContextMenu.vue";
+import AiGitAssistantDialog from "@/components/ai/AiGitAssistantDialog.vue";
+import type { SupplementaryContext } from "@/types/ai";
 import { errMsg } from "@/utils/error";
 
 const router = useRouter();
@@ -188,6 +206,41 @@ const loading = ref(false);
 const hasMore = ref(false);
 const showDetail = ref(false);
 const selectedCommit = ref<CommitInfo | null>(null);
+const gitAssistantVisible = ref(false);
+const assistantCommitDiff = ref<FileDiff[]>([]);
+const assistantRepositories = computed(() => repoPath.value ? [{
+  repoPath: repoPath.value,
+  name: repoPath.value.split(/[\\/]/).filter(Boolean).pop() ?? "repository",
+  files: [],
+}] : []);
+const assistantSupplementary = computed<SupplementaryContext[]>(() => {
+  const commit = selectedCommit.value;
+  if (!commit) return [];
+  const contexts: SupplementaryContext[] = [{
+    role: "history",
+    kind: "repository",
+    sourceId: `commit:${commit.oid}`,
+    displayName: `提交 ${commit.shortOid}`,
+    content: [
+      `commit: ${commit.oid}`,
+      `author: ${commit.author} <${commit.email}>`,
+      `time: ${commit.time}`,
+      `parents: ${commit.parents.join(", ") || "(root commit)"}`,
+      "message:",
+      commit.message,
+    ].join("\n"),
+  }];
+  if (assistantCommitDiff.value.length > 0) {
+    contexts.push({
+      role: "fullDiff",
+      kind: "diff",
+      sourceId: `commit:${commit.oid}:diff`,
+      displayName: `提交 ${commit.shortOid} 的 Diff`,
+      content: JSON.stringify(assistantCommitDiff.value, null, 2),
+    });
+  }
+  return contexts;
+});
 
 // --- T-13 history operations state ---
 const conflictFiles = ref<string[]>([]);
@@ -207,6 +260,17 @@ const conflictDialog = reactive<{
 }>({ show: false, opLabel: "", files: [], current: "", done: 0, total: 0, baseOid: null });
 
 const PAGE_SIZE = 100;
+
+async function openCommitExplanation() {
+  const commit = selectedCommit.value;
+  if (!commit || !repoPath.value) return;
+  try {
+    assistantCommitDiff.value = await getCommitDiff(repoPath.value, commit.oid);
+    gitAssistantVisible.value = true;
+  } catch (error) {
+    message.error("加载提交 Diff 失败: " + errMsg(error));
+  }
+}
 
 onMounted(async () => {
   // F-14/F-17：query → 全局当前仓库 → 工作区首仓库兜底（SideNav 直达）。
@@ -549,7 +613,14 @@ function openResolver() {
 }
 
 .commit-detail {
-  padding: 12px;
+  padding: var(--gw-space-3);
+}
+
+.commit-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gw-space-3);
+  margin-top: var(--gw-space-3);
 }
 
 .commit-message-full {

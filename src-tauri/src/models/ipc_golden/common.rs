@@ -169,7 +169,57 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             severity: "high".into(),
             category: "bug".into(),
             file: "a.rs".into(),
+            line: Some(42),
             description: "desc".into(),
+        }),
+    );
+    m.insert(
+        "CommitSuggestion".into(),
+        json!({
+            "title": "feat(ai): add git assistant scenarios",
+            "body": ["Add structured Git Assistant outputs"],
+            "type": "feat",
+            "scope": "ai",
+            "changedRepositories": ["/ws/repo"],
+            "rationale": "The selected diff adds scenario handling."
+        }),
+    );
+    m.insert(
+        "CommitSummaryRepository".into(),
+        json!({
+            "path": "/ws/repo",
+            "summary": "Adds AI scenario contracts.",
+            "risk": "Review generated prompt changes."
+        }),
+    );
+    m.insert(
+        "CommitSummary".into(),
+        json!({
+            "summary": "One repository changes AI behavior.",
+            "repositories": [{
+                "path": "/ws/repo",
+                "summary": "Adds AI scenario contracts.",
+                "risk": "Review generated prompt changes."
+            }],
+            "risks": ["AI output quality needs user review."]
+        }),
+    );
+    m.insert(
+        "PrDescription".into(),
+        json!({
+            "title": "Add Git Assistant scenarios",
+            "description": "Adds structured assistant results.",
+            "summary": ["Adds preview-driven Git AI entry points."],
+            "testing": ["cargo test", "pnpm build"],
+            "risks": ["AI-derived guidance requires user review."]
+        }),
+    );
+    m.insert(
+        "ExplanationResult".into(),
+        json!({
+            "summary": "The commit introduces Git Assistant scenarios.",
+            "details": ["It adds structured output schemas."],
+            "riskNotes": ["Verify suggested changes before applying them."]
         }),
     );
     m.insert(
@@ -333,6 +383,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             request_id: "req-1".into(),
             session_id: Some("sess-1".into()),
             task_kind: crate::ai::AiTaskKind::RuntimeDiagnostic,
+            git_scenario: None,
             provider_id: None,
             model_id: None,
             system_instruction: "你是构建排障助手".into(),
@@ -413,6 +464,18 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             },
             crate::ai::AiResult::GeneratedText {
                 text: "feat: add gateway".into(),
+            },
+            crate::ai::AiResult::CommitSuggestion {
+                payload: json!({"title": "feat: add gateway", "body": []}),
+            },
+            crate::ai::AiResult::CommitSummary {
+                payload: json!({"summary": "one repository", "repositories": [], "risks": []}),
+            },
+            crate::ai::AiResult::PrDescription {
+                payload: json!({"title": "AI-08", "description": "", "summary": [], "testing": [], "risks": []}),
+            },
+            crate::ai::AiResult::Explanation {
+                payload: json!({"summary": "intent", "details": [], "riskNotes": []}),
             },
             crate::ai::AiResult::ConflictProposal {
                 payload: json!({"proposedContent": "merged"}),
@@ -613,6 +676,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         "ContextPreviewRequest".into(),
         json!(crate::ai::preview::ContextPreviewRequest {
             task_kind: crate::ai::AiTaskKind::RuntimeDiagnostic,
+            git_scenario: None,
             provider_id: None,
             model_id: None,
             workspace_id: Some(1),
@@ -753,6 +817,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         json!(crate::ai::preview::AiContextPreview {
             request_id: "req-1".into(),
             task_kind: crate::ai::AiTaskKind::GitReview,
+            git_scenario: Some(crate::ai::GitAssistantScenario::CodeReview),
             provider_id: "p1".into(),
             provider_name: "Team OpenAI".into(),
             model_id: "gpt-4o-mini".into(),
@@ -793,6 +858,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 request_id: "req-1".into(),
                 session_id: None,
                 task_kind: crate::ai::AiTaskKind::GitReview,
+                git_scenario: Some(crate::ai::GitAssistantScenario::CodeReview),
                 provider_id: Some("p1".into()),
                 model_id: Some("gpt-4o-mini".into()),
                 system_instruction: "你是 Git Reviewer".into(),
@@ -941,6 +1007,15 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     // AI（types/ai.ts：本文件注册的每个 interface 都必须有 Rust 样本）
     ("ReviewResult", "types/ai.ts", "ReviewResult"),
     ("ReviewIssue", "types/ai.ts", "ReviewIssue"),
+    ("CommitSuggestion", "types/ai.ts", "CommitSuggestion"),
+    (
+        "CommitSummaryRepository",
+        "types/ai.ts",
+        "CommitSummaryRepository",
+    ),
+    ("CommitSummary", "types/ai.ts", "CommitSummary"),
+    ("PrDescription", "types/ai.ts", "PrDescription"),
+    ("ExplanationResult", "types/ai.ts", "ExplanationResult"),
     ("SearchResult", "types/ai.ts", "SearchResult"),
     ("AiProvider", "types/ai.ts", "AiProvider"),
     ("SaveAiProviderRequest", "types/ai.ts", "SaveAiProviderRequest"),
