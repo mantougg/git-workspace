@@ -793,10 +793,18 @@ CREATE TABLE IF NOT EXISTS ai_proposals (
     action_kind       TEXT NOT NULL,
     risk_level        TEXT NOT NULL,
     target_scope_json TEXT NOT NULL DEFAULT '{}',
+    affected_repositories_json TEXT NOT NULL DEFAULT '[]',
+    affected_files_json TEXT NOT NULL DEFAULT '[]',
+    before_summary    TEXT NOT NULL DEFAULT '',
+    after_summary     TEXT NOT NULL DEFAULT '',
     diff_json         TEXT,
+    command_preview   TEXT,
+    reversible        INTEGER NOT NULL DEFAULT 0,
+    expires_at        TEXT NOT NULL DEFAULT '',
     status            TEXT NOT NULL,
     confirmed_at      TEXT,
-    executed_task_id  INTEGER,
+    executed_task_id  TEXT,
+    action_payload_json TEXT NOT NULL DEFAULT '{}',
     created_at        TEXT NOT NULL
 );
 
@@ -806,7 +814,42 @@ CREATE TABLE IF NOT EXISTS ai_settings (
 );
 "#;
 
+/// v16 (AI-11)：扩展 Action Proposal DTO 与执行关联字段。
+/// Existing v15 installations are rebuilt losslessly because SQLite cannot
+/// change column types in place; no foreign keys reference this table.
+pub const SCHEMA_V16: &str = r#"
+ALTER TABLE ai_proposals RENAME TO ai_proposals_v15;
+CREATE TABLE ai_proposals (
+    id                TEXT PRIMARY KEY,
+    request_id        TEXT,
+    action_kind       TEXT NOT NULL,
+    risk_level        TEXT NOT NULL,
+    target_scope_json TEXT NOT NULL DEFAULT '{}',
+    affected_repositories_json TEXT NOT NULL DEFAULT '[]',
+    affected_files_json TEXT NOT NULL DEFAULT '[]',
+    before_summary    TEXT NOT NULL DEFAULT '',
+    after_summary     TEXT NOT NULL DEFAULT '',
+    diff_json         TEXT,
+    command_preview   TEXT,
+    reversible        INTEGER NOT NULL DEFAULT 0,
+    expires_at        TEXT NOT NULL DEFAULT '',
+    status            TEXT NOT NULL,
+    confirmed_at      TEXT,
+    executed_task_id  TEXT,
+    action_payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at        TEXT NOT NULL
+);
+INSERT INTO ai_proposals
+    (id, request_id, action_kind, risk_level, target_scope_json, diff_json,
+     status, confirmed_at, executed_task_id, created_at)
+SELECT id, request_id, action_kind, risk_level, target_scope_json, diff_json,
+       status, confirmed_at, CAST(executed_task_id AS TEXT), created_at
+FROM ai_proposals_v15;
+DROP TABLE ai_proposals_v15;
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
     SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14, SCHEMA_V15,
+    SCHEMA_V16,
 ];

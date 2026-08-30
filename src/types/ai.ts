@@ -251,6 +251,36 @@ export interface ToolInvocation {
   parameterHash: string;
 }
 
+// AI-11：受控写操作提案。Action payload 不通过 IPC 返回，确认后由后端
+// 转换为现有 Task Queue 任务。
+export type ActionKind =
+  | "gitCreateCommit"
+  | "runtimeStart"
+  | "conflictApply"
+  | "runtimeUpdateConfig";
+export type RiskLevel = "low" | "medium" | "high";
+export type ProposalStatus = "pending" | "confirmed" | "executed" | "rejected" | "expired";
+
+export interface ActionProposal {
+  proposalId: string;
+  requestId: string | null;
+  actionKind: ActionKind;
+  riskLevel: RiskLevel;
+  targetScope: Record<string, unknown>;
+  affectedRepositories: string[];
+  affectedFiles: string[];
+  beforeSummary: string;
+  afterSummary: string;
+  diff: string | null;
+  commandPreview: string | null;
+  reversible: boolean;
+  expiresAt: string;
+  status: ProposalStatus;
+  confirmedAt: string | null;
+  executedTaskId: string | null;
+  createdAt: string;
+}
+
 /** 类型化 AI 请求（§7.1）。 */
 export interface AiRequest {
   requestId: string;

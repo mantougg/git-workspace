@@ -452,6 +452,28 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             parameter_hash: "0000000000000000".into(),
         }),
     );
+    m.insert(
+        "ActionProposal".into(),
+        json!(crate::ai::ActionProposal {
+            proposal_id: "proposal-1".into(),
+            request_id: Some("req-1".into()),
+            action_kind: crate::ai::ActionKind::GitCreateCommit,
+            risk_level: crate::ai::RiskLevel::Medium,
+            target_scope: json!({"workspaceId": 1, "repoPath": "/ws/repo"}),
+            affected_repositories: vec!["/ws/repo".into()],
+            affected_files: vec!["src/main.rs".into()],
+            before_summary: "working tree has changes".into(),
+            after_summary: "one commit will be created".into(),
+            diff: None,
+            command_preview: Some("git add <files> && git commit -m <message>".into()),
+            reversible: true,
+            expires_at: "2026-08-31T12:00:00Z".into(),
+            status: crate::ai::ProposalStatus::Pending,
+            confirmed_at: None,
+            executed_task_id: None,
+            created_at: "2026-08-31T11:45:00Z".into(),
+        }),
+    );
     // 结果模型（§8.4）：枚举类型按 golden 约定序列化为全部变体数组。
     m.insert(
         "AiResult".into(),
@@ -1091,6 +1113,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("AiToolDefinition", "types/ai.ts", "AiToolDefinition"),
     ("ToolCallRequest", "types/ai.ts", "ToolCallRequest"),
     ("ToolInvocation", "types/ai.ts", "ToolInvocation"),
+    ("ActionProposal", "types/ai.ts", "ActionProposal"),
     // AI-03 Context Builder / Preview（§8 / §10.1 / §10.2）
     (
         "SupplementaryContext",

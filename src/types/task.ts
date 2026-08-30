@@ -16,6 +16,7 @@ export type TaskType =
       authorName?: string | null;
       authorEmail?: string | null;
     }
+  | { type: "conflictApply"; path: string; strategy: string; content?: string | null }
   | {
       type: "branchOp";
       op: "checkout" | "create" | "delete";
@@ -32,7 +33,8 @@ export type TaskType =
       workspaceId: number;
       runtimeName?: string;
       options?: RuntimeTaskOptions;
-    };
+    }
+  | { type: "runtimeUpdateConfig"; workspaceId: number; name: string; configJson: string };
 
 /** Runtime 任务的用户可调选项（R-12）；未指定项由后端跟随
  * BuildOptions / StartOptions 默认（对齐 IDEA Build 语义）。 */

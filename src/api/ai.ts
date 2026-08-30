@@ -27,6 +27,8 @@ import type {
   CreateAiSessionRequest,
   AiSessionPersistence,
   AiSessionExport,
+  ActionProposal,
+  ProposalStatus,
 } from "@/types/ai";
 
 // ---------------------------------------------------------------------------
@@ -169,6 +171,29 @@ export function aiCancelRequest(requestId: string): Promise<AiRequestSnapshot> {
 /** 查询请求状态快照（不存在返回 null；不含 Prompt 内容）。 */
 export function aiGetRequestStatus(requestId: string): Promise<AiRequestSnapshot | null> {
   return invoke<AiRequestSnapshot | null>("ai_get_request_status", { requestId });
+}
+
+// ---------------------------------------------------------------------------
+// AI-11：Action Proposal（与 aiApproveRequest 独立）
+// ---------------------------------------------------------------------------
+
+export function aiListProposals(status?: ProposalStatus): Promise<ActionProposal[]> {
+  return invoke<ActionProposal[]>("ai_list_proposals", { status: status ?? null });
+}
+
+export function aiGetProposal(proposalId: string): Promise<ActionProposal | null> {
+  return invoke<ActionProposal | null>("ai_get_proposal", { proposalId });
+}
+
+export function aiConfirmProposal(
+  proposalId: string,
+  secondConfirmation = false,
+): Promise<ActionProposal> {
+  return invoke<ActionProposal>("ai_confirm_proposal", { proposalId, secondConfirmation });
+}
+
+export function aiRejectProposal(proposalId: string): Promise<ActionProposal> {
+  return invoke<ActionProposal>("ai_reject_proposal", { proposalId });
 }
 
 // ---------------------------------------------------------------------------

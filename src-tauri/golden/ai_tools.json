@@ -450,5 +450,173 @@
     "timeoutMs": 10000,
     "maxResultBytes": 262144,
     "readOnly": true
+  },
+  {
+    "name": "git.createCommitProposal",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "allowUnsafe": {
+          "type": "boolean"
+        },
+        "amend": {
+          "type": "boolean"
+        },
+        "files": {
+          "type": "array"
+        },
+        "indexOnly": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        },
+        "noEdit": {
+          "type": "boolean"
+        },
+        "repoPath": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "thenPush": {
+          "type": "boolean"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "repoPath",
+        "message"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "actionPlanner"
+    ],
+    "contextScope": "repository",
+    "requiresWorkspace": true,
+    "mayContainSecrets": true,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": false
+  },
+  {
+    "name": "runtime.startProposal",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "options": {
+          "type": "object"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "runtimeName": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "runtimeName"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "requiresWorkspace": true,
+    "mayContainSecrets": true,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": false
+  },
+  {
+    "name": "conflict.applyProposal",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "repoPath": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "repoPath",
+        "path",
+        "strategy"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "actionPlanner"
+    ],
+    "contextScope": "repository",
+    "requiresWorkspace": true,
+    "mayContainSecrets": true,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": false
+  },
+  {
+    "name": "runtime.updateConfigProposal",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "config": {
+          "type": "object"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "runtimeName": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "runtimeName",
+        "config"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "requiresWorkspace": true,
+    "mayContainSecrets": true,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": false
   }
 ]

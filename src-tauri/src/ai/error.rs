@@ -10,8 +10,7 @@ use serde::Serialize;
 
 /// 结构化 AI 错误（§17）。AI-01 落地配置类 code；AI-02 补齐 Gateway
 /// 请求生命周期的 code（`AiRateLimited` / `AiRequestCancelled` / …）。
-/// `AiSecretDetected` / `AiActionConfirmationRequired` 分别随 AI-03 / AI-11
-/// 的策略与提案流程进一步完善。
+/// `AiSecretDetected` / Proposal 错误分别由 AI-03 / AI-11 提供。
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AiError {
     /// AI 未配置：没有任何可用 Provider/模型，或任务默认链解析不到模型。
@@ -104,6 +103,22 @@ pub enum AiError {
     /// 工具执行超过其声明的超时（§9.3 每个工具声明超时上限）。
     #[error("工具 {tool} 执行超时（>{timeout_ms}ms）")]
     ToolTimeout { tool: String, timeout_ms: u64 },
+
+    /// Proposal 不存在。
+    #[error("Action Proposal 不存在: {proposal_id}")]
+    ProposalNotFound { proposal_id: String },
+
+    /// Proposal 已过期，必须重新生成。
+    #[error("Action Proposal 已过期，请重新生成")]
+    ProposalExpired { proposal_id: String },
+
+    /// Proposal 当前状态不允许该转换。
+    #[error("Action Proposal 当前状态为 {status}，不能执行该操作")]
+    ProposalStateInvalid { proposal_id: String, status: String },
+
+    /// high 风险动作必须显式二次确认。
+    #[error("高风险 Action Proposal 需要二次确认")]
+    ActionConfirmationRequired { proposal_id: String },
 }
 
 impl AiError {
@@ -129,6 +144,10 @@ impl AiError {
             AiError::ToolInputInvalid { .. } => "AiToolInputInvalid",
             AiError::ToolCallLimitExceeded { .. } => "AiToolCallLimitExceeded",
             AiError::ToolTimeout { .. } => "AiToolTimeout",
+            AiError::ProposalNotFound { .. } => "AiProposalNotFound",
+            AiError::ProposalExpired { .. } => "AiProposalExpired",
+            AiError::ProposalStateInvalid { .. } => "AiProposalStateInvalid",
+            AiError::ActionConfirmationRequired { .. } => "AiActionConfirmationRequired",
         }
     }
 
@@ -210,6 +229,10 @@ impl AiError {
             AiError::ToolTimeout { .. } => {
                 vec!["缩小查询范围（减少行数/文件数）后重试", "稍后重试"]
             }
+            AiError::ProposalNotFound { .. } => vec!["刷新 Proposal 列表", "重新生成提案"],
+            AiError::ProposalExpired { .. } => vec!["重新生成 Action Proposal"],
+            AiError::ProposalStateInvalid { .. } => vec!["刷新 Proposal 状态"],
+            AiError::ActionConfirmationRequired { .. } => vec!["检查影响范围后进行二次确认"],
         }
     }
 
@@ -271,6 +294,12 @@ impl AiError {
             AiError::ToolTimeout { tool, timeout_ms } => serde_json::json!({
                 "tool": tool,
                 "timeoutMs": timeout_ms,
+            }),
+            AiError::ProposalNotFound { proposal_id }
+            | AiError::ProposalExpired { proposal_id }
+            | AiError::ProposalStateInvalid { proposal_id, .. }
+            | AiError::ActionConfirmationRequired { proposal_id } => serde_json::json!({
+                "proposalId": proposal_id,
             }),
             _ => serde_json::json!({}),
         };

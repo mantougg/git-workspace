@@ -19,6 +19,8 @@ pub const OP_REBASE: &str = "rebase";
 /// file content. Conflict text may contain secrets and cannot be restored
 /// safely from the ref-snapshot-based Undo model.
 pub const OP_CONFLICT_RESOLUTION: &str = "conflict_resolution";
+/// op_type of a commit submitted through an AI Action Proposal.
+pub const OP_AI_COMMIT: &str = "ai_commit";
 
 /// One page of operation log summaries plus the total matching count.
 #[derive(Debug, Clone, Serialize)]

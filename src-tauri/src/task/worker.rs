@@ -161,6 +161,11 @@ async fn execute_task(
     let mut final_status;
     let mut output: Option<String> = None;
     let mut attempt = 0usize;
+    let ai_commit_before = if matches!(&task_type, TaskType::Commit { .. }) {
+        crate::core::operation_log::snapshot_head(std::path::Path::new(&task.repo_path))
+    } else {
+        None
+    };
 
     loop {
         if is_cancelled(cancel_flags, &task.id) {
@@ -173,9 +178,10 @@ async fn execute_task(
         let task_type_for_exec = task_type.clone();
         // R-12: Runtime 任务拿到自己的 cancel flag（构建/启动可中途终止），
         // 并使用更长的硬超时（git 的 5 分钟上限对构建不适用）。
-        let is_runtime = matches!(task_type_for_exec, TaskType::Runtime { .. });
+        let is_runtime = matches!(task_type_for_exec, TaskType::Runtime { .. } | TaskType::RuntimeUpdateConfig { .. });
         let runtime_handler = runtime_handler.clone();
         let cancel_flag = cancel_flags.get(&task.id).map(|f| Arc::clone(&f));
+        let db_for_exec = Arc::clone(db);
         let hard_timeout = if is_runtime {
             RUNTIME_TASK_TIMEOUT
         } else {
@@ -185,16 +191,54 @@ async fn execute_task(
         let result = tokio::time::timeout(
             hard_timeout,
             tokio::task::spawn_blocking(move || {
-                if let TaskType::Runtime { .. } = &task_type_for_exec {
-                    let Some(handler) = runtime_handler else {
-                        return Err(AppError::Task(
-                            "Runtime 任务处理器未装配（应用启动未完成），请稍后重试".into(),
-                        ));
-                    };
-                    let cancel = cancel_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
-                    handler.execute(&task_type_for_exec, cancel)
-                } else {
-                    ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path))
+                match &task_type_for_exec {
+                    TaskType::Runtime { .. } => {
+                        let Some(handler) = runtime_handler else {
+                            return Err(AppError::Task(
+                                "Runtime 任务处理器未装配（应用启动未完成），请稍后重试".into(),
+                            ));
+                        };
+                        let cancel = cancel_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+                        handler.execute(&task_type_for_exec, cancel)
+                    }
+                    TaskType::RuntimeUpdateConfig { workspace_id, name, config_json } => {
+                        let config: crate::runtime::UpdateRuntimeConfigRequest =
+                            serde_json::from_str(config_json)
+                                .map_err(|e| AppError::Task(format!("Runtime 配置提案无效: {e}")))?;
+                        let conn = db_for_exec
+                            .lock()
+                            .map_err(|e| AppError::Other(format!("DB lock error: {e}")))?;
+                        if config.workspace_id != *workspace_id || config.name != *name {
+                            return Err(AppError::Task("Runtime 配置提案作用域不匹配".into()));
+                        }
+                        crate::runtime::config::update_config(&conn, &config).map(|_| None)
+                    }
+                    TaskType::ConflictApply { path, strategy, content } => {
+                        let repo = std::path::Path::new(&repo_path);
+                        let before = crate::core::operation_log::snapshot_head(repo);
+                        if let Some(content) = content.as_deref() {
+                            crate::core::conflict::resolve_conflict_with_content(repo, path, Some(content))?;
+                        } else {
+                            crate::core::conflict::resolve_conflict(repo, path, strategy)?;
+                        }
+                        if let Some((ref_name, before_oid)) = before {
+                            crate::core::operation_log::record_operation_best_effort(
+                                &db_for_exec,
+                                &repo_path,
+                                crate::core::operation_log::OP_CONFLICT_RESOLUTION,
+                                &format!("resolve conflict: {path}"),
+                                vec![crate::core::operation_log::NewOperationLogItem {
+                                    repo_path: repo_path.clone(),
+                                    ref_name,
+                                    before_oid,
+                                    after_oid: crate::core::operation_log::snapshot_head(repo).map(|(_, oid)| oid),
+                                    detail: Some(format!("path:{path}")),
+                                }],
+                            );
+                        }
+                        Ok(None)
+                    }
+                    _ => ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path)),
                 }
             }),
         )
@@ -296,6 +340,32 @@ async fn execute_task(
         entry.status = final_status.clone();
     }
     task.status = final_status;
+
+    // AI commit proposals are logged after the task succeeds. The log stores
+    // only ref snapshots and metadata, so T-34 can safely offer Undo without
+    // retaining commit contents or proposal prompt text.
+    if matches!(&task.task_type, TaskType::Commit { .. })
+        && matches!(task.status, TaskStatus::Success)
+    {
+        if let Some((ref_name, before_oid)) = ai_commit_before {
+            crate::core::operation_log::record_operation_best_effort(
+                db,
+                &task.repo_path,
+                crate::core::operation_log::OP_AI_COMMIT,
+                "AI Action Proposal commit",
+                vec![crate::core::operation_log::NewOperationLogItem {
+                    repo_path: task.repo_path.clone(),
+                    ref_name,
+                    before_oid,
+                    after_oid: crate::core::operation_log::snapshot_head(
+                        std::path::Path::new(&task.repo_path),
+                    )
+                    .map(|(_, oid)| oid),
+                    detail: Some("source:ai_action_proposal".into()),
+                }],
+            );
+        }
+    }
 
     // Persist the final status for crash recovery / history.
     persist_final_status(db, &task);

@@ -40,6 +40,14 @@ pub enum TaskType {
         #[serde(default)]
         author_email: Option<String>,
     },
+    /// AI-11 confirmed conflict resolution. The worker delegates to the
+    /// existing conflict domain service; the AI layer never edits files.
+    ConflictApply {
+        path: String,
+        strategy: String,
+        #[serde(default)]
+        content: Option<String>,
+    },
     /// Bulk branch operation across repositories (T-20): checkout / create /
     /// delete a branch per repo.
     BranchOp {
@@ -77,6 +85,13 @@ pub enum TaskType {
         runtime_name: String,
         #[serde(default)]
         options: RuntimeTaskOptions,
+    },
+    /// AI-11 confirmed Runtime configuration update. The payload is parsed
+    /// into the existing UpdateRuntimeConfigRequest by the worker.
+    RuntimeUpdateConfig {
+        workspace_id: i64,
+        name: String,
+        config_json: String,
     },
 }
 

@@ -1,4 +1,5 @@
-//! AI-05: typed, read-only tool registry.
+//! AI-05/AI-11: typed tool registry. Read-only tools expose workspace facts;
+//! write-capable entries only create persisted Action Proposals.
 //!
 //! Tools are an application capability boundary, not an arbitrary function
 //! executor. Definitions are serializable so the same contract can be exposed
@@ -24,6 +25,7 @@ use crate::runtime::{self, RuntimeLogQuery};
 use crate::state::AppState;
 
 use super::error::AiError;
+use super::proposal::{self, ActionKind, RiskLevel};
 
 pub const TOOL_SCHEMA_VERSION: &str = "1.0";
 pub const DEFAULT_TOOL_CALL_LIMIT: u32 = 8;
@@ -400,10 +402,170 @@ fn execute_sync(definition: &ToolDefinition, args: &Value, ctx: &ToolContext) ->
                 .collect();
             Ok(json!(ctx.task_manager.get_status(&ids)))
         }
+        "git.createCommitProposal" => {
+            let path = repo_path.ok_or_else(|| input_error(&definition.name, "repoPath"))?;
+            let message = required_string(args, "message", &definition.name)?;
+            let files = args
+                .get("files")
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(Value::as_str).map(ToOwned::to_owned).collect::<Vec<_>>())
+                .unwrap_or_default();
+            if files.iter().any(|file| !is_safe_relative_path(file)) {
+                return Err(AppError::Ai(AiError::ToolScopeViolation {
+                    tool: definition.name.clone(),
+                    message: "commit file paths must stay inside the selected repository".into(),
+                }));
+            }
+            let payload = json!({
+                "repoPath": path.to_string_lossy(),
+                "repoName": path.file_name().and_then(|v| v.to_str()).unwrap_or("repository"),
+                "message": message,
+                "files": files,
+                "amend": args.get("amend").and_then(Value::as_bool).unwrap_or(false),
+                "noEdit": args.get("noEdit").and_then(Value::as_bool).unwrap_or(false),
+                "indexOnly": args.get("indexOnly").and_then(Value::as_bool).unwrap_or(false),
+                "thenPush": args.get("thenPush").and_then(Value::as_bool).unwrap_or(false),
+                "allowUnsafe": args.get("allowUnsafe").and_then(Value::as_bool).unwrap_or(false),
+            });
+            reject_proposal_secrets(&payload)?;
+            let (proposal, action_payload) = proposal::new_proposal(
+                args.get("requestId").and_then(Value::as_str).map(ToOwned::to_owned),
+                ActionKind::GitCreateCommit,
+                RiskLevel::Medium,
+                json!({"workspaceId": workspace_id, "repoPath": path.to_string_lossy()}),
+                vec![path.to_string_lossy().to_string()],
+                payload["files"].as_array().cloned().unwrap_or_default().into_iter().filter_map(|v| v.as_str().map(ToOwned::to_owned)).collect(),
+                "当前工作区变更将保持不变",
+                format!("创建提交：{}", message),
+                None,
+                Some(format!("git add <files> && git commit -m <message>")),
+                true,
+                payload,
+            );
+            proposal::insert(&ctx.db.lock().unwrap(), &proposal, &action_payload)?;
+            Ok(json!(proposal))
+        }
+        "runtime.startProposal" => {
+            let runtime_name = required_string(args, "runtimeName", &definition.name)?;
+            let options = args.get("options").cloned().unwrap_or_else(|| json!({}));
+            let payload = json!({
+                "workspaceId": workspace_id.unwrap(),
+                "runtimeName": runtime_name,
+                "options": options,
+            });
+            reject_proposal_secrets(&payload)?;
+            let (proposal, action_payload) = proposal::new_proposal(
+                args.get("requestId").and_then(Value::as_str).map(ToOwned::to_owned),
+                ActionKind::RuntimeStart,
+                RiskLevel::Medium,
+                json!({"workspaceId": workspace_id, "runtimeName": runtime_name}),
+                vec![],
+                vec![],
+                "Runtime 当前未启动",
+                format!("启动 Runtime：{}", runtime_name),
+                None,
+                Some(format!("runtime.start {}", runtime_name)),
+                true,
+                payload,
+            );
+            proposal::insert(&ctx.db.lock().unwrap(), &proposal, &action_payload)?;
+            Ok(json!(proposal))
+        }
+        "conflict.applyProposal" => {
+            let path = repo_path.ok_or_else(|| input_error(&definition.name, "repoPath"))?;
+            let conflict_path = required_string(args, "path", &definition.name)?;
+            if !is_safe_relative_path(conflict_path) {
+                return Err(AppError::Ai(AiError::ToolScopeViolation {
+                    tool: definition.name.clone(),
+                    message: "conflict path must stay inside the selected repository".into(),
+                }));
+            }
+            let strategy = required_string(args, "strategy", &definition.name)?;
+            if !matches!(strategy, "ours" | "theirs" | "both" | "content") {
+                return Err(input_error(&definition.name, "strategy"));
+            }
+            let content = args.get("content").and_then(Value::as_str);
+            let payload = json!({
+                "repoPath": path.to_string_lossy(),
+                "repoName": path.file_name().and_then(|v| v.to_str()).unwrap_or("repository"),
+                "path": conflict_path,
+                "strategy": strategy,
+                "content": content,
+            });
+            reject_proposal_secrets(&payload)?;
+            let (proposal, action_payload) = proposal::new_proposal(
+                args.get("requestId").and_then(Value::as_str).map(ToOwned::to_owned),
+                ActionKind::ConflictApply,
+                RiskLevel::High,
+                json!({"workspaceId": workspace_id, "repoPath": path.to_string_lossy()}),
+                vec![path.to_string_lossy().to_string()],
+                vec![conflict_path.to_string()],
+                "冲突文件保持未解决",
+                format!("应用冲突解决：{} ({})", conflict_path, strategy),
+                None,
+                Some(format!("git conflict resolve {}", conflict_path)),
+                true,
+                payload,
+            );
+            proposal::insert(&ctx.db.lock().unwrap(), &proposal, &action_payload)?;
+            Ok(json!(proposal))
+        }
+        "runtime.updateConfigProposal" => {
+            let runtime_name = required_string(args, "runtimeName", &definition.name)?;
+            let config = args.get("config").cloned().ok_or_else(|| input_error(&definition.name, "config"))?;
+            if !config.is_object() {
+                return Err(input_error(&definition.name, "config"));
+            }
+            let payload = json!({"workspaceId": workspace_id.unwrap(), "runtimeName": runtime_name, "config": config});
+            reject_proposal_secrets(&payload)?;
+            let (proposal, action_payload) = proposal::new_proposal(
+                args.get("requestId").and_then(Value::as_str).map(ToOwned::to_owned),
+                ActionKind::RuntimeUpdateConfig,
+                RiskLevel::High,
+                json!({"workspaceId": workspace_id, "runtimeName": runtime_name}),
+                vec![],
+                vec![],
+                "Runtime 配置保持不变",
+                format!("更新 Runtime 配置：{}", runtime_name),
+                None,
+                Some(format!("runtime.update_config {}", runtime_name)),
+                true,
+                payload,
+            );
+            proposal::insert(&ctx.db.lock().unwrap(), &proposal, &action_payload)?;
+            Ok(json!(proposal))
+        }
         _ => Err(AppError::Ai(AiError::ToolNotFound {
             name: definition.name.clone(),
         })),
     }
+}
+
+/// Action payloads may contain user-provided file content or environment
+/// values.  The default Block policy applies before proposal persistence so
+/// secrets cannot be stranded in `ai_proposals` or the task history.
+fn reject_proposal_secrets(payload: &Value) -> AppResult<()> {
+    let findings = crate::core::secret::scan_secrets(&payload.to_string());
+    if findings.is_empty() {
+        return Ok(());
+    }
+    let mut kinds = findings
+        .iter()
+        .map(|finding| finding.kind.label())
+        .collect::<Vec<_>>();
+    kinds.sort_unstable();
+    kinds.dedup();
+    Err(AppError::Ai(AiError::SecretDetected {
+        kinds: kinds.join("、"),
+    }))
+}
+
+fn is_safe_relative_path(path: &str) -> bool {
+    let candidate = std::path::Path::new(path);
+    candidate.is_relative()
+        && candidate
+            .components()
+            .all(|component| !matches!(component, std::path::Component::ParentDir))
 }
 
 fn required_string<'a>(args: &'a Value, key: &str, tool: &str) -> AppResult<&'a str> {
@@ -550,6 +712,28 @@ fn definition(
         max_result_bytes: DEFAULT_RESULT_BYTES,
         read_only: true,
     }
+}
+
+fn proposal_definition(
+    name: &str,
+    scope: ToolScope,
+    properties: Value,
+    fields: &[&str],
+) -> ToolDefinition {
+    let mut definition = definition(name, scope, true, false, properties, fields, &[ToolRole::ActionPlanner]);
+    definition.read_only = false;
+    definition
+}
+
+fn secret_proposal_definition(
+    name: &str,
+    scope: ToolScope,
+    properties: Value,
+    fields: &[&str],
+) -> ToolDefinition {
+    let mut definition = proposal_definition(name, scope, properties, fields);
+    definition.may_contain_secrets = true;
+    definition
 }
 
 pub fn definitions() -> Vec<ToolDefinition> {
@@ -700,6 +884,30 @@ pub fn definitions() -> Vec<ToolDefinition> {
             &["taskIds"],
             &[RuntimeDiagnostician, RuntimeConfigAdvisor],
         ),
+        secret_proposal_definition(
+            "git.createCommitProposal",
+            ToolScope::Repository,
+            json!({"workspaceId":{"type":"integer"},"repoPath":{"type":"string"},"message":{"type":"string"},"files":{"type":"array"},"amend":{"type":"boolean"},"noEdit":{"type":"boolean"},"indexOnly":{"type":"boolean"},"thenPush":{"type":"boolean"},"allowUnsafe":{"type":"boolean"},"requestId":{"type":"string"}}),
+            &["workspaceId", "repoPath", "message"],
+        ),
+        secret_proposal_definition(
+            "runtime.startProposal",
+            ToolScope::Runtime,
+            json!({"workspaceId":{"type":"integer"},"runtimeName":{"type":"string"},"options":{"type":"object"},"requestId":{"type":"string"}}),
+            &["workspaceId", "runtimeName"],
+        ),
+        secret_proposal_definition(
+            "conflict.applyProposal",
+            ToolScope::Repository,
+            json!({"workspaceId":{"type":"integer"},"repoPath":{"type":"string"},"path":{"type":"string"},"strategy":{"type":"string"},"content":{"type":"string"},"requestId":{"type":"string"}}),
+            &["workspaceId", "repoPath", "path", "strategy"],
+        ),
+        secret_proposal_definition(
+            "runtime.updateConfigProposal",
+            ToolScope::Runtime,
+            json!({"workspaceId":{"type":"integer"},"runtimeName":{"type":"string"},"config":{"type":"object"},"requestId":{"type":"string"}}),
+            &["workspaceId", "runtimeName", "config"],
+        ),
     ]
 }
 
@@ -709,10 +917,11 @@ mod tests {
 
     #[test]
     fn registry_contains_all_first_phase_tools() {
-        assert_eq!(definitions().len(), 15);
+        assert_eq!(definitions().len(), 19);
         assert!(definitions()
             .iter()
-            .all(|d| d.read_only && d.version == TOOL_SCHEMA_VERSION));
+            .all(|d| d.version == TOOL_SCHEMA_VERSION));
+        assert_eq!(definitions().iter().filter(|d| !d.read_only).count(), 4);
     }
 
     #[test]

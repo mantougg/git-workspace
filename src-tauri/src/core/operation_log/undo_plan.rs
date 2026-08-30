@@ -10,7 +10,7 @@ use rayon::prelude::*;
 
 use super::{
     OperationLogDetail, OperationLogItem, UndoPreviewItem, OP_CHECKOUT_ALL, OP_DELETE_BRANCH_ALL,
-    OP_REBASE, OP_RESET,
+    OP_AI_COMMIT, OP_REBASE, OP_RESET,
 };
 
 pub(super) fn repo_name_of(repo_path: &str) -> String {
@@ -64,6 +64,7 @@ pub(super) fn plan_item(op_type: &str, item: &OperationLogItem) -> UndoPlan {
         OP_DELETE_BRANCH_ALL => plan_delete_undo(item),
         OP_RESET => plan_ref_rollback(item, false),
         OP_REBASE => plan_ref_rollback(item, true),
+        OP_AI_COMMIT => plan_ref_rollback(item, false),
         other => UndoPlan {
             action: String::new(),
             check: Err(format!("操作类型 '{}' 不支持撤销", other)),

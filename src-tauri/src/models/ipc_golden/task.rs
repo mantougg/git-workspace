@@ -25,6 +25,11 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 author_name: Some("alice".into()),
                 author_email: Some("alice@example.com".into()),
             },
+            task::TaskType::ConflictApply {
+                path: "src/main.rs".into(),
+                strategy: "both".into(),
+                content: None,
+            },
             task::TaskType::BranchOp {
                 op: task::BranchOpKind::Checkout,
                 name: "feature".into(),
@@ -49,6 +54,11 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                     offline: false,
                     affected_modules: vec![],
                 },
+            },
+            task::TaskType::RuntimeUpdateConfig {
+                workspace_id: 1,
+                name: "app".into(),
+                config_json: "{}".into(),
             },
         ]),
     );

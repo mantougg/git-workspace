@@ -1,4 +1,30 @@
 {
+  "ActionProposal": {
+    "actionKind": "gitCreateCommit",
+    "affectedFiles": [
+      "src/main.rs"
+    ],
+    "affectedRepositories": [
+      "/ws/repo"
+    ],
+    "afterSummary": "one commit will be created",
+    "beforeSummary": "working tree has changes",
+    "commandPreview": "git add <files> && git commit -m <message>",
+    "confirmedAt": null,
+    "createdAt": "2026-08-31T11:45:00Z",
+    "diff": null,
+    "executedTaskId": null,
+    "expiresAt": "2026-08-31T12:00:00Z",
+    "proposalId": "proposal-1",
+    "requestId": "req-1",
+    "reversible": true,
+    "riskLevel": "medium",
+    "status": "pending",
+    "targetScope": {
+      "repoPath": "/ws/repo",
+      "workspaceId": 1
+    }
+  },
   "AddRequest": {
     "files": [
       "a.rs"
@@ -2633,6 +2659,12 @@
       "type": "commit"
     },
     {
+      "content": null,
+      "path": "src/main.rs",
+      "strategy": "both",
+      "type": "conflictApply"
+    },
+    {
       "force": false,
       "name": "feature",
       "op": "checkout",
@@ -2659,6 +2691,12 @@
       },
       "runtimeName": "app",
       "type": "runtime",
+      "workspaceId": 1
+    },
+    {
+      "configJson": "{}",
+      "name": "app",
+      "type": "runtimeUpdateConfig",
       "workspaceId": 1
     }
   ],

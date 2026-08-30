@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**12**
-- 已完成：**10** · 进行中：**0** · 未开始：**2**
-- 完成度：**10 / 12（83.3%）**
+- 已完成：**11** · 进行中：**0** · 未开始：**1**
+- 完成度：**11 / 12（91.7%）**
 
 ## 第一阶段口径（设计文档 §21）
 
@@ -77,7 +77,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| AI-11 | Action Proposal 与确认执行 | P2 | ⬜ | AI-05, T-05, T-24, T-34 | [AI-11-action-proposals.md](./AI-11-action-proposals.md) |
+| AI-11 | Action Proposal 与确认执行 | P2 | ✅ | AI-05, T-05, T-24, T-34 | [AI-11-action-proposals.md](./AI-11-action-proposals.md) |
 | AI-12 | 外部 Agent Adapter（MCP / CLI） | P2 | ⬜ | AI-05, T-31, T-32 | [AI-12-external-agent-adapter.md](./AI-12-external-agent-adapter.md) |
 
 ---

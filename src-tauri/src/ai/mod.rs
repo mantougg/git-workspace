@@ -37,6 +37,7 @@ pub mod model;
 pub mod policy;
 pub mod preview;
 pub mod prompt;
+pub mod proposal;
 pub mod provider;
 pub mod redact;
 pub mod request;
@@ -69,6 +70,7 @@ pub use provider::{
     delete_provider, get_provider, list_providers, save_provider, test_connection, AiProvider,
     AiProviderTestResult, ApiType, NetworkPolicy, SaveAiProviderRequest,
 };
+pub use proposal::{ActionKind, ActionProposal, ProposalStatus, RiskLevel};
 pub use request::{
     parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, ConflictConfidence,
     ConflictProposal, ContextItem, ContextKind, ExclusionReason, GitAssistantScenario, MessageRole,

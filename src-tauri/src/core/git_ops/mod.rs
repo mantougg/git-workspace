@@ -112,6 +112,9 @@ impl GitOps {
             TaskType::Runtime { .. } => Err(AppError::Task(
                 "Runtime 任务不应由 GitOps 执行（worker 分发错误）".into(),
             )),
+            TaskType::ConflictApply { .. } | TaskType::RuntimeUpdateConfig { .. } => {
+                Err(AppError::Task("AI Action Proposal 任务应由 worker 专用执行路径处理".into()))
+            }
         }
     }
 }

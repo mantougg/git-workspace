@@ -18,7 +18,7 @@ use crate::error::AppResult;
 use super::undo_plan::{plan_item, repo_name_of, reset_mode, short_oid};
 use super::{
     OperationLogDetail, OperationLogItem, UndoItemResult, OP_CHECKOUT_ALL, OP_DELETE_BRANCH_ALL,
-    OP_REBASE, OP_RESET,
+    OP_AI_COMMIT, OP_REBASE, OP_RESET,
 };
 
 /// Execute the undo of every pending item (parallel over repos). Items
@@ -90,6 +90,7 @@ fn execute_item(op_type: &str, item: &OperationLogItem) -> Result<String, String
         OP_DELETE_BRANCH_ALL => undo_delete(path, item),
         OP_RESET => undo_ref_rollback(path, item, &reset_mode(item.detail.as_deref())),
         OP_REBASE => undo_ref_rollback(path, item, "hard"),
+        OP_AI_COMMIT => undo_ref_rollback(path, item, "hard"),
         other => Err(format!("操作类型 '{}' 不支持撤销", other)),
     }
 }

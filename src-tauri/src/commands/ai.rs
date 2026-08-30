@@ -7,11 +7,13 @@ use std::path::Path;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::ai;
 use crate::ai::error::AiError;
 use crate::ai::tools::{self, ToolCallRequest, ToolDefinition, ToolInvocation};
 use crate::error::{AppError, AppResult};
+use crate::models::task::{RuntimeTaskOptions, TaskRequest, TaskType};
 
 // ---------------------------------------------------------------------------
 // AI-01：Provider / Model / Credential / 任务默认值 / Settings Summary
@@ -356,6 +358,120 @@ pub fn ai_get_request_status(
     request_id: String,
 ) -> AppResult<Option<ai::AiRequestSnapshot>> {
     Ok(state.ai_gateway.status(&request_id))
+}
+
+// ---------------------------------------------------------------------------
+// AI-11：Action Proposal（写操作提案与独立确认）
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn ai_list_proposals(
+    state: tauri::State<'_, crate::state::AppState>,
+    status: Option<ai::ProposalStatus>,
+) -> AppResult<Vec<ai::ActionProposal>> {
+    let conn = lock_db(&state)?;
+    ai::proposal::list(&conn, status)
+}
+
+#[tauri::command]
+pub fn ai_get_proposal(
+    state: tauri::State<'_, crate::state::AppState>,
+    proposal_id: String,
+) -> AppResult<Option<ai::ActionProposal>> {
+    let conn = lock_db(&state)?;
+    Ok(ai::proposal::get(&conn, &proposal_id).map(|r| r.map(|record| record.proposal))?)
+}
+
+fn proposal_task_request(record: &ai::proposal::ProposalRecord) -> AppResult<TaskRequest> {
+    let payload = &record.action_payload;
+    match record.proposal.action_kind {
+        ai::ActionKind::GitCreateCommit => {
+            let repo_path = payload.get("repoPath").and_then(Value::as_str).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "git.createCommitProposal".into(), message: "proposal repoPath missing".into() }))?;
+            let repo_name = payload.get("repoName").and_then(Value::as_str).unwrap_or("repository");
+            let files = payload.get("files").and_then(Value::as_array).map(|v| v.iter().filter_map(Value::as_str).map(ToOwned::to_owned).collect()).unwrap_or_default();
+            Ok(TaskRequest {
+                task_type: TaskType::Commit {
+                    message: payload.get("message").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    files,
+                    amend: payload.get("amend").and_then(Value::as_bool).unwrap_or(false),
+                    no_edit: payload.get("noEdit").and_then(Value::as_bool).unwrap_or(false),
+                    index_only: payload.get("indexOnly").and_then(Value::as_bool).unwrap_or(false),
+                    then_push: payload.get("thenPush").and_then(Value::as_bool).unwrap_or(false),
+                    allow_unsafe: payload.get("allowUnsafe").and_then(Value::as_bool).unwrap_or(false),
+                    author_name: None,
+                    author_email: None,
+                },
+                repo_path: repo_path.to_string(),
+                repo_name: repo_name.to_string(),
+            })
+        }
+        ai::ActionKind::RuntimeStart => {
+            let workspace_id = payload.get("workspaceId").and_then(Value::as_i64).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.startProposal".into(), message: "proposal workspaceId missing".into() }))?;
+            let runtime_name = payload.get("runtimeName").and_then(Value::as_str).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.startProposal".into(), message: "proposal runtimeName missing".into() }))?;
+            let options: RuntimeTaskOptions = serde_json::from_value(payload.get("options").cloned().unwrap_or_else(|| serde_json::json!({}))).map_err(|e| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.startProposal".into(), message: e.to_string() }))?;
+            Ok(TaskRequest { task_type: TaskType::Runtime { op: crate::models::task::RuntimeOp::Start, workspace_id, runtime_name: runtime_name.to_string(), options }, repo_path: String::new(), repo_name: runtime_name.to_string() })
+        }
+        ai::ActionKind::ConflictApply => {
+            let repo_path = payload.get("repoPath").and_then(Value::as_str).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "conflict.applyProposal".into(), message: "proposal repoPath missing".into() }))?;
+            let repo_name = payload.get("repoName").and_then(Value::as_str).unwrap_or("repository");
+            let path = payload.get("path").and_then(Value::as_str).unwrap_or_default();
+            let strategy = payload.get("strategy").and_then(Value::as_str).unwrap_or_default();
+            Ok(TaskRequest { task_type: TaskType::ConflictApply { path: path.to_string(), strategy: strategy.to_string(), content: payload.get("content").and_then(Value::as_str).map(ToOwned::to_owned) }, repo_path: repo_path.to_string(), repo_name: repo_name.to_string() })
+        }
+        ai::ActionKind::RuntimeUpdateConfig => {
+            let workspace_id = payload.get("workspaceId").and_then(Value::as_i64).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.updateConfigProposal".into(), message: "proposal workspaceId missing".into() }))?;
+            let name = payload.get("runtimeName").and_then(Value::as_str).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.updateConfigProposal".into(), message: "proposal runtimeName missing".into() }))?;
+            let config = payload.get("config").cloned().unwrap_or_else(|| serde_json::json!({}));
+            let mut config = config;
+            if let Some(object) = config.as_object_mut() {
+                object.entry("name").or_insert_with(|| Value::String(name.to_string()));
+            }
+            let req = crate::runtime::UpdateRuntimeConfigRequest { workspace_id, name: name.to_string(), config: serde_json::from_value(config).map_err(|e| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.updateConfigProposal".into(), message: e.to_string() }))? };
+            Ok(TaskRequest { task_type: TaskType::RuntimeUpdateConfig { workspace_id, name: name.to_string(), config_json: serde_json::to_string(&req)? }, repo_path: String::new(), repo_name: name.to_string() })
+        }
+    }
+}
+
+#[tauri::command]
+pub fn ai_confirm_proposal(
+    state: tauri::State<'_, crate::state::AppState>,
+    proposal_id: String,
+    second_confirmation: bool,
+) -> AppResult<ai::ActionProposal> {
+    let record = {
+        let conn = lock_db(&state)?;
+        ai::proposal::get(&conn, &proposal_id)?.ok_or_else(|| AppError::Ai(AiError::ProposalNotFound { proposal_id: proposal_id.clone() }))?
+    };
+    let request = proposal_task_request(&record)?;
+    {
+        let conn = lock_db(&state)?;
+        ai::proposal::confirm(&conn, &proposal_id, second_confirmation)?;
+    }
+    let task_id = match state.task_manager.submit(&[request]) {
+        Ok(ids) => ids.into_iter().next().ok_or_else(|| AppError::Task("任务提交失败：未返回任务 id".into())),
+        Err(error) => Err(error),
+    };
+    let task_id = match task_id {
+        Ok(id) => id,
+        Err(error) => {
+            let conn = lock_db(&state)?;
+            let _ = ai::proposal::revert_confirmation(&conn, &proposal_id);
+            return Err(error);
+        }
+    };
+    let conn = lock_db(&state)?;
+    let proposal = ai::proposal::mark_executed(&conn, &proposal_id, &task_id)?;
+    log::info!("ai proposal confirmed and queued: id={} task_id={} action={}", proposal_id, task_id, proposal.action_kind.as_str());
+    Ok(proposal)
+}
+
+#[tauri::command]
+pub fn ai_reject_proposal(
+    state: tauri::State<'_, crate::state::AppState>,
+    proposal_id: String,
+) -> AppResult<ai::ActionProposal> {
+    let conn = lock_db(&state)?;
+    ai::proposal::reject(&conn, &proposal_id)
 }
 
 // ---------------------------------------------------------------------------
@@ -943,7 +1059,9 @@ pub fn ai_list_tools() -> Vec<ToolDefinition> {
     tools::registry().definitions()
 }
 
-/// AI-05: execute one bounded, read-only tool call through the registry.
+/// AI-05/AI-11: execute one bounded tool call through the registry. Write
+/// capable entries can only persist an Action Proposal; they never mutate
+/// Git/Runtime state directly.
 #[tauri::command]
 pub async fn ai_execute_tool(
     request: ToolCallRequest,

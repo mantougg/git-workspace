@@ -494,6 +494,7 @@ fn label_for(req: &TaskRequest) -> String {
         TaskType::Pull => "Pull",
         TaskType::Push => "Push",
         TaskType::Commit { .. } => "Commit",
+        TaskType::ConflictApply { .. } => "Conflict Apply",
         TaskType::BranchOp { .. } => "分支操作",
         TaskType::Clone { .. } => "Clone",
         TaskType::ShellCommand { .. } => "Shell",
@@ -510,6 +511,7 @@ fn label_for(req: &TaskRequest) -> String {
             };
             return format!("Runtime {} · {}", kind, req.repo_name);
         }
+        TaskType::RuntimeUpdateConfig { .. } => "Runtime Update Config",
     };
     format!("{} · {}", kind, req.repo_name)
 }

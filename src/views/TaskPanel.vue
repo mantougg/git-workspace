@@ -350,6 +350,8 @@ function taskTypeLabel(task: Task): string {
       return "Push";
     case "commit":
       return "Commit";
+    case "conflictApply":
+      return "Conflict Apply";
     case "branchOp":
       return "分支操作";
     case "clone":
@@ -358,6 +360,8 @@ function taskTypeLabel(task: Task): string {
       return "Shell";
     case "runtime":
       return "Runtime";
+    case "runtimeUpdateConfig":
+      return "Runtime 配置更新";
   }
 }
 
