@@ -50,6 +50,7 @@ mod gateway_tests;
 mod session_tests;
 
 pub use credentials::CredentialManager;
+pub use context::{DiffRepositorySelection, GitDiffSelection};
 pub use error::AiError;
 pub use events::AiRequestEvent;
 pub use gateway::{AiGateway, AiRequestSnapshot, GatewayConfig};

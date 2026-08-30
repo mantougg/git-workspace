@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use crate::ai;
 use crate::ai::error::AiError;
 use crate::ai::tools::{self, ToolCallRequest, ToolDefinition, ToolInvocation};
-use crate::core::diff;
 use crate::error::{AppError, AppResult};
 
 // ---------------------------------------------------------------------------
@@ -571,241 +570,120 @@ pub struct SearchResult {
     pub rank: f64,
 }
 
-/// 查询仓库所属 Workspace（任务默认模型的 Workspace 覆盖解析用）。
-/// 路径比较按平台规范归一化分隔符（DB 统一存正斜杠）。
-fn workspace_id_for_repo(conn: &Connection, repo_path: &str) -> AppResult<Option<i64>> {
-    let normalized = repo_path.replace('\\', "/");
-    let mut stmt = conn.prepare("SELECT workspace_id FROM repositories WHERE path = ?1")?;
-    let mut rows = stmt.query_map(rusqlite::params![normalized], |row| row.get(0))?;
-    match rows.next() {
-        Some(row) => Ok(Some(row?)),
-        None => Ok(None),
-    }
-}
-
 /// Perform an AI code review on the working directory diff.
 ///
 /// Phase A 兼容保留（§4.2）：Provider/模型/凭证全部来自 AI 设置
 /// （gitReview 任务默认链解析），不再有前端传 Key 与模型硬编码。
-/// 发送前 Secret 阻断扫描保留（T-08 复用；Preview 流程由 AI-03 落地）。
+/// 兼容调用内部转发到 AI-03 Preview + AI-02 Gateway；不再保留第二套
+/// Diff、Secret 或 HTTP 实现。
 #[tauri::command]
 pub async fn ai_review(
     repo_path: String,
+    diff_selection: Option<ai::GitDiffSelection>,
     state: tauri::State<'_, crate::state::AppState>,
 ) -> AppResult<ReviewResult> {
-    // Get the working directory diff
-    let file_diffs = diff::get_workdir_diff(Path::new(&repo_path))?;
+    let request = ai::preview::ContextPreviewRequest {
+        task_kind: ai::AiTaskKind::GitReview,
+        provider_id: None,
+        model_id: None,
+        workspace_id: None,
+        repo_path: Some(repo_path),
+        runtime_name: None,
+        process_id: None,
+        project: None,
+        user_instruction: String::new(),
+        diff_scope: Some(ai::context::DiffScope::Workdir),
+        diff_selection,
+        supplementary: vec![],
+        exclusions: vec![],
+        secret_policy: Default::default(),
+        budget_strategy: None,
+        stream: false,
+        token_estimate_factor: None,
+        log_tail_lines: None,
+        token_budget: None,
+        include_runtime_logs: true,
+    };
+    let db = state.db.clone();
+    let runtime = state.runtime.clone();
+    let preview = tauri::async_runtime::spawn_blocking(move || {
+        let conn = db
+            .lock()
+            .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
+        ai::preview::build(&conn, Some(runtime.as_ref()), request)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("review preview task join error: {}", e)))??;
 
-    if file_diffs.is_empty() {
+    // Preserve the old empty-diff response without creating a provider call.
+    if !preview
+        .items
+        .iter()
+        .any(|item| {
+            item.kind == ai::ContextKind::Diff && item.display_name.starts_with("diff [")
+        })
+    {
         return Ok(ReviewResult {
             summary: "No changes to review.".to_string(),
             issues: vec![],
         });
     }
-
-    // Build the diff text for the AI
-    let mut diff_text = String::new();
-    for file in &file_diffs {
-        diff_text.push_str(&format!("--- {} ({})\n", file.new_path, file.status));
-        for hunk in &file.hunks {
-            for line in &hunk.lines {
-                let prefix = match line.line_type.as_str() {
-                    "add" => "+",
-                    "delete" => "-",
-                    _ => " ",
-                };
-                diff_text.push_str(&format!("{}{}\n", prefix, line.content));
-            }
-        }
-        diff_text.push('\n');
-    }
-
-    // Limit diff text size to avoid token limits
-    if diff_text.len() > 10000 {
-        diff_text = diff_text.chars().take(10000).collect();
-        diff_text.push_str("\n... (truncated)\n");
-    }
-
-    // Refuse to send if the diff contains secrets (AWS keys, JWT, private keys, ...).
-    let findings = crate::core::secret::scan_secrets(&diff_text);
-    if !findings.is_empty() {
-        let mut labels: Vec<&str> = findings.iter().map(|f| f.kind.label()).collect();
-        labels.sort_unstable();
-        labels.dedup();
+    if preview.blocked {
         return Err(AppError::Ai(AiError::SecretDetected {
-            kinds: labels.join("、"),
+            kinds: preview.secret.block_kinds.join("、"),
         }));
     }
 
-    // 任务默认模型解析（§6.3：gitReview 链）+ 能力校验（§6.3 前置）。
-    let (resolved, api_key) = {
+    let request_id = preview.request.request_id.clone();
+    {
         let conn = lock_db(&state)?;
-        let workspace_id = workspace_id_for_repo(&conn, &repo_path)?;
-        let resolved = ai::resolve_model(&conn, ai::AiTaskKind::GitReview, workspace_id, None)?;
-        ai::ensure_task_capability(&resolved.model, ai::AiTaskKind::GitReview)?;
-        let key = resolved
-            .provider
-            .credential_ref
-            .as_deref()
-            .and_then(|cref| state.ai_credentials.get(cref));
-        (resolved, key)
-    };
-
-    if resolved.provider.network_policy == ai::NetworkPolicy::OnlineOnly && api_key.is_none() {
-        return Err(AppError::Ai(AiError::CredentialUnavailable {
-            message: format!(
-                "Provider「{}」未配置 API Key：请在 AI 设置-凭证中录入",
-                resolved.provider.name
-            ),
-        }));
+        state.ai_gateway.submit(&conn, preview.request)?;
     }
-
-    // Construct the prompt
-    let prompt = format!(
-        "Review the following git diff. Identify bug risks, security issues, \
-        and optimization suggestions. Return the result as JSON with fields: \
-        \"summary\" (string), \"issues\" (array of objects with \"severity\" \
-        (\"high\"/\"medium\"/\"low\"), \"category\" (\"bug\"/\"security\"/\"optimization\"), \
-        \"file\" (string), \"description\" (string)).\n\nDiff:\n{}",
-        diff_text
-    );
-
-    let started = std::time::Instant::now();
-    let content = call_chat_completion(&resolved, api_key.as_deref(), &prompt).await.map_err(
-        |e| {
-            log::warn!(
-                "ai review failed: task=gitReview provider={} model={} code={}",
-                resolved.provider.id,
-                resolved.model.id,
-                e.code()
-            );
-            e
-        },
-    )?;
-    log::info!(
-        "ai review done: task=gitReview provider={} model={} latency_ms={}",
-        resolved.provider.id,
-        resolved.model.id,
-        started.elapsed().as_millis()
-    );
-
-    // Parse the AI response as our ReviewResult（非法响应降级为纯文本摘要，
-    // §18.1 structured output 解析与降级）。
-    let result: ReviewResult = serde_json::from_str(&content).unwrap_or(ReviewResult {
-        summary: content.to_string(),
-        issues: vec![],
-    });
-
-    Ok(result)
-}
-
-/// 调用 Provider 的 chat completion，返回文本内容。
-/// URL 结构化拼接；错误归一化，不回显响应正文（可能含敏感内容）。
-///
-/// 原型兼容路径（Phase A 兼容保留）：仅支持 openaiChatCompletions 协议；
-/// 其余协议返回可行动错误。统一 Gateway 链路由 AI-02 落地，本函数的直连
-/// HTTP 调用随 AI-03 的 Preview 流程一并下线（§2 统一调用链）。
-async fn call_chat_completion(
-    resolved: &ai::ResolvedModel,
-    api_key: Option<&str>,
-    prompt: &str,
-) -> Result<String, AppError> {
-    if resolved.provider.api_type != ai::provider::ApiType::OpenaiChatCompletions {
-        return Err(AppError::Ai(AiError::NotConfigured {
-            message: format!(
-                "原型命令暂不支持协议 {}：请为该任务配置 openaiChatCompletions 协议的 Provider",
-                resolved.provider.api_type.as_str()
-            ),
-        }));
-    }
-
-    let base = reqwest::Url::parse(&resolved.provider.base_url).map_err(|_| {
-        AppError::Ai(AiError::NotConfigured {
-            message: format!("Provider baseUrl 不是合法 URL: {}", resolved.provider.base_url),
-        })
-    })?;
-    let base = if base.path().ends_with('/') {
-        base
-    } else {
-        let mut u = base;
-        u.set_path(&format!("{}/", u.path()));
-        u
-    };
-
-    let url = base.join("chat/completions").map_err(|e| {
-        AppError::Ai(AiError::NotConfigured {
-            message: format!("baseUrl 无法拼接端点: {}", e),
-        })
-    })?;
-
-    let temperature = resolved.model.defaults.temperature.unwrap_or(0.3);
-    let body = serde_json::json!({
-        "model": resolved.model.id,
-        "messages": [
-            {"role": "system", "content": "You are a code reviewer. Respond only with JSON."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": temperature
-    });
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| {
+    state
+        .ai_gateway
+        .approve(state.ai_credentials.clone(), &request_id)?;
+    let snapshot = state
+        .ai_gateway
+        .wait(&request_id, std::time::Duration::from_secs(130))
+        .await
+        .ok_or_else(|| {
             AppError::Ai(AiError::ProviderUnavailable {
-                message: format!("HTTP 客户端初始化失败: {}", e),
+                message: "AI Review 请求状态不可用".into(),
                 transient: false,
             })
         })?;
-
-    let mut req = client.post(url).json(&body);
-    if let Some(key) = api_key {
-        req = req.header("Authorization", format!("Bearer {}", key));
+    if let Some(result) = snapshot.result {
+        return Ok(legacy_review_result(result));
     }
+    Err(AppError::Ai(AiError::ProviderUnavailable {
+        message: snapshot
+            .error
+            .unwrap_or_else(|| "AI Review 未返回结果".to_string()),
+        transient: false,
+    }))
+}
 
-    let response = req.send().await.map_err(|e| {
-        AppError::Ai(AiError::ProviderUnavailable {
-            message: if e.is_timeout() {
-                "请求超时".to_string()
-            } else if e.is_connect() {
-                "无法建立连接（检查网络与 baseUrl）".to_string()
-            } else {
-                "网络错误".to_string()
-            },
-            transient: e.is_connect(),
-        })
-    })?;
-
-    let status = response.status();
-    if status.as_u16() == 401 || status.as_u16() == 403 {
-        return Err(AppError::Ai(AiError::AuthenticationFailed {
-            message: "Provider 认证失败（401/403）：请在 AI 设置-凭证中检查或替换 API Key"
-                .to_string(),
-        }));
+fn legacy_review_result(result: ai::AiResult) -> ReviewResult {
+    match result {
+        ai::AiResult::ReviewReport { payload } => {
+            serde_json::from_value(payload.clone()).unwrap_or_else(|_| ReviewResult {
+                summary: payload
+                    .get("summary")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("AI Review 返回了无法转换的结构化结果")
+                    .to_string(),
+                issues: vec![],
+            })
+        }
+        ai::AiResult::Answer { text } | ai::AiResult::GeneratedText { text } => ReviewResult {
+            summary: text,
+            issues: vec![],
+        },
+        other => ReviewResult {
+            summary: serde_json::to_string_pretty(&other).unwrap_or_else(|_| "AI Review 完成".into()),
+            issues: vec![],
+        },
     }
-    if !status.is_success() {
-        return Err(AppError::Ai(AiError::ProviderUnavailable {
-            message: format!("Provider 返回 HTTP {}", status.as_u16()),
-            transient: status.is_server_error(),
-        }));
-    }
-
-    let response_json: serde_json::Value = response.json().await.map_err(|_| {
-        AppError::Ai(AiError::ProviderUnavailable {
-            message: "Provider 响应不是合法 JSON".to_string(),
-            transient: false,
-        })
-    })?;
-
-    let content = response_json
-        .get("choices")
-        .and_then(|c| c.get(0))
-        .and_then(|c| c.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_str())
-        .unwrap_or("{}")
-        .to_string();
-    Ok(content)
 }
 
 /// Build the code search index for a repository.

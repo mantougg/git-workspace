@@ -123,7 +123,7 @@
               <n-button
                 size="small"
                 :disabled="summary.repositories === 0"
-                @click="aiPicker.show = true"
+                @click="openAiReviewPicker"
               >
                 <template #icon><n-icon><SparklesOutline /></n-icon></template>
                 AI Review
@@ -318,29 +318,36 @@
       </div>
     </n-modal>
 
-    <!-- AI Review: repo picker -->
-    <n-modal v-model:show="aiPicker.show" preset="card" title="AI Review — 选择仓库" style="width: 420px">
-      <n-radio-group v-model:value="aiPicker.repoPath" class="ai-repo-list">
-        <n-radio
-          v-for="row in summary?.repos ?? []"
-          :key="row.repo.repoPath"
-          :value="row.repo.repoPath"
-        >
-          {{ row.repo.repoName }}（{{ row.files }} 个文件变更）
-        </n-radio>
-      </n-radio-group>
+    <!-- AI Review: repository/directory/file picker -->
+    <n-modal v-model:show="aiPicker.show" preset="card" title="AI Review — 选择 Diff 范围" style="width: 680px">
+      <n-spin :show="aiPicker.collecting">
+        <AiDiffSelection
+          v-model="aiPicker.selection"
+          :repositories="aiPicker.repositories"
+        />
+      </n-spin>
       <template #footer>
         <n-button @click="aiPicker.show = false">取消</n-button>
         <n-button
           type="primary"
-          :disabled="!aiPicker.repoPath"
-          :loading="aiPicker.loading"
+          :disabled="aiPicker.collecting || aiPicker.selection.repositories.length === 0"
+          :loading="aiPicker.collecting"
           @click="startAiReview"
         >
           开始审查
         </n-button>
       </template>
     </n-modal>
+
+    <AiRequestPreview
+      v-model="aiPicker.previewVisible"
+      :preview="aiPicker.preview"
+      :loading="aiPicker.previewLoading"
+      :confirming="aiPicker.previewConfirming"
+      @confirm="confirmAiReview"
+      @toggle-exclusion="toggleAiReviewExclusion"
+      @confirm-warn="confirmAiReviewWarn"
+    />
 
     <!-- AI Review result -->
     <n-modal
@@ -490,14 +497,29 @@ import { useChangeSetStore } from "@/stores/changeSet";
 import { listRepositories } from "@/api/repository";
 import { selectRepos } from "@/api/batch";
 import { getDiff } from "@/api/git";
-import { aiReview } from "@/api/ai";
+import {
+  aiApproveRequest,
+  aiBuildContextPreview,
+  aiGetRequestStatus,
+  aiSubmitRequest,
+} from "@/api/ai";
 import { batchCommit, batchPush } from "@/api/git_ops";
 import { scanCommit } from "@/api/commit";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
+import AiDiffSelection from "@/components/ai/AiDiffSelection.vue";
+import AiRequestPreview from "@/components/ai/AiRequestPreview.vue";
 import { errMsg } from "@/utils/error";
 import type { ChangeSet, ChangeSetRepoSummary } from "@/types/changeSet";
 import type { RepositoryWithStatus } from "@/types/repository";
-import type { ReviewResult } from "@/types/ai";
+import type {
+  AiContextPreview,
+  AiRequestSnapshot,
+  ContextPreviewRequest,
+  DiffRepositorySelection,
+  GitDiffSelection,
+  ReviewIssue,
+  ReviewResult,
+} from "@/types/ai";
 import type { CommitRequest, TaskProgress } from "@/types/task";
 import type { CommitScanFinding } from "@/types/commit";
 import type { FileDiff } from "@/types/git";
@@ -564,10 +586,24 @@ const diffDialog = ref({
 const diffCache = new Map<string, FileDiff[]>();
 
 // --- AI Review ---
+interface AiDiffRepositoryOption {
+  repoPath: string;
+  name: string;
+  files: string[];
+}
+
 const aiPicker = ref({
   show: false,
-  loading: false,
-  repoPath: "",
+  collecting: false,
+  repositories: [] as AiDiffRepositoryOption[],
+  selection: { repositories: [] } as GitDiffSelection,
+  previewVisible: false,
+  previewLoading: false,
+  previewConfirming: false,
+  preview: null as AiContextPreview | null,
+  previewRequest: null as ContextPreviewRequest | null,
+  snapshot: null as AiRequestSnapshot | null,
+  pollTimer: null as ReturnType<typeof setTimeout> | null,
   showResult: false,
   result: null as ReviewResult | null,
 });
@@ -774,6 +810,7 @@ let unlistenTasks: (() => void) | null = null;
 let refreshTimer: number | undefined;
 
 onUnmounted(() => {
+  clearAiReviewPoll();
   if (unlistenTasks) {
     unlistenTasks();
     unlistenTasks = null;
@@ -1060,18 +1097,196 @@ function statusIcon(status: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// AI Review（入口：逐仓库审查，复用 ai_review command）
+// AI Review（选择范围后复用统一 Diff/Secret/Preview 管道）
 // ---------------------------------------------------------------------------
 
-async function startAiReview() {
-  const repoPath = aiPicker.value.repoPath;
-  if (!repoPath) return;
-  // AI-01：Provider/模型/凭证由 AI 设置解析，不再弹窗索要 Key（§12.4）。
-  aiPicker.value.loading = true;
+async function openAiReviewPicker() {
+  aiPicker.value.show = true;
+  aiPicker.value.collecting = true;
+  aiPicker.value.selection = { repositories: [] };
   try {
-    aiPicker.value.result = await aiReview(repoPath);
+    const repositories = await Promise.all(
+      (summary.value?.repos ?? []).map(async (row) => {
+        try {
+          const files = await getDiff(row.repo.repoPath);
+          return {
+            repoPath: row.repo.repoPath,
+            name: row.repo.repoName,
+            files: files.map((file) => file.newPath || file.oldPath),
+          };
+        } catch {
+          return { repoPath: row.repo.repoPath, name: row.repo.repoName, files: [] };
+        }
+      }),
+    );
+    aiPicker.value.repositories = repositories;
+    // Materialize the component's default "all" selection so removing the
+    // last repository remains distinguishable from the default state.
+    aiPicker.value.selection = {
+      repositories: repositories.map<DiffRepositorySelection>((repo) => ({
+        repoPath: repo.repoPath,
+        includePaths: [],
+        excludePaths: [],
+      })),
+    };
+  } finally {
+    aiPicker.value.collecting = false;
+  }
+}
+
+function reviewRequest(selection: GitDiffSelection): ContextPreviewRequest | null {
+  const repoPath = selection.repositories[0]?.repoPath;
+  if (!repoPath) return null;
+  return {
+    taskKind: "gitReview",
+    providerId: null,
+    modelId: null,
+    workspaceId: workspaceStore.currentWorkspace?.id ?? null,
+    repoPath,
+    runtimeName: null,
+    processId: null,
+    project: null,
+    userInstruction: "",
+    diffScope: "workdir",
+    diffSelection: selection,
+    supplementary: [],
+    exclusions: [],
+    secretPolicy: { strategy: "block", warnConfirmed: false },
+    budgetStrategy: "codeReview",
+    stream: false,
+    tokenEstimateFactor: null,
+    logTailLines: null,
+    tokenBudget: null,
+    includeRuntimeLogs: false,
+  };
+}
+
+async function buildAiReviewPreview(input: ContextPreviewRequest) {
+  aiPicker.value.previewLoading = true;
+  try {
+    const nextRequest = {
+      ...input,
+      exclusions: [...(input.exclusions ?? [])],
+    };
+    const nextPreview = await aiBuildContextPreview(nextRequest);
+    aiPicker.value.previewRequest = nextRequest;
+    aiPicker.value.preview = nextPreview;
+    aiPicker.value.snapshot = null;
+    aiPicker.value.previewVisible = true;
     aiPicker.value.show = false;
-    aiPicker.value.showResult = true;
+  } catch (e) {
+    message.error("AI Review 预览失败: " + errMsg(e));
+  } finally {
+    aiPicker.value.previewLoading = false;
+  }
+}
+
+async function startAiReview() {
+  const request = reviewRequest(aiPicker.value.selection);
+  if (!request) return;
+  await buildAiReviewPreview(request);
+}
+
+async function toggleAiReviewExclusion(sourceId: string, included: boolean) {
+  const current = aiPicker.value.previewRequest;
+  if (!current || aiPicker.value.previewLoading || aiPicker.value.previewConfirming) return;
+  const exclusions = new Set(current.exclusions ?? []);
+  if (included) exclusions.delete(sourceId);
+  else exclusions.add(sourceId);
+  await buildAiReviewPreview({ ...current, exclusions: [...exclusions] });
+}
+
+async function confirmAiReviewWarn() {
+  const current = aiPicker.value.previewRequest;
+  if (!current || current.secretPolicy?.strategy !== "warn") return;
+  await buildAiReviewPreview({
+    ...current,
+    secretPolicy: { ...current.secretPolicy, warnConfirmed: true },
+  });
+}
+
+function clearAiReviewPoll() {
+  if (aiPicker.value.pollTimer) clearTimeout(aiPicker.value.pollTimer);
+  aiPicker.value.pollTimer = null;
+}
+
+function scheduleAiReviewPoll(requestId: string) {
+  clearAiReviewPoll();
+  aiPicker.value.pollTimer = setTimeout(() => void pollAiReview(requestId), 350);
+}
+
+function reviewResult(snapshot: AiRequestSnapshot): ReviewResult | null {
+  const result = snapshot.result;
+  if (!result) return null;
+  if (result.type === "reviewReport") {
+    const payload = result.payload;
+    const issues = Array.isArray(payload.issues)
+      ? payload.issues
+          .map((value): ReviewIssue | null => {
+            const issue = value as Record<string, unknown>;
+            if (
+              !["severity", "category", "file", "description"].every(
+                (key) => typeof issue[key] === "string",
+              )
+            ) {
+              return null;
+            }
+            return {
+              severity: issue.severity as string,
+              category: issue.category as string,
+              file: issue.file as string,
+              description: issue.description as string,
+            };
+          })
+          .filter((issue): issue is ReviewIssue => issue !== null)
+      : [];
+    return {
+      summary:
+        typeof payload.summary === "string"
+          ? payload.summary
+          : "AI Review 已完成，但未返回摘要。",
+      issues,
+    };
+  }
+  if (result.type === "answer" || result.type === "generatedText") {
+    return { summary: result.text, issues: [] };
+  }
+  return { summary: "AI Review 已完成，但返回结果无法展示。", issues: [] };
+}
+
+async function pollAiReview(requestId: string) {
+  try {
+    const next = await aiGetRequestStatus(requestId);
+    if (!next) return;
+    aiPicker.value.snapshot = next;
+    if (["succeeded", "cancelled", "rejected", "failed", "degraded"].includes(next.phase)) {
+      clearAiReviewPoll();
+      if (next.phase === "succeeded") {
+        aiPicker.value.result = reviewResult(next);
+        aiPicker.value.previewVisible = false;
+        aiPicker.value.showResult = true;
+      }
+    } else {
+      scheduleAiReviewPoll(requestId);
+    }
+  } catch (e) {
+    message.error("AI Review 状态查询失败: " + errMsg(e));
+  }
+}
+
+async function confirmAiReview() {
+  const preview = aiPicker.value.preview;
+  if (!preview || preview.blocked || aiPicker.value.previewConfirming) return;
+  aiPicker.value.previewConfirming = true;
+  try {
+    const submitted = await aiSubmitRequest({ ...preview.request, useCache: true });
+    aiPicker.value.snapshot = submitted;
+    const approved =
+      submitted.phase === "previewRequired"
+        ? await aiApproveRequest(submitted.requestId)
+        : submitted;
+    aiPicker.value.snapshot = approved;
+    scheduleAiReviewPoll(approved.requestId);
   } catch (e) {
     const code = (e as { code?: string })?.code;
     if (code === "AiNotConfigured" || code === "AiCredentialUnavailable") {
@@ -1081,7 +1296,7 @@ async function startAiReview() {
       message.error("AI Review 失败: " + errMsg(e));
     }
   } finally {
-    aiPicker.value.loading = false;
+    aiPicker.value.previewConfirming = false;
   }
 }
 

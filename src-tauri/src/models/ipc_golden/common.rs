@@ -622,6 +622,13 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             project: None,
             user_instruction: "帮我诊断启动失败".into(),
             diff_scope: None,
+            diff_selection: Some(crate::ai::GitDiffSelection {
+                repositories: vec![crate::ai::DiffRepositorySelection {
+                    repo_path: "/ws/repo".into(),
+                    include_paths: vec!["src".into()],
+                    exclude_paths: vec!["src/generated".into()],
+                }],
+            }),
             supplementary: vec![],
             exclusions: vec!["log:1:app:12:tail".into()],
             secret_policy: crate::ai::redact::SecretPolicyChoice {
@@ -634,6 +641,24 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             log_tail_lines: Some(200),
             token_budget: Some(16000),
             include_runtime_logs: true,
+        }),
+    );
+    m.insert(
+        "DiffRepositorySelection".into(),
+        json!(crate::ai::DiffRepositorySelection {
+            repo_path: "/ws/repo".into(),
+            include_paths: vec!["src".into()],
+            exclude_paths: vec!["src/generated".into()],
+        }),
+    );
+    m.insert(
+        "GitDiffSelection".into(),
+        json!(crate::ai::GitDiffSelection {
+            repositories: vec![crate::ai::DiffRepositorySelection {
+                repo_path: "/ws/repo".into(),
+                include_paths: vec!["src".into()],
+                exclude_paths: vec!["src/generated".into()],
+            }],
         }),
     );
     m.insert(
@@ -687,6 +712,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             workspace_id: Some(1),
             workspace_name: Some("ws".into()),
             repo_path: Some("/ws/repo".into()),
+            repository_paths: vec!["/ws/repo".into()],
             runtime_name: Some("app".into()),
             process_id: Some(12),
         }),
@@ -735,6 +761,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 workspace_id: Some(1),
                 workspace_name: Some("ws".into()),
                 repo_path: Some("/ws/repo".into()),
+                repository_paths: vec!["/ws/repo".into()],
                 runtime_name: None,
                 process_id: None,
             },
@@ -927,6 +954,8 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     // AI-02 Gateway（§7 / §8.4 / 事件契约）
     ("AiMessage", "types/ai.ts", "AiMessage"),
     ("ContextItem", "types/ai.ts", "ContextItem"),
+    ("DiffRepositorySelection", "types/ai.ts", "DiffRepositorySelection"),
+    ("GitDiffSelection", "types/ai.ts", "GitDiffSelection"),
     ("AiTokenUsage", "types/ai.ts", "AiTokenUsage"),
     ("AiRequest", "types/ai.ts", "AiRequest"),
     ("AiResult", "types/ai.ts", "AiResult"),

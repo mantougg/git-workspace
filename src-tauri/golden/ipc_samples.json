@@ -65,6 +65,9 @@
     "target": {
       "processId": null,
       "repoPath": "/ws/repo",
+      "repositoryPaths": [
+        "/ws/repo"
+      ],
       "runtimeName": null,
       "workspaceId": 1,
       "workspaceName": "ws"
@@ -679,6 +682,19 @@
   "ContextPreviewRequest": {
     "budgetStrategy": "errorDiagnosis",
     "diffScope": null,
+    "diffSelection": {
+      "repositories": [
+        {
+          "excludePaths": [
+            "src/generated"
+          ],
+          "includePaths": [
+            "src"
+          ],
+          "repoPath": "/ws/repo"
+        }
+      ]
+    },
     "exclusions": [
       "log:1:app:12:tail"
     ],
@@ -1068,6 +1084,15 @@
     "ignoreWhitespace": true,
     "ignoreWhitespaceEol": false
   },
+  "DiffRepositorySelection": {
+    "excludePaths": [
+      "src/generated"
+    ],
+    "includePaths": [
+      "src"
+    ],
+    "repoPath": "/ws/repo"
+  },
   "DryRunItem": {
     "ahead": 1,
     "behind": 2,
@@ -1143,6 +1168,19 @@
     "repoName": "repo",
     "repoPath": "/ws/repo",
     "success": true
+  },
+  "GitDiffSelection": {
+    "repositories": [
+      {
+        "excludePaths": [
+          "src/generated"
+        ],
+        "includePaths": [
+          "src"
+        ],
+        "repoPath": "/ws/repo"
+      }
+    ]
   },
   "HealthChangedPayload": {
     "at": "2026-08-25T00:00:00Z",
@@ -1628,6 +1666,9 @@
   "PreviewTarget": {
     "processId": 12,
     "repoPath": "/ws/repo",
+    "repositoryPaths": [
+      "/ws/repo"
+    ],
     "runtimeName": "app",
     "workspaceId": 1,
     "workspaceName": "ws"

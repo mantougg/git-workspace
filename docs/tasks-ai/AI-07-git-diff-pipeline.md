@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase C · Git Assistant |
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 依赖 | AI-03, T-04, T-08 |
 | 对应设计文档 | §14.1 公共 Diff 上下文管道 |
 
@@ -16,14 +16,14 @@
 
 ## 需求范围
 
-- [ ] 文件级选择与排除：多 Repository、目录、文件三级颗粒度，排除后重算扫描/估算/hash（复用 AI-03）
-- [ ] 来源标记：`staged / worktree / base / ours / theirs`，每个 ContextItem 可追溯到来源与范围
-- [ ] diff 结构摘要：文件清单、hunk 结构、增删行数统计，优先于完整 diff 进上下文（§8.2 Code Review / Commit Message 策略）
-- [ ] 行数与 token 预算：按任务类型套用 AI-03 预算策略，超限截断/排除在 Preview 可见
-- [ ] Secret Scan 与 Mask/Exclude 接入（复用 AI-03 管道，含二次扫描）
-- [ ] 输入 hash 与结果缓存接入（复用 AI-04 缓存 Key 规则）
-- [ ] Preview 与用户确认接入（复用 AI-03 Preview 契约）
-- [ ] 结构化结果解析框架：各场景注册自己的输出 Schema，解析失败降级为纯文本并标记
+- [x] 文件级选择与排除：多 Repository、目录、文件三级颗粒度，排除后重算扫描/估算/hash（复用 AI-03）
+- [x] 来源标记：`staged / worktree / base / ours / theirs`，每个 ContextItem 可追溯到来源与范围
+- [x] diff 结构摘要：文件清单、hunk 结构、增删行数统计，优先于完整 diff 进上下文（§8.2 Code Review / Commit Message 策略）
+- [x] 行数与 token 预算：按任务类型套用 AI-03 预算策略，超限截断/排除在 Preview 可见
+- [x] Secret Scan 与 Mask/Exclude 接入（复用 AI-03 管道，含二次扫描）
+- [x] 输入 hash 与结果缓存接入（复用 AI-04 缓存 Key 规则）
+- [x] Preview 与用户确认接入（复用 AI-03 Preview 契约）
+- [x] 结构化结果解析框架：各场景注册自己的输出 Schema，解析失败降级为纯文本并标记
 
 ## 架构 / 性能注意点
 
@@ -43,19 +43,21 @@
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：已完成
+- 最近更新：2026-08-30
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
+| 2026-08-30 | 开始开发 | 恢复 AI-07：扩展多仓库 Diff 选择/来源标记，迁移兼容 `ai_review` 到统一 Preview/Gateway。 |
+| 2026-08-30 | 完成 | 接入 ChangeSet 多仓库/目录/文件选择与真实 Preview 确认链；统一 Diff、Conflict、Secret、预算、hash、Gateway 和旧 `ai_review` 兼容路径。安全走查确认 AI 层未直接 spawn、操作 Git 写状态或落盘凭证。验证：`cargo check`、`cargo test ai::context::tests::`、`cargo test ai::preview::tests::`、`cargo test ipc_golden`、`pnpm build`。 |
 
 ### 子任务清单
 
-- [ ] diff 上下文装配器（来源标记 + 结构摘要）
-- [ ] 文件级选择/排除 UI 片段
-- [ ] Secret/Preview/缓存三接入
-- [ ] 结构化结果解析框架
-- [ ] 旧 `ai_review` 迁移到统一管道
-- [ ] 单元/集成测试
+- [x] diff 上下文装配器（来源标记 + 结构摘要）
+- [x] 文件级选择/排除 UI 片段
+- [x] Secret/Preview/缓存三接入
+- [x] 结构化结果解析框架
+- [x] 旧 `ai_review` 迁移到统一管道
+- [x] 单元/集成测试

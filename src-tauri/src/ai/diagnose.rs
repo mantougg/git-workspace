@@ -326,6 +326,7 @@ pub fn build_diagnostic_preview(
         project: req.project.clone(),
         user_instruction,
         diff_scope: None,
+        diff_selection: None,
         supplementary,
         exclusions: req.exclusions.clone(),
         secret_policy: req.secret_policy,

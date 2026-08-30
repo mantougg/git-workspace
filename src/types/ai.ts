@@ -376,6 +376,20 @@ export interface SecretPolicyChoice {
 /** diff 范围。 */
 export type DiffScope = "workdir" | "staged" | "unstaged";
 
+/** 一个 Repository 内的文件/目录选择；路径相对仓库根目录。 */
+export interface DiffRepositorySelection {
+  repoPath: string;
+  /** 为空表示该仓库的全部变更文件。 */
+  includePaths: string[];
+  /** 文件或目录路径，排除优先于 includePaths。 */
+  excludePaths: string[];
+}
+
+/** Commit/Review/Conflict 共用的多仓库 Diff 选择。 */
+export interface GitDiffSelection {
+  repositories: DiffRepositorySelection[];
+}
+
 /** 调用方注入的补充上下文（结构化错误、UI 选中的日志范围等）。 */
 export interface SupplementaryContext {
   role: ContextRole;
@@ -404,6 +418,8 @@ export interface ContextPreviewRequest {
   userInstruction?: string;
   /** diff 范围（默认：commitMessage → staged，其余 → workdir）。 */
   diffScope?: DiffScope | null;
+  /** 多仓库 / 目录 / 文件选择；为空时兼容使用 repoPath。 */
+  diffSelection?: GitDiffSelection | null;
   supplementary?: SupplementaryContext[];
   /** 用户排除的 sourceId 列表（§10.2 Exclude；变更后整体重建）。 */
   exclusions?: string[];
@@ -461,6 +477,8 @@ export interface PreviewTarget {
   workspaceId: number | null;
   workspaceName: string | null;
   repoPath: string | null;
+  /** 参与本次 Git 上下文的仓库清单。 */
+  repositoryPaths: string[];
   runtimeName: string | null;
   processId: number | null;
 }

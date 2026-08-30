@@ -293,12 +293,44 @@ pub enum DiffScope {
     Unstaged,
 }
 
+/// One repository's file selection for a Git Assistant request.
+///
+/// Paths are repository-relative and use `/` separators. An empty
+/// `include_paths` means all changed files are included. Entries in either
+/// list can name a file or a directory; directory matching is boundary-aware
+/// so `src/app` does not accidentally match `src/application`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffRepositorySelection {
+    pub repo_path: String,
+    #[serde(default)]
+    pub include_paths: Vec<String>,
+    #[serde(default)]
+    pub exclude_paths: Vec<String>,
+}
+
+/// Multi-repository selection shared by Commit Message, Review and Conflict
+/// contexts. Repository omission is the repository-level exclusion action.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitDiffSelection {
+    pub repositories: Vec<DiffRepositorySelection>,
+}
+
 impl DiffScope {
     pub fn as_str(&self) -> &'static str {
         match self {
             DiffScope::Workdir => "workdir",
             DiffScope::Staged => "staged",
             DiffScope::Unstaged => "unstaged",
+        }
+    }
+
+    /// Stable source label exposed in the AI Context Manifest.
+    pub fn source_label(&self) -> &'static str {
+        match self {
+            DiffScope::Staged => "staged",
+            DiffScope::Workdir | DiffScope::Unstaged => "worktree",
         }
     }
 
@@ -315,9 +347,27 @@ impl DiffScope {
 /// diff 摘要（§8.2 Code Review「文件清单和 hunk 结构」/ Commit Message
 /// 「diff 摘要」）：每文件状态、hunk 数、增删行统计，不含正文。
 pub fn collect_diff_summary(repo_path: &Path, scope: DiffScope) -> AppResult<DraftContextItem> {
-    let files = scope.load(repo_path)?;
+    collect_diff_summary_for_selection(repo_path, scope, &DiffRepositorySelection {
+        repo_path: repo_path.to_string_lossy().to_string(),
+        ..Default::default()
+    })
+}
+
+/// Diff structure summary for a selected repository. This is the shared
+/// structure-first context used by all Git Assistant task kinds.
+pub fn collect_diff_summary_for_selection(
+    repo_path: &Path,
+    scope: DiffScope,
+    selection: &DiffRepositorySelection,
+) -> AppResult<DraftContextItem> {
+    let files = selected_diff_files(repo_path, scope, selection)?;
     let path_key = repo_path.to_string_lossy().replace('\\', "/");
-    let mut content = format!("diff 范围: {}，文件数: {}\n", scope.as_str(), files.len());
+    let mut content = format!(
+        "diff 来源: {}，范围: {}，文件数: {}\n",
+        scope.source_label(),
+        scope.as_str(),
+        files.len()
+    );
     for f in &files {
         let (mut adds, mut dels) = (0usize, 0usize);
         for h in &f.hunks {
@@ -337,8 +387,12 @@ pub fn collect_diff_summary(repo_path: &Path, scope: DiffScope) -> AppResult<Dra
     Ok(DraftContextItem {
         kind: ContextKind::Diff,
         role: ContextRole::HunkStructure,
-        source_id: format!("diff:{}:{path_key}:summary", scope.as_str()),
-        display_name: format!("diff 摘要（{}）", scope.as_str()),
+        source_id: format!(
+            "diff:{}:{}:{path_key}:summary",
+            scope.source_label(),
+            scope.as_str()
+        ),
+        display_name: format!("diff 摘要（{} / {}）", scope.source_label(), scope.as_str()),
         content,
         redacted: false,
         truncate_keep: Some(TruncateKeep::Head),
@@ -349,21 +403,148 @@ pub fn collect_diff_summary(repo_path: &Path, scope: DiffScope) -> AppResult<Dra
 /// 逐文件完整 diff（§8.2 Code Review「具体 diff」）：每文件一个条目，
 /// 单文件行数封顶（[`MAX_DIFF_LINES_PER_FILE`]），超出的行标记截断。
 pub fn collect_diff_files(repo_path: &Path, scope: DiffScope) -> AppResult<Vec<DraftContextItem>> {
-    let files = scope.load(repo_path)?;
+    collect_diff_files_for_selection(repo_path, scope, &DiffRepositorySelection {
+        repo_path: repo_path.to_string_lossy().to_string(),
+        ..Default::default()
+    })
+}
+
+/// Full diff items for a selected repository. Filtering happens before
+/// rendering and Secret scanning, so excluded files never enter the request.
+pub fn collect_diff_files_for_selection(
+    repo_path: &Path,
+    scope: DiffScope,
+    selection: &DiffRepositorySelection,
+) -> AppResult<Vec<DraftContextItem>> {
+    let files = selected_diff_files(repo_path, scope, selection)?;
     let path_key = repo_path.to_string_lossy().replace('\\', "/");
     Ok(files
         .iter()
         .map(|f| DraftContextItem {
             kind: ContextKind::Diff,
             role: ContextRole::FullDiff,
-            source_id: format!("diff:{}:{path_key}:{}", scope.as_str(), f.new_path),
-            display_name: format!("diff: {}", f.new_path),
+            source_id: format!(
+                "diff:{}:{}:{path_key}:{}",
+                scope.source_label(),
+                scope.as_str(),
+                f.new_path
+            ),
+            display_name: format!("diff [{}]: {}", scope.source_label(), f.new_path),
             content: render_file_diff(f),
             redacted: false,
             truncate_keep: Some(TruncateKeep::Head),
             exclusion: None,
         })
         .collect())
+}
+
+fn selected_diff_files(
+    repo_path: &Path,
+    scope: DiffScope,
+    selection: &DiffRepositorySelection,
+) -> AppResult<Vec<diff::FileDiff>> {
+    let files = scope.load(repo_path)?;
+    Ok(files
+        .into_iter()
+        .filter(|file| selection.includes_file(file))
+        .collect())
+}
+
+impl DiffRepositorySelection {
+    fn includes_file(&self, file: &diff::FileDiff) -> bool {
+        let paths = [file.new_path.as_str(), file.old_path.as_str()];
+        paths.iter().any(|path| self.includes_path(path))
+    }
+
+    fn includes_path(&self, path: &str) -> bool {
+        let included = self.include_paths.is_empty()
+            || self
+                .include_paths
+                .iter()
+                .any(|selector| path_matches(selector, path));
+        let excluded = self
+            .exclude_paths
+            .iter()
+            .any(|selector| path_matches(selector, path));
+        included && !excluded
+    }
+}
+
+/// Match a repository-relative file against a file or directory selector.
+/// Both sides are normalized to make the IPC contract platform independent.
+fn path_matches(selector: &str, path: &str) -> bool {
+    let selector = selector
+        .replace('\\', "/")
+        .trim_matches('/')
+        .trim_start_matches("./")
+        .to_string();
+    let path = path.replace('\\', "/").trim_matches('/').to_string();
+    selector.is_empty() || selector == "." || path == selector || path.starts_with(&(selector + "/"))
+}
+
+/// Filter the existing status service output using the same selection rules
+/// as the Diff items. The branch/ahead/behind facts remain from T-04 status;
+/// file names outside the selection are omitted before Preview construction.
+pub fn collect_repo_status_for_selection(
+    repo_path: &Path,
+    selection: &DiffRepositorySelection,
+) -> AppResult<Vec<DraftContextItem>> {
+    let changes = git_status::get_repo_changes(repo_path)?;
+    let filtered: Vec<_> = changes
+        .changes
+        .iter()
+        .filter(|change| {
+            let pseudo_file = diff::FileDiff {
+                old_path: change.path.clone(),
+                new_path: change.path.clone(),
+                status: change.status.clone(),
+                hunks: Vec::new(),
+            };
+            selection.includes_file(&pseudo_file)
+        })
+        .collect();
+    let path_key = repo_path.to_string_lossy().replace('\\', "/");
+    let summary = format!(
+        "分支: {}\nahead/behind: +{}/-{}\nselected_files: {}",
+        if changes.is_detached {
+            format!("(detached) {}", changes.branch)
+        } else {
+            changes.branch.clone()
+        },
+        changes.ahead,
+        changes.behind,
+        filtered.len(),
+    );
+    let file_list = if filtered.is_empty() {
+        "（无选中的变更文件）\n".to_string()
+    } else {
+        filtered
+            .iter()
+            .map(|change| format!("{}\t{}\n", change.status, change.path))
+            .collect()
+    };
+    Ok(vec![
+        DraftContextItem {
+            kind: ContextKind::Repository,
+            role: ContextRole::ChangeSummary,
+            source_id: format!("repo:{path_key}:selected-status"),
+            display_name: format!("仓库「{}」选中范围状态", changes.repo_name),
+            content: summary,
+            redacted: false,
+            truncate_keep: None,
+            exclusion: None,
+        },
+        DraftContextItem {
+            kind: ContextKind::Repository,
+            role: ContextRole::FileList,
+            source_id: format!("repo:{path_key}:selected-changes"),
+            display_name: format!("仓库「{}」选中变更文件清单", changes.repo_name),
+            content: file_list,
+            redacted: false,
+            truncate_keep: Some(TruncateKeep::Head),
+            exclusion: None,
+        },
+    ])
 }
 
 /// 渲染单文件 diff 为 unified 风格文本（行数封顶，超出标记截断）。
@@ -420,6 +601,20 @@ pub fn collect_history(repo_path: &Path, max_count: usize) -> AppResult<DraftCon
 
 /// 冲突状态（T-16）：操作类型 + 冲突文件清单 + 逐文件冲突内容。
 pub fn collect_conflicts(repo_path: &Path) -> AppResult<Vec<DraftContextItem>> {
+    collect_conflicts_for_selection(
+        repo_path,
+        &DiffRepositorySelection {
+            repo_path: repo_path.to_string_lossy().to_string(),
+            ..Default::default()
+        },
+    )
+}
+
+/// Conflict context using the same file/directory selection as Git diffs.
+pub fn collect_conflicts_for_selection(
+    repo_path: &Path,
+    selection: &DiffRepositorySelection,
+) -> AppResult<Vec<DraftContextItem>> {
     let state = conflict::operation_state(repo_path)?;
     let path_key = repo_path.to_string_lossy().replace('\\', "/");
 
@@ -436,12 +631,17 @@ pub fn collect_conflicts(repo_path: &Path) -> AppResult<Vec<DraftContextItem>> {
     if state.rebase.is_some() {
         ops.push("rebase");
     }
+    let selected_conflicts: Vec<_> = state
+        .conflicts
+        .iter()
+        .filter(|conflict| selection.includes_path(&conflict.path))
+        .collect();
     let mut summary = format!(
         "进行中的操作: {}\n冲突文件数: {}\n",
         if ops.is_empty() { "无".to_string() } else { ops.join(", ") },
-        state.conflicts.len()
+        selected_conflicts.len()
     );
-    for c in &state.conflicts {
+    for c in selected_conflicts {
         summary.push_str(&format!("{}\t{}\n", c.conflict_type, c.path));
     }
 
@@ -457,40 +657,48 @@ pub fn collect_conflicts(repo_path: &Path) -> AppResult<Vec<DraftContextItem>> {
     }];
 
     for c in &state.conflicts {
+        if !selection.includes_path(&c.path) {
+            continue;
+        }
         if let Ok(content) = conflict::conflict_content(repo_path, &c.path) {
-            items.push(DraftContextItem {
-                kind: ContextKind::File,
-                role: ContextRole::ConflictContent,
-                source_id: format!("conflict:{path_key}:{}", c.path),
-                display_name: format!("冲突文件: {}", c.path),
-                content: render_conflict_content(&content),
-                redacted: false,
-                truncate_keep: Some(TruncateKeep::Head),
-                exclusion: None,
-            });
+            for (source, label, side) in [
+                ("base", "BASE", &content.base),
+                ("ours", "OURS", &content.ours),
+                ("theirs", "THEIRS", &content.theirs),
+                ("worktree", "WORKTREE", &content.worktree),
+            ] {
+                if let Some(text) = side {
+                    items.push(DraftContextItem {
+                        kind: ContextKind::File,
+                        role: ContextRole::ConflictContent,
+                        source_id: conflict_source_id(source, &path_key, &c.path),
+                        display_name: format!("冲突文件 [{label}]: {}", c.path),
+                        content: render_conflict_side(label, text),
+                        redacted: false,
+                        truncate_keep: Some(TruncateKeep::Head),
+                        exclusion: None,
+                    });
+                }
+            }
         }
     }
     Ok(items)
 }
 
-/// 渲染冲突内容（ours / theirs / worktree 三段，单侧字符封顶）。
-fn render_conflict_content(content: &conflict::ConflictContent) -> String {
-    let mut out = String::new();
-    let mut push_side = |label: &str, side: &Option<String>| {
-        if let Some(text) = side {
-            out.push_str(&format!("<<<<<<< {label}\n"));
-            let truncated: String = text.chars().take(MAX_CONFLICT_SIDE_CHARS).collect();
-            out.push_str(&truncated);
-            if truncated.chars().count() < text.chars().count() {
-                out.push_str("\n... (side truncated)");
-            }
-            out.push_str(&format!("\n>>>>>>> {label}\n"));
-        }
+/// Render one conflict side with a bounded payload and an explicit source
+/// label. BASE/OURS/THEIRS/WORKTREE remain separate Manifest items.
+fn render_conflict_side(label: &str, text: &str) -> String {
+    let truncated: String = text.chars().take(MAX_CONFLICT_SIDE_CHARS).collect();
+    let marker = if truncated.chars().count() < text.chars().count() {
+        "\n... (side truncated)"
+    } else {
+        ""
     };
-    push_side("OURS", &content.ours);
-    push_side("THEIRS", &content.theirs);
-    push_side("WORKTREE", &content.worktree);
-    out
+    format!("<<<<<<< {label}\n{truncated}{marker}\n>>>>>>> {label}\n")
+}
+
+fn conflict_source_id(source: &str, path_key: &str, path: &str) -> String {
+    format!("conflict:{source}:{path_key}:{path}")
 }
 
 // ---------------------------------------------------------------------------
@@ -771,6 +979,63 @@ mod tests {
         assert_eq!(h1, h2);
         assert_ne!(h1, h3, "分段不同必须产生不同 hash");
         assert_eq!(h1.len(), 16);
+    }
+
+    #[test]
+    fn diff_path_selection_matches_files_and_directories() {
+        assert!(path_matches(".", "main.rs"));
+        assert!(path_matches("src", "src/main.rs"));
+        assert!(path_matches(r"src\main.rs", "src/main.rs"));
+        assert!(path_matches("src/main.rs", "src/main.rs"));
+        assert!(!path_matches("src/app", "src/application.rs"));
+        assert!(!path_matches("src", "tests/main.rs"));
+    }
+
+    #[test]
+    fn diff_selection_excludes_before_context_rendering() {
+        let selection = DiffRepositorySelection {
+            repo_path: "/workspace/repo".into(),
+            include_paths: vec!["src".into()],
+            exclude_paths: vec!["src/generated".into()],
+        };
+        let included = diff::FileDiff {
+            old_path: "src/main.rs".into(),
+            new_path: "src/main.rs".into(),
+            status: "modified".into(),
+            hunks: vec![],
+        };
+        let excluded = diff::FileDiff {
+            old_path: "src/generated/schema.rs".into(),
+            new_path: "src/generated/schema.rs".into(),
+            status: "modified".into(),
+            hunks: vec![],
+        };
+        assert!(selection.includes_file(&included));
+        assert!(!selection.includes_file(&excluded));
+    }
+
+    #[test]
+    fn conflict_side_context_sources_are_distinct_and_traceable() {
+        let sources = ["base", "ours", "theirs", "worktree"];
+        let ids: Vec<_> = sources
+            .iter()
+            .map(|source| conflict_source_id(source, "/workspace/repo", "src/main.rs"))
+            .collect();
+
+        assert_eq!(ids.len(), 4);
+        assert_eq!(
+            ids,
+            vec![
+                "conflict:base:/workspace/repo:src/main.rs",
+                "conflict:ours:/workspace/repo:src/main.rs",
+                "conflict:theirs:/workspace/repo:src/main.rs",
+                "conflict:worktree:/workspace/repo:src/main.rs",
+            ]
+        );
+        assert!(render_conflict_side("BASE", "base\n").contains("<<<<<<< BASE"));
+        assert!(render_conflict_side("OURS", "ours\n").contains("<<<<<<< OURS"));
+        assert!(render_conflict_side("THEIRS", "theirs\n").contains("<<<<<<< THEIRS"));
+        assert!(render_conflict_side("WORKTREE", "worktree\n").contains("<<<<<<< WORKTREE"));
     }
 
     #[test]

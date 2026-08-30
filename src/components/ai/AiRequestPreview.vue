@@ -169,7 +169,11 @@ const targetLabel = computed(() => {
   if (!t) return "—";
   const parts: string[] = [];
   if (t.workspaceName) parts.push(`Workspace「${t.workspaceName}」`);
-  if (t.repoPath) parts.push(`仓库 ${t.repoPath}`);
+  if (t.repositoryPaths.length > 0) {
+    parts.push(`仓库 ${t.repositoryPaths.join("、")}`);
+  } else if (t.repoPath) {
+    parts.push(`仓库 ${t.repoPath}`);
+  }
   if (t.runtimeName) parts.push(`Runtime「${t.runtimeName}」进程 #${t.processId ?? "?"}`);
   return parts.length > 0 ? parts.join(" · ") : "（无特定目标）";
 });

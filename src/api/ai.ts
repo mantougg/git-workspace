@@ -19,6 +19,7 @@ import type {
   ToolCallRequest,
   ToolInvocation,
   RuntimeDiagnosticRequest,
+  GitDiffSelection,
 } from "@/types/ai";
 
 // ---------------------------------------------------------------------------
@@ -26,8 +27,11 @@ import type {
 // 不再前端传 Key。
 // ---------------------------------------------------------------------------
 
-export function aiReview(repoPath: string): Promise<ReviewResult> {
-  return invoke<ReviewResult>("ai_review", { repoPath });
+export function aiReview(repoPath: string, diffSelection?: GitDiffSelection): Promise<ReviewResult> {
+  return invoke<ReviewResult>("ai_review", {
+    repoPath,
+    diffSelection: diffSelection ?? null,
+  });
 }
 
 export function buildCodeIndex(repoPath: string): Promise<void> {

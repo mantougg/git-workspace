@@ -13,11 +13,12 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::runtime::service::RuntimeService;
 
 use super::context::{
-    self, ContextRole, DraftContextItem, DiffScope, TokenEstimator,
+    self, ContextRole, DiffRepositorySelection, DraftContextItem, DiffScope, GitDiffSelection,
+    TokenEstimator,
 };
 use super::error::AiError;
 use super::model::{ensure_task_capability, required_capabilities, resolve_model, AiTaskKind, ModelCapability};
@@ -73,6 +74,9 @@ pub struct ContextPreviewRequest {
     pub user_instruction: String,
     /// diff 范围（默认：commitMessage → staged，其余 → workdir）。
     pub diff_scope: Option<DiffScope>,
+    /// Git Assistant 的多仓库 / 目录 / 文件选择。为空时兼容使用 `repo_path`。
+    #[serde(default)]
+    pub diff_selection: Option<GitDiffSelection>,
     #[serde(default)]
     pub supplementary: Vec<SupplementaryContext>,
     /// 用户排除的 source_id 列表（§10.2 Exclude；变更后整体重建）。
@@ -112,6 +116,9 @@ pub struct PreviewTarget {
     pub workspace_id: Option<i64>,
     pub workspace_name: Option<String>,
     pub repo_path: Option<String>,
+    /// 参与本次 Git 上下文的仓库（多仓库 Preview 使用）。
+    #[serde(default)]
+    pub repository_paths: Vec<String>,
     pub runtime_name: Option<String>,
     pub process_id: Option<i64>,
 }
@@ -303,6 +310,11 @@ pub fn build(
             .and_then(|id| crate::db::dao::get_workspace(conn, id).ok())
             .map(|w| w.name),
         repo_path: req.repo_path.clone(),
+        repository_paths: req
+            .diff_selection
+            .as_ref()
+            .map(|s| s.repositories.iter().map(|r| r.repo_path.clone()).collect())
+            .unwrap_or_else(|| req.repo_path.clone().into_iter().collect()),
         runtime_name: req.runtime_name.clone(),
         process_id: req.process_id,
     };
@@ -414,30 +426,36 @@ fn collect_for_task(
             drafts.push(context::collect_environment_summary(conn)?);
         }
         AiTaskKind::GitReview | AiTaskKind::CommitMessage => {
-            let repo_path = req.repo_path.as_deref().ok_or_else(|| {
-                crate::error::AppError::Ai(AiError::NotConfigured {
-                    message: format!(
-                        "任务 {} 需要 repoPath（目标仓库）",
-                        req.task_kind.as_str()
-                    ),
-                })
-            })?;
-            let repo_path = std::path::Path::new(repo_path);
             let scope = req.diff_scope.unwrap_or(match req.task_kind {
                 AiTaskKind::CommitMessage => DiffScope::Staged,
                 _ => DiffScope::Workdir,
             });
-            drafts.extend(context::collect_repo_status(repo_path)?);
-            drafts.push(context::collect_diff_summary(repo_path, scope)?);
-            drafts.extend(context::collect_diff_files(repo_path, scope)?);
+            let selections = git_selections(req)?;
+            for selection in selections {
+                let repo_path = std::path::Path::new(&selection.repo_path);
+                drafts.extend(context::collect_repo_status_for_selection(
+                    repo_path,
+                    &selection,
+                )?);
+                drafts.push(context::collect_diff_summary_for_selection(
+                    repo_path,
+                    scope,
+                    &selection,
+                )?);
+                drafts.extend(context::collect_diff_files_for_selection(
+                    repo_path,
+                    scope,
+                    &selection,
+                )?);
+            }
         }
         AiTaskKind::Conflict => {
-            let repo_path = req.repo_path.as_deref().ok_or_else(|| {
-                crate::error::AppError::Ai(AiError::NotConfigured {
-                    message: "任务 conflict 需要 repoPath（目标仓库）".into(),
-                })
-            })?;
-            drafts.extend(context::collect_conflicts(std::path::Path::new(repo_path))?);
+            for selection in git_selections(req)? {
+                drafts.extend(context::collect_conflicts_for_selection(
+                    std::path::Path::new(&selection.repo_path),
+                    &selection,
+                )?);
+            }
         }
         AiTaskKind::Chat => {
             if let Some(workspace_id) = req.workspace_id {
@@ -446,6 +464,36 @@ fn collect_for_task(
         }
     }
     Ok(drafts)
+}
+
+/// Resolve the new multi-repository selection while keeping the AI-03
+/// single-`repoPath` request shape compatible with existing callers.
+fn git_selections(req: &ContextPreviewRequest) -> AppResult<Vec<DiffRepositorySelection>> {
+    if let Some(selection) = req.diff_selection.as_ref() {
+        if selection.repositories.is_empty() {
+            return Err(AiError::NotConfigured {
+                message: "Git Assistant 至少需要选择一个 Repository".into(),
+            }
+            .into());
+        }
+        return Ok(selection.repositories.clone());
+    }
+    req.repo_path
+        .as_ref()
+        .map(|repo_path| {
+            vec![DiffRepositorySelection {
+                repo_path: repo_path.clone(),
+                ..Default::default()
+            }]
+        })
+        .ok_or_else(|| {
+            AppError::Ai(AiError::NotConfigured {
+                message: format!(
+                    "任务 {} 需要 repoPath 或 diffSelection（目标仓库）",
+                    req.task_kind.as_str()
+                ),
+            })
+        })
 }
 
 #[cfg(test)]
@@ -501,6 +549,7 @@ mod tests {
             project: None,
             user_instruction: "帮我看看这些内容".into(),
             diff_scope: None,
+            diff_selection: None,
             supplementary,
             exclusions: vec![],
             secret_policy: SecretPolicyChoice::default(),
@@ -692,6 +741,45 @@ mod tests {
         assert_eq!(preview.request.task_kind, AiTaskKind::GitReview);
         assert_eq!(preview.request.response_format, ResponseFormat::Json);
         let _ = repo;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn git_review_selection_filters_directories_and_changes_hash() {
+        let conn = open_db();
+        seed_model(&conn);
+        let dir = crate::test_support::temp_root("ai_preview", "selection");
+        std::fs::create_dir_all(dir.join("src/generated")).unwrap();
+        let _repo = git2::Repository::init(&dir).unwrap();
+        crate::test_support::write(&dir.join("src/main.rs"), "fn main() {}\n");
+        crate::test_support::write(&dir.join("src/generated/schema.rs"), "pub const X: i32 = 1;\n");
+
+        let mut all = chat_request(vec![]);
+        all.task_kind = AiTaskKind::GitReview;
+        all.repo_path = Some(dir.to_string_lossy().to_string());
+        let all_preview = build(&conn, None, all).unwrap();
+
+        let mut selected = chat_request(vec![]);
+        selected.task_kind = AiTaskKind::GitReview;
+        selected.repo_path = Some(dir.to_string_lossy().to_string());
+        selected.diff_selection = Some(GitDiffSelection {
+            repositories: vec![DiffRepositorySelection {
+                repo_path: dir.to_string_lossy().to_string(),
+                include_paths: vec!["src".into()],
+                exclude_paths: vec!["src/generated".into()],
+            }],
+        });
+        let selected_preview = build(&conn, None, selected).unwrap();
+        let sent: String = selected_preview
+            .request
+            .messages
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect();
+        assert!(sent.contains("src/main.rs"));
+        assert!(!sent.contains("src/generated/schema.rs"));
+        assert_ne!(selected_preview.content_hash, all_preview.content_hash);
+        assert_eq!(selected_preview.target.repository_paths, vec![dir.to_string_lossy().to_string()]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
