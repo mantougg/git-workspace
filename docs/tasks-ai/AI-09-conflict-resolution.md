@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase C · Git Assistant |
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 依赖 | AI-07, T-16（覆盖 T-26 场景） |
 | 对应设计文档 | §14.3 Conflict Resolution、§8.4 结果模型（ConflictProposal） |
 
@@ -16,13 +16,13 @@
 
 ## 需求范围
 
-- [ ] 输入组装：Base/Ours/Theirs 三方内容 + 冲突文件路径 + 必要上下文（复用 AI-07 来源标记）；大文件**按 hunk 分批**，不发送整个 Repository（§14.3）
-- [ ] 输出 `ConflictProposal { proposedContent, diff, rationale, confidence }`（§8.4）
-- [ ] 应用流程固定为（§14.3）：`AI Suggestion → Diff Preview → User Confirmation → T-16 Apply → Mark Resolved`，任何一环不可跳过
-- [ ] 建议未确认时工作区零改动（测试断言）
-- [ ] 与 T-16 Conflict Resolver UI 集成：在冲突文件操作区增加「AI 建议」入口，建议结果以 Diff Preview 展示，确认后调用 T-16 现有 Apply 能力
-- [ ] 复用 AI-07 管道：Secret 扫描（冲突内容可能含配置/凭证）、Preview、缓存
-- [ ] 分批建议的进度与取消：大文件多 hunk 时可取消，已生成批次可查看
+- [x] 输入组装：Base/Ours/Theirs 三方内容 + 冲突文件路径 + 必要上下文（复用 AI-07 来源标记）；大文件**按 hunk 分批**，不发送整个 Repository（§14.3）
+- [x] 输出 `ConflictProposal { proposedContent, diff, rationale, confidence }`（§8.4）
+- [x] 应用流程固定为（§14.3）：`AI Suggestion → Diff Preview → User Confirmation → T-16 Apply → Mark Resolved`，任何一环不可跳过
+- [x] 建议未确认时工作区零改动（测试断言）
+- [x] 与 T-16 Conflict Resolver UI 集成：在冲突文件操作区增加「AI 建议」入口，建议结果以 Diff Preview 展示，确认后调用 T-16 现有 Apply 能力
+- [x] 复用 AI-07 管道：Secret 扫描（冲突内容可能含配置/凭证）、Preview、缓存
+- [x] 分批建议的进度与取消：大文件多 hunk 时可取消，已生成批次可查看
 
 ## 架构 / 性能注意点
 
@@ -32,28 +32,30 @@
 
 ## 验收标准
 
-- [ ] 典型冲突（双方改同一区块 / 一方删除一方修改 / 追加冲突）能给出可用建议与正确 Diff Preview
-- [ ] Conflict 建议未确认时不修改工作区（§18.2 集成测试）
-- [ ] 确认后进入 T-16 Apply / Mark Resolved，操作进 Undo/操作日志（T-34）
-- [ ] 大文件按 hunk 分批生效，且可取消
-- [ ] T-26 spec 时间线追加「由 AI-09 实现」并更新状态（完成后同步两处 README）
+- [x] 典型冲突（双方改同一区块 / 一方删除一方修改 / 追加冲突）能给出可用建议与正确 Diff Preview
+- [x] Conflict 建议未确认时不修改工作区（§18.2 集成测试）
+- [x] 确认后进入 T-16 Apply / Mark Resolved，操作进操作日志（T-34）；冲突内容不保存，回退走 Git Abort 或手动重编辑
+- [x] 大文件按 hunk 分批生效，且可取消
+- [x] T-26 spec 时间线追加「由 AI-09 实现」并更新状态（完成后同步两处 README）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：已完成
+- 最近更新：2026-08-30 完成开发
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
+| 2026-08-30 | 🟦 | 开始开发：补齐冲突 hunk 上下文、结构化 ConflictProposal 与 T-16 Resolver 的 Preview/确认应用入口 |
+| 2026-08-30 | ✅ | 完成：实现 hunk 分批建议、结构化 Proposal、Preview/确认后的 T-16 Apply 与操作日志；验证 `cargo test --manifest-path src-tauri/Cargo.toml ai::context::tests`、`cargo test --manifest-path src-tauri/Cargo.toml ai::request::tests`、`cargo test --manifest-path src-tauri/Cargo.toml core::conflict::tests`、`cargo test --manifest-path src-tauri/Cargo.toml commands::conflict::tests`、`cargo test --manifest-path src-tauri/Cargo.toml ipc_golden`、`pnpm build` |
 
 ### 子任务清单
 
-- [ ] Base/Ours/Theirs 上下文组装与 hunk 分批
-- [ ] ConflictProposal Schema 与解析
-- [ ] T-16 UI 集成（入口 + Diff Preview + 确认应用）
-- [ ] Secret/Preview/缓存接入
-- [ ] 单元/集成测试 + T-26 状态同步
+- [x] Base/Ours/Theirs 上下文组装与 hunk 分批
+- [x] ConflictProposal Schema 与解析
+- [x] T-16 UI 集成（入口 + Diff Preview + 确认应用）
+- [x] Secret/Preview/缓存接入
+- [x] 单元/集成测试 + T-26 状态同步

@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AiConflictAssistant: typeof import('./components/ai/AiConflictAssistant.vue')['default']
     AiCredentialsSection: typeof import('./components/ai/AiCredentialsSection.vue')['default']
     AiDiffSelection: typeof import('./components/ai/AiDiffSelection.vue')['default']
     AiGitAssistantDialog: typeof import('./components/ai/AiGitAssistantDialog.vue')['default']

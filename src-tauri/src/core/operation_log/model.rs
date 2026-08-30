@@ -13,6 +13,12 @@ pub const OP_DELETE_BRANCH_ALL: &str = "delete_branch_all";
 pub const OP_RESET: &str = "reset";
 /// op_type of a completed rebase.
 pub const OP_REBASE: &str = "rebase";
+/// op_type of a conflicted file resolved through the Conflict Resolver.
+///
+/// The log records the confirmed Apply action but deliberately contains no
+/// file content. Conflict text may contain secrets and cannot be restored
+/// safely from the ref-snapshot-based Undo model.
+pub const OP_CONFLICT_RESOLUTION: &str = "conflict_resolution";
 
 /// One page of operation log summaries plus the total matching count.
 #[derive(Debug, Clone, Serialize)]

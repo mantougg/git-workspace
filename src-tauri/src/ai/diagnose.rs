@@ -146,7 +146,9 @@ fn latest_process_with_connection(
     workspace_id: i64,
     runtime_name: &str,
 ) -> Option<RuntimeProcessInfo> {
-    let processes = service.list_processes_with_connection(conn, workspace_id).ok()?;
+    let processes = service
+        .list_processes_with_connection(conn, workspace_id)
+        .ok()?;
     latest_from_processes(processes, runtime_name)
 }
 
@@ -183,8 +185,7 @@ fn resolve_process(
                         message: format!("进程 #{id} 不存在（记录可能已被清理）"),
                     })
                 })?;
-            if process.workspace_id != req.workspace_id
-                || process.runtime_name != req.runtime_name
+            if process.workspace_id != req.workspace_id || process.runtime_name != req.runtime_name
             {
                 return Err(AppError::Ai(AiError::NotConfigured {
                     message: format!(
@@ -322,6 +323,7 @@ pub fn build_diagnostic_preview(
         model_id: None,
         workspace_id: Some(req.workspace_id),
         repo_path: None,
+        conflict: None,
         runtime_name: Some(req.runtime_name.clone()),
         process_id: process.as_ref().map(|p| p.process_id),
         project: req.project.clone(),
@@ -666,9 +668,15 @@ mod tests {
             .clone();
         assert!(last.contains("顺便看看内存参数"), "用户指令保留: {last}");
         assert!(last.contains("VM Options"), "配置建议指令追加: {last}");
-        assert!(last.contains("请勿声称已应用"), "建议必须标注待确认: {last}");
         assert!(
-            !preview.request.system_instruction.contains("顺便看看内存参数"),
+            last.contains("请勿声称已应用"),
+            "建议必须标注待确认: {last}"
+        );
+        assert!(
+            !preview
+                .request
+                .system_instruction
+                .contains("顺便看看内存参数"),
             "用户内容不得进入 system 层"
         );
         assert!(
@@ -703,7 +711,10 @@ mod tests {
         req.selected_log = Some("Exception: selected stack\n at App.run(App.java:1)".into());
         let preview = build(&fx, req).unwrap();
         let sources = manifest_sources(&preview);
-        assert!(sources.iter().any(|s| s.ends_with(":selected-log")), "{sources:?}");
+        assert!(
+            sources.iter().any(|s| s.ends_with(":selected-log")),
+            "{sources:?}"
+        );
         assert!(!sources.iter().any(|s| s.ends_with(":tail")), "{sources:?}");
         assert!(!sent_text(&preview).contains("ERROR unselected"));
         assert!(sent_text(&preview).contains("Exception: selected stack"));
@@ -715,8 +726,14 @@ mod tests {
     #[test]
     fn typical_failure_scenarios_generate_context() {
         let scenarios: [(&str, &str); 5] = [
-            ("PortOccupied", "Web server failed to start. Port 8080 was already in use"),
-            ("DependencyResolveFailed", "Could not resolve dependencies for project app"),
+            (
+                "PortOccupied",
+                "Web server failed to start. Port 8080 was already in use",
+            ),
+            (
+                "DependencyResolveFailed",
+                "Could not resolve dependencies for project app",
+            ),
             ("JdkNotFound", "No JAVA_HOME could be located"),
             ("MavenNotFound", "mvn: command not found"),
             ("ProcessCrashed", "APPLICATION FAILED TO START"),
@@ -730,8 +747,8 @@ mod tests {
                 code,
                 serde_json::json!({"runtime": "app", "module": "app", "reason": log_line}),
             ));
-            let preview = build(&fx, req)
-                .unwrap_or_else(|e| panic!("{} preview 构建失败: {e}", code));
+            let preview =
+                build(&fx, req).unwrap_or_else(|e| panic!("{} preview 构建失败: {e}", code));
             assert!(!preview.blocked, "{code} 不应被 Secret 阻断");
             let sources = manifest_sources(&preview);
             assert!(

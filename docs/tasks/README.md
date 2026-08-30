@@ -20,8 +20,8 @@
 ## 总体进度
 
 - 任务总数：**35**
-- 已完成：**28** · 进行中：**0** · 未开始：**7**
-- 完成度：**28 / 35（80%）**
+- 已完成：**29** · 进行中：**0** · 未开始：**6**
+- 完成度：**29 / 35（83%）**
 
 ---
 
@@ -75,7 +75,7 @@
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
 | T-25 | AI Commit Message / Commit Summary | P1 | ✅ | T-04, T-08 | [T-25-ai-commit-message.md](./T-25-ai-commit-message.md) |
-| T-26 | AI Conflict Resolution | P1 | ⬜ | T-16, T-08 | [T-26-ai-conflict-resolution.md](./T-26-ai-conflict-resolution.md) |
+| T-26 | AI Conflict Resolution | P1 | ✅ | T-16, T-08 | [T-26-ai-conflict-resolution.md](./T-26-ai-conflict-resolution.md) |
 | T-27 | AI PR Description + Security Review / Bug Detection / Commit Explanation | P1 | ✅ | T-04, T-08 | [T-27-ai-pr-description.md](./T-27-ai-pr-description.md) |
 
 ### Phase 4/5/6 · Code Intelligence / Remote / Automation（P2，6 个）

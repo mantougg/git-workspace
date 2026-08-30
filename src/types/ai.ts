@@ -292,7 +292,7 @@ export type AiResult =
   | { type: "commitSummary"; payload: CommitSummary }
   | { type: "prDescription"; payload: PrDescription }
   | { type: "explanation"; payload: ExplanationResult }
-  | { type: "conflictProposal"; payload: Record<string, unknown> }
+  | { type: "conflictProposal"; payload: ConflictProposal }
   | { type: "actionProposal"; payload: Record<string, unknown> };
 
 /** 请求生命周期阶段（§7.3）。 */
@@ -418,6 +418,13 @@ export interface SupplementaryContext {
   redacted?: boolean;
 }
 
+/** A single conflict-marker hunk used for a bounded AI-09 Preview request. */
+export interface ConflictPreviewTarget {
+  path: string;
+  hunkIndex: number;
+  hunkTotal: number;
+}
+
 /** Preview 构建请求（`ai_build_context_preview` 入参）。 */
 export interface ContextPreviewRequest {
   taskKind: AiTaskKind;
@@ -428,6 +435,8 @@ export interface ContextPreviewRequest {
   /** 目标范围（按任务种类取用）。 */
   workspaceId: number | null;
   repoPath: string | null;
+  /** Optional bounded conflict hunk. Null preserves the legacy all-files context. */
+  conflict?: ConflictPreviewTarget | null;
   runtimeName: string | null;
   processId: number | null;
   /** 依赖上下文的目标项目（R-02/R-03）。 */
@@ -524,6 +533,16 @@ export interface ExplanationResult {
   summary: string;
   details: string[];
   riskNotes: string[];
+}
+
+/** AI-09 Conflict Assistant suggestion. It is display-only until the user
+ * explicitly confirms the existing T-16 Apply / Mark Resolved action. */
+export interface ConflictProposal {
+  proposedContent: string;
+  /** Unified diff supplied for Preview; the RESULT editor remains authoritative. */
+  diff: string;
+  rationale: string;
+  confidence: "high" | "medium" | "low";
 }
 
 /** 目标范围（§10.1「目标 Workspace/Repository/Runtime」）。 */

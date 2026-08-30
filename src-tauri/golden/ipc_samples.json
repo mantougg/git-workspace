@@ -319,7 +319,10 @@
     },
     {
       "payload": {
-        "proposedContent": "merged"
+        "confidence": "medium",
+        "diff": "@@ -1 +1 @@",
+        "proposedContent": "merged\n",
+        "rationale": "keeps both intended changes"
       },
       "type": "conflictProposal"
     },
@@ -734,6 +737,17 @@
     "conflictType": "both-modified",
     "path": "a.rs"
   },
+  "ConflictPreviewTarget": {
+    "hunkIndex": 1,
+    "hunkTotal": 3,
+    "path": "src/main.rs"
+  },
+  "ConflictProposal": {
+    "confidence": "medium",
+    "diff": "@@ -1 +1 @@",
+    "proposedContent": "merged\n",
+    "rationale": "keeps both intended changes"
+  },
   "ContextItem": {
     "charCount": 8192,
     "displayName": "应用启动日志（最近 200 行）",
@@ -747,6 +761,7 @@
   },
   "ContextPreviewRequest": {
     "budgetStrategy": "errorDiagnosis",
+    "conflict": null,
     "diffScope": null,
     "diffSelection": {
       "repositories": [

@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**12**
-- 已完成：**8** · 进行中：**0** · 未开始：**4**
-- 完成度：**8 / 12（67%）**
+- 已完成：**9** · 进行中：**0** · 未开始：**3**
+- 完成度：**9 / 12（75%）**
 
 ## 第一阶段口径（设计文档 §21）
 
@@ -65,7 +65,7 @@
 |---|---|---|---|---|---|
 | AI-07 | Git Assistant 公共 Diff 管道 | P1 | ✅ | AI-03, T-04, T-08 | [AI-07-git-diff-pipeline.md](./AI-07-git-diff-pipeline.md) |
 | AI-08 | Commit / Review / PR / Explanation 场景 | P1 | ✅ | AI-07（覆盖 T-25/T-27 场景） | [AI-08-git-assistant-scenarios.md](./AI-08-git-assistant-scenarios.md) |
-| AI-09 | AI Conflict Resolution | P1 | ⬜ | AI-07, T-16（覆盖 T-26 场景） | [AI-09-conflict-resolution.md](./AI-09-conflict-resolution.md) |
+| AI-09 | AI Conflict Resolution | P1 | ✅ | AI-07, T-16（覆盖 T-26 场景） | [AI-09-conflict-resolution.md](./AI-09-conflict-resolution.md) |
 
 ### Phase D · 统一应用助手（P1，1 个）
 

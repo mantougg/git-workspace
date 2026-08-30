@@ -76,7 +76,7 @@ fn conflict_files(repo: &git2::Repository) -> AppResult<Vec<ConflictFile>> {
             .or(conflict.their.as_ref())
             .or(conflict.ancestor.as_ref())
             .map(|e| String::from_utf8_lossy(&e.path).to_string())
-        .unwrap_or_default();
+            .unwrap_or_default();
         if path.is_empty() || out.iter().any(|c| c.path == path) {
             continue;
         }
@@ -323,7 +323,10 @@ mod tests {
         let content = conflict_content(&dir, "a.txt").unwrap();
         assert_eq!(content.base.as_deref().map(|s| s.trim_end()), Some("base"));
         assert_eq!(content.ours.as_deref().map(|s| s.trim_end()), Some("ours"));
-        assert_eq!(content.theirs.as_deref().map(|s| s.trim_end()), Some("theirs"));
+        assert_eq!(
+            content.theirs.as_deref().map(|s| s.trim_end()),
+            Some("theirs")
+        );
         let wt = content.worktree.unwrap_or_default();
         assert!(wt.contains("<<<<<<<") && wt.contains(">>>>>>>"));
         assert!(!content.truncated);
@@ -382,9 +385,35 @@ mod tests {
         let state = operation_state(&dir).unwrap();
         assert_eq!(state.conflicts.len(), 0);
         assert_eq!(
-            std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+            std::fs::read_to_string(dir.join("a.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "hand crafted\n"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// AI-09 acceptance: assembling a bounded Preview hunk is read-only. A
+    /// suggestion cannot clear the index or alter the worktree before the
+    /// existing T-16 Apply / Mark Resolved command is explicitly invoked.
+    #[test]
+    fn conflict_hunk_preview_leaves_worktree_and_index_untouched() {
+        let dir = tmpdir("ai_preview_read_only");
+        setup_conflict(&dir);
+        let before = std::fs::read_to_string(dir.join("a.txt")).unwrap();
+
+        let items = crate::ai::context::collect_conflict_hunk(&dir, "a.txt", 0, 1)
+            .expect("read-only hunk context");
+        assert!(items
+            .iter()
+            .any(|item| item.source_id.contains("conflict:ours:")));
+        assert!(items
+            .iter()
+            .any(|item| item.source_id.contains("conflict:theirs:")));
+
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), before);
+        assert_eq!(operation_state(&dir).unwrap().conflicts.len(), 1);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

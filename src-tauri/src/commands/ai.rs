@@ -55,10 +55,7 @@ fn lock_db<'a>(
         .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))
 }
 
-fn fill_credential_status(
-    credentials: &ai::CredentialManager,
-    providers: &mut [ai::AiProvider],
-) {
+fn fill_credential_status(credentials: &ai::CredentialManager, providers: &mut [ai::AiProvider]) {
     for p in providers.iter_mut() {
         if let Some(cref) = &p.credential_ref {
             p.has_credential = credentials.has(cref);
@@ -201,13 +198,8 @@ pub fn ai_set_task_default_model(
     workspace_id: Option<i64>,
 ) -> AppResult<ai::AiTaskDefault> {
     let conn = lock_db(&state)?;
-    let default = ai::model::set_task_default(
-        &conn,
-        task_kind,
-        workspace_id,
-        &provider_id,
-        &model_id,
-    )?;
+    let default =
+        ai::model::set_task_default(&conn, task_kind, workspace_id, &provider_id, &model_id)?;
     log::info!(
         "ai task default set: kind={} workspace={:?} model={}/{}",
         task_kind.as_str(),
@@ -378,7 +370,11 @@ pub fn ai_create_session(
 ) -> AppResult<ai::AiSession> {
     let conn = lock_db(&state)?;
     let session = ai::session::create_session(&conn, &input)?;
-    log::info!("ai session created: id={} role={}", session.id, session.role.as_str());
+    log::info!(
+        "ai session created: id={} role={}",
+        session.id,
+        session.role.as_str()
+    );
     Ok(session)
 }
 
@@ -489,9 +485,7 @@ pub fn ai_list_session_audits(
 
 /// 清除 AI 结果缓存（§12.2「用量与诊断」）。
 #[tauri::command]
-pub fn ai_clear_result_cache(
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<i64> {
+pub fn ai_clear_result_cache(state: tauri::State<'_, crate::state::AppState>) -> AppResult<i64> {
     let conn = lock_db(&state)?;
     let removed = state.ai_result_cache.clear(&conn)?;
     log::info!("ai result cache cleared: removed={}", removed);
@@ -554,8 +548,8 @@ pub struct ReviewResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewIssue {
-    pub severity: String,  // "high", "medium", "low"
-    pub category: String,  // "bug", "security", "optimization"
+    pub severity: String, // "high", "medium", "low"
+    pub category: String, // "bug", "security", "optimization"
     pub file: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<i64>,
@@ -591,6 +585,7 @@ pub async fn ai_review(
         model_id: None,
         workspace_id: None,
         repo_path: Some(repo_path),
+        conflict: None,
         runtime_name: None,
         process_id: None,
         project: None,
@@ -622,9 +617,7 @@ pub async fn ai_review(
     if !preview
         .items
         .iter()
-        .any(|item| {
-            item.kind == ai::ContextKind::Diff && item.display_name.starts_with("diff [")
-        })
+        .any(|item| item.kind == ai::ContextKind::Diff && item.display_name.starts_with("diff ["))
     {
         return Ok(ReviewResult {
             summary: "No changes to review.".to_string(),
@@ -668,22 +661,22 @@ pub async fn ai_review(
 
 fn legacy_review_result(result: ai::AiResult) -> ReviewResult {
     match result {
-        ai::AiResult::ReviewReport { payload } => {
-            serde_json::from_value(payload.clone()).unwrap_or_else(|_| ReviewResult {
+        ai::AiResult::ReviewReport { payload } => serde_json::from_value(payload.clone())
+            .unwrap_or_else(|_| ReviewResult {
                 summary: payload
                     .get("summary")
                     .and_then(|v| v.as_str())
                     .unwrap_or("AI Review 返回了无法转换的结构化结果")
                     .to_string(),
                 issues: vec![],
-            })
-        }
+            }),
         ai::AiResult::Answer { text } | ai::AiResult::GeneratedText { text } => ReviewResult {
             summary: text,
             issues: vec![],
         },
         other => ReviewResult {
-            summary: serde_json::to_string_pretty(&other).unwrap_or_else(|_| "AI Review 完成".into()),
+            summary: serde_json::to_string_pretty(&other)
+                .unwrap_or_else(|_| "AI Review 完成".into()),
             issues: vec![],
         },
     }
@@ -728,8 +721,7 @@ pub fn build_code_index(
         ".venv",
     ];
 
-    let mut walker = WalkDir::new(repo_path)
-        .into_iter();
+    let mut walker = WalkDir::new(repo_path).into_iter();
 
     let mut batch_count = 0;
     let conn = state
@@ -755,11 +747,46 @@ pub fn build_code_index(
         // Skip binary file extensions
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let text_exts = [
-            "rs", "go", "py", "js", "ts", "tsx", "jsx", "vue", "java",
-            "kt", "c", "cpp", "h", "hpp", "cs", "rb", "php", "swift",
-            "sql", "json", "yaml", "yml", "toml", "xml", "html", "css",
-            "scss", "less", "md", "txt", "sh", "bash", "zsh", "fish",
-            "lua", "r", "scala", "dart", "gradle", "dockerfile",
+            "rs",
+            "go",
+            "py",
+            "js",
+            "ts",
+            "tsx",
+            "jsx",
+            "vue",
+            "java",
+            "kt",
+            "c",
+            "cpp",
+            "h",
+            "hpp",
+            "cs",
+            "rb",
+            "php",
+            "swift",
+            "sql",
+            "json",
+            "yaml",
+            "yml",
+            "toml",
+            "xml",
+            "html",
+            "css",
+            "scss",
+            "less",
+            "md",
+            "txt",
+            "sh",
+            "bash",
+            "zsh",
+            "fish",
+            "lua",
+            "r",
+            "scala",
+            "dart",
+            "gradle",
+            "dockerfile",
         ];
         if !text_exts.contains(&ext) && ext != "" {
             continue;
@@ -790,7 +817,11 @@ pub fn build_code_index(
         }
     }
 
-    log::info!("Code index built: {} files for {:?}", batch_count, repo_path);
+    log::info!(
+        "Code index built: {} files for {:?}",
+        batch_count,
+        repo_path
+    );
     Ok(())
 }
 
@@ -809,10 +840,7 @@ pub fn ai_search(
 
     // FTS5 MATCH query
     // Sanitize the query for FTS5 (escape special characters)
-    let sanitized = query
-        .replace('"', "\"\"")
-        .replace('*', "")
-        .replace(':', "");
+    let sanitized = query.replace('"', "\"\"").replace('*', "").replace(':', "");
 
     let fts_query = format!("\"{}\"", sanitized);
 

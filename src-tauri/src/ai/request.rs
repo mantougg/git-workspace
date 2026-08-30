@@ -243,6 +243,27 @@ pub enum AiResult {
     ActionProposal { payload: serde_json::Value },
 }
 
+/// Stable Conflict Assistant result shape (design §8.4 / §14.3). The Gateway
+/// keeps `AiResult::ConflictProposal` payload-compatible with older clients;
+/// callers can deserialize this structure to validate the four required
+/// fields before presenting an Apply action.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictProposal {
+    pub proposed_content: String,
+    pub diff: String,
+    pub rationale: String,
+    pub confidence: ConflictConfidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConflictConfidence {
+    High,
+    Medium,
+    Low,
+}
+
 /// token 粗估（§7.1 `estimatedTokens`）：~4 字符/token。中文实际约 1.5~2
 /// 字符/token，本估算偏保守低估，仅用于预算门槛与展示，不用于计费。
 pub fn estimate_tokens(text: &str) -> i64 {
@@ -321,6 +342,20 @@ pub fn parse_result(
     if response_format == ResponseFormat::Json {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
             if v.is_object() {
+                if task_kind == AiTaskKind::Conflict && git_scenario.is_none() {
+                    if let Ok(proposal) = serde_json::from_value::<ConflictProposal>(v) {
+                        return AiResult::ConflictProposal {
+                            payload: serde_json::to_value(proposal)
+                                .expect("ConflictProposal must serialize"),
+                        };
+                    }
+                    // Do not expose an incomplete conflict proposal as an
+                    // applyable suggestion. The caller renders this as a
+                    // non-actionable answer and keeps the worktree untouched.
+                    return AiResult::Answer {
+                        text: text.to_string(),
+                    };
+                }
                 return structured_variant_for(task_kind, git_scenario)(v);
             }
         }
@@ -356,12 +391,35 @@ mod tests {
             AiResult::ReviewReport { .. }
         ));
         assert!(matches!(
-            parse_result(AiTaskKind::RuntimeDiagnostic, None, ResponseFormat::Json, json),
+            parse_result(
+                AiTaskKind::RuntimeDiagnostic,
+                None,
+                ResponseFormat::Json,
+                json
+            ),
             AiResult::DiagnosticReport { .. }
         ));
         assert!(matches!(
-            parse_result(AiTaskKind::Conflict, None, ResponseFormat::Json, json),
+            parse_result(
+                AiTaskKind::Conflict,
+                None,
+                ResponseFormat::Json,
+                r#"{"proposedContent":"merged\n","diff":"@@ -1 +1 @@","rationale":"keeps both changes","confidence":"medium"}"#,
+            ),
             AiResult::ConflictProposal { .. }
+        ));
+    }
+
+    #[test]
+    fn incomplete_conflict_json_is_not_an_applyable_proposal() {
+        assert!(matches!(
+            parse_result(
+                AiTaskKind::Conflict,
+                None,
+                ResponseFormat::Json,
+                r#"{"proposedContent":"missing contract fields"}"#,
+            ),
+            AiResult::Answer { .. }
         ));
     }
 
@@ -393,7 +451,12 @@ mod tests {
     #[test]
     fn parse_result_text_tasks() {
         assert_eq!(
-            parse_result(AiTaskKind::CommitMessage, None, ResponseFormat::Text, "feat: x"),
+            parse_result(
+                AiTaskKind::CommitMessage,
+                None,
+                ResponseFormat::Text,
+                "feat: x"
+            ),
             AiResult::GeneratedText {
                 text: "feat: x".to_string()
             }
@@ -409,10 +472,7 @@ mod tests {
     #[test]
     fn result_serde_tags_are_camel_case() {
         assert_eq!(
-            serde_json::to_value(AiResult::Answer {
-                text: "x".into()
-            })
-            .unwrap(),
+            serde_json::to_value(AiResult::Answer { text: "x".into() }).unwrap(),
             serde_json::json!({"type": "answer", "text": "x"})
         );
         assert_eq!(
@@ -451,7 +511,12 @@ mod tests {
             GitAssistantScenario::BugDetection,
         ] {
             assert!(matches!(
-                parse_result(AiTaskKind::GitReview, Some(scenario), ResponseFormat::Json, json),
+                parse_result(
+                    AiTaskKind::GitReview,
+                    Some(scenario),
+                    ResponseFormat::Json,
+                    json
+                ),
                 AiResult::ReviewReport { .. }
             ));
         }
@@ -469,7 +534,12 @@ mod tests {
             GitAssistantScenario::FileExplanation,
         ] {
             assert!(matches!(
-                parse_result(AiTaskKind::GitReview, Some(scenario), ResponseFormat::Json, json),
+                parse_result(
+                    AiTaskKind::GitReview,
+                    Some(scenario),
+                    ResponseFormat::Json,
+                    json
+                ),
                 AiResult::Explanation { .. }
             ));
         }

@@ -41,16 +41,21 @@ pub mod provider;
 pub mod redact;
 pub mod request;
 pub mod session;
-pub mod transport;
 pub mod tools;
+pub mod transport;
 
 #[cfg(test)]
 mod gateway_tests;
 #[cfg(test)]
 mod session_tests;
 
-pub use credentials::CredentialManager;
+pub use cache::{AiResultCache, CacheKeyParts, CachedResult};
 pub use context::{DiffRepositorySelection, GitDiffSelection};
+pub use credentials::CredentialManager;
+pub use diagnose::{
+    build_diagnostic_preview, latest_process, DiagnosticErrorInput, DiagnosticSessionScope,
+    RuntimeDiagnosticRequest,
+};
 pub use error::AiError;
 pub use events::AiRequestEvent;
 pub use gateway::{AiGateway, AiRequestSnapshot, GatewayConfig};
@@ -65,18 +70,13 @@ pub use provider::{
     AiProviderTestResult, ApiType, NetworkPolicy, SaveAiProviderRequest,
 };
 pub use request::{
-    parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, ContextItem, ContextKind,
-    ExclusionReason, GitAssistantScenario, MessageRole, ResponseFormat, ToolPolicy,
-};
-pub use cache::{AiResultCache, CacheKeyParts, CachedResult};
-pub use diagnose::{
-    build_diagnostic_preview, latest_process, DiagnosticErrorInput, DiagnosticSessionScope,
-    RuntimeDiagnosticRequest,
+    parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, ConflictConfidence,
+    ConflictProposal, ContextItem, ContextKind, ExclusionReason, GitAssistantScenario, MessageRole,
+    ResponseFormat, ToolPolicy,
 };
 pub use session::{
-    create_session, delete_session, get_session_detail, list_sessions, AiSession,
-    AiSessionDetail, AiSessionList, AiSessionListQuery, AiSessionMessage, AiSessionRole,
-    CreateAiSessionRequest,
+    create_session, delete_session, get_session_detail, list_sessions, AiSession, AiSessionDetail,
+    AiSessionList, AiSessionListQuery, AiSessionMessage, AiSessionRole, CreateAiSessionRequest,
 };
 pub use tools::{
     definitions as tool_definitions, registry as tool_registry, ToolCallRequest, ToolContext,

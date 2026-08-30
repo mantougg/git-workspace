@@ -83,6 +83,13 @@
                 应用 RESULT（Mark Resolved）
               </n-button>
             </div>
+            <AiConflictAssistant
+              v-if="content"
+              :repo-path="repoPath"
+              :path="selectedPath"
+              :worktree="content.worktree ?? resultText"
+              @candidate="useAiCandidate"
+            />
             <div class="pane-grid">
               <div class="pane">
                 <div class="pane-title">BASE</div>
@@ -144,6 +151,7 @@ import { abortPick, pickContinue } from "@/api/history";
 import { listRepositories } from "@/api/repository";
 import type { ConflictContent, ConflictFile, OperationState } from "@/types/conflict";
 import { errMsg } from "@/utils/error";
+import AiConflictAssistant from "@/components/ai/AiConflictAssistant.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -162,6 +170,8 @@ const loading = ref(false);
 const selectedPath = ref("");
 const content = ref<ConflictContent | null>(null);
 const resultText = ref("");
+/** True only after a complete AI candidate has entered the RESULT preview. */
+const aiCandidatePending = ref(false);
 /** Paths resolved during this session (no longer reported conflicted). */
 const resolvedPaths = ref<Set<string>>(new Set());
 
@@ -246,6 +256,7 @@ function openRepo(path: string) {
   resolvedPaths.value = new Set();
   selectedPath.value = "";
   content.value = null;
+  aiCandidatePending.value = false;
   load();
 }
 
@@ -331,6 +342,7 @@ async function selectFile(path: string) {
     // RESULT starts from the worktree content (with markers) for manual edit.
     resultText.value =
       content.value.worktree ?? content.value.ours ?? content.value.theirs ?? "";
+    aiCandidatePending.value = false;
   } catch (e) {
     message.error("加载冲突内容失败: " + errMsg(e));
   }
@@ -338,7 +350,13 @@ async function selectFile(path: string) {
 
 async function afterResolve(path: string) {
   resolvedPaths.value = new Set([...resolvedPaths.value, path]);
+  aiCandidatePending.value = false;
   await load();
+}
+
+function useAiCandidate(candidate: string) {
+  resultText.value = candidate;
+  aiCandidatePending.value = true;
 }
 
 async function resolveWith(strategy: "ours" | "theirs" | "both") {
@@ -356,6 +374,23 @@ async function resolveWith(strategy: "ours" | "theirs" | "both") {
 async function resolveManual() {
   const path = selectedPath.value;
   if (!path) return;
+  if (aiCandidatePending.value) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        dialog.warning({
+          title: "确认应用 AI 建议",
+          content: "将把已预览的 AI 建议写入工作区并 Mark Resolved。此操作会修改该冲突文件；你仍可在继续操作前手动编辑或 Abort。",
+          positiveText: "确认应用并标记已解决",
+          negativeText: "取消",
+          onPositiveClick: () => resolve(),
+          onNegativeClick: () => reject(new Error("cancelled")),
+          onClose: () => reject(new Error("cancelled")),
+        });
+      });
+    } catch {
+      return;
+    }
+  }
   try {
     await resolveConflictWithContent(repoPath.value, path, resultText.value);
     message.success(`已应用手动编辑：${path}`);

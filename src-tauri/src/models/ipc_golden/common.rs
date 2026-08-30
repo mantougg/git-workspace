@@ -417,7 +417,10 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             name: "runtime.getLogs".into(),
             version: "1.0".into(),
             input_schema: json!({"type": "object", "required": ["workspaceId"]}),
-            allowed_roles: vec![crate::ai::ToolRole::RuntimeDiagnostician, crate::ai::ToolRole::ActionPlanner],
+            allowed_roles: vec![
+                crate::ai::ToolRole::RuntimeDiagnostician,
+                crate::ai::ToolRole::ActionPlanner
+            ],
             context_scope: crate::ai::ToolScope::Runtime,
             requires_workspace: true,
             may_contain_secrets: true,
@@ -478,7 +481,12 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 payload: json!({"summary": "intent", "details": [], "riskNotes": []}),
             },
             crate::ai::AiResult::ConflictProposal {
-                payload: json!({"proposedContent": "merged"}),
+                payload: json!({
+                    "proposedContent": "merged\n",
+                    "diff": "@@ -1 +1 @@",
+                    "rationale": "keeps both intended changes",
+                    "confidence": "medium"
+                }),
             },
             crate::ai::AiResult::ActionProposal {
                 payload: json!({"action": "none"}),
@@ -673,6 +681,23 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         }),
     );
     m.insert(
+        "ConflictPreviewTarget".into(),
+        json!(crate::ai::preview::ConflictPreviewTarget {
+            path: "src/main.rs".into(),
+            hunk_index: 1,
+            hunk_total: 3,
+        }),
+    );
+    m.insert(
+        "ConflictProposal".into(),
+        json!(crate::ai::ConflictProposal {
+            proposed_content: "merged\n".into(),
+            diff: "@@ -1 +1 @@".into(),
+            rationale: "keeps both intended changes".into(),
+            confidence: crate::ai::ConflictConfidence::Medium,
+        }),
+    );
+    m.insert(
         "ContextPreviewRequest".into(),
         json!(crate::ai::preview::ContextPreviewRequest {
             task_kind: crate::ai::AiTaskKind::RuntimeDiagnostic,
@@ -681,6 +706,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             model_id: None,
             workspace_id: Some(1),
             repo_path: None,
+            conflict: None,
             runtime_name: Some("app".into()),
             process_id: Some(12),
             project: None,
@@ -1001,7 +1027,11 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("RepoStatusUpdate", "types/events.ts", "RepoStatusUpdate"),
     // T-33 manifest
     ("ManifestRepo", "types/manifest.ts", "ManifestRepo"),
-    ("WorkspaceManifest", "types/manifest.ts", "WorkspaceManifest"),
+    (
+        "WorkspaceManifest",
+        "types/manifest.ts",
+        "WorkspaceManifest",
+    ),
     ("ClonePlanItem", "types/manifest.ts", "ClonePlanItem"),
     ("ClonePlan", "types/manifest.ts", "ClonePlan"),
     // AI（types/ai.ts：本文件注册的每个 interface 都必须有 Rust 样本）
@@ -1018,8 +1048,16 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("ExplanationResult", "types/ai.ts", "ExplanationResult"),
     ("SearchResult", "types/ai.ts", "SearchResult"),
     ("AiProvider", "types/ai.ts", "AiProvider"),
-    ("SaveAiProviderRequest", "types/ai.ts", "SaveAiProviderRequest"),
-    ("AiProviderTestResult", "types/ai.ts", "AiProviderTestResult"),
+    (
+        "SaveAiProviderRequest",
+        "types/ai.ts",
+        "SaveAiProviderRequest",
+    ),
+    (
+        "AiProviderTestResult",
+        "types/ai.ts",
+        "AiProviderTestResult",
+    ),
     ("AiModel", "types/ai.ts", "AiModel"),
     ("AiModelDefaults", "types/ai.ts", "AiModelDefaults"),
     ("SaveAiModelRequest", "types/ai.ts", "SaveAiModelRequest"),
@@ -1029,7 +1067,11 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     // AI-02 Gateway（§7 / §8.4 / 事件契约）
     ("AiMessage", "types/ai.ts", "AiMessage"),
     ("ContextItem", "types/ai.ts", "ContextItem"),
-    ("DiffRepositorySelection", "types/ai.ts", "DiffRepositorySelection"),
+    (
+        "DiffRepositorySelection",
+        "types/ai.ts",
+        "DiffRepositorySelection",
+    ),
     ("GitDiffSelection", "types/ai.ts", "GitDiffSelection"),
     ("AiTokenUsage", "types/ai.ts", "AiTokenUsage"),
     ("AiRequest", "types/ai.ts", "AiRequest"),
@@ -1046,6 +1088,12 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/ai.ts",
         "SupplementaryContext",
     ),
+    (
+        "ConflictPreviewTarget",
+        "types/ai.ts",
+        "ConflictPreviewTarget",
+    ),
+    ("ConflictProposal", "types/ai.ts", "ConflictProposal"),
     (
         "ContextPreviewRequest",
         "types/ai.ts",
@@ -1068,11 +1116,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/ai.ts",
         "SecretFindingSummary",
     ),
-    (
-        "SecretPolicyChoice",
-        "types/ai.ts",
-        "SecretPolicyChoice",
-    ),
+    ("SecretPolicyChoice", "types/ai.ts", "SecretPolicyChoice"),
     ("SecretReport", "types/ai.ts", "SecretReport"),
     ("AiContextPreview", "types/ai.ts", "AiContextPreview"),
     // AI-04 会话 / 消息 / 审计（§10.4 / §11.2 / §16.1）

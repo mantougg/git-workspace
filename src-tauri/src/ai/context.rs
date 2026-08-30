@@ -29,6 +29,24 @@ use super::request::{estimate_tokens, ContextItem, ContextKind, ExclusionReason}
 const MAX_DIFF_LINES_PER_FILE: usize = 2000;
 /// 冲突文件单侧内容上限（字符），T-16 自身 cap 为 500k，上下文场景再收紧。
 const MAX_CONFLICT_SIDE_CHARS: usize = 20_000;
+/// BASE is a complete stage blob, so retain only a local line window for a
+/// hunk request rather than sending the whole conflicted file repeatedly.
+const MAX_CONFLICT_BASE_LINES: usize = 160;
+
+/// A conflict marker block extracted from the worktree. Git stores the three
+/// stages as complete blobs, while the worktree markers identify the exact
+/// conflicting hunks. The stage blobs remain available as the Base/Ours/Theirs
+/// reference; Ours/Theirs are narrowed to the selected marker block.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConflictHunk {
+    pub index: usize,
+    pub total: usize,
+    /// One-based line where the conflict marker starts in WORKTREE.
+    pub start_line: usize,
+    pub ours: String,
+    pub theirs: String,
+    pub worktree: String,
+}
 
 // ---------------------------------------------------------------------------
 // 角色与草稿条目
@@ -212,7 +230,12 @@ pub fn collect_workspace_summary(
 ) -> AppResult<DraftContextItem> {
     let ws = crate::db::dao::get_workspace(conn, workspace_id)?;
     let repos = crate::db::dao::list_repositories_by_workspace(conn, workspace_id)?;
-    let mut content = format!("Workspace: {} ({})\n仓库数量: {}\n", ws.name, ws.path, repos.len());
+    let mut content = format!(
+        "Workspace: {} ({})\n仓库数量: {}\n",
+        ws.name,
+        ws.path,
+        repos.len()
+    );
     for r in &repos {
         content.push_str(&format!("- {} ({})\n", r.name, r.relative_path));
     }
@@ -347,10 +370,14 @@ impl DiffScope {
 /// diff 摘要（§8.2 Code Review「文件清单和 hunk 结构」/ Commit Message
 /// 「diff 摘要」）：每文件状态、hunk 数、增删行统计，不含正文。
 pub fn collect_diff_summary(repo_path: &Path, scope: DiffScope) -> AppResult<DraftContextItem> {
-    collect_diff_summary_for_selection(repo_path, scope, &DiffRepositorySelection {
-        repo_path: repo_path.to_string_lossy().to_string(),
-        ..Default::default()
-    })
+    collect_diff_summary_for_selection(
+        repo_path,
+        scope,
+        &DiffRepositorySelection {
+            repo_path: repo_path.to_string_lossy().to_string(),
+            ..Default::default()
+        },
+    )
 }
 
 /// Diff structure summary for a selected repository. This is the shared
@@ -381,7 +408,11 @@ pub fn collect_diff_summary_for_selection(
         }
         content.push_str(&format!(
             "{}\t{}\t{} hunks (+{}/-{})\n",
-            f.status, f.new_path, f.hunks.len(), adds, dels
+            f.status,
+            f.new_path,
+            f.hunks.len(),
+            adds,
+            dels
         ));
     }
     Ok(DraftContextItem {
@@ -403,10 +434,14 @@ pub fn collect_diff_summary_for_selection(
 /// 逐文件完整 diff（§8.2 Code Review「具体 diff」）：每文件一个条目，
 /// 单文件行数封顶（[`MAX_DIFF_LINES_PER_FILE`]），超出的行标记截断。
 pub fn collect_diff_files(repo_path: &Path, scope: DiffScope) -> AppResult<Vec<DraftContextItem>> {
-    collect_diff_files_for_selection(repo_path, scope, &DiffRepositorySelection {
-        repo_path: repo_path.to_string_lossy().to_string(),
-        ..Default::default()
-    })
+    collect_diff_files_for_selection(
+        repo_path,
+        scope,
+        &DiffRepositorySelection {
+            repo_path: repo_path.to_string_lossy().to_string(),
+            ..Default::default()
+        },
+    )
 }
 
 /// Full diff items for a selected repository. Filtering happens before
@@ -479,7 +514,10 @@ fn path_matches(selector: &str, path: &str) -> bool {
         .trim_start_matches("./")
         .to_string();
     let path = path.replace('\\', "/").trim_matches('/').to_string();
-    selector.is_empty() || selector == "." || path == selector || path.starts_with(&(selector + "/"))
+    selector.is_empty()
+        || selector == "."
+        || path == selector
+        || path.starts_with(&(selector + "/"))
 }
 
 /// Filter the existing status service output using the same selection rules
@@ -638,7 +676,11 @@ pub fn collect_conflicts_for_selection(
         .collect();
     let mut summary = format!(
         "进行中的操作: {}\n冲突文件数: {}\n",
-        if ops.is_empty() { "无".to_string() } else { ops.join(", ") },
+        if ops.is_empty() {
+            "无".to_string()
+        } else {
+            ops.join(", ")
+        },
         selected_conflicts.len()
     );
     for c in selected_conflicts {
@@ -661,28 +703,194 @@ pub fn collect_conflicts_for_selection(
             continue;
         }
         if let Ok(content) = conflict::conflict_content(repo_path, &c.path) {
-            for (source, label, side) in [
-                ("base", "BASE", &content.base),
-                ("ours", "OURS", &content.ours),
-                ("theirs", "THEIRS", &content.theirs),
-                ("worktree", "WORKTREE", &content.worktree),
-            ] {
-                if let Some(text) = side {
-                    items.push(DraftContextItem {
-                        kind: ContextKind::File,
-                        role: ContextRole::ConflictContent,
-                        source_id: conflict_source_id(source, &path_key, &c.path),
-                        display_name: format!("冲突文件 [{label}]: {}", c.path),
-                        content: render_conflict_side(label, text),
-                        redacted: false,
-                        truncate_keep: Some(TruncateKeep::Head),
-                        exclusion: None,
-                    });
-                }
+            let hunks = split_conflict_hunks(content.worktree.as_deref().unwrap_or(""));
+            for hunk in &hunks {
+                items.extend(render_conflict_hunk_items(
+                    &path_key, &c.path, &content, hunk,
+                ));
             }
         }
     }
     Ok(items)
+}
+
+/// Collect one conflict hunk for a Preview/Gateway request. This is the
+/// bounded unit used by the Conflict Assistant when a file contains multiple
+/// marker blocks; no worktree or index mutation occurs here.
+pub fn collect_conflict_hunk(
+    repo_path: &Path,
+    path: &str,
+    hunk_index: usize,
+    hunk_total: usize,
+) -> AppResult<Vec<DraftContextItem>> {
+    let state = conflict::operation_state(repo_path)?;
+    let conflict_file = state
+        .conflicts
+        .iter()
+        .find(|c| c.path == path)
+        .ok_or_else(|| AppError::Other(format!("未找到冲突文件: {path}")))?;
+    let content = conflict::conflict_content(repo_path, path)?;
+    let hunks = split_conflict_hunks(content.worktree.as_deref().unwrap_or(""));
+    if hunk_total != hunks.len() {
+        return Err(AppError::Other(format!(
+            "冲突内容已变化，请重新生成预览（hunk 数从 {hunk_total} 变为 {}）",
+            hunks.len()
+        )));
+    }
+    if hunks.is_empty() || hunk_index >= hunks.len() {
+        return Err(AppError::Other(format!(
+            "冲突 hunk 索引越界: {hunk_index}（实际 {} 个）",
+            hunks.len()
+        )));
+    }
+    let hunk = &hunks[hunk_index];
+    let path_key = repo_path.to_string_lossy().replace('\\', "/");
+    let mut items = vec![DraftContextItem {
+        kind: ContextKind::Repository,
+        role: ContextRole::ConflictState,
+        source_id: format!("repo:{path_key}:conflicts:hunk:{}", hunk.index),
+        display_name: format!(
+            "冲突状态与文件清单（{} hunk {}/{})",
+            path,
+            hunk.index + 1,
+            hunk_total.max(1)
+        ),
+        content: format!(
+            "操作中的冲突文件: {}\n冲突类型: {}\n当前 hunk: {}/{}\n",
+            path,
+            conflict_file.conflict_type,
+            hunk.index + 1,
+            hunk_total.max(1)
+        ),
+        redacted: false,
+        truncate_keep: None,
+        exclusion: None,
+    }];
+    items.extend(render_conflict_hunk_items(&path_key, path, &content, hunk));
+    Ok(items)
+}
+
+fn render_conflict_hunk_items(
+    path_key: &str,
+    path: &str,
+    content: &conflict::ConflictContent,
+    hunk: &ConflictHunk,
+) -> Vec<DraftContextItem> {
+    let hunk_suffix = format!(":hunk:{}", hunk.index);
+    let base = base_snippet_for_hunk(content.base.as_deref().unwrap_or(""), hunk);
+    let mut items = Vec::new();
+    for (source, label, text) in [
+        ("base", "BASE", base.as_str()),
+        ("ours", "OURS", hunk.ours.as_str()),
+        ("theirs", "THEIRS", hunk.theirs.as_str()),
+        ("worktree", "WORKTREE", hunk.worktree.as_str()),
+    ] {
+        if text.is_empty() && source != "worktree" {
+            continue;
+        }
+        items.push(DraftContextItem {
+            kind: ContextKind::File,
+            role: ContextRole::ConflictContent,
+            source_id: format!(
+                "{}{}",
+                conflict_source_id(source, path_key, path),
+                hunk_suffix
+            ),
+            display_name: format!(
+                "冲突文件 [{label}] {}（hunk {}/{})",
+                path,
+                hunk.index + 1,
+                hunk.total
+            ),
+            content: render_conflict_side(label, text),
+            redacted: false,
+            truncate_keep: Some(TruncateKeep::Head),
+            exclusion: None,
+        });
+    }
+    items
+}
+
+fn base_snippet_for_hunk(base: &str, hunk: &ConflictHunk) -> String {
+    if base.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<&str> = base.lines().collect();
+    let start = hunk
+        .start_line
+        .saturating_sub(1)
+        .saturating_sub(40)
+        .min(lines.len());
+    let end = (start + MAX_CONFLICT_BASE_LINES).min(lines.len());
+    let prefix = if start > 0 {
+        "... (base snippet)\n"
+    } else {
+        ""
+    };
+    let suffix = if end < lines.len() {
+        "\n... (base snippet)"
+    } else {
+        ""
+    };
+    format!("{prefix}{}{suffix}", lines[start..end].join("\n"))
+}
+
+/// Split conflict-marker blocks while preserving line endings. Files without
+/// markers are treated as one bounded hunk so add/delete conflicts still work.
+pub fn split_conflict_hunks(worktree: &str) -> Vec<ConflictHunk> {
+    let mut hunks = Vec::new();
+    let mut current: Option<(String, String, String, usize)> = None;
+    let mut side = 0u8;
+    let mut line_number = 1usize;
+    for line in worktree.split_inclusive('\n') {
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.starts_with("<<<<<<<") {
+            // Malformed nested markers restart at the newest marker instead
+            // of merging two unrelated hunk payloads.
+            current = Some((String::new(), String::new(), line.to_string(), line_number));
+            side = 1;
+        } else if trimmed == "=======" && current.is_some() {
+            if let Some((_, _, work, _)) = current.as_mut() {
+                work.push_str(line);
+            }
+            side = 2;
+        } else if trimmed.starts_with(">>>>>>>") {
+            if let Some((ours, theirs, mut work, start_line)) = current.take() {
+                work.push_str(line);
+                hunks.push((ours, theirs, work, start_line));
+            }
+            side = 0;
+        } else if let Some((ours, theirs, work, _)) = current.as_mut() {
+            work.push_str(line);
+            if side == 1 {
+                ours.push_str(line);
+            } else if side == 2 {
+                theirs.push_str(line);
+            }
+        }
+        if line.ends_with('\n') {
+            line_number += 1;
+        }
+    }
+    if hunks.is_empty() {
+        let text = if worktree.is_empty() { "" } else { worktree };
+        hunks.push((text.to_string(), text.to_string(), text.to_string(), 1));
+    }
+    let total = hunks.len();
+    hunks
+        .into_iter()
+        .enumerate()
+        .map(
+            |(index, (ours, theirs, worktree, start_line))| ConflictHunk {
+                index,
+                total,
+                start_line,
+                ours,
+                theirs,
+                worktree,
+            },
+        )
+        .collect()
 }
 
 /// Render one conflict side with a bounded payload and an explicit source
@@ -925,7 +1133,10 @@ pub fn collect_project_dependencies(
     Ok(DraftContextItem {
         kind: ContextKind::Dependency,
         role: ContextRole::Dependency,
-        source_id: format!("deps:{workspace_id}:{}", inspection.project.coordinates.gav()),
+        source_id: format!(
+            "deps:{workspace_id}:{}",
+            inspection.project.coordinates.gav()
+        ),
         display_name: format!("项目「{}」依赖", inspection.project.coordinates.artifact_id),
         content,
         redacted: false,
@@ -1036,6 +1247,46 @@ mod tests {
         assert!(render_conflict_side("OURS", "ours\n").contains("<<<<<<< OURS"));
         assert!(render_conflict_side("THEIRS", "theirs\n").contains("<<<<<<< THEIRS"));
         assert!(render_conflict_side("WORKTREE", "worktree\n").contains("<<<<<<< WORKTREE"));
+    }
+
+    #[test]
+    fn conflict_marker_blocks_are_split_without_cross_hunk_content() {
+        let worktree = concat!(
+            "prefix\n",
+            "<<<<<<< ours\n",
+            "ours one\n",
+            "=======\n",
+            "theirs one\n",
+            ">>>>>>> theirs\n",
+            "middle\n",
+            "<<<<<<< ours\n",
+            "ours two\n",
+            "=======\n",
+            "theirs two\n",
+            ">>>>>>> theirs\n",
+            "suffix\n",
+        );
+        let hunks = split_conflict_hunks(worktree);
+        assert_eq!(hunks.len(), 2);
+        assert_eq!(hunks[0].total, 2);
+        assert_eq!(hunks[0].start_line, 2);
+        assert_eq!(hunks[0].ours, "ours one\n");
+        assert_eq!(hunks[0].theirs, "theirs one\n");
+        assert!(hunks[0].worktree.contains("<<<<<<< ours"));
+        assert!(!hunks[0].worktree.contains("ours two"));
+        assert_eq!(hunks[1].ours, "ours two\n");
+        assert_eq!(hunks[1].theirs, "theirs two\n");
+        assert_eq!(hunks[1].start_line, 8);
+    }
+
+    #[test]
+    fn markerless_conflict_content_stays_a_single_bounded_batch() {
+        let hunks = split_conflict_hunks("single side content\n");
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].index, 0);
+        assert_eq!(hunks[0].total, 1);
+        assert_eq!(hunks[0].start_line, 1);
+        assert_eq!(hunks[0].worktree, "single side content\n");
     }
 
     #[test]
