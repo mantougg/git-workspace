@@ -26,6 +26,10 @@
         >
           AI 变更摘要
         </n-button>
+        <n-button :disabled="!currentWorkspaceId" @click="openWorkspaceAssistant">
+          <template #icon><n-icon><SparklesOutline /></n-icon></template>
+          AI 助手
+        </n-button>
       </div>
     </div>
 
@@ -207,6 +211,7 @@ import {
   CreateOutline,
   AddCircleOutline,
   ArchiveOutline,
+  SparklesOutline,
 } from "@vicons/ionicons5";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
@@ -223,6 +228,7 @@ import type { WorkspaceHealth } from "@/types/health";
 import type { RuntimeConfigSummary } from "@/types/runtime";
 import CommitHeatmap from "@/components/repo/CommitHeatmap.vue";
 import AiGitAssistantDialog from "@/components/ai/AiGitAssistantDialog.vue";
+import { useAiAssistant } from "@/composables/useAiAssistant";
 import { errMsg } from "@/utils/error";
 import { useMessage } from "naive-ui";
 
@@ -249,6 +255,15 @@ const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
 const message = useMessage();
+const { openAssistant } = useAiAssistant();
+
+function openWorkspaceAssistant() {
+  openAssistant({
+    repositoryPaths: repoStore.repositories.map((entry) => entry.repository.path),
+    origin: "Workspace Dashboard",
+    draft: "请概述当前工作区的状态、风险和下一步建议。",
+  });
+}
 
 // Live status updates from the file watcher (T-06 batch events): the store
 // is patched in place, so every computed below stays current (< 500 ms,

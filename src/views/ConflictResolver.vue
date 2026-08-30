@@ -11,6 +11,10 @@
         <template #icon><n-icon><RefreshOutline /></n-icon></template>
         刷新
       </n-button>
+      <n-button v-if="!queueMode" size="small" :disabled="!repoPath" @click="openConflictAssistant">
+        <template #icon><n-icon><SparklesOutline /></n-icon></template>
+        AI 助手
+      </n-button>
       <n-button size="small" disabled title="AI 冲突建议将在 T-26 提供">
         AI 建议（T-26）
       </n-button>
@@ -136,7 +140,7 @@
 // @ts-nocheck — vue-tsc false positives: all bindings below ARE used in the template
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { CheckmarkOutline, RefreshOutline } from "@vicons/ionicons5";
+import { CheckmarkOutline, RefreshOutline, SparklesOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import {
   getConflictContent,
@@ -152,11 +156,13 @@ import { listRepositories } from "@/api/repository";
 import type { ConflictContent, ConflictFile, OperationState } from "@/types/conflict";
 import { errMsg } from "@/utils/error";
 import AiConflictAssistant from "@/components/ai/AiConflictAssistant.vue";
+import { useAiAssistant } from "@/composables/useAiAssistant";
 
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const dialog = useDialog();
+const { openAssistant } = useAiAssistant();
 
 const repoPath = ref("");
 const queueMode = ref(false);
@@ -195,6 +201,25 @@ const continueLabel = computed(() => {
   if (state.value?.revert) return "继续 Revert（Continue）";
   return "继续";
 });
+
+function openConflictAssistant() {
+  if (!repoPath.value) return;
+  const selected = selectedPath.value || "冲突概览";
+  openAssistant({
+    workspaceId: workspaceId.value,
+    repositoryPaths: [repoPath.value],
+    inferredRole: "conflictAssistant",
+    origin: `Conflict Resolver · ${selected}`,
+    supplementary: [{
+      role: "userNote",
+      kind: "diff",
+      sourceId: `conflict:${repoPath.value}:${selected}`,
+      displayName: `冲突范围：${selected}`,
+      content: `当前操作：${opLabel.value || "冲突"}\n冲突文件：${conflicts.value.map((item) => item.path).join("\n")}`,
+    }],
+    draft: "请解释当前冲突的事实、可选解决策略及各自风险；不要修改文件。",
+  });
+}
 
 onMounted(async () => {
   const ws = route.query.workspace as string | undefined;

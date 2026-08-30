@@ -7,6 +7,7 @@
 import { useRouter } from "vue-router";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
+import { useAiStore } from "@/stores/ai";
 
 export interface Command {
   id: string;
@@ -39,8 +40,17 @@ function getActionCommands(): Command[] {
   const router = useRouter();
   const workspaceStore = useWorkspaceStore();
   const repoStore = useRepositoryStore();
+  const aiStore = useAiStore();
 
   return [
+    {
+      id: "action:toggle-assistant",
+      title: "切换 AI 助手抽屉",
+      group: "操作",
+      run: () => {
+        aiStore.toggleDrawer();
+      },
+    },
     {
       id: "action:scan",
       title: "扫描仓库",

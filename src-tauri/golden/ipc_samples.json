@@ -369,13 +369,19 @@
       "id": "sess-1",
       "messageCount": 2,
       "repositoryScope": [],
-      "role": "assistant",
+      "role": "workspaceAssistant",
       "runtimeScope": {},
       "title": "运行时排障",
       "updatedAt": "2026-01-01T00:00:00Z",
       "workspaceId": null
     },
     "totalMessages": 2
+  },
+  "AiSessionExport": {
+    "messageCount": 2,
+    "path": "D:/ws/exports/session.md",
+    "sessionId": "sess-1",
+    "title": "运行时排障"
   },
   "AiSessionList": {
     "items": [
@@ -385,7 +391,7 @@
         "id": "sess-1",
         "messageCount": 0,
         "repositoryScope": [],
-        "role": "assistant",
+        "role": "workspaceAssistant",
         "runtimeScope": {},
         "title": "运行时排障",
         "updatedAt": "2026-01-01T00:00:00Z",
@@ -804,7 +810,7 @@
     "repositoryScope": [
       "D:/ws/repo"
     ],
-    "role": "gitAssistant",
+    "role": "gitReviewer",
     "runtimeScope": null,
     "title": "运行时排障",
     "workspaceId": 1

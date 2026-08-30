@@ -560,7 +560,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         "CreateAiSessionRequest".into(),
         json!(crate::ai::session::CreateAiSessionRequest {
             title: "运行时排障".into(),
-            role: Some(crate::ai::session::AiSessionRole::GitAssistant),
+            role: Some(crate::ai::session::AiSessionRole::GitReviewer),
             workspace_id: Some(1),
             repository_scope: vec!["D:/ws/repo".into()],
             runtime_scope: None,
@@ -581,7 +581,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             items: vec![crate::ai::session::AiSession {
                 id: "sess-1".into(),
                 title: "运行时排障".into(),
-                role: crate::ai::session::AiSessionRole::Assistant,
+                role: crate::ai::session::AiSessionRole::WorkspaceAssistant,
                 workspace_id: None,
                 repository_scope: vec![],
                 runtime_scope: json!({}),
@@ -610,7 +610,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             session: crate::ai::session::AiSession {
                 id: "sess-1".into(),
                 title: "运行时排障".into(),
-                role: crate::ai::session::AiSessionRole::Assistant,
+                role: crate::ai::session::AiSessionRole::WorkspaceAssistant,
                 workspace_id: None,
                 repository_scope: vec![],
                 runtime_scope: json!({}),
@@ -635,6 +635,15 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         json!(crate::ai::session::AiSessionPersistence {
             persist_sessions: true,
             session_count: 3,
+        }),
+    );
+    m.insert(
+        "AiSessionExport".into(),
+        json!(crate::ai::session::AiSessionExport {
+            session_id: "sess-1".into(),
+            title: "运行时排障".into(),
+            path: "D:/ws/exports/session.md".into(),
+            message_count: 2,
         }),
     );
     m.insert(
@@ -1135,5 +1144,6 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/ai.ts",
         "AiSessionPersistence",
     ),
+    ("AiSessionExport", "types/ai.ts", "AiSessionExport"),
     ("AiRequestAudit", "types/ai.ts", "AiRequestAudit"),
 ];

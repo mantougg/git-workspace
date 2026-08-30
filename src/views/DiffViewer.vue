@@ -48,6 +48,10 @@
         <template #icon><n-icon><SparklesOutline /></n-icon></template>
         AI Assistant
       </n-button>
+      <n-button v-if="files.length > 0" size="small" @click="openDiffAssistant">
+        <template #icon><n-icon><SparklesOutline /></n-icon></template>
+        Assistant 会话
+      </n-button>
     </div>
 
     <!-- Commit staged area dialog (T-11 + T-12) -->
@@ -256,6 +260,7 @@ import type { FileDiff } from "@/types/git";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import SideBySideDiff from "@/components/diff/SideBySideDiff.vue";
 import AiGitAssistantDialog from "@/components/ai/AiGitAssistantDialog.vue";
+import { useAiAssistant } from "@/composables/useAiAssistant";
 import { errMsg } from "@/utils/error";
 import { startFrameMeter, type FrameStats } from "@/utils/frameTime";
 
@@ -263,6 +268,7 @@ const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const { resolveCurrentRepo } = useCurrentRepo();
+const { openAssistant } = useAiAssistant();
 
 const repoPath = ref("");
 const files = ref<FileDiff[]>([]);
@@ -302,6 +308,24 @@ const assistantRepositories = computed(() => repoPath.value ? [{
 const assistantSource = computed<"workdir" | "staged" | "unstaged">(
   () => source.value === "staged" ? "staged" : source.value === "unstaged" ? "unstaged" : "workdir",
 );
+
+function openDiffAssistant() {
+  if (!repoPath.value) return;
+  const paths = files.value.map((file) => file.newPath || file.oldPath).filter(Boolean);
+  openAssistant({
+    repositoryPaths: [repoPath.value],
+    inferredRole: "gitReviewer",
+    origin: `Diff · ${paths.length} 个文件`,
+    supplementary: [{
+      role: "userNote",
+      kind: "diff",
+      sourceId: `diff:${repoPath.value}:${source.value}`,
+      displayName: `当前 Diff 文件列表（${paths.length}）`,
+      content: paths.join("\n"),
+    }],
+    draft: "请解释当前 Diff 的主要变更、风险和建议。",
+  });
+}
 
 onMounted(async () => {
   stopFrameMeter = startFrameMeter("diff-viewer");

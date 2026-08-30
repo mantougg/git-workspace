@@ -29,6 +29,13 @@
           <template #icon><n-icon><SparklesOutline /></n-icon></template>
           AI 分析选中内容
         </n-button>
+        <n-button
+          :disabled="!selectedProcessId || selectedLineKeys.size === 0"
+          @click="openLogsAssistant"
+        >
+          <template #icon><n-icon><SparklesOutline /></n-icon></template>
+          AI 助手
+        </n-button>
       </div>
       <div class="toolbar-right">
         <n-button
@@ -119,6 +126,7 @@ import { errMsg } from "@/utils/error";
 import { useRouter } from "vue-router";
 import RuntimeDiagnosticAssistant from "@/components/ai/RuntimeDiagnosticAssistant.vue";
 import type { RuntimeDiagnosticRequest } from "@/types/ai";
+import { useAiAssistant } from "@/composables/useAiAssistant";
 
 interface DisplayLine {
   key: string;
@@ -131,6 +139,7 @@ const message = useMessage();
 const dialog = useDialog();
 const router = useRouter();
 const { store } = useRuntimeWorkspace();
+const { openAssistant } = useAiAssistant();
 
 const selectedApp = ref<string | null>(null);
 const selectedProcessId = ref<number | null>(null);
@@ -262,6 +271,29 @@ function openSelectedDiagnostic() {
     project: config?.project ?? null,
     selectedLog: content,
   };
+}
+
+function openLogsAssistant() {
+  if (store.workspaceId == null || selectedApp.value == null || selectedProcessId.value == null) return;
+  const selected = displayLines.value.filter((line) => selectedLineKeys.value.has(line.key));
+  const content = selected.map((line) => line.text).join("\n").slice(0, 20000);
+  if (!content) return;
+  openAssistant({
+    workspaceId: store.workspaceId,
+    runtimeName: selectedApp.value,
+    processId: selectedProcessId.value,
+    inferredRole: "runtimeDiagnostician",
+    origin: `Runtime Logs · 选中 ${selected.length} 行`,
+    supplementary: [{
+      role: "userNote",
+      kind: "log",
+      sourceId: `runtime:logs:${selectedApp.value}:${selectedProcessId.value}:selection`,
+      displayName: `选中日志（${selected.length} 行）`,
+      content,
+      redacted: true,
+    }],
+    draft: "请解释选中日志中的异常、证据和建议的排查路径。",
+  });
 }
 
 // ------------------------------------------------------------------

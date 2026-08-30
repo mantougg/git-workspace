@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**12**
-- 已完成：**9** · 进行中：**0** · 未开始：**3**
-- 完成度：**9 / 12（75%）**
+- 已完成：**10** · 进行中：**0** · 未开始：**2**
+- 完成度：**10 / 12（83.3%）**
 
 ## 第一阶段口径（设计文档 §21）
 
@@ -71,7 +71,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| AI-10 | 统一 Assistant Drawer 与会话 UI | P1 | ⬜ | AI-04, AI-05, AI-06 | [AI-10-assistant-drawer.md](./AI-10-assistant-drawer.md) |
+| AI-10 | 统一 Assistant Drawer 与会话 UI | P1 | ✅ | AI-04, AI-05, AI-06 | [AI-10-assistant-drawer.md](./AI-10-assistant-drawer.md) |
 
 ### Phase E · 受控写与外部 Agent（P2，2 个）
 

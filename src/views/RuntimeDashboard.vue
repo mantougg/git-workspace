@@ -34,6 +34,13 @@
           AI 诊断
         </n-button>
         <n-button
+          :disabled="!selectedConfig || !workspaceStore.currentWorkspace"
+          @click="openRuntimeAssistant"
+        >
+          <template #icon><n-icon><SparklesOutline /></n-icon></template>
+          AI 助手
+        </n-button>
+        <n-button
           :disabled="!selectedConfig"
           @click="portModalShow = true"
         >
@@ -338,6 +345,7 @@ import { errMsg } from "@/utils/error";
 import RuntimeErrorAlert from "@/components/runtime/RuntimeErrorAlert.vue";
 import PortDiagnosticsModal from "@/components/runtime/PortDiagnosticsModal.vue";
 import RuntimeDiagnosticAssistant from "@/components/ai/RuntimeDiagnosticAssistant.vue";
+import { useAiAssistant } from "@/composables/useAiAssistant";
 import type { ScriptApproval } from "@/types/runtime";
 import type { DiagnosticErrorInput, RuntimeDiagnosticRequest } from "@/types/ai";
 
@@ -346,6 +354,7 @@ const workspaceStore = useWorkspaceStore();
 const store = useRuntimeStore();
 const message = useMessage();
 const dialog = useDialog();
+const { openAssistant } = useAiAssistant();
 
 const resolving = ref(false);
 const selectedConfig = ref<RuntimeConfigSummary | null>(null);
@@ -413,6 +422,20 @@ function openCurrentDiagnostic() {
   });
 }
 
+function openRuntimeAssistant() {
+  const config = selectedConfig.value;
+  if (!config || store.workspaceId == null) return;
+  const process = processOf(config.name);
+  openAssistant({
+    workspaceId: store.workspaceId,
+    runtimeName: config.name,
+    processId: process?.processId ?? null,
+    inferredRole: "runtimeDiagnostician",
+    origin: `Runtime Dashboard · ${config.name}`,
+    draft: "请解释当前 Runtime 的状态、风险和建议的排查步骤。",
+  });
+}
+
 function onAlertAiAnalyze(input: DiagnosticErrorInput) {
   if (store.workspaceId == null) return;
   const runtimeName = typeof input.details?.runtime === "string"
@@ -422,14 +445,20 @@ function onAlertAiAnalyze(input: DiagnosticErrorInput) {
     message.warning("请先选择 Runtime 应用，再开始 AI 分析");
     return;
   }
-  const config = store.configs.find((item) => item.name === runtimeName);
-  openDiagnostic({
+  openAssistant({
     workspaceId: store.workspaceId,
     runtimeName,
     processId: diagnosticProcessId(runtimeName, input.details),
-    error: input,
-    project: config?.project ?? null,
-    wantConfigAdvice: true,
+    inferredRole: "runtimeDiagnostician",
+    origin: "Runtime Error Alert",
+    supplementary: [{
+      role: "userNote",
+      kind: "error",
+      sourceId: `runtime:error:${input.occurredAt ?? "latest"}`,
+      displayName: `Runtime 错误：${input.code}`,
+      content: JSON.stringify(input),
+    }],
+    draft: "请分析这个 Runtime 错误，区分确定性事实与排查建议。",
   });
 }
 

@@ -23,6 +23,10 @@
           <template #icon><n-icon><FolderOpenOutline /></n-icon></template>
           日志
         </n-button>
+        <n-button :disabled="changes.length === 0" @click="openChangesAssistant">
+          <template #icon><n-icon><SparklesOutline /></n-icon></template>
+          AI 助手
+        </n-button>
       </div>
       <div class="toolbar-right">
         <n-input
@@ -695,6 +699,7 @@ import {
   RefreshOutline,
   SearchOutline,
   ShareOutline,
+  SparklesOutline,
   WarningOutline,
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NTag, useMessage, useDialog } from "naive-ui";
@@ -745,6 +750,7 @@ import ChangeTree, {
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import LogManager from "@/components/common/LogManager.vue";
 import { errMsg } from "@/utils/error";
+import { useAiAssistant } from "@/composables/useAiAssistant";
 
 interface SelectedDiff {
   repoPath: string;
@@ -758,6 +764,7 @@ const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
 const message = useMessage();
 const dialog = useDialog();
+const { openAssistant } = useAiAssistant();
 
 // D-05：响应全局工作区 store
 const currentWorkspaceId = computed(() => workspaceStore.currentWorkspace?.id ?? null);
@@ -1177,6 +1184,18 @@ const selectedRepoPath = computed(() =>
     ? treeSelection.value.repoPaths[0]
     : "",
 );
+
+function openChangesAssistant() {
+  const paths = treeSelection.value.repoPaths.length > 0
+    ? treeSelection.value.repoPaths
+    : changes.value.map((change) => change.repoPath);
+  openAssistant({
+    repositoryPaths: paths,
+    inferredRole: "gitReviewer",
+    origin: `Changes · ${paths.length} 个仓库`,
+    draft: "请总结当前仓库变更、风险和建议的下一步。",
+  });
+}
 
 // F-14：变更页的仓库选中态即「全局当前仓库」——同步进 repository store，
 // 供 SideNav 直达的 Git 视图（无 route.query.repo）回落使用。

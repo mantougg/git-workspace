@@ -620,8 +620,16 @@ export interface AiContextPreview {
 // AI-04 会话 / 消息 / 请求审计（§10.4 / §11.2 / §16.1）
 // ---------------------------------------------------------------------------
 
-/** 会话角色（§12.3 Drawer 顶部「当前角色」）。 */
-export type AiSessionRole = "assistant" | "runtimeDiagnostician" | "gitAssistant";
+/** 会话角色（§9.2 七个受限角色；§12.3 Drawer 顶部「当前角色」）。
+ * 序列化值与 ToolRole 对齐，角色即工具白名单准入身份。 */
+export type AiSessionRole =
+  | "workspaceAssistant"
+  | "gitReviewer"
+  | "commitAssistant"
+  | "conflictAssistant"
+  | "runtimeDiagnostician"
+  | "runtimeConfigAdvisor"
+  | "actionPlanner";
 
 /** 会话（§11.2 `ai_sessions`）。 */
 export interface AiSession {
@@ -688,6 +696,16 @@ export interface AiSessionDetail {
 export interface AiSessionPersistence {
   persistSessions: boolean;
   sessionCount: number;
+}
+
+/** 会话导出结果（`ai_export_session` 返回）。 */
+export interface AiSessionExport {
+  sessionId: string;
+  title: string;
+  /** 实际写入的文件路径。 */
+  path: string;
+  /** 导出的消息条数。 */
+  messageCount: number;
 }
 
 /**

@@ -20,6 +20,13 @@ import type {
   ToolInvocation,
   RuntimeDiagnosticRequest,
   GitDiffSelection,
+  AiSession,
+  AiSessionDetail,
+  AiSessionList,
+  AiSessionListQuery,
+  CreateAiSessionRequest,
+  AiSessionPersistence,
+  AiSessionExport,
 } from "@/types/ai";
 
 // ---------------------------------------------------------------------------
@@ -195,4 +202,53 @@ export function aiListTools(): Promise<AiToolDefinition[]> {
 
 export function aiExecuteTool(request: ToolCallRequest): Promise<ToolInvocation> {
   return invoke<ToolInvocation>("ai_execute_tool", { request });
+}
+
+// ---------------------------------------------------------------------------
+// AI-04：统一 Assistant 会话
+// ---------------------------------------------------------------------------
+
+export function aiCreateSession(input: CreateAiSessionRequest): Promise<AiSession> {
+  return invoke<AiSession>("ai_create_session", { input });
+}
+
+export function aiListSessions(query: AiSessionListQuery): Promise<AiSessionList> {
+  return invoke<AiSessionList>("ai_list_sessions", { query });
+}
+
+export function aiGetSession(
+  sessionId: string,
+  messageLimit = 50,
+  beforeSequence?: number,
+): Promise<AiSessionDetail | null> {
+  return invoke<AiSessionDetail | null>("ai_get_session", {
+    sessionId,
+    messageLimit,
+    beforeSequence: beforeSequence ?? null,
+  });
+}
+
+export function aiRenameSession(sessionId: string, title: string): Promise<AiSession> {
+  return invoke<AiSession>("ai_rename_session", { sessionId, title });
+}
+
+export function aiArchiveSession(sessionId: string, archived: boolean): Promise<AiSession> {
+  return invoke<AiSession>("ai_archive_session", { sessionId, archived });
+}
+
+export function aiDeleteSession(sessionId: string): Promise<void> {
+  return invoke<void>("ai_delete_session", { sessionId });
+}
+
+/** 导出会话为 Markdown 文件（内容由后端从结构化消息渲染，不含 Secret 原文）。 */
+export function aiExportSession(sessionId: string, destPath: string): Promise<AiSessionExport> {
+  return invoke<AiSessionExport>("ai_export_session", { sessionId, destPath });
+}
+
+export function aiGetSessionPersistence(): Promise<AiSessionPersistence> {
+  return invoke<AiSessionPersistence>("ai_get_session_persistence");
+}
+
+export function aiSetSessionPersistence(persist: boolean): Promise<AiSessionPersistence> {
+  return invoke<AiSessionPersistence>("ai_set_session_persistence", { persist });
 }

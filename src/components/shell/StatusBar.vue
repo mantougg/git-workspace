@@ -37,6 +37,14 @@
     <!-- 弹性占位 -->
     <div class="statusbar-spacer" />
 
+    <!-- AI 助手槽位（AI-10：Drawer 全局唯一入口之一，快捷键 Ctrl+I） -->
+    <div class="statusbar-slot clickable" title="AI 助手（Ctrl+I）" @click="aiStore.toggleDrawer()">
+      <n-icon :size="12"><SparklesOutline /></n-icon>
+      <span>AI 助手</span>
+    </div>
+
+    <div class="statusbar-divider" />
+
     <!-- 版本槽位 -->
     <div class="statusbar-slot statusbar-version">
       v{{ appVersion }} by {{ appAuthor }}
@@ -76,9 +84,10 @@
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { NIcon, NPopover } from "naive-ui";
-import { ChevronDownOutline, GitBranchOutline, PlayOutline } from "@vicons/ionicons5";
+import { ChevronDownOutline, GitBranchOutline, PlayOutline, SparklesOutline } from "@vicons/ionicons5";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
+import { useAiStore } from "@/stores/ai";
 
 // F-07：构建期注入的全局常量
 const appVersion = __APP_VERSION__;
@@ -87,6 +96,7 @@ const appAuthor = __APP_AUTHOR__;
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const taskStore = useTaskStore();
+const aiStore = useAiStore();
 
 const showWsPopover = ref(false);
 const wsTriggerRef = ref<HTMLElement | null>(null);

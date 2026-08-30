@@ -442,6 +442,39 @@ pub fn ai_delete_session(
     Ok(())
 }
 
+/// 导出会话为 Markdown 文件（AI-10 §4.2 Phase D）。
+///
+/// 内容由 `session::export_markdown` 从结构化消息渲染：只含用户指令与
+/// 结构化结果字段，不含 Secret 原文（入库前已经过 Secret 管道）。
+#[tauri::command]
+pub fn ai_export_session(
+    state: tauri::State<'_, crate::state::AppState>,
+    session_id: String,
+    dest_path: String,
+) -> AppResult<ai::session::AiSessionExport> {
+    let conn = lock_db(&state)?;
+    let Some((session, markdown)) = ai::session::export_markdown(&conn, &session_id)? else {
+        return Err(AppError::Ai(AiError::NotConfigured {
+            message: format!("会话不存在: {}", session_id),
+        }));
+    };
+    std::fs::write(&dest_path, markdown).map_err(|e| AppError::Ai(AiError::NotConfigured {
+        message: format!("导出会话失败（{}）: {}", dest_path, e),
+    }))?;
+    log::info!(
+        "ai session exported: id={} messages={} dest={}",
+        session_id,
+        session.message_count,
+        dest_path
+    );
+    Ok(ai::session::AiSessionExport {
+        session_id,
+        title: session.title,
+        path: dest_path,
+        message_count: session.message_count,
+    })
+}
+
 /// 会话持久化开关（§10.4：完整会话是否保存由用户设置决定）。
 #[tauri::command]
 pub fn ai_get_session_persistence(

@@ -21,33 +21,58 @@ use super::request::MessageRole;
 /// 会话持久化开关在 `ai_settings` 中的键名。
 pub const PERSIST_SESSIONS_KEY: &str = "persistSessions";
 
-/// 会话角色（§12.3 Drawer 顶部「当前角色」）。
+/// 会话角色（§9.2 七个受限角色；§12.3 Drawer 顶部「当前角色」）。
+///
+/// 序列化值与 AI-05 `ToolRole` 对齐，角色即工具白名单的准入身份。
+/// DB `role` 列为自由 TEXT（无 CHECK），AI-10 前的旧值
+/// （`assistant` / `gitAssistant`）由 `parse` 兼容映射。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AiSessionRole {
-    /// 通用应用助手（默认）。
-    Assistant,
-    /// Runtime 排障专家（AI-06）。
+    /// Workspace Assistant（默认）：状态解释、摘要、导航建议。
+    WorkspaceAssistant,
+    /// Git Reviewer：Review、风险和安全建议。
+    GitReviewer,
+    /// Commit Assistant：Commit Message / Summary。
+    CommitAssistant,
+    /// Conflict Assistant：解决建议和 Diff。
+    ConflictAssistant,
+    /// Runtime Diagnostician（AI-06）：诊断和排查建议。
     RuntimeDiagnostician,
-    /// Git 助手（AI-07 ~ AI-09）。
-    GitAssistant,
+    /// Runtime Config Advisor：VM/Profile/启动配置建议。
+    RuntimeConfigAdvisor,
+    /// Action Planner：结构化 Action Proposal（第一期只读）。
+    ActionPlanner,
 }
 
 impl AiSessionRole {
     pub fn as_str(&self) -> &'static str {
         match self {
-            AiSessionRole::Assistant => "assistant",
+            AiSessionRole::WorkspaceAssistant => "workspaceAssistant",
+            AiSessionRole::GitReviewer => "gitReviewer",
+            AiSessionRole::CommitAssistant => "commitAssistant",
+            AiSessionRole::ConflictAssistant => "conflictAssistant",
             AiSessionRole::RuntimeDiagnostician => "runtimeDiagnostician",
-            AiSessionRole::GitAssistant => "gitAssistant",
+            AiSessionRole::RuntimeConfigAdvisor => "runtimeConfigAdvisor",
+            AiSessionRole::ActionPlanner => "actionPlanner",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "assistant" => Some(AiSessionRole::Assistant),
-            "runtimeDiagnostician" => Some(AiSessionRole::RuntimeDiagnostician),
-            "gitAssistant" => Some(AiSessionRole::GitAssistant),
-            _ => None,
+            // AI-10 前旧值兼容映射。
+            "assistant" => Some(AiSessionRole::WorkspaceAssistant),
+            "gitAssistant" => Some(AiSessionRole::GitReviewer),
+            s => match s {
+                "workspaceAssistant" => Some(AiSessionRole::WorkspaceAssistant),
+                "gitReviewer" => Some(AiSessionRole::GitReviewer),
+                "commitAssistant" => Some(AiSessionRole::CommitAssistant),
+                "conflictAssistant" => Some(AiSessionRole::ConflictAssistant),
+                "runtimeDiagnostician" => Some(AiSessionRole::RuntimeDiagnostician),
+                "runtimeConfigAdvisor" => Some(AiSessionRole::RuntimeConfigAdvisor),
+                "actionPlanner" => Some(AiSessionRole::ActionPlanner),
+                _ => None,
+            },
         }
     }
 }
@@ -165,7 +190,7 @@ pub fn create_session(conn: &Connection, input: &CreateAiSessionRequest) -> AppR
     }
     let id = uuid::Uuid::new_v4().to_string();
     let now = now_rfc3339();
-    let role = input.role.unwrap_or(AiSessionRole::Assistant);
+    let role = input.role.unwrap_or(AiSessionRole::WorkspaceAssistant);
     let repository_scope = serde_json::to_string(&input.repository_scope)?;
     let runtime_scope = input
         .runtime_scope
@@ -197,7 +222,7 @@ fn row_to_session(row: &rusqlite::Row) -> rusqlite::Result<AiSession> {
     Ok(AiSession {
         id: row.get("id")?,
         title: row.get("title")?,
-        role: AiSessionRole::parse(&role_str).unwrap_or(AiSessionRole::Assistant),
+        role: AiSessionRole::parse(&role_str).unwrap_or(AiSessionRole::WorkspaceAssistant),
         workspace_id: row.get("workspace_id")?,
         repository_scope: serde_json::from_str(&scope_json).unwrap_or_default(),
         runtime_scope: serde_json::from_str(&runtime_json).unwrap_or_else(|_| serde_json::json!({})),
@@ -470,6 +495,123 @@ pub fn append_message_unchecked(
 }
 
 // ---------------------------------------------------------------------------
+// 导出（AI-10 §4.2 Phase D：导出内容不含 Secret 原文——消息入库前已经过
+// Secret 管道，导出只渲染结构化字段，不回放任何原始上下文条目）。
+// ---------------------------------------------------------------------------
+
+/// 会话导出结果（`ai_export_session` 返回）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSessionExport {
+    pub session_id: String,
+    pub title: String,
+    /// 实际写入的文件路径。
+    pub path: String,
+    /// 导出的消息条数。
+    pub message_count: i64,
+}
+
+/// 把用户消息内容渲染为导出文本：只取最后一条用户指令
+/// （数组前部是当轮上下文消息，属请求正文，不进导出）。
+fn render_user_markdown(content: &serde_json::Value) -> String {
+    content
+        .get("messages")
+        .and_then(|m| m.as_array())
+        .and_then(|arr| arr.last())
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
+/// 把结构化 AiResult 渲染为 Markdown 段落：字符串字段成段、
+/// 字符串数组字段成列表；无法识别的载荷降级为空（不 dump 原始 JSON，
+/// 避免把载荷里未来可能出现的敏感字段原样带出）。
+fn render_assistant_markdown(content: &serde_json::Value) -> String {
+    let kind = content.get("type").and_then(|t| t.as_str()).unwrap_or("");
+    match kind {
+        "answer" | "generatedText" => content
+            .get("text")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+        _ => {
+            let Some(payload) = content.get("payload").and_then(|p| p.as_object()) else {
+                return String::new();
+            };
+            let mut out: Vec<String> = Vec::new();
+            for (key, value) in payload {
+                if let Some(text) = value.as_str() {
+                    let text = text.trim();
+                    if !text.is_empty() {
+                        out.push(text.to_string());
+                    }
+                } else if let Some(items) = value.as_array() {
+                    let bullets: Vec<String> = items
+                        .iter()
+                        .filter_map(|item| match item {
+                            serde_json::Value::String(s) if !s.trim().is_empty() => {
+                                Some(format!("- {}", s.trim()))
+                            }
+                            serde_json::Value::Object(obj) => {
+                                // 列表对象取首个字符串字段作为摘要行。
+                                obj.values()
+                                    .find_map(|v| v.as_str())
+                                    .map(|s| format!("- {}", s.trim()))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    if !bullets.is_empty() {
+                        out.push(format!("**{}**：", key));
+                        out.extend(bullets);
+                    }
+                }
+            }
+            out.join("\n")
+        }
+    }
+}
+
+/// 渲染会话为 Markdown（标题 / 角色 / 作用域 / 逐条消息）。
+/// 会话不存在返回 None；消息为空时仍导出头部信息。
+pub fn export_markdown(conn: &Connection, id: &str) -> AppResult<Option<(AiSession, String)>> {
+    let Some(session) = get_session(conn, id)? else {
+        return Ok(None);
+    };
+    let mut stmt = conn.prepare(
+        "SELECT id, session_id, role, content_json, sequence, created_at
+         FROM ai_messages WHERE session_id = ?1 ORDER BY sequence ASC",
+    )?;
+    let rows = stmt.query_map(params![id], row_to_message)?;
+    let messages: Vec<AiSessionMessage> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut md = String::new();
+    md.push_str(&format!("# {}\n\n", session.title));
+    md.push_str(&format!("- 角色：{}\n", session.role.as_str()));
+    if !session.repository_scope.is_empty() {
+        md.push_str(&format!("- 仓库范围：{}\n", session.repository_scope.join("、")));
+    }
+    md.push_str(&format!("- 创建时间：{}\n", session.created_at));
+    md.push_str("\n> 本导出由 GitWorkspace Assistant 生成；内容为 AI 推断与用户输入，\n");
+    md.push_str("> 其中建议均需人工确认，未代表已执行的实际动作。\n");
+    for message in &messages {
+        let (heading, body) = match message.role {
+            MessageRole::User => ("用户", render_user_markdown(&message.content)),
+            MessageRole::Assistant => ("助手", render_assistant_markdown(&message.content)),
+            MessageRole::System => continue,
+        };
+        if body.is_empty() {
+            continue;
+        }
+        md.push_str(&format!("\n## {}（{}）\n\n{}\n", heading, message.created_at, body));
+    }
+    Ok(Some((session, md)))
+}
+
+// ---------------------------------------------------------------------------
 // 持久化开关
 // ---------------------------------------------------------------------------
 
@@ -550,7 +692,7 @@ mod tests {
         let conn = open_db();
         let session = create(&conn, "排障会话", Some(1));
         assert!(!session.id.is_empty());
-        assert_eq!(session.role, AiSessionRole::Assistant);
+        assert_eq!(session.role, AiSessionRole::WorkspaceAssistant);
         assert_eq!(session.workspace_id, Some(1));
         assert!(session.archived_at.is_none());
         assert_eq!(session.message_count, 0);
@@ -817,17 +959,67 @@ mod tests {
 
     #[test]
     fn role_serde_names_match_design() {
+        // §9.2 七个受限角色，序列化值与 ToolRole 对齐。
+        let cases = [
+            (AiSessionRole::WorkspaceAssistant, "workspaceAssistant"),
+            (AiSessionRole::GitReviewer, "gitReviewer"),
+            (AiSessionRole::CommitAssistant, "commitAssistant"),
+            (AiSessionRole::ConflictAssistant, "conflictAssistant"),
+            (AiSessionRole::RuntimeDiagnostician, "runtimeDiagnostician"),
+            (AiSessionRole::RuntimeConfigAdvisor, "runtimeConfigAdvisor"),
+            (AiSessionRole::ActionPlanner, "actionPlanner"),
+        ];
+        for (role, name) in cases {
+            assert_eq!(serde_json::to_value(role).unwrap(), name);
+            assert_eq!(AiSessionRole::parse(name), Some(role));
+        }
+    }
+
+    #[test]
+    fn role_parse_maps_legacy_values() {
+        // AI-10 前入库的旧角色值必须可读（DB 无 CHECK，兼容靠 parse）。
         assert_eq!(
-            serde_json::to_value(AiSessionRole::Assistant).unwrap(),
-            "assistant"
+            AiSessionRole::parse("assistant"),
+            Some(AiSessionRole::WorkspaceAssistant)
         );
         assert_eq!(
-            serde_json::to_value(AiSessionRole::RuntimeDiagnostician).unwrap(),
-            "runtimeDiagnostician"
+            AiSessionRole::parse("gitAssistant"),
+            Some(AiSessionRole::GitReviewer)
         );
-        assert_eq!(
-            serde_json::to_value(AiSessionRole::GitAssistant).unwrap(),
-            "gitAssistant"
-        );
+        assert_eq!(AiSessionRole::parse("unknown"), None);
+    }
+
+    #[test]
+    fn export_markdown_renders_instruction_and_result_only() {
+        let conn = open_db();
+        let session = create(&conn, "导出会话", Some(1));
+        // Gateway 持久化的用户消息形状：数组前部是当轮上下文消息，
+        // 导出只取最后的用户指令。
+        append_message_unchecked(
+            &conn,
+            &session.id,
+            MessageRole::User,
+            &serde_json::json!({"messages": [
+                {"role": "user", "content": "（上下文）大段 diff 内容"},
+                {"role": "user", "content": "这个仓库现在什么状态？"}
+            ]}),
+        )
+        .unwrap();
+        append_message_unchecked(
+            &conn,
+            &session.id,
+            MessageRole::Assistant,
+            &serde_json::json!({"type": "answer", "text": "3 个仓库，全部干净。"}),
+        )
+        .unwrap();
+
+        let (meta, markdown) = export_markdown(&conn, &session.id).unwrap().unwrap();
+        assert_eq!(meta.title, "导出会话");
+        assert!(markdown.contains("# 导出会话"));
+        assert!(markdown.contains("这个仓库现在什么状态？"));
+        assert!(markdown.contains("3 个仓库，全部干净。"));
+        // 上下文消息正文不进导出。
+        assert!(!markdown.contains("大段 diff 内容"));
+        assert!(export_markdown(&conn, "missing").unwrap().is_none());
     }
 }

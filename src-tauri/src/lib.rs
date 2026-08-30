@@ -381,6 +381,7 @@ pub fn run() {
             commands::ai::ai_rename_session,
             commands::ai::ai_archive_session,
             commands::ai::ai_delete_session,
+            commands::ai::ai_export_session,
             commands::ai::ai_get_session_persistence,
             commands::ai::ai_set_session_persistence,
             commands::ai::ai_get_request_audit,

@@ -12,6 +12,8 @@
         </AppShell>
         <TaskPanel />
         <CommandPalette v-model:show="showPalette" />
+        <!-- AI-10：全局唯一 Assistant Drawer（会话状态在 stores/ai.ts） -->
+        <AssistantDrawer />
       </n-dialog-provider>
     </n-message-provider>
   </n-config-provider>
@@ -23,6 +25,7 @@ import { zhCN, dateZhCN, darkTheme } from "naive-ui";
 import AppShell from "@/components/shell/AppShell.vue";
 import TaskPanel from "@/views/TaskPanel.vue";
 import CommandPalette from "@/components/shell/CommandPalette.vue";
+import AssistantDrawer from "@/components/ai/AssistantDrawer.vue";
 import { useTheme } from "@/composables/useTheme";
 import { lightOverrides, darkOverrides } from "@/styles/naive-overrides";
 import { createShortcutListener } from "@/commands/shortcuts";

@@ -16,6 +16,7 @@ const SHORTCUT_MAP: Record<string, string> = {
   "nav:pipeline": "Ctrl+7",
   "nav:runtime-dashboard": "Ctrl+8",
   "nav:workspaces": "Ctrl+9",
+  "action:toggle-assistant": "Ctrl+I",
 };
 
 /** 获取命令的快捷键描述 */
