@@ -9,6 +9,8 @@
 //! - [`redact`]：Secret 管道（§10.2：Block/Mask/Exclude/Warn，复用 T-08）；
 //! - [`prompt`]：Prompt 分层组装（§8.3：用户内容不进系统约束）；
 //! - [`preview`]：发送前 Preview 契约与构建（§10.1，零网络）；
+//! - [`diagnose`]：Runtime Assistant 场景编排（AI-06，§13：结构化错误 →
+//!   统一调用链，只编排不触网）；
 //! - [`lifecycle`]：请求生命周期状态机（§7.3）；
 //! - [`adapters`]：三种协议的 Provider Adapter（§7.2）；
 //! - [`gateway`]：统一 Gateway——唯一允许访问 AI 网络的地方（§7.3）；
@@ -26,6 +28,7 @@ pub mod audit;
 pub mod cache;
 pub mod context;
 pub mod credentials;
+pub mod diagnose;
 pub mod error;
 pub mod events;
 pub mod gateway;
@@ -65,6 +68,10 @@ pub use request::{
     ExclusionReason, MessageRole, ResponseFormat, ToolPolicy,
 };
 pub use cache::{AiResultCache, CacheKeyParts, CachedResult};
+pub use diagnose::{
+    build_diagnostic_preview, latest_process, DiagnosticErrorInput, DiagnosticSessionScope,
+    RuntimeDiagnosticRequest,
+};
 pub use session::{
     create_session, delete_session, get_session_detail, list_sessions, AiSession,
     AiSessionDetail, AiSessionList, AiSessionListQuery, AiSessionMessage, AiSessionRole,

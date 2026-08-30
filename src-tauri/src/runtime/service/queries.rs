@@ -24,6 +24,18 @@ impl RuntimeService {
         project: &str,
     ) -> AppResult<ProjectInspection> {
         let conn = self.db.lock().unwrap();
+        self.inspect_project_with_connection(&conn, workspace_id, project)
+    }
+
+    /// Read-only variant for callers that already hold the shared DB
+    /// connection. This preserves the RuntimeService domain lookup while
+    /// avoiding recursive locking from AI Context Builder.
+    pub(crate) fn inspect_project_with_connection(
+        &self,
+        conn: &rusqlite::Connection,
+        workspace_id: i64,
+        project: &str,
+    ) -> AppResult<ProjectInspection> {
         let graph = maven::query_dependency_graph(&conn, workspace_id)?;
         let node = find_project(&graph.projects, project).ok_or_else(|| {
             AppError::ProjectNotFound(format!(
@@ -125,9 +137,25 @@ impl RuntimeService {
         self.processes.list_processes(workspace_id)
     }
 
+    pub(crate) fn list_processes_with_connection(
+        &self,
+        conn: &rusqlite::Connection,
+        workspace_id: i64,
+    ) -> AppResult<Vec<RuntimeProcessInfo>> {
+        self.processes.list_processes_with_connection(conn, workspace_id)
+    }
+
     /// `runtime_process_status`。
     pub fn process_status(&self, process_id: i64) -> AppResult<Option<RuntimeProcessInfo>> {
         self.processes.get_process(process_id)
+    }
+
+    pub(crate) fn process_status_with_connection(
+        &self,
+        conn: &rusqlite::Connection,
+        process_id: i64,
+    ) -> AppResult<Option<RuntimeProcessInfo>> {
+        self.processes.get_process_with_connection(conn, process_id)
     }
 
     /// R-21 §49 操作保护：全部工作区「运行中应用」摘要（轻量 DB 读，
@@ -178,9 +206,36 @@ impl RuntimeService {
             .tail(&root, &query.runtime_name, query.process_id, n)
     }
 
+    pub(crate) fn tail_logs_with_connection(
+        &self,
+        conn: &rusqlite::Connection,
+        query: &RuntimeLogQuery,
+        n: usize,
+    ) -> AppResult<Vec<LogEntry>> {
+        let root = config::workspace_root(conn, query.workspace_id)?;
+        self.logs
+            .tail(&root, &query.runtime_name, query.process_id, n)
+    }
+
     /// 过滤 + tail：最近 n 行匹配项（如「最近错误日志」，AI-03 错误诊断上下文）。
     pub fn search_logs_tail(&self, query: &RuntimeLogQuery, n: usize) -> AppResult<Vec<LogEntry>> {
         let root = self.workspace_root(query.workspace_id)?;
+        self.logs.search_tail(
+            &root,
+            &query.runtime_name,
+            query.process_id,
+            &query.filter,
+            n,
+        )
+    }
+
+    pub(crate) fn search_logs_tail_with_connection(
+        &self,
+        conn: &rusqlite::Connection,
+        query: &RuntimeLogQuery,
+        n: usize,
+    ) -> AppResult<Vec<LogEntry>> {
+        let root = config::workspace_root(conn, query.workspace_id)?;
         self.logs.search_tail(
             &root,
             &query.runtime_name,

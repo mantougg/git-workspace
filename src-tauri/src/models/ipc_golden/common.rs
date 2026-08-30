@@ -633,6 +633,52 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             token_estimate_factor: Some(1.2),
             log_tail_lines: Some(200),
             token_budget: Some(16000),
+            include_runtime_logs: true,
+        }),
+    );
+    m.insert(
+        "DiagnosticErrorInput".into(),
+        json!(crate::ai::diagnose::DiagnosticErrorInput {
+            code: "PortOccupied".into(),
+            message: "端口 8080 已被占用".into(),
+            details: Some(json!({"port": 8080, "processName": "java"})),
+            occurred_at: Some("2026-01-01T00:00:00Z".into()),
+        }),
+    );
+    m.insert(
+        "RuntimeDiagnosticRequest".into(),
+        json!(crate::ai::diagnose::RuntimeDiagnosticRequest {
+            workspace_id: 1,
+            runtime_name: "app".into(),
+            process_id: Some(12),
+            error: Some(crate::ai::diagnose::DiagnosticErrorInput {
+                code: "PortOccupied".into(),
+                message: "端口 8080 已被占用".into(),
+                details: Some(json!({"port": 8080})),
+                occurred_at: Some("2026-01-01T00:00:00Z".into()),
+            }),
+            project: Some("app".into()),
+            want_config_advice: true,
+            user_instruction: "请给出排查步骤".into(),
+            exclusions: vec!["runtime:app:12:log-tail".into()],
+            secret_policy: crate::ai::redact::SecretPolicyChoice::default(),
+            log_tail_lines: Some(100),
+            selected_log: None,
+            token_budget: Some(4096),
+            stream: true,
+            token_estimate_factor: Some(1.0),
+        }),
+    );
+    m.insert(
+        "DiagnosticReport".into(),
+        json!({
+            "headline": "端口可能被其他进程占用",
+            "confidence": "high",
+            "facts": ["Runtime 配置使用端口 8080"],
+            "likelyCauses": ["其他 Java 进程正在监听该端口"],
+            "suggestedActions": ["确认占用进程后再决定是否释放端口"],
+            "needsUserCheck": ["确认占用进程是否属于当前项目"],
+            "sourceContext": ["结构化错误", "Runtime 配置"],
         }),
     );
     m.insert(
@@ -901,6 +947,17 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/ai.ts",
         "ContextPreviewRequest",
     ),
+    (
+        "DiagnosticErrorInput",
+        "types/ai.ts",
+        "DiagnosticErrorInput",
+    ),
+    (
+        "RuntimeDiagnosticRequest",
+        "types/ai.ts",
+        "RuntimeDiagnosticRequest",
+    ),
+    ("DiagnosticReport", "types/ai.ts", "DiagnosticReport"),
     ("PreviewTarget", "types/ai.ts", "PreviewTarget"),
     (
         "SecretFindingSummary",

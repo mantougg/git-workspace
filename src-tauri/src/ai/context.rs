@@ -544,9 +544,10 @@ pub fn collect_runtime_config(
 /// 进程与端口实况（R-10/R-16）：状态、pid、端口、退出码、运行时长。
 pub fn collect_runtime_processes(
     service: &RuntimeService,
+    conn: &Connection,
     workspace_id: i64,
 ) -> AppResult<DraftContextItem> {
-    let processes = service.list_processes(workspace_id)?;
+    let processes = service.list_processes_with_connection(conn, workspace_id)?;
     let mut content = format!("进程数: {}\n", processes.len());
     for p in &processes {
         content.push_str(&format!(
@@ -580,6 +581,7 @@ pub fn collect_runtime_processes(
 /// 日志尾部（R-11/R-13）：最近 `n` 行（写入侧已脱敏，标记 redacted）。
 pub fn collect_runtime_log_tail(
     service: &RuntimeService,
+    conn: &Connection,
     workspace_id: i64,
     runtime_name: &str,
     process_id: i64,
@@ -591,7 +593,7 @@ pub fn collect_runtime_log_tail(
         process_id,
         filter: LogFilter::default(),
     };
-    let entries = service.tail_logs(&query, n)?;
+    let entries = service.tail_logs_with_connection(conn, &query, n)?;
     Ok(log_item(
         entries,
         ContextRole::LogTail,
@@ -604,6 +606,7 @@ pub fn collect_runtime_log_tail(
 /// min_level=Error 的尾部 `n` 行。
 pub fn collect_runtime_error_logs(
     service: &RuntimeService,
+    conn: &Connection,
     workspace_id: i64,
     runtime_name: &str,
     process_id: i64,
@@ -618,7 +621,7 @@ pub fn collect_runtime_error_logs(
             ..LogFilter::default()
         },
     };
-    let entries = service.search_logs_tail(&query, n)?;
+    let entries = service.search_logs_tail_with_connection(conn, &query, n)?;
     Ok(log_item(
         entries,
         ContextRole::ErrorLog,
@@ -689,10 +692,11 @@ pub fn collect_environment_summary(conn: &Connection) -> AppResult<DraftContextI
 /// 项目依赖（R-02/R-03 Closure）：项目 GAV、模块与出边依赖清单。
 pub fn collect_project_dependencies(
     service: &RuntimeService,
+    conn: &Connection,
     workspace_id: i64,
     project: &str,
 ) -> AppResult<DraftContextItem> {
-    let inspection = service.inspect_project(workspace_id, project)?;
+    let inspection = service.inspect_project_with_connection(conn, workspace_id, project)?;
     let mut content = format!(
         "项目: {} ({})\n模块数: {}\n依赖数: {}\n",
         inspection.project.coordinates.gav(),

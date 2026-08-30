@@ -418,6 +418,42 @@ export interface ContextPreviewRequest {
   logTailLines?: number | null;
   /** token 预算覆盖（默认 = 模型上下文上限的 3/4）。 */
   tokenBudget?: number | null;
+  /** 选中日志场景关闭 Runtime 自动日志收集，避免发送未选中的日志。 */
+  includeRuntimeLogs?: boolean;
+}
+
+export interface DiagnosticErrorInput {
+  code: string;
+  message: string;
+  details?: Record<string, unknown> | null;
+  occurredAt?: string | null;
+}
+
+export interface RuntimeDiagnosticRequest {
+  workspaceId: number;
+  runtimeName: string;
+  processId?: number | null;
+  error?: DiagnosticErrorInput | null;
+  project?: string | null;
+  wantConfigAdvice?: boolean;
+  userInstruction?: string;
+  exclusions?: string[];
+  secretPolicy?: SecretPolicyChoice;
+  logTailLines?: number | null;
+  selectedLog?: string | null;
+  tokenBudget?: number | null;
+  stream?: boolean;
+  tokenEstimateFactor?: number | null;
+}
+
+export interface DiagnosticReport {
+  headline: string;
+  confidence: "high" | "medium" | "low";
+  facts: string[];
+  likelyCauses: string[];
+  suggestedActions: string[];
+  needsUserCheck: string[];
+  sourceContext: string[];
 }
 
 /** 目标范围（§10.1「目标 Workspace/Repository/Runtime」）。 */

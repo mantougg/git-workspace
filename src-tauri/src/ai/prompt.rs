@@ -15,7 +15,8 @@ use super::request::{AiMessage, MessageRole, ResponseFormat};
 /// 本文件的模板（平台约束 / 角色约束 / 输出 Schema / 上下文包裹格式）**任何
 /// 一处改动都必须递增此常量**——否则旧 Prompt 生成的结果会被新 Prompt 命中
 /// 复用。AI-04 的缓存层在读取时校验该维度（见 `cache::CachedResult::matches`）。
-pub const PROMPT_VERSION: &str = "1";
+/// v2：AI-06 把 runtimeDiagnostic 输出 Schema 升级为 §13.2 DiagnosticReport。
+pub const PROMPT_VERSION: &str = "2";
 
 /// 平台系统约束（§8.3 第 1 层；AI as Assistant 硬规则，§2.2 / §9.4）。
 pub const PLATFORM_CONSTRAINTS: &str = "\
@@ -31,7 +32,10 @@ pub fn role_constraints(task_kind: AiTaskKind) -> &'static str {
     match task_kind {
         AiTaskKind::RuntimeDiagnostic => {
             "你的角色是 Runtime Diagnostician（Java/Maven 运行时排障专家）。\
-             基于结构化错误、日志与环境事实定位最可能的根因，给出证据与排查路径；\
+             基于结构化错误、日志与环境事实定位最可能的根因，给出证据与排查路径。\
+             facts 字段只能复述 GitWorkspace 提供的确定性事实，不得混入你的推断；\
+             可能原因与修复建议属于 AI 推断/待用户确认的建议，必须如实标注；\
+             不得输出「已重启」「已修复」等你未执行的动作。\
              建议只停留在文字层面，不承诺替用户执行修复。"
         }
         AiTaskKind::GitReview => {
@@ -60,9 +64,15 @@ pub fn output_schema(task_kind: AiTaskKind, response_format: ResponseFormat) -> 
     }
     match task_kind {
         AiTaskKind::RuntimeDiagnostic => Some(
-            "只返回一个 JSON 对象（不要 Markdown 围栏），字段：\
-             \"cause\"（最可能根因，字符串）、\"evidence\"（证据数组，引用日志/事实原文片段）、\
-             \"nextSteps\"（排查步骤数组）、\"suggestions\"（修复建议数组，标注为待用户确认）。",
+            "只返回一个 JSON 对象（不要 Markdown 围栏），字段（§13.2 DiagnosticReport）：\
+             \"headline\"（一句话结论，字符串）、\"confidence\"（置信度：\
+             \"high\"|\"medium\"|\"low\"）、\"facts\"（字符串数组：只复述\
+             <context-item> 提供的确定性事实，禁止添加推断）、\"likelyCauses\"\
+             （字符串数组：按可能性排序的可能原因，属于 AI 推断）、\
+             \"suggestedActions\"（字符串数组：建议的人工排查/修复步骤，属于\
+             待用户确认的建议，不得声称已执行）、\"needsUserCheck\"（字符串数组：\
+             需要用户补充确认的信息）、\"sourceContext\"（字符串数组：每条结论\
+             引用的来源标签，即对应 <context-item> 的 source 值）。",
         ),
         AiTaskKind::GitReview => Some(
             "只返回一个 JSON 对象（不要 Markdown 围栏），字段：\
@@ -225,6 +235,30 @@ mod tests {
         assert!(output_schema(AiTaskKind::GitReview, ResponseFormat::Text).is_none());
         assert!(output_schema(AiTaskKind::GitReview, ResponseFormat::Json).is_some());
         assert!(output_schema(AiTaskKind::CommitMessage, ResponseFormat::Json).is_none());
+    }
+
+    /// AI-06 §13.2：runtimeDiagnostic 的输出 Schema 覆盖 DiagnosticReport
+    /// 全部七个字段，并约束 facts 只来自确定性上下文。
+    #[test]
+    fn runtime_diagnostic_schema_matches_diagnostic_report() {
+        let schema =
+            output_schema(AiTaskKind::RuntimeDiagnostic, ResponseFormat::Json).expect("json schema");
+        for field in [
+            "headline",
+            "confidence",
+            "facts",
+            "likelyCauses",
+            "suggestedActions",
+            "needsUserCheck",
+            "sourceContext",
+        ] {
+            assert!(schema.contains(field), "Schema 缺少字段 {field}");
+        }
+        assert!(schema.contains("确定性事实"), "facts 必须约束为只复述上下文事实");
+        assert!(schema.contains("不得声称已执行"), "建议必须标注为待用户确认");
+        // 角色约束同步要求区分事实与推断、禁止未执行事实。
+        let role = role_constraints(AiTaskKind::RuntimeDiagnostic);
+        assert!(role.contains("不得输出「已重启」「已修复」"));
     }
 
     /// 五个任务种类都有角色约束。

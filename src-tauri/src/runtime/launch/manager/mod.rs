@@ -165,12 +165,31 @@ impl RuntimeProcessManager {
 
     pub fn get_process(&self, process_id: i64) -> AppResult<Option<RuntimeProcessInfo>> {
         let conn = self.db.lock().unwrap();
-        Ok(store::get_process(&conn, process_id)?.map(|row| store::row_to_info(&row)))
+        self.get_process_with_connection(&conn, process_id)
     }
 
     pub fn list_processes(&self, workspace_id: i64) -> AppResult<Vec<RuntimeProcessInfo>> {
         let conn = self.db.lock().unwrap();
-        Ok(store::list_processes(&conn, workspace_id)?
+        self.list_processes_with_connection(&conn, workspace_id)
+    }
+
+    /// Read-only query variant for callers that already hold the shared DB
+    /// connection (for example AI Context Builder). Keeping the lock at the
+    /// outer boundary prevents same-thread SQLite mutex re-entry.
+    pub(crate) fn get_process_with_connection(
+        &self,
+        conn: &rusqlite::Connection,
+        process_id: i64,
+    ) -> AppResult<Option<RuntimeProcessInfo>> {
+        Ok(store::get_process(conn, process_id)?.map(|row| store::row_to_info(&row)))
+    }
+
+    pub(crate) fn list_processes_with_connection(
+        &self,
+        conn: &rusqlite::Connection,
+        workspace_id: i64,
+    ) -> AppResult<Vec<RuntimeProcessInfo>> {
+        Ok(store::list_processes(conn, workspace_id)?
             .iter()
             .map(store::row_to_info)
             .collect())

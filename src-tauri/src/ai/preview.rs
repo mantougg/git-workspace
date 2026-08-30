@@ -91,6 +91,14 @@ pub struct ContextPreviewRequest {
     pub log_tail_lines: Option<usize>,
     /// token 预算覆盖（默认 = 模型上下文上限的 3/4，为输出预留）。
     pub token_budget: Option<i64>,
+    /// RuntimeDiagnostic 选中日志时关闭自动日志收集，避免把未选中的日志
+    /// 片段发送给 Provider；其他调用方保持默认收集行为。
+    #[serde(default = "default_include_runtime_logs")]
+    pub include_runtime_logs: bool,
+}
+
+fn default_include_runtime_logs() -> bool {
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -356,30 +364,49 @@ fn collect_for_task(
                     message: "runtimeDiagnostic 需要 Runtime 服务（应用内发起）".into(),
                 })
             })?;
-            let (workspace_id, runtime_name, process_id) = runtime_target(req)?;
-            drafts.push(context::collect_runtime_error_logs(
-                runtime,
-                workspace_id,
-                &runtime_name,
-                process_id,
-                ERROR_LOG_LINES,
-            )?);
-            drafts.push(context::collect_runtime_log_tail(
-                runtime,
-                workspace_id,
-                &runtime_name,
-                process_id,
-                req.log_tail_lines.unwrap_or(DEFAULT_LOG_TAIL_LINES),
-            )?);
+            let workspace_id = req.workspace_id.ok_or_else(|| {
+                crate::error::AppError::Ai(AiError::NotConfigured {
+                    message: "任务 runtimeDiagnostic 需要 workspaceId（目标 Workspace）".into(),
+                })
+            })?;
+            let runtime_name = req.runtime_name.clone().ok_or_else(|| {
+                crate::error::AppError::Ai(AiError::NotConfigured {
+                    message: "任务 runtimeDiagnostic 需要 runtimeName（目标 Runtime）".into(),
+                })
+            })?;
+            // AI-06：processId 可选——失败可能发生在任何进程记录创建之前
+            // （如 JdkNotFound / MavenNotFound），此时跳过日志类上下文，
+            // 仍发送配置/进程/环境事实与调用方注入的结构化错误。
+            if req.include_runtime_logs {
+                if let Some(process_id) = req.process_id {
+                    drafts.push(context::collect_runtime_error_logs(
+                        runtime,
+                        conn,
+                        workspace_id,
+                        &runtime_name,
+                        process_id,
+                        ERROR_LOG_LINES,
+                    )?);
+                    drafts.push(context::collect_runtime_log_tail(
+                        runtime,
+                        conn,
+                        workspace_id,
+                        &runtime_name,
+                        process_id,
+                        req.log_tail_lines.unwrap_or(DEFAULT_LOG_TAIL_LINES),
+                    )?);
+                }
+            }
             drafts.push(context::collect_runtime_config(
                 conn,
                 workspace_id,
                 &runtime_name,
             )?);
-            drafts.push(context::collect_runtime_processes(runtime, workspace_id)?);
+            drafts.push(context::collect_runtime_processes(runtime, conn, workspace_id)?);
             if let Some(project) = req.project.as_deref() {
                 drafts.push(context::collect_project_dependencies(
                     runtime,
+                    conn,
                     workspace_id,
                     project,
                 )?);
@@ -419,17 +446,6 @@ fn collect_for_task(
         }
     }
     Ok(drafts)
-}
-
-fn runtime_target(req: &ContextPreviewRequest) -> AppResult<(i64, String, i64)> {
-    match (req.workspace_id, &req.runtime_name, req.process_id) {
-        (Some(w), Some(r), Some(p)) => Ok((w, r.clone(), p)),
-        _ => Err(crate::error::AppError::Ai(AiError::NotConfigured {
-            message: "任务 runtimeDiagnostic 需要 workspaceId + runtimeName + processId \
-                      （在 Runtime 视图的进程上发起诊断）"
-                .into(),
-        })),
-    }
 }
 
 #[cfg(test)]
@@ -493,6 +509,7 @@ mod tests {
             token_estimate_factor: None,
             log_tail_lines: None,
             token_budget: None,
+            include_runtime_logs: true,
         }
     }
 

@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**21** · 进行中：**0** · 未开始：**5**
-- 完成度：**21 / 26（81%）**
+- 已完成：**22** · 进行中：**0** · 未开始：**4**
+- 完成度：**22 / 26（85%）**
 
 ## MVP 口径（源文档 §91 / §92）
 
@@ -82,7 +82,7 @@
 | R-23 | Debug 与 IDE 协同（JDWP / Attach） | P2 | ⬜ | R-10 | [R-23-debug.md](./R-23-debug.md) |
 | R-24 | Docker / Kubernetes Runtime | P2 | ⬜ | R-10 | [R-24-docker-k8s.md](./R-24-docker-k8s.md) |
 | R-25 | JVM 监控 / JMX / Runtime Metrics | P2 | ⬜ | R-10 | [R-25-jvm-monitoring.md](./R-25-jvm-monitoring.md) |
-| R-26 | AI Runtime Assistant | P2 | ⬜ | R-11, T-08 | [R-26-ai-runtime-assistant.md](./R-26-ai-runtime-assistant.md) |
+| R-26 | AI Runtime Assistant | P2 | ✅ | R-11, T-08 | [R-26-ai-runtime-assistant.md](./R-26-ai-runtime-assistant.md) |
 
 ---
 

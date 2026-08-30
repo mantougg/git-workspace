@@ -26,6 +26,14 @@
       </div>
       <div class="toolbar-right">
         <n-button
+          type="info"
+          :disabled="!selectedConfig || !workspaceStore.currentWorkspace"
+          @click="openCurrentDiagnostic"
+        >
+          <template #icon><n-icon><SparklesOutline /></n-icon></template>
+          AI 诊断
+        </n-button>
+        <n-button
           :disabled="!selectedConfig"
           @click="portModalShow = true"
         >
@@ -59,6 +67,12 @@
       @confirm-script="onConfirmScript"
       @open-logs="onAlertOpenLogs"
       @retry="pendingRetry?.()"
+      @ai-analyze="onAlertAiAnalyze"
+    />
+
+    <RuntimeDiagnosticAssistant
+      :request="diagnosticRequest"
+      @configure="router.push({ name: 'ai-settings' })"
     />
 
     <!-- R-21 §47/§48：Runtime Dependency Changed 提示条（snooze 支持） -->
@@ -307,6 +321,7 @@ import {
   PlayOutline,
   StopOutline,
   GitNetworkOutline,
+  SparklesOutline,
 } from "@vicons/ionicons5";
 import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -322,7 +337,9 @@ import type { RuntimeScope } from "@/types/maven";
 import { errMsg } from "@/utils/error";
 import RuntimeErrorAlert from "@/components/runtime/RuntimeErrorAlert.vue";
 import PortDiagnosticsModal from "@/components/runtime/PortDiagnosticsModal.vue";
+import RuntimeDiagnosticAssistant from "@/components/ai/RuntimeDiagnosticAssistant.vue";
 import type { ScriptApproval } from "@/types/runtime";
+import type { DiagnosticErrorInput, RuntimeDiagnosticRequest } from "@/types/ai";
 
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
@@ -355,6 +372,7 @@ const lastError = ref<unknown>(null);
 const failedAction = ref("");
 /** 确认脚本后自动重试的操作。 */
 const pendingRetry = ref<(() => Promise<void>) | null>(null);
+const diagnosticRequest = ref<RuntimeDiagnosticRequest | null>(null);
 
 /** 统一错误处理：写入可行动错误横幅 + 轻提示。 */
 function handleError(action: string, e: unknown, retry?: () => Promise<void>) {
@@ -368,6 +386,51 @@ function clearError() {
   lastError.value = null;
   failedAction.value = "";
   pendingRetry.value = null;
+}
+
+function diagnosticProcessId(runtimeName: string, details?: Record<string, unknown> | null): number | null {
+  const pid = typeof details?.pid === "number" ? details.pid : Number(details?.pid);
+  const process = store.processes.find(
+    (item) => item.runtimeName === runtimeName && (Number.isNaN(pid) || item.pid === pid),
+  );
+  return process?.processId ?? null;
+}
+
+function openDiagnostic(request: RuntimeDiagnosticRequest) {
+  diagnosticRequest.value = request;
+}
+
+function openCurrentDiagnostic() {
+  const config = selectedConfig.value;
+  if (!config || store.workspaceId == null) return;
+  const process = processOf(config.name);
+  openDiagnostic({
+    workspaceId: store.workspaceId,
+    runtimeName: config.name,
+    processId: process?.processId ?? null,
+    project: config.project,
+    wantConfigAdvice: true,
+  });
+}
+
+function onAlertAiAnalyze(input: DiagnosticErrorInput) {
+  if (store.workspaceId == null) return;
+  const runtimeName = typeof input.details?.runtime === "string"
+    ? input.details.runtime
+    : selectedConfig.value?.name ?? "";
+  if (!runtimeName) {
+    message.warning("请先选择 Runtime 应用，再开始 AI 分析");
+    return;
+  }
+  const config = store.configs.find((item) => item.name === runtimeName);
+  openDiagnostic({
+    workspaceId: store.workspaceId,
+    runtimeName,
+    processId: diagnosticProcessId(runtimeName, input.details),
+    error: input,
+    project: config?.project ?? null,
+    wantConfigAdvice: true,
+  });
 }
 
 /** §75：用户在横幅确认脚本后，批准并自动重试原操作。 */

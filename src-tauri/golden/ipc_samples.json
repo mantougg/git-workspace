@@ -682,6 +682,7 @@
     "exclusions": [
       "log:1:app:12:tail"
     ],
+    "includeRuntimeLogs": true,
     "logTailLines": 200,
     "modelId": null,
     "processId": 12,
@@ -1026,6 +1027,35 @@
     "sourceMappings": 2,
     "updated": 0,
     "workspaceId": 1
+  },
+  "DiagnosticErrorInput": {
+    "code": "PortOccupied",
+    "details": {
+      "port": 8080,
+      "processName": "java"
+    },
+    "message": "端口 8080 已被占用",
+    "occurredAt": "2026-01-01T00:00:00Z"
+  },
+  "DiagnosticReport": {
+    "confidence": "high",
+    "facts": [
+      "Runtime 配置使用端口 8080"
+    ],
+    "headline": "端口可能被其他进程占用",
+    "likelyCauses": [
+      "其他 Java 进程正在监听该端口"
+    ],
+    "needsUserCheck": [
+      "确认占用进程是否属于当前项目"
+    ],
+    "sourceContext": [
+      "结构化错误",
+      "Runtime 配置"
+    ],
+    "suggestedActions": [
+      "确认占用进程后再决定是否释放端口"
+    ]
   },
   "DiffLine": {
     "content": "let x = 1;",
@@ -1962,6 +1992,34 @@
     "project": "repo-boot",
     "updatedAt": "2026-08-18T00:00:00Z",
     "workspaceId": 2
+  },
+  "RuntimeDiagnosticRequest": {
+    "error": {
+      "code": "PortOccupied",
+      "details": {
+        "port": 8080
+      },
+      "message": "端口 8080 已被占用",
+      "occurredAt": "2026-01-01T00:00:00Z"
+    },
+    "exclusions": [
+      "runtime:app:12:log-tail"
+    ],
+    "logTailLines": 100,
+    "processId": 12,
+    "project": "app",
+    "runtimeName": "app",
+    "secretPolicy": {
+      "strategy": "block",
+      "warnConfirmed": false
+    },
+    "selectedLog": null,
+    "stream": true,
+    "tokenBudget": 4096,
+    "tokenEstimateFactor": 1.0,
+    "userInstruction": "请给出排查步骤",
+    "wantConfigAdvice": true,
+    "workspaceId": 1
   },
   "RuntimeEnvironment": {
     "description": "联调环境",

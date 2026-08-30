@@ -21,6 +21,14 @@
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
         </n-button>
+        <n-button
+          type="info"
+          :disabled="!selectedProcessId || selectedLineKeys.size === 0"
+          @click="openSelectedDiagnostic"
+        >
+          <template #icon><n-icon><SparklesOutline /></n-icon></template>
+          AI 分析选中内容
+        </n-button>
       </div>
       <div class="toolbar-right">
         <n-button
@@ -42,6 +50,11 @@
         </n-button>
       </div>
     </div>
+
+    <RuntimeDiagnosticAssistant
+      :request="diagnosticRequest"
+      @configure="router.push({ name: 'ai-settings' })"
+    />
 
     <!-- Controls -->
     <div class="controls">
@@ -76,6 +89,13 @@
         class="log-line"
         :class="lineClass(line)"
       >
+        <n-checkbox
+          class="line-check"
+          :checked="selectedLineKeys.has(line.key)"
+          :aria-label="`选择第 ${line.lineNumber} 行`"
+          @update:checked="(checked: boolean) => toggleLine(line.key, checked)"
+          @click.stop
+        />
         <span class="log-seq mono">{{ lineNumber(line) }}</span>
         <span v-if="line.level" class="log-level" :class="'lv-' + line.level">
           {{ line.level.toUpperCase().padEnd(5) }}
@@ -89,13 +109,16 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { RefreshOutline, TrashOutline, CloudUploadOutline } from "@vicons/ionicons5";
+import { RefreshOutline, TrashOutline, CloudUploadOutline, SparklesOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import * as runtimeApi from "@/api/runtime";
 import type { LogEntry, LogLevel, LogLine, RuntimeProcessInfo } from "@/types/runtime";
 import { errMsg } from "@/utils/error";
+import { useRouter } from "vue-router";
+import RuntimeDiagnosticAssistant from "@/components/ai/RuntimeDiagnosticAssistant.vue";
+import type { RuntimeDiagnosticRequest } from "@/types/ai";
 
 interface DisplayLine {
   key: string;
@@ -106,6 +129,7 @@ interface DisplayLine {
 
 const message = useMessage();
 const dialog = useDialog();
+const router = useRouter();
 const { store } = useRuntimeWorkspace();
 
 const selectedApp = ref<string | null>(null);
@@ -118,6 +142,8 @@ const minLevel = ref("");
 const searchQuery = ref("");
 const fileLines = ref<LogEntry[]>([]);
 const panelRef = ref<HTMLDivElement>();
+const selectedLineKeys = ref<Set<string>>(new Set());
+const diagnosticRequest = ref<RuntimeDiagnosticRequest | null>(null);
 
 const LEVEL_ORDER: Record<string, number> = {
   trace: 0,
@@ -216,6 +242,28 @@ function processLabel(p: RuntimeProcessInfo): string {
   return "#" + p.processId + " · " + statusLabel(p.status) + pid;
 }
 
+function toggleLine(key: string, checked: boolean) {
+  const next = new Set(selectedLineKeys.value);
+  if (checked) next.add(key);
+  else next.delete(key);
+  selectedLineKeys.value = next;
+}
+
+function openSelectedDiagnostic() {
+  if (store.workspaceId == null || selectedApp.value == null || selectedProcessId.value == null) return;
+  const selected = displayLines.value.filter((line) => selectedLineKeys.value.has(line.key));
+  const content = selected.map((line) => line.text).join("\n").slice(0, 20000);
+  if (!content) return;
+  const config = store.configs.find((item) => item.name === selectedApp.value);
+  diagnosticRequest.value = {
+    workspaceId: store.workspaceId,
+    runtimeName: selectedApp.value,
+    processId: selectedProcessId.value,
+    project: config?.project ?? null,
+    selectedLog: content,
+  };
+}
+
 // ------------------------------------------------------------------
 // 加载
 // ------------------------------------------------------------------
@@ -240,6 +288,7 @@ async function reload() {
 async function onAppChange() {
   selectedProcessId.value = null;
   fileLines.value = [];
+  selectedLineKeys.value = new Set();
   const processes = appProcesses.value;
   if (processes.length > 0) {
     selectedProcessId.value = processes[0].processId;
@@ -249,6 +298,7 @@ async function onAppChange() {
 
 async function onProcessChange() {
   fileLines.value = [];
+  selectedLineKeys.value = new Set();
   await reload();
 }
 

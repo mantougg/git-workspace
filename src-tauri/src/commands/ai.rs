@@ -520,6 +520,25 @@ pub async fn ai_build_context_preview(
     .map_err(|e| AppError::Other(format!("preview task join error: {}", e)))?
 }
 
+/// AI-06：构建 Runtime 失败诊断/日志选段 Preview。业务编排在 `ai::diagnose`
+/// 中完成，本命令只负责 DB/Runtime 句柄转移到 blocking 线程；零网络访问。
+#[tauri::command]
+pub async fn ai_runtime_diagnostic_preview(
+    state: tauri::State<'_, crate::state::AppState>,
+    req: ai::RuntimeDiagnosticRequest,
+) -> AppResult<ai::preview::AiContextPreview> {
+    let db = state.db.clone();
+    let runtime = state.runtime.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db
+            .lock()
+            .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
+        ai::build_diagnostic_preview(&conn, Some(runtime.as_ref()), req)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("diagnostic preview task join error: {}", e)))?
+}
+
 // ---------------------------------------------------------------------------
 // 原型命令（Phase A 兼容保留）：ai_review 移除「前端直接传 Key + 模型硬编码」
 // （§4.2 Phase A），改走任务默认模型解析 + 凭证存储。

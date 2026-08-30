@@ -373,6 +373,7 @@ pub fn run() {
             commands::ai::ai_cancel_request,
             commands::ai::ai_get_request_status,
             commands::ai::ai_build_context_preview,
+            commands::ai::ai_runtime_diagnostic_preview,
             // AI commands（AI-04：会话 / 审计 / 缓存）
             commands::ai::ai_create_session,
             commands::ai::ai_list_sessions,

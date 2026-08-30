@@ -18,6 +18,7 @@ import type {
   AiToolDefinition,
   ToolCallRequest,
   ToolInvocation,
+  RuntimeDiagnosticRequest,
 } from "@/types/ai";
 
 // ---------------------------------------------------------------------------
@@ -171,6 +172,13 @@ export function aiGetRequestStatus(requestId: string): Promise<AiRequestSnapshot
  */
 export function aiBuildContextPreview(req: ContextPreviewRequest): Promise<AiContextPreview> {
   return invoke<AiContextPreview>("ai_build_context_preview", { req });
+}
+
+/** AI-06 Runtime 失败诊断/日志选段 Preview；构建阶段零网络。 */
+export function aiRuntimeDiagnosticPreview(
+  req: RuntimeDiagnosticRequest,
+): Promise<AiContextPreview> {
+  return invoke<AiContextPreview>("ai_runtime_diagnostic_preview", { req });
 }
 
 // ---------------------------------------------------------------------------

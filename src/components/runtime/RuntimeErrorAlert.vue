@@ -32,6 +32,7 @@
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 import type { ErrorResponse } from "@/utils/error";
+import type { DiagnosticErrorInput } from "@/types/ai";
 
 const props = withDefaults(
   defineProps<{
@@ -49,6 +50,8 @@ const emit = defineEmits<{
   (e: "retry"): void;
   /** 用户点击「查看日志」。 */
   (e: "open-logs"): void;
+  /** 用户请求对当前结构化 Runtime 错误生成 AI Preview。 */
+  (e: "ai-analyze", input: DiagnosticErrorInput): void;
 }>();
 
 const router = useRouter();
@@ -145,22 +148,43 @@ interface Action {
   onClick: () => void;
 }
 
+const diagnosticInput = computed<DiagnosticErrorInput | null>(() => {
+  if (!parsed.value?.code) return null;
+  return {
+    code: parsed.value.code,
+    message: parsed.value.message,
+    details: parsed.value.details,
+    occurredAt: new Date().toISOString(),
+  };
+});
+
 const actions = computed<Action[]>(() => {
   const code = parsed.value?.code;
   const details = parsed.value?.details;
   const list: Action[] = [];
+  const addDiagnostic = () => {
+    if (diagnosticInput.value) {
+      list.push({
+        label: "AI 分析",
+        type: "info",
+        onClick: () => emit("ai-analyze", diagnosticInput.value!),
+      });
+    }
+  };
   switch (code) {
     case "JdkNotFound":
       list.push({
         label: "打开 JDK 管理",
         onClick: () => router.push({ name: "jdk-manager" }),
       });
+      addDiagnostic();
       break;
     case "MavenNotFound":
       list.push({
         label: "打开 Maven 设置",
         onClick: () => router.push({ name: "maven-settings" }),
       });
+      addDiagnostic();
       break;
     case "ScriptConfirmationRequired":
       list.push({
@@ -170,34 +194,32 @@ const actions = computed<Action[]>(() => {
       });
       break;
     case "BuildFailed":
-      list.push({
-        label: "查看日志",
-        onClick: () => emit("open-logs"),
-      });
-      list.push({
-        label: "重试",
-        onClick: () => emit("retry"),
-      });
-      break;
     case "ProcessStartFailed":
-    case "ProcessCrashed":
-    case "ScriptFailed":
-      list.push({
-        label: "查看日志",
-        onClick: () => emit("open-logs"),
-      });
-      break;
     case "PortOccupied":
-      list.push({
-        label: "查看日志",
-        onClick: () => emit("open-logs"),
-      });
-      break;
-    case "ProjectNotFound":
+    case "ProcessCrashed":
     case "DependencyResolveFailed":
+      addDiagnostic();
+      if (code === "BuildFailed") {
+        list.push({
+          label: "查看日志",
+          onClick: () => emit("open-logs"),
+        });
+        list.push({
+          label: "重试",
+          onClick: () => emit("retry"),
+        });
+      } else if (["ProcessStartFailed", "ProcessCrashed", "PortOccupied"].includes(code ?? "")) {
+        list.push({
+          label: "查看日志",
+          onClick: () => emit("open-logs"),
+        });
+      }
+      break;
+    case "ScriptFailed":
+    case "ProjectNotFound":
       list.push({
-        label: "解析依赖后重试",
-        onClick: () => emit("retry"),
+        label: code === "ScriptFailed" ? "查看日志" : "解析依赖后重试",
+        onClick: () => code === "ScriptFailed" ? emit("open-logs") : emit("retry"),
       });
       break;
     default:
