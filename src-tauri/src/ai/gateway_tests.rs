@@ -269,6 +269,7 @@ fn make_request(request_id: &str, stream: bool) -> AiRequest {
         token_budget: 0,
         temperature: None,
         stream,
+        secret_warn_confirmed: false,
     }
 }
 
@@ -783,4 +784,58 @@ async fn api_key_never_appears_in_events_or_snapshots() {
     }
     // 审计走查：错误/快照只含 provider/model id 与归一化网络错误（§16.3）。
     assert!(snapshot.error.is_none());
+}
+
+/// §18.2 / AI-03 验收：请求内容含 AWS Key / JWT / 私钥 / 密码 / Token 时，
+/// submit（Preview 闸门前）默认阻断为 `AiSecretDetected`，零网络调用；
+/// secretWarnConfirmed 仅在用户明确确认 Warn 后放行（§10.2）。
+#[test]
+fn submit_blocks_high_risk_secrets_by_default() {
+    let conn = open_db();
+    let provider = add_provider(&conn, ApiType::OpenaiChatCompletions);
+    add_model(&conn, &provider.id);
+    // 无响应脚本：断言期间任何网络调用都会 panic。
+    let transport = Arc::new(FakeTransport::new(vec![]));
+    let (gateway, _sink) = test_gateway(test_config(), transport.clone());
+
+    let secrets = [
+        ("aws", "const key = \"AKIAIOSFODNN7EXAMPLE\";"),
+        ("jwt", "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"),
+        ("private-key", "-----BEGIN RSA PRIVATE KEY-----\nMII..."),
+        ("password", "password=supersecret123"),
+        ("token", "ghp_abcdefghijklmnopqrstuvwxyz0123456789"),
+    ];
+    for (name, content) in secrets {
+        let mut req = make_request("req-secret", false);
+        req.messages = vec![AiMessage {
+            role: MessageRole::User,
+            content: content.into(),
+        }];
+        let err = gateway.submit(&conn, req).unwrap_err();
+        match err {
+            crate::error::AppError::Ai(super::error::AiError::SecretDetected { kinds }) => {
+                assert!(!kinds.is_empty(), "{name} 阻断必须携带类别");
+            }
+            other => panic!("{name} 应以 AiSecretDetected 阻断，实际: {other:?}"),
+        }
+        // 被拒绝的请求停在 Rejected 终态。
+        let snapshot = gateway.status("req-secret").unwrap();
+        assert_eq!(
+            snapshot.phase,
+            super::lifecycle::RequestPhase::Rejected,
+            "{name}"
+        );
+    }
+    assert_eq!(transport.call_count(), 0, "阻断发生在任何网络调用之前");
+
+    // Warn 显式确认后放行（进入 PreviewRequired，不联网）。
+    let mut req = make_request("req-warn", false);
+    req.messages = vec![AiMessage {
+        role: MessageRole::User,
+        content: "password=supersecret123".into(),
+    }];
+    req.secret_warn_confirmed = true;
+    let snapshot = gateway.submit(&conn, req).unwrap();
+    assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::PreviewRequired);
+    assert_eq!(transport.call_count(), 0);
 }

@@ -15,6 +15,7 @@ declare module 'vue' {
     AiModelsSection: typeof import('./components/ai/AiModelsSection.vue')['default']
     AiPrivacySection: typeof import('./components/ai/AiPrivacySection.vue')['default']
     AiProvidersSection: typeof import('./components/ai/AiProvidersSection.vue')['default']
+    AiRequestPreview: typeof import('./components/ai/AiRequestPreview.vue')['default']
     AiTaskDefaultsSection: typeof import('./components/ai/AiTaskDefaultsSection.vue')['default']
     AiUsageSection: typeof import('./components/ai/AiUsageSection.vue')['default']
     AiWorkspaceDefaultsDialog: typeof import('./components/ai/AiWorkspaceDefaultsDialog.vue')['default']

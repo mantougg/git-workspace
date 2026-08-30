@@ -360,6 +360,7 @@ pub fn run() {
             commands::ai::ai_approve_request,
             commands::ai::ai_cancel_request,
             commands::ai::ai_get_request_status,
+            commands::ai::ai_build_context_preview,
             // Log commands
             commands::logs::list_log_files,
             commands::logs::open_logs,

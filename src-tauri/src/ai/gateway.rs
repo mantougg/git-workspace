@@ -219,7 +219,7 @@ impl AiGateway {
         self.transition(&request_id, &request, &resolved, RequestPhase::ContextBuilding, None);
         let content = compose_request_text(&request);
         let findings = crate::core::secret::scan_secrets(&content);
-        if !findings.is_empty() {
+        if !findings.is_empty() && !request.secret_warn_confirmed {
             let mut labels: Vec<&str> = findings.iter().map(|f| f.kind.label()).collect();
             labels.sort_unstable();
             labels.dedup();
@@ -227,6 +227,18 @@ impl AiGateway {
             let error = AiError::SecretDetected { kinds };
             self.reject(&request_id, &request, &resolved, &error);
             return Err(AppError::Ai(error));
+        }
+        if !findings.is_empty() {
+            // §10.2 Warn：用户在 Preview 中明确确认后放行（命中仍进审计，
+            // 不含原文）。默认路径（未确认）已在上方阻断。
+            let mut labels: Vec<&str> = findings.iter().map(|f| f.kind.label()).collect();
+            labels.sort_unstable();
+            labels.dedup();
+            log::warn!(
+                "ai request secret warn confirmed: id={} kinds={}",
+                request_id,
+                labels.join("、")
+            );
         }
 
         // 3. token 预算校验（§6.3：请求前报错，不等 Provider 模糊失败）。

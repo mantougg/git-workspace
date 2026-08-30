@@ -366,6 +366,27 @@ pub fn ai_get_request_status(
     Ok(state.ai_gateway.status(&request_id))
 }
 
+/// 构建发送前 Preview（AI-03，§10.1）：收集上下文（只调现有领域服务）
+/// → Secret 管道 → 预算策略 → Prompt 分层 → 内容 hash。**零网络访问**；
+/// 用户确认后把返回的 `request` 交给 `ai_submit_request`（Gateway 仍有
+/// 自己的 Secret/预算闸门）。排除项变更 = 用新 `exclusions` 重新调用。
+#[tauri::command]
+pub async fn ai_build_context_preview(
+    state: tauri::State<'_, crate::state::AppState>,
+    req: ai::preview::ContextPreviewRequest,
+) -> AppResult<ai::preview::AiContextPreview> {
+    let db = state.db.clone();
+    let runtime = state.runtime.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db
+            .lock()
+            .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
+        ai::preview::build(&conn, Some(runtime.as_ref()), req)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("preview task join error: {}", e)))?
+}
+
 // ---------------------------------------------------------------------------
 // 原型命令（Phase A 兼容保留）：ai_review 移除「前端直接传 Key + 模型硬编码」
 // （§4.2 Phase A），改走任务默认模型解析 + 凭证存储。

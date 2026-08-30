@@ -6,6 +6,74 @@
     "repoName": "repo",
     "repoPath": "/ws/repo"
   },
+  "AiContextPreview": {
+    "blockReasons": [],
+    "blocked": false,
+    "budgetExcludedSources": [],
+    "budgetStrategy": "codeReview",
+    "budgetTokens": 24000,
+    "contentHash": "0123456789abcdef",
+    "costEstimate": null,
+    "estimatedRequests": 1,
+    "items": [
+      {
+        "charCount": 200,
+        "displayName": "diff 摘要（workdir）",
+        "estimatedTokens": 50,
+        "excluded": false,
+        "exclusionReason": null,
+        "kind": "diff",
+        "redacted": false,
+        "sourceId": "diff:workdir:/ws/repo:summary",
+        "truncated": false
+      }
+    ],
+    "modelId": "gpt-4o-mini",
+    "modelName": "GPT-4o mini",
+    "providerId": "p1",
+    "providerName": "Team OpenAI",
+    "request": {
+      "contextManifest": [],
+      "messages": [
+        {
+          "content": "<context-item kind=\"diff\" source=\"diff:workdir:/ws/repo:summary\" name=\"diff 摘要\">...</context-item>",
+          "role": "user"
+        }
+      ],
+      "modelId": "gpt-4o-mini",
+      "providerId": "p1",
+      "requestId": "req-1",
+      "responseFormat": "json",
+      "secretWarnConfirmed": false,
+      "sessionId": null,
+      "stream": true,
+      "systemInstruction": "你是 Git Reviewer",
+      "taskKind": "gitReview",
+      "temperature": null,
+      "tokenBudget": 24000,
+      "toolPolicy": "disabled"
+    },
+    "requestId": "req-1",
+    "secret": {
+      "blockKinds": [],
+      "blocked": false,
+      "findings": [],
+      "maskedSources": [],
+      "warnPending": false
+    },
+    "target": {
+      "processId": null,
+      "repoPath": "/ws/repo",
+      "runtimeName": null,
+      "workspaceId": 1,
+      "workspaceName": "ws"
+    },
+    "taskKind": "gitReview",
+    "totalChars": 200,
+    "totalEstimatedTokens": 50,
+    "truncatedSources": [],
+    "usesNetwork": true
+  },
   "AiCredentialStatus": {
     "hasCredential": true,
     "osStoreAvailable": true,
@@ -96,9 +164,11 @@
         "displayName": "应用启动日志（最近 200 行）",
         "estimatedTokens": 2048,
         "excluded": false,
+        "exclusionReason": null,
         "kind": "log",
         "redacted": true,
-        "sourceId": "runtime/app:latest"
+        "sourceId": "runtime/app:latest",
+        "truncated": false
       }
     ],
     "messages": [
@@ -111,6 +181,7 @@
     "providerId": null,
     "requestId": "req-1",
     "responseFormat": "json",
+    "secretWarnConfirmed": false,
     "sessionId": "sess-1",
     "stream": true,
     "systemInstruction": "你是构建排障助手",
@@ -464,9 +535,36 @@
     "displayName": "应用启动日志（最近 200 行）",
     "estimatedTokens": 2048,
     "excluded": false,
+    "exclusionReason": null,
     "kind": "log",
     "redacted": true,
-    "sourceId": "runtime/app:latest"
+    "sourceId": "runtime/app:latest",
+    "truncated": false
+  },
+  "ContextPreviewRequest": {
+    "budgetStrategy": "errorDiagnosis",
+    "diffScope": null,
+    "exclusions": [
+      "log:1:app:12:tail"
+    ],
+    "logTailLines": 200,
+    "modelId": null,
+    "processId": 12,
+    "project": null,
+    "providerId": null,
+    "repoPath": null,
+    "runtimeName": "app",
+    "secretPolicy": {
+      "strategy": "block",
+      "warnConfirmed": false
+    },
+    "stream": true,
+    "supplementary": [],
+    "taskKind": "runtimeDiagnostic",
+    "tokenBudget": 16000,
+    "tokenEstimateFactor": 1.2,
+    "userInstruction": "帮我诊断启动失败",
+    "workspaceId": 1
   },
   "CreateChangeSetRequest": {
     "description": "desc",
@@ -1353,6 +1451,13 @@
     "pid": 4242,
     "processName": "java"
   },
+  "PreviewTarget": {
+    "processId": 12,
+    "repoPath": "/ws/repo",
+    "runtimeName": "app",
+    "workspaceId": 1,
+    "workspaceName": "ws"
+  },
   "ProcessFailedPayload": {
     "at": "2026-08-25T00:00:00Z",
     "exitCode": 1,
@@ -1927,6 +2032,36 @@
     "repoPath": "/ws/repo",
     "snippet": "let x"
   },
+  "SecretFindingSummary": {
+    "count": 1,
+    "displayName": "diff: .env",
+    "kinds": [
+      "Password"
+    ],
+    "sourceId": "diff:workdir:/ws/repo:.env"
+  },
+  "SecretPolicyChoice": {
+    "strategy": "warn",
+    "warnConfirmed": true
+  },
+  "SecretReport": {
+    "blockKinds": [
+      "Password"
+    ],
+    "blocked": true,
+    "findings": [
+      {
+        "count": 1,
+        "displayName": "diff: .env",
+        "kinds": [
+          "Password"
+        ],
+        "sourceId": "diff:workdir:/ws/repo:.env"
+      }
+    ],
+    "maskedSources": [],
+    "warnPending": false
+  },
   "ServiceExecState": [
     "skipped",
     "starting",
@@ -2047,6 +2182,14 @@
     "stepId": "fetch-all",
     "succeeded": 1,
     "total": 1
+  },
+  "SupplementaryContext": {
+    "content": "code: BuildFailed\nmessage: 构建失败",
+    "displayName": "结构化错误（BuildFailed）",
+    "kind": "error",
+    "redacted": true,
+    "role": "structuredError",
+    "sourceId": "error:BuildFailed"
   },
   "TagEntry": {
     "message": "release",

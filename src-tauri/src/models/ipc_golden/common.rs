@@ -315,7 +315,9 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             char_count: 8192,
             estimated_tokens: 2048,
             redacted: true,
+            truncated: false,
             excluded: false,
+            exclusion_reason: None,
         }),
     );
     m.insert(
@@ -345,13 +347,16 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 char_count: 8192,
                 estimated_tokens: 2048,
                 redacted: true,
+                truncated: false,
                 excluded: false,
+                exclusion_reason: None,
             }],
             response_format: crate::ai::ResponseFormat::Json,
             tool_policy: crate::ai::ToolPolicy::ReadOnlyWhitelist,
             token_budget: 32000,
             temperature: Some(0.2),
             stream: true,
+            secret_warn_confirmed: false,
         }),
     );
     // 结果模型（§8.4）：枚举类型按 golden 约定序列化为全部变体数组。
@@ -422,6 +427,147 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             }),
             error: None,
             error_code: None,
+        }),
+    );
+    // AI-03 Context Builder / Preview（设计文档 §8 / §10.1 / §10.2）：
+    // 预算策略 / Secret 管道 / Preview 契约。
+    m.insert(
+        "SupplementaryContext".into(),
+        json!(crate::ai::preview::SupplementaryContext {
+            role: crate::ai::context::ContextRole::StructuredError,
+            kind: crate::ai::ContextKind::Error,
+            source_id: "error:BuildFailed".into(),
+            display_name: "结构化错误（BuildFailed）".into(),
+            content: "code: BuildFailed\nmessage: 构建失败".into(),
+            redacted: true,
+        }),
+    );
+    m.insert(
+        "ContextPreviewRequest".into(),
+        json!(crate::ai::preview::ContextPreviewRequest {
+            task_kind: crate::ai::AiTaskKind::RuntimeDiagnostic,
+            provider_id: None,
+            model_id: None,
+            workspace_id: Some(1),
+            repo_path: None,
+            runtime_name: Some("app".into()),
+            process_id: Some(12),
+            project: None,
+            user_instruction: "帮我诊断启动失败".into(),
+            diff_scope: None,
+            supplementary: vec![],
+            exclusions: vec!["log:1:app:12:tail".into()],
+            secret_policy: crate::ai::redact::SecretPolicyChoice {
+                strategy: crate::ai::redact::SecretStrategyKind::Block,
+                warn_confirmed: false,
+            },
+            budget_strategy: Some(crate::ai::policy::BudgetStrategy::ErrorDiagnosis),
+            stream: true,
+            token_estimate_factor: Some(1.2),
+            log_tail_lines: Some(200),
+            token_budget: Some(16000),
+        }),
+    );
+    m.insert(
+        "PreviewTarget".into(),
+        json!(crate::ai::preview::PreviewTarget {
+            workspace_id: Some(1),
+            workspace_name: Some("ws".into()),
+            repo_path: Some("/ws/repo".into()),
+            runtime_name: Some("app".into()),
+            process_id: Some(12),
+        }),
+    );
+    m.insert(
+        "SecretFindingSummary".into(),
+        json!(crate::ai::redact::SecretFindingSummary {
+            source_id: "diff:workdir:/ws/repo:.env".into(),
+            display_name: "diff: .env".into(),
+            kinds: vec!["Password".into()],
+            count: 1,
+        }),
+    );
+    m.insert(
+        "SecretPolicyChoice".into(),
+        json!(crate::ai::redact::SecretPolicyChoice {
+            strategy: crate::ai::redact::SecretStrategyKind::Warn,
+            warn_confirmed: true,
+        }),
+    );
+    m.insert(
+        "SecretReport".into(),
+        json!(crate::ai::redact::SecretReport {
+            findings: vec![crate::ai::redact::SecretFindingSummary {
+                source_id: "diff:workdir:/ws/repo:.env".into(),
+                display_name: "diff: .env".into(),
+                kinds: vec!["Password".into()],
+                count: 1,
+            }],
+            masked_sources: vec![],
+            blocked: true,
+            block_kinds: vec!["Password".into()],
+            warn_pending: false,
+        }),
+    );
+    m.insert(
+        "AiContextPreview".into(),
+        json!(crate::ai::preview::AiContextPreview {
+            request_id: "req-1".into(),
+            task_kind: crate::ai::AiTaskKind::GitReview,
+            provider_id: "p1".into(),
+            provider_name: "Team OpenAI".into(),
+            model_id: "gpt-4o-mini".into(),
+            model_name: "GPT-4o mini".into(),
+            target: crate::ai::preview::PreviewTarget {
+                workspace_id: Some(1),
+                workspace_name: Some("ws".into()),
+                repo_path: Some("/ws/repo".into()),
+                runtime_name: None,
+                process_id: None,
+            },
+            items: vec![crate::ai::ContextItem {
+                kind: crate::ai::ContextKind::Diff,
+                source_id: "diff:workdir:/ws/repo:summary".into(),
+                display_name: "diff 摘要（workdir）".into(),
+                char_count: 200,
+                estimated_tokens: 50,
+                redacted: false,
+                truncated: false,
+                excluded: false,
+                exclusion_reason: None,
+            }],
+            total_chars: 200,
+            total_estimated_tokens: 50,
+            budget_tokens: 24000,
+            budget_strategy: crate::ai::policy::BudgetStrategy::CodeReview,
+            secret: crate::ai::redact::SecretReport::default(),
+            truncated_sources: vec![],
+            budget_excluded_sources: vec![],
+            estimated_requests: 1,
+            cost_estimate: None,
+            uses_network: true,
+            blocked: false,
+            block_reasons: vec![],
+            content_hash: "0123456789abcdef".into(),
+            request: crate::ai::AiRequest {
+                request_id: "req-1".into(),
+                session_id: None,
+                task_kind: crate::ai::AiTaskKind::GitReview,
+                provider_id: Some("p1".into()),
+                model_id: Some("gpt-4o-mini".into()),
+                system_instruction: "你是 Git Reviewer".into(),
+                messages: vec![crate::ai::AiMessage {
+                    role: crate::ai::MessageRole::User,
+                    content: "<context-item kind=\"diff\" source=\"diff:workdir:/ws/repo:summary\" name=\"diff 摘要\">...</context-item>".into(),
+                }],
+                context_manifest: vec![],
+                response_format: crate::ai::ResponseFormat::Json,
+                tool_policy: crate::ai::ToolPolicy::Disabled,
+                token_budget: 24000,
+                temperature: None,
+                stream: true,
+                secret_warn_confirmed: false,
+            },
         }),
     );
     // AI 结构化错误（§17）：details 内含 suggestedActions。
@@ -573,4 +719,28 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("AiStreamChunk", "types/ai.ts", "AiStreamChunk"),
     ("AiRequestEvent", "types/ai.ts", "AiRequestEvent"),
     ("AiRequestSnapshot", "types/ai.ts", "AiRequestSnapshot"),
+    // AI-03 Context Builder / Preview（§8 / §10.1 / §10.2）
+    (
+        "SupplementaryContext",
+        "types/ai.ts",
+        "SupplementaryContext",
+    ),
+    (
+        "ContextPreviewRequest",
+        "types/ai.ts",
+        "ContextPreviewRequest",
+    ),
+    ("PreviewTarget", "types/ai.ts", "PreviewTarget"),
+    (
+        "SecretFindingSummary",
+        "types/ai.ts",
+        "SecretFindingSummary",
+    ),
+    (
+        "SecretPolicyChoice",
+        "types/ai.ts",
+        "SecretPolicyChoice",
+    ),
+    ("SecretReport", "types/ai.ts", "SecretReport"),
+    ("AiContextPreview", "types/ai.ts", "AiContextPreview"),
 ];

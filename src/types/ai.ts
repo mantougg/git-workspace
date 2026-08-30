@@ -163,6 +163,9 @@ export interface AiCredentialStatus {
 
 export type ContextKind = "diff" | "log" | "error" | "repository" | "runtime" | "dependency" | "file";
 
+/** 条目被排除的原因（§8.2 / §10.2）；未排除为 null。 */
+export type ExclusionReason = "user" | "budgetOverflow" | "secretPolicy";
+
 /** 上下文清单条目（§7.1）：只描述来源与计量，不含正文。 */
 export interface ContextItem {
   kind: ContextKind;
@@ -173,8 +176,12 @@ export interface ContextItem {
   estimatedTokens: number;
   /** 是否经过脱敏（T-08 Mask）。 */
   redacted: boolean;
-  /** 是否被用户排除（排除项不参与估算与发送）。 */
+  /** 是否为适配预算被截断（§8.2：截断必须可见）。 */
+  truncated: boolean;
+  /** 是否被排除（排除项不参与估算与发送）。 */
   excluded: boolean;
+  /** 排除原因；未排除为 null。 */
+  exclusionReason?: ExclusionReason | null;
 }
 
 export type MessageRole = "system" | "user" | "assistant";
@@ -208,6 +215,8 @@ export interface AiRequest {
   tokenBudget: number;
   temperature?: number | null;
   stream: boolean;
+  /** §10.2 Warn：用户在 Preview 中明确确认「知晓 Secret 提示仍发送」后置 true。 */
+  secretWarnConfirmed?: boolean;
 }
 
 export interface AiTokenUsage {
@@ -272,4 +281,162 @@ export interface AiRequestSnapshot {
   result: AiResult | null;
   error: string | null;
   errorCode: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// AI-03 Context Builder / Preview（§8 / §10.1 / §10.2）
+// ---------------------------------------------------------------------------
+
+/** 上下文角色（预算策略 §8.2 的优先级依据）。 */
+export type ContextRole =
+  | "structuredError"
+  | "errorLog"
+  | "logTail"
+  | "selectedLogRange"
+  | "exceptionStack"
+  | "environmentSummary"
+  | "runtimeConfig"
+  | "processInfo"
+  | "fileList"
+  | "hunkStructure"
+  | "fullDiff"
+  | "changeSummary"
+  | "repoSummary"
+  | "history"
+  | "conflictState"
+  | "conflictContent"
+  | "dependency"
+  | "userNote";
+
+/** 五类预算策略（§8.2）。 */
+export type BudgetStrategy =
+  | "errorDiagnosis"
+  | "logAnalysis"
+  | "codeReview"
+  | "commitMessage"
+  | "multiRepoSummary";
+
+/** Secret 处理策略（§10.2；Exclude 走条目级 exclusions）。 */
+export type SecretStrategyKind = "block" | "mask" | "warn";
+
+/** 请求的 Secret 策略（默认 Block）。 */
+export interface SecretPolicyChoice {
+  strategy: SecretStrategyKind;
+  /** Warn 策略下用户已明确确认「知晓风险仍发送」。 */
+  warnConfirmed?: boolean;
+}
+
+/** diff 范围。 */
+export type DiffScope = "workdir" | "staged" | "unstaged";
+
+/** 调用方注入的补充上下文（结构化错误、UI 选中的日志范围等）。 */
+export interface SupplementaryContext {
+  role: ContextRole;
+  kind: ContextKind;
+  sourceId: string;
+  displayName: string;
+  content: string;
+  /** 来源侧已脱敏。 */
+  redacted?: boolean;
+}
+
+/** Preview 构建请求（`ai_build_context_preview` 入参）。 */
+export interface ContextPreviewRequest {
+  taskKind: AiTaskKind;
+  /** 显式 Provider/模型；为空走任务默认解析链（§6.3）。 */
+  providerId: string | null;
+  modelId: string | null;
+  /** 目标范围（按任务种类取用）。 */
+  workspaceId: number | null;
+  repoPath: string | null;
+  runtimeName: string | null;
+  processId: number | null;
+  /** 依赖上下文的目标项目（R-02/R-03）。 */
+  project: string | null;
+  /** 用户补充指令（作为 user 消息，不进系统约束，§8.3）。 */
+  userInstruction?: string;
+  /** diff 范围（默认：commitMessage → staged，其余 → workdir）。 */
+  diffScope?: DiffScope | null;
+  supplementary?: SupplementaryContext[];
+  /** 用户排除的 sourceId 列表（§10.2 Exclude；变更后整体重建）。 */
+  exclusions?: string[];
+  /** Secret 策略（默认 Block）。 */
+  secretPolicy?: SecretPolicyChoice;
+  /** 预算策略覆盖（默认按任务种类）。 */
+  budgetStrategy?: BudgetStrategy | null;
+  stream?: boolean;
+  /** token 估算校准系数（默认 1.0 = chars/4 基准）。 */
+  tokenEstimateFactor?: number | null;
+  /** 日志尾部行数覆盖（默认 200）。 */
+  logTailLines?: number | null;
+  /** token 预算覆盖（默认 = 模型上下文上限的 3/4）。 */
+  tokenBudget?: number | null;
+}
+
+/** 目标范围（§10.1「目标 Workspace/Repository/Runtime」）。 */
+export interface PreviewTarget {
+  workspaceId: number | null;
+  workspaceName: string | null;
+  repoPath: string | null;
+  runtimeName: string | null;
+  processId: number | null;
+}
+
+/** 单条目的 Secret 命中摘要（类别 + 次数；不含原文/位置）。 */
+export interface SecretFindingSummary {
+  sourceId: string;
+  displayName: string;
+  kinds: string[];
+  count: number;
+}
+
+/** Secret 管道结果（§10.2）。 */
+export interface SecretReport {
+  findings: SecretFindingSummary[];
+  /** 被自动脱敏的条目 sourceId（§10.1「自动脱敏项」）。 */
+  maskedSources: string[];
+  /** 是否阻断发送（Block 命中 / Mask 二次扫描仍命中 / Warn 未确认）。 */
+  blocked: boolean;
+  /** 阻断原因涉及的 Secret 类别。 */
+  blockKinds: string[];
+  /** Warn 策略存在命中且用户尚未确认。 */
+  warnPending: boolean;
+}
+
+/** 发送前 Preview（§10.1 全字段）；`request` 可直接提交 `ai_submit_request`。 */
+export interface AiContextPreview {
+  requestId: string;
+  taskKind: AiTaskKind;
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  modelName: string;
+  target: PreviewTarget;
+  /** Context Manifest（每项字符数、估算 token、脱敏/截断/排除标记）。 */
+  items: ContextItem[];
+  /** 参与发送的合计（排除项不计）。 */
+  totalChars: number;
+  totalEstimatedTokens: number;
+  budgetTokens: number;
+  budgetStrategy: BudgetStrategy;
+  /** Secret 检测结果。 */
+  secret: SecretReport;
+  /** 预算截断的条目（§8.2 可见性）。 */
+  truncatedSources: string[];
+  /** 预算排除的条目（§8.2 可见性）。 */
+  budgetExcludedSources: string[];
+  /** 预计请求次数（第一期单请求 = 1）。 */
+  estimatedRequests: number;
+  /** 成本估算（无定价数据源，恒为 null）。 */
+  costEstimate: string | null;
+  /** 是否会使用网络。 */
+  usesNetwork: boolean;
+  /** 是否阻断发送。 */
+  blocked: boolean;
+  /** 阻断原因（用户可读）。 */
+  blockReasons: string[];
+  /** 最终内容 hash（§7.3；排除项变更后重建即变）。 */
+  contentHash: string;
+  /** 可直接提交 `ai_submit_request` 的请求。 */
+  request: AiRequest;
 }

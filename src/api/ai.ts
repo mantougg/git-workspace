@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AiContextPreview,
   AiCredentialStatus,
   AiModel,
   AiProvider,
@@ -9,6 +10,7 @@ import type {
   AiSettingsSummary,
   AiTaskDefault,
   AiTaskKind,
+  ContextPreviewRequest,
   ReviewResult,
   SaveAiModelRequest,
   SaveAiProviderRequest,
@@ -152,4 +154,18 @@ export function aiCancelRequest(requestId: string): Promise<AiRequestSnapshot> {
 /** 查询请求状态快照（不存在返回 null；不含 Prompt 内容）。 */
 export function aiGetRequestStatus(requestId: string): Promise<AiRequestSnapshot | null> {
   return invoke<AiRequestSnapshot | null>("ai_get_request_status", { requestId });
+}
+
+// ---------------------------------------------------------------------------
+// AI-03：发送前 Preview（§10.1）
+// ---------------------------------------------------------------------------
+
+/**
+ * 构建发送前 Preview：收集上下文（只调现有领域服务）→ Secret 管道 →
+ * 预算策略 → Prompt 分层 → 内容 hash。本命令不发起任何网络请求；
+ * 用户确认后把返回的 `request` 交给 aiSubmitRequest。
+ * 排除项变更 = 用新 `exclusions` 重新调用（重算扫描/估算/hash）。
+ */
+export function aiBuildContextPreview(req: ContextPreviewRequest): Promise<AiContextPreview> {
+  return invoke<AiContextPreview>("ai_build_context_preview", { req });
 }

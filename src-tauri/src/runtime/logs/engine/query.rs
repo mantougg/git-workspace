@@ -66,6 +66,57 @@ impl RuntimeLogEngine {
         tail_paths(&paths, n)
     }
 
+    /// 过滤 + tail 语义：返回**最近** n 行匹配项（search 是返回最早 n 行）。
+    /// AI 上下文（AI-03「最近错误日志」）与诊断场景用；流式滑动窗口，
+    /// 内存有界。活跃会话先取会话环形缓冲再过滤。
+    pub fn search_tail(
+        &self,
+        workspace_root: &Path,
+        runtime_name: &str,
+        process_id: i64,
+        filter: &LogFilter,
+        n: usize,
+    ) -> AppResult<Vec<LogEntry>> {
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+        if let Some(session) = self.session(process_id) {
+            // 会话环形缓冲本身有界；多取一些再过滤，取末尾 n 行。
+            let overshoot = n.saturating_mul(4).max(n).min(4096);
+            let mut matched: Vec<LogEntry> = session
+                .tail(overshoot)
+                .into_iter()
+                .filter(|line| matches_filter(filter, line.level, &line.line))
+                .map(|line| LogEntry {
+                    line_number: line.seq,
+                    level: line.level,
+                    text: line.line,
+                })
+                .collect();
+            if matched.len() > n {
+                matched.drain(..matched.len() - n);
+            }
+            return Ok(matched);
+        }
+        let paths = self.require_segments(workspace_root, runtime_name, process_id)?;
+        let mut window: VecDeque<LogEntry> = VecDeque::with_capacity(n.min(1024));
+        for_each_file_line(&paths, |line_number, text| {
+            let level = parse_level(text);
+            if matches_filter(filter, level, text) {
+                if window.len() == n {
+                    window.pop_front();
+                }
+                window.push_back(LogEntry {
+                    line_number,
+                    level,
+                    text: text.to_string(),
+                });
+            }
+            true
+        })?;
+        Ok(window.into_iter().collect())
+    }
+
     /// 导出（§36）：与 `search` 共用同一过滤管道（导出内容与显示一致），
     /// 流式写出，不整文件载入内存。全量导出匹配行（忽略 `filter.limit`）。
     pub fn export(

@@ -4,6 +4,11 @@
 //! - [`model`]：模型能力目录、任务级默认模型解析（§6.2 / §6.3）；
 //! - [`credentials`]：OS Credential Store 存取 + 会话级临时凭证（§6.4）；
 //! - [`request`]：类型化请求模型与结构化结果（§7.1 / §8.4）；
+//! - [`context`]：Context Builder——只调现有领域服务收集结构化上下文（§8.1）；
+//! - [`policy`]：五类上下文预算策略（§8.2：截断/排除全进 Manifest）；
+//! - [`redact`]：Secret 管道（§10.2：Block/Mask/Exclude/Warn，复用 T-08）；
+//! - [`prompt`]：Prompt 分层组装（§8.3：用户内容不进系统约束）；
+//! - [`preview`]：发送前 Preview 契约与构建（§10.1，零网络）；
 //! - [`lifecycle`]：请求生命周期状态机（§7.3）；
 //! - [`adapters`]：三种协议的 Provider Adapter（§7.2）；
 //! - [`gateway`]：统一 Gateway——唯一允许访问 AI 网络的地方（§7.3）；
@@ -14,13 +19,18 @@
 //! 错误、URL、进程命令行（`docs/tasks-ai/00-全局开发约束.md` §4）。
 
 pub mod adapters;
+pub mod context;
 pub mod credentials;
 pub mod error;
 pub mod events;
 pub mod gateway;
 pub mod lifecycle;
 pub mod model;
+pub mod policy;
+pub mod preview;
+pub mod prompt;
 pub mod provider;
+pub mod redact;
 pub mod request;
 pub mod transport;
 
@@ -43,5 +53,5 @@ pub use provider::{
 };
 pub use request::{
     parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, ContextItem, ContextKind,
-    MessageRole, ResponseFormat, ToolPolicy,
+    ExclusionReason, MessageRole, ResponseFormat, ToolPolicy,
 };

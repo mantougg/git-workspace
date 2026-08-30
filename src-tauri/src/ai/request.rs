@@ -37,6 +37,29 @@ impl ContextKind {
     }
 }
 
+/// 条目被排除的原因（§8.2 / §10.2）。`None` = 未排除。
+/// 预算超限与用户排除都必须在 Manifest 与 UI 可见，不得静默发送。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ExclusionReason {
+    /// 用户在 Preview 中手动排除。
+    User,
+    /// 上下文预算超限被策略排除（§8.2）。
+    BudgetOverflow,
+    /// Secret 策略排除（§10.2 Exclude）。
+    SecretPolicy,
+}
+
+impl ExclusionReason {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ExclusionReason::User => "user",
+            ExclusionReason::BudgetOverflow => "budgetOverflow",
+            ExclusionReason::SecretPolicy => "secretPolicy",
+        }
+    }
+}
+
 /// 上下文清单条目（§7.1）。只描述来源与计量，不含正文。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,8 +73,14 @@ pub struct ContextItem {
     pub estimated_tokens: i64,
     /// 是否经过脱敏（T-08 Mask）。
     pub redacted: bool,
-    /// 是否被用户排除（排除项不参与估算与发送）。
+    /// 是否为适配预算被截断（§8.2：截断必须可见）。
+    #[serde(default)]
+    pub truncated: bool,
+    /// 是否被排除（排除项不参与估算与发送）。
     pub excluded: bool,
+    /// 排除原因；未排除为 None（契约稳定：始终序列化，可空）。
+    #[serde(default)]
+    pub exclusion_reason: Option<ExclusionReason>,
 }
 
 /// 消息角色。System 消息由 Gateway 合并进 `ProviderRequest.system`。
@@ -111,6 +140,10 @@ pub struct AiRequest {
     pub token_budget: i64,
     pub temperature: Option<f64>,
     pub stream: bool,
+    /// §10.2 Warn 策略：用户在 Preview 中明确确认「知晓低置信度 Secret
+    /// 提示仍发送」后置 true。默认 false = 任何命中都阻断（§18.2）。
+    #[serde(default)]
+    pub secret_warn_confirmed: bool,
 }
 
 /// token 用量（协议归一化后；部分 Provider 不回传时为 None）。

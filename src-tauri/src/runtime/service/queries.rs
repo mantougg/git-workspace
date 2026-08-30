@@ -170,6 +170,26 @@ impl RuntimeService {
             .search(&root, &query.runtime_name, query.process_id, &query.filter)
     }
 
+    /// 日志 tail（R-11 引擎 tail：活跃会话读环形缓冲，否则文件尾部）。
+    /// AI 上下文（AI-03「日志尾部」）等需要最近 N 行的场景用。
+    pub fn tail_logs(&self, query: &RuntimeLogQuery, n: usize) -> AppResult<Vec<LogEntry>> {
+        let root = self.workspace_root(query.workspace_id)?;
+        self.logs
+            .tail(&root, &query.runtime_name, query.process_id, n)
+    }
+
+    /// 过滤 + tail：最近 n 行匹配项（如「最近错误日志」，AI-03 错误诊断上下文）。
+    pub fn search_logs_tail(&self, query: &RuntimeLogQuery, n: usize) -> AppResult<Vec<LogEntry>> {
+        let root = self.workspace_root(query.workspace_id)?;
+        self.logs.search_tail(
+            &root,
+            &query.runtime_name,
+            query.process_id,
+            &query.filter,
+            n,
+        )
+    }
+
     /// `runtime_clear_logs`。
     pub fn clear_logs(&self, query: &RuntimeLogQuery) -> AppResult<()> {
         let root = self.workspace_root(query.workspace_id)?;
