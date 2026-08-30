@@ -412,6 +412,26 @@
     "inputTokens": 1024,
     "outputTokens": 256
   },
+  "AiToolDefinition": {
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "inputSchema": {
+      "required": [
+        "workspaceId"
+      ],
+      "type": "object"
+    },
+    "maxResultBytes": 262144,
+    "mayContainSecrets": true,
+    "name": "runtime.getLogs",
+    "readOnly": true,
+    "requiresWorkspace": true,
+    "timeoutMs": 10000,
+    "version": "1.0"
+  },
   "BranchEntry": {
     "ahead": 1,
     "behind": 2,
@@ -2431,6 +2451,23 @@
       "workspaceId": 1
     }
   ],
+  "ToolCallRequest": {
+    "arguments": {},
+    "requestId": "req-1",
+    "role": "workspaceAssistant",
+    "toolName": "workspace.list"
+  },
+  "ToolInvocation": {
+    "durationMs": 1,
+    "parameterHash": "0000000000000000",
+    "requestId": "req-1",
+    "result": [],
+    "resultBytes": 2,
+    "role": "workspaceAssistant",
+    "toolName": "workspace.list",
+    "totalResultBytes": 2,
+    "truncated": false
+  },
   "UndoItemResult": {
     "itemId": 1,
     "message": "已回退",

@@ -39,6 +39,7 @@ pub mod redact;
 pub mod request;
 pub mod session;
 pub mod transport;
+pub mod tools;
 
 #[cfg(test)]
 mod gateway_tests;
@@ -68,4 +69,8 @@ pub use session::{
     create_session, delete_session, get_session_detail, list_sessions, AiSession,
     AiSessionDetail, AiSessionList, AiSessionListQuery, AiSessionMessage, AiSessionRole,
     CreateAiSessionRequest,
+};
+pub use tools::{
+    definitions as tool_definitions, registry as tool_registry, ToolCallRequest, ToolContext,
+    ToolDefinition, ToolInvocation, ToolRegistry, ToolRole, ToolScope,
 };

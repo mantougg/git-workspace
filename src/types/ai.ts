@@ -197,6 +197,49 @@ export type ResponseFormat = "text" | "json";
 /** 工具策略（§9）：第一期只读。 */
 export type ToolPolicy = "disabled" | "readOnlyWhitelist";
 
+/** Restricted roles and scopes exposed by the AI-05 tool registry. */
+export type ToolRole =
+  | "workspaceAssistant"
+  | "gitReviewer"
+  | "commitAssistant"
+  | "conflictAssistant"
+  | "runtimeDiagnostician"
+  | "runtimeConfigAdvisor"
+  | "actionPlanner";
+export type ToolScope = "workspace" | "repository" | "runtime" | "jdk" | "maven" | "task";
+
+export interface AiToolDefinition {
+  name: string;
+  version: string;
+  inputSchema: Record<string, unknown>;
+  allowedRoles: ToolRole[];
+  contextScope: ToolScope;
+  requiresWorkspace: boolean;
+  mayContainSecrets: boolean;
+  timeoutMs: number;
+  maxResultBytes: number;
+  readOnly: boolean;
+}
+
+export interface ToolCallRequest {
+  requestId: string;
+  toolName: string;
+  role: ToolRole;
+  arguments: Record<string, unknown>;
+}
+
+export interface ToolInvocation {
+  requestId: string;
+  toolName: string;
+  role: ToolRole;
+  result: unknown;
+  truncated: boolean;
+  resultBytes: number;
+  totalResultBytes: number;
+  durationMs: number;
+  parameterHash: string;
+}
+
 /** 类型化 AI 请求（§7.1）。 */
 export interface AiRequest {
   requestId: string;

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ai;
 use crate::ai::error::AiError;
+use crate::ai::tools::{self, ToolCallRequest, ToolDefinition, ToolInvocation};
 use crate::core::diff;
 use crate::error::{AppError, AppResult};
 
@@ -972,4 +973,22 @@ pub fn clear_code_index(
     )?;
 
     Ok(())
+}
+
+/// AI-05: list the typed, read-only tool definitions. The schema is the
+/// backend source of truth for the UI and future external adapters.
+#[tauri::command]
+pub fn ai_list_tools() -> Vec<ToolDefinition> {
+    tools::registry().definitions()
+}
+
+/// AI-05: execute one bounded, read-only tool call through the registry.
+#[tauri::command]
+pub async fn ai_execute_tool(
+    request: ToolCallRequest,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> AppResult<ToolInvocation> {
+    tools::registry()
+        .invoke(request, ai::ToolContext::from_state(state.inner()))
+        .await
 }

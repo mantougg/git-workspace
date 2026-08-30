@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**12**
-- 已完成：**4** · 进行中：**0** · 未开始：**8**
-- 完成度：**4 / 12（33%）**
+- 已完成：**5** · 进行中：**0** · 未开始：**7**
+- 完成度：**5 / 12（42%）**
 
 ## 第一阶段口径（设计文档 §21）
 
@@ -54,7 +54,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| AI-05 | Tool Registry 与只读 Workspace/Runtime 工具 | P0 | ⬜ | AI-02, R-12, R-13 | [AI-05-tool-registry.md](./AI-05-tool-registry.md) |
+| AI-05 | Tool Registry 与只读 Workspace/Runtime 工具 | P0 | ✅ | AI-02, R-12, R-13 | [AI-05-tool-registry.md](./AI-05-tool-registry.md) |
 | AI-06 | Runtime Assistant（失败诊断 / 日志异常解释） | P0 | ⬜ | AI-03, AI-05, R-11, R-14 | [AI-06-runtime-assistant.md](./AI-06-runtime-assistant.md) |
 
 ### Phase C · Git Assistant（P1，3 个）

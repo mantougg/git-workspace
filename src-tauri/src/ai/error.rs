@@ -78,6 +78,32 @@ pub enum AiError {
     /// Provider 返回策略拒绝（内容策略 / 权限策略等 4xx）。
     #[error("Provider 拒绝了请求: {message}")]
     PolicyRejected { message: String },
+
+    /// 工具名不在注册表中（§9.3：工具是类型化包装，不是任意函数执行器）。
+    #[error("AI 工具不存在: {name}")]
+    ToolNotFound { name: String },
+
+    /// 角色不在该工具的白名单中（§9.2 权限矩阵）。
+    #[error("角色 {role} 无权调用工具 {tool}")]
+    ToolNotAllowed { tool: String, role: String },
+
+    /// 工具请求超出当前上下文范围（§9.4：不得自行扩大 Workspace/Repository
+    /// 范围；如访问当前 Workspace 之外的仓库、缺少 Workspace 上下文）。
+    #[error("工具 {tool} 请求超出当前范围: {message}")]
+    ToolScopeViolation { tool: String, message: String },
+
+    /// 工具入参不符合其 JSON Schema / 类型契约。
+    #[error("工具 {tool} 入参无效: {message}")]
+    ToolInputInvalid { tool: String, message: String },
+
+    /// 单次用户请求的工具调用达到上限（§9.4 默认 8 次）——需要用户继续
+    /// 确认或缩小范围后才能继续。
+    #[error("单次请求的工具调用已达上限 {max} 次，需要确认继续或缩小范围")]
+    ToolCallLimitExceeded { max: u32 },
+
+    /// 工具执行超过其声明的超时（§9.3 每个工具声明超时上限）。
+    #[error("工具 {tool} 执行超时（>{timeout_ms}ms）")]
+    ToolTimeout { tool: String, timeout_ms: u64 },
 }
 
 impl AiError {
@@ -97,6 +123,12 @@ impl AiError {
             AiError::ResponseInvalid { .. } => "AiResponseInvalid",
             AiError::PreviewRequired { .. } => "AiPreviewRequired",
             AiError::PolicyRejected { .. } => "AiPolicyRejected",
+            AiError::ToolNotFound { .. } => "AiToolNotFound",
+            AiError::ToolNotAllowed { .. } => "AiToolNotAllowed",
+            AiError::ToolScopeViolation { .. } => "AiToolScopeViolation",
+            AiError::ToolInputInvalid { .. } => "AiToolInputInvalid",
+            AiError::ToolCallLimitExceeded { .. } => "AiToolCallLimitExceeded",
+            AiError::ToolTimeout { .. } => "AiToolTimeout",
         }
     }
 
@@ -160,6 +192,24 @@ impl AiError {
             AiError::PolicyRejected { .. } => {
                 vec!["调整请求内容后重试", "检查 Provider 的内容策略与账户权限"]
             }
+            AiError::ToolNotFound { .. } => {
+                vec!["从工具注册表中选择可用工具", "检查工具名拼写"]
+            }
+            AiError::ToolNotAllowed { .. } => {
+                vec!["切换到拥有该工具权限的角色", "改用该角色白名单内的工具"]
+            }
+            AiError::ToolScopeViolation { .. } => {
+                vec!["将查询限定在当前 Workspace 范围内", "先通过列表工具确认可用目标"]
+            }
+            AiError::ToolInputInvalid { .. } => {
+                vec!["按工具的 JSON Schema 修正入参后重试"]
+            }
+            AiError::ToolCallLimitExceeded { .. } => {
+                vec!["确认继续以开始新一轮工具调用", "缩小查询范围后重新提问"]
+            }
+            AiError::ToolTimeout { .. } => {
+                vec!["缩小查询范围（减少行数/文件数）后重试", "稍后重试"]
+            }
         }
     }
 
@@ -201,6 +251,26 @@ impl AiError {
             } => serde_json::json!({
                 "estimatedTokens": estimated_tokens,
                 "budgetTokens": budget_tokens,
+            }),
+            AiError::ToolNotFound { name } => serde_json::json!({
+                "tool": name,
+            }),
+            AiError::ToolNotAllowed { tool, role } => serde_json::json!({
+                "tool": tool,
+                "role": role,
+            }),
+            AiError::ToolScopeViolation { tool, .. } => serde_json::json!({
+                "tool": tool,
+            }),
+            AiError::ToolInputInvalid { tool, .. } => serde_json::json!({
+                "tool": tool,
+            }),
+            AiError::ToolCallLimitExceeded { max } => serde_json::json!({
+                "maxCalls": max,
+            }),
+            AiError::ToolTimeout { tool, timeout_ms } => serde_json::json!({
+                "tool": tool,
+                "timeoutMs": timeout_ms,
             }),
             _ => serde_json::json!({}),
         };
@@ -304,6 +374,41 @@ mod tests {
                     message: "policy".into(),
                 },
                 "AiPolicyRejected",
+            ),
+            (
+                AiError::ToolNotFound {
+                    name: "git.nope".into(),
+                },
+                "AiToolNotFound",
+            ),
+            (
+                AiError::ToolNotAllowed {
+                    tool: "runtime.getLogs".into(),
+                    role: "gitReviewer".into(),
+                },
+                "AiToolNotAllowed",
+            ),
+            (
+                AiError::ToolScopeViolation {
+                    tool: "repository.status".into(),
+                    message: "repo outside workspace".into(),
+                },
+                "AiToolScopeViolation",
+            ),
+            (
+                AiError::ToolInputInvalid {
+                    tool: "repository.diff".into(),
+                    message: "missing repoPath".into(),
+                },
+                "AiToolInputInvalid",
+            ),
+            (AiError::ToolCallLimitExceeded { max: 8 }, "AiToolCallLimitExceeded"),
+            (
+                AiError::ToolTimeout {
+                    tool: "runtime.getLogs".into(),
+                    timeout_ms: 5000,
+                },
+                "AiToolTimeout",
             ),
         ];
         for (err, code) in cases {

@@ -15,6 +15,9 @@ import type {
   SaveAiModelRequest,
   SaveAiProviderRequest,
   SearchResult,
+  AiToolDefinition,
+  ToolCallRequest,
+  ToolInvocation,
 } from "@/types/ai";
 
 // ---------------------------------------------------------------------------
@@ -168,4 +171,16 @@ export function aiGetRequestStatus(requestId: string): Promise<AiRequestSnapshot
  */
 export function aiBuildContextPreview(req: ContextPreviewRequest): Promise<AiContextPreview> {
   return invoke<AiContextPreview>("ai_build_context_preview", { req });
+}
+
+// ---------------------------------------------------------------------------
+// AI-05：只读工具注册表
+// ---------------------------------------------------------------------------
+
+export function aiListTools(): Promise<AiToolDefinition[]> {
+  return invoke<AiToolDefinition[]>("ai_list_tools");
+}
+
+export function aiExecuteTool(request: ToolCallRequest): Promise<ToolInvocation> {
+  return invoke<ToolInvocation>("ai_execute_tool", { request });
 }

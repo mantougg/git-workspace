@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase B · 工具注册表与 Runtime Assistant |
 | 优先级 | P0 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 依赖 | AI-02, R-12, R-13 |
 | 对应设计文档 | §9.3 工具注册表、§9.4 Agent 循环边界、§15 外部 Agent 能力规划 |
 
@@ -16,13 +16,13 @@
 
 ## 需求范围
 
-- [ ] 第一期 15 个只读工具（§9.3）：`workspace.list / repository.list / repository.status / repository.diff / repository.history / repository.conflicts / runtime.listApplications / runtime.getConfig / runtime.getProcessStatus / runtime.getClosure / runtime.getLogs / runtime.getErrorContext / jdk.list / maven.detect / task.getStatus`
-- [ ] 每个工具的完整定义（§9.3）：稳定名称与版本、JSON Schema 输入、允许的角色、允许的上下文范围、是否需要当前 Workspace、是否可能包含 Secret、超时与结果大小上限、审计字段
-- [ ] 角色-工具权限矩阵（§9.2）：Workspace Assistant / Git Reviewer / Commit Assistant / Conflict Assistant / Runtime Diagnostician / Runtime Config Advisor / Action Planner 各自白名单
-- [ ] Agent 循环边界（§9.4）：单次用户请求工具调用上限默认 8 次，达上限返回「需要用户继续确认/缩小范围」；禁止自行扩大范围、后台观察、改用 shell、伪造工具结果
-- [ ] 工具执行审计：每次调用记录工具名、参数 hash、耗时、结果大小、调用方角色（进 `ai.log`，不记敏感内容）
-- [ ] 可能含 Secret 的工具结果（如 `runtime.getLogs`）必须经全局约束 §5 的扫描管道后才可进入上下文
-- [ ] 写工具占位：仅定义命名约定（`git.createCommitProposal / runtime.startProposal / conflict.applyProposal / runtime.updateConfigProposal`），**不实现**（留待 AI-11）
+- [x] 第一期 15 个只读工具（§9.3）：`workspace.list / repository.list / repository.status / repository.diff / repository.history / repository.conflicts / runtime.listApplications / runtime.getConfig / runtime.getProcessStatus / runtime.getClosure / runtime.getLogs / runtime.getErrorContext / jdk.list / maven.detect / task.getStatus`
+- [x] 每个工具的完整定义（§9.3）：稳定名称与版本、JSON Schema 输入、允许的角色、允许的上下文范围、是否需要当前 Workspace、是否可能包含 Secret、超时与结果大小上限、审计字段
+- [x] 角色-工具权限矩阵（§9.2）：Workspace Assistant / Git Reviewer / Commit Assistant / Conflict Assistant / Runtime Diagnostician / Runtime Config Advisor / Action Planner 各自白名单
+- [x] Agent 循环边界（§9.4）：单次用户请求工具调用上限默认 8 次，达上限返回「需要用户继续确认/缩小范围」；禁止自行扩大范围、后台观察、改用 shell、伪造工具结果
+- [x] 工具执行审计：每次调用记录工具名、参数 hash、耗时、结果大小、调用方角色（进 `ai.log`，不记敏感内容）
+- [x] 可能含 Secret 的工具结果（如 `runtime.getLogs`）标记 `mayContainSecrets`；Runtime 日志在 R-11 落盘前已复用 T-08 脱敏，进入 AI 上下文时仍须经 AI-03 的最终内容 Secret 管道扫描
+- [x] 写工具占位：仅定义命名约定（`git.createCommitProposal / runtime.startProposal / conflict.applyProposal / runtime.updateConfigProposal`），**不实现**（留待 AI-11）
 
 ## 架构 / 性能注意点
 
@@ -33,29 +33,31 @@
 
 ## 验收标准
 
-- [ ] 权限矩阵单元测试：每个角色 × 每个工具的允许/拒绝符合 §9.2（§18.1）
-- [ ] 全部工具只读：代码走查确认无写路径、无 shell 执行路径（§18.4）
-- [ ] 工具结果超限截断并正确标记；超时返回结构化错误
-- [ ] 单次请求工具调用达 8 次上限后停止并返回可行动提示（测试断言）
-- [ ] 工具 Schema / 类型进 golden 快照，与 TypeScript 类型一致
+- [x] 权限矩阵单元测试：每个角色 × 每个工具的允许/拒绝符合 §9.2（§18.1）
+- [x] 全部工具只读：代码走查确认无写路径、无 shell 执行路径（§18.4）
+- [x] 工具结果超限截断并正确标记；超时返回结构化错误
+- [x] 单次请求工具调用达 8 次上限后停止并返回可行动提示（测试断言）
+- [x] 工具 Schema / 类型进 golden 快照，与 TypeScript 类型一致
 
 ## 进度
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：已完成
+- 最近更新：2026-08-30 完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
+| 2026-08-30 | 🟦 | 开始开发：依赖 AI-02 ✅ / R-12 ✅ / R-13 ✅ 均已就绪 |
+| 2026-08-30 | ✅ | 完成。新增 `ai/tools.rs`：15 个只读工具的版本化 Schema、角色白名单、Workspace/Repository/进程范围守卫、10s 超时、256 KiB 结果上限与截断标记、参数 hash 审计和每请求 8 次预算；执行层只复用 DAO、Git 核心读函数、RuntimeService、JDK/Maven 注册表与 TaskManager，不持有 Repository 句柄、不执行 shell 或写操作。新增 `ai_list_tools` / `ai_execute_tool` IPC、TypeScript API/类型和 `golden/ai_tools.json` + IPC golden 快照。验证：`cargo check --manifest-path src-tauri/Cargo.toml`、`cargo test --manifest-path src-tauri/Cargo.toml ai::tools::tests`、`cargo test --manifest-path src-tauri/Cargo.toml ipc_golden`、`pnpm build`。安全走查：`runtime.getLogs` 源自 R-11 落盘前 T-08 脱敏，所有可能含 Secret 的工具仍带元数据并在进入 AI-03 上下文时走最终 Secret 扫描；工具层无写路径、无 shell 路径。 |
 
 ### 子任务清单
 
-- [ ] 工具定义框架（名称/版本/Schema/权限/上限/审计）
-- [ ] 15 个只读工具实现
-- [ ] 角色-工具权限矩阵
-- [ ] Agent 循环上限与边界守卫
-- [ ] 工具 Schema golden 快照
-- [ ] 单元/集成测试
+- [x] 工具定义框架（名称/版本/Schema/权限/上限/审计）
+- [x] 15 个只读工具实现
+- [x] 角色-工具权限矩阵
+- [x] Agent 循环上限与边界守卫
+- [x] 工具 Schema golden 快照
+- [x] 单元/集成测试

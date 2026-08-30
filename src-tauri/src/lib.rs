@@ -385,6 +385,9 @@ pub fn run() {
             commands::ai::ai_get_request_audit,
             commands::ai::ai_list_session_audits,
             commands::ai::ai_clear_result_cache,
+            // AI-05：只读工具注册表与受限执行器
+            commands::ai::ai_list_tools,
+            commands::ai::ai_execute_tool,
             // Log commands
             commands::logs::list_log_files,
             commands::logs::open_logs,

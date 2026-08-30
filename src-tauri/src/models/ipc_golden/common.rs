@@ -360,6 +360,44 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             use_cache: true,
         }),
     );
+    m.insert(
+        "AiToolDefinition".into(),
+        json!(crate::ai::ToolDefinition {
+            name: "runtime.getLogs".into(),
+            version: "1.0".into(),
+            input_schema: json!({"type": "object", "required": ["workspaceId"]}),
+            allowed_roles: vec![crate::ai::ToolRole::RuntimeDiagnostician, crate::ai::ToolRole::ActionPlanner],
+            context_scope: crate::ai::ToolScope::Runtime,
+            requires_workspace: true,
+            may_contain_secrets: true,
+            timeout_ms: 10000,
+            max_result_bytes: 262144,
+            read_only: true,
+        }),
+    );
+    m.insert(
+        "ToolCallRequest".into(),
+        json!(crate::ai::ToolCallRequest {
+            request_id: "req-1".into(),
+            tool_name: "workspace.list".into(),
+            role: crate::ai::ToolRole::WorkspaceAssistant,
+            arguments: json!({}),
+        }),
+    );
+    m.insert(
+        "ToolInvocation".into(),
+        json!(crate::ai::ToolInvocation {
+            request_id: "req-1".into(),
+            tool_name: "workspace.list".into(),
+            role: crate::ai::ToolRole::WorkspaceAssistant,
+            result: json!([]),
+            truncated: false,
+            result_bytes: 2,
+            total_result_bytes: 2,
+            duration_ms: 1,
+            parameter_hash: "0000000000000000".into(),
+        }),
+    );
     // 结果模型（§8.4）：枚举类型按 golden 约定序列化为全部变体数组。
     m.insert(
         "AiResult".into(),
@@ -849,6 +887,9 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("AiStreamChunk", "types/ai.ts", "AiStreamChunk"),
     ("AiRequestEvent", "types/ai.ts", "AiRequestEvent"),
     ("AiRequestSnapshot", "types/ai.ts", "AiRequestSnapshot"),
+    ("AiToolDefinition", "types/ai.ts", "AiToolDefinition"),
+    ("ToolCallRequest", "types/ai.ts", "ToolCallRequest"),
+    ("ToolInvocation", "types/ai.ts", "ToolInvocation"),
     // AI-03 Context Builder / Preview（§8 / §10.1 / §10.2）
     (
         "SupplementaryContext",

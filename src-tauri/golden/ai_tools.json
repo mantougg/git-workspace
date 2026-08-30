@@ -1,0 +1,454 @@
+[
+  {
+    "name": "workspace.list",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "workspaceAssistant",
+      "actionPlanner"
+    ],
+    "contextScope": "workspace",
+    "requiresWorkspace": false,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "repository.list",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "workspaceAssistant",
+      "gitReviewer",
+      "commitAssistant",
+      "conflictAssistant",
+      "actionPlanner"
+    ],
+    "contextScope": "workspace",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "repository.status",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "repoPath": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "repoPath"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "workspaceAssistant",
+      "gitReviewer",
+      "commitAssistant",
+      "conflictAssistant",
+      "actionPlanner"
+    ],
+    "contextScope": "repository",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "repository.diff",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "options": {
+          "type": "object"
+        },
+        "repoPath": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "repoPath"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "gitReviewer",
+      "commitAssistant",
+      "conflictAssistant",
+      "actionPlanner"
+    ],
+    "contextScope": "repository",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "repository.history",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "maxCount": {
+          "type": "integer"
+        },
+        "repoPath": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "repoPath"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "workspaceAssistant",
+      "gitReviewer",
+      "commitAssistant",
+      "actionPlanner"
+    ],
+    "contextScope": "repository",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "repository.conflicts",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "repoPath": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "repoPath"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "conflictAssistant",
+      "actionPlanner"
+    ],
+    "contextScope": "repository",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "runtime.listApplications",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "runtimeConfigAdvisor",
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "runtime.getConfig",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "runtimeName": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "runtimeName"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "runtimeConfigAdvisor",
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "runtime.getProcessStatus",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "processId": {
+          "type": "integer"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "processId"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "runtime.getClosure",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "scope": {},
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "project"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "runtimeConfigAdvisor",
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "requiresWorkspace": true,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "runtime.getLogs",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "filter": {
+          "type": "object"
+        },
+        "processId": {
+          "type": "integer"
+        },
+        "runtimeName": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "runtimeName",
+        "processId"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "requiresWorkspace": true,
+    "mayContainSecrets": true,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "runtime.getErrorContext",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "processId": {
+          "type": "integer"
+        },
+        "runtimeName": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "runtimeName",
+        "processId"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "actionPlanner"
+    ],
+    "contextScope": "runtime",
+    "requiresWorkspace": true,
+    "mayContainSecrets": true,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "jdk.list",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "runtimeConfigAdvisor",
+      "actionPlanner"
+    ],
+    "contextScope": "jdk",
+    "requiresWorkspace": false,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "maven.detect",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "configuredPath": {
+          "type": "string"
+        },
+        "projectDir": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "runtimeConfigAdvisor",
+      "actionPlanner"
+    ],
+    "contextScope": "maven",
+    "requiresWorkspace": false,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  },
+  {
+    "name": "task.getStatus",
+    "version": "1.0",
+    "inputSchema": {
+      "additionalProperties": true,
+      "properties": {
+        "taskIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "taskIds"
+      ],
+      "type": "object"
+    },
+    "allowedRoles": [
+      "runtimeDiagnostician",
+      "runtimeConfigAdvisor",
+      "actionPlanner"
+    ],
+    "contextScope": "task",
+    "requiresWorkspace": false,
+    "mayContainSecrets": false,
+    "timeoutMs": 10000,
+    "maxResultBytes": 262144,
+    "readOnly": true
+  }
+]
