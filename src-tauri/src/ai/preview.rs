@@ -241,11 +241,6 @@ pub fn build(
     );
     let messages = prompt::assemble_messages(outcome.items.iter(), &req.user_instruction);
 
-    // 7. 内容 hash（§7.3：system + 全部消息正文）。
-    let mut hash_parts: Vec<&str> = vec![system.as_str()];
-    hash_parts.extend(messages.iter().map(|m| m.content.as_str()));
-    let content_hash = context::content_hash(&hash_parts);
-
     // 8. 阻断原因（用户可读；Secret 是唯一阻断源）。
     let mut block_reasons: Vec<String> = Vec::new();
     if secret.blocked {
@@ -284,7 +279,14 @@ pub fn build(
         secret_warn_confirmed: req.secret_policy.strategy == SecretStrategyKind::Warn
             && req.secret_policy.warn_confirmed
             && !blocked,
+        // 第一期 Preview 路径默认允许复用结果缓存；「重新生成」由调用方
+        // 在提交前把 useCache 置 false（§11.3）。
+        use_cache: true,
     };
+
+    // 7. 内容 hash（§7.3：system + 全部消息正文；与结果缓存 contextHash
+    // 同一口径，排除项变更后重建即变）。
+    let content_hash = super::cache::request_content_hash(&request);
 
     let target = PreviewTarget {
         workspace_id: req.workspace_id,

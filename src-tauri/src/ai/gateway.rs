@@ -19,7 +19,7 @@
 //! requestId / taskKind / provider/model ID / 状态迁移 / 耗时 / 重试次数 /
 //! token 估算与脱敏计数 / 错误 code；不记 Key、Prompt 原文、Secret 原文。
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -32,6 +32,8 @@ use crate::error::{AppError, AppResult};
 use super::adapters::{
     adapter_for, AdapterCall, AdapterContext, ProviderEndpoint, ProviderRequest, StreamItem,
 };
+use super::audit::{self, AuditFinish, AuditStart};
+use super::cache::{self, AiResultCache, CacheEntryInput, CacheKeyParts};
 use super::credentials::CredentialManager;
 use super::error::AiError;
 use super::events::{AiEventSink, AiRequestEvent, AiStreamChunk};
@@ -42,7 +44,11 @@ use super::request::{
     estimate_tokens, parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, MessageRole,
     ResponseFormat,
 };
+use super::session;
 use super::transport::HttpTransport;
+
+/// 缓存命中的审计状态值（§11.3：与真实调用区分，UI 不得当当前事实展示）。
+const AUDIT_STATUS_CACHED: &str = "cached";
 
 // ---------------------------------------------------------------------------
 // 配置与快照
@@ -97,6 +103,8 @@ pub struct AiRequestSnapshot {
     /// 失败/拒绝原因（用户可读，不含敏感内容）。
     pub error: Option<String>,
     pub error_code: Option<String>,
+    /// 结果是否来自缓存（§11.3：UI 需区分「过期结果」与「当前事实」）。
+    pub from_cache: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +123,10 @@ struct RequestRecord {
     usage: Option<AiTokenUsage>,
     result: Option<AiResult>,
     error: Option<(String, String)>, // (code, user-readable message)
+    /// 缓存维度（提交时算定，执行期只读）：含 contextHash / settingsHash。
+    cache_key: Option<CacheKeyParts>,
+    /// 结果是否来自缓存（§11.3）。
+    from_cache: bool,
 }
 
 impl RequestRecord {
@@ -134,6 +146,7 @@ impl RequestRecord {
             result: self.result.clone(),
             error: self.error.as_ref().map(|(_, m)| m.clone()),
             error_code: self.error.as_ref().map(|(c, _)| c.clone()),
+            from_cache: self.from_cache,
         }
     }
 }
@@ -150,6 +163,11 @@ pub struct AiGateway {
     sink: Arc<dyn AiEventSink>,
     records: Mutex<HashMap<String, RequestRecord>>,
     semaphore: Arc<Semaphore>,
+    /// AI-04：审计与会话持久化的写入口（`AppState.db` 的共享句柄）。
+    /// 未装配（测试/早期引导）时审计与缓存自动降级为 no-op。
+    store: Option<Arc<Mutex<Connection>>>,
+    /// AI-04：结果缓存（内存 LRU + SQLite，§11.3）。
+    cache: Option<Arc<AiResultCache>>,
 }
 
 impl AiGateway {
@@ -165,6 +183,44 @@ impl AiGateway {
             transport,
             sink,
             records: Mutex::new(HashMap::new()),
+            store: None,
+            cache: None,
+        }
+    }
+
+    /// 装配 SQLite 句柄（AI-04 审计与会话持久化）。Builder 形式，返回 Self。
+    pub fn with_store(mut self, db: Arc<Mutex<Connection>>) -> Self {
+        self.store = Some(db);
+        self
+    }
+
+    /// 装配结果缓存（AI-04 §11.3）。Builder 形式，返回 Self。
+    pub fn with_cache(mut self, cache: Arc<AiResultCache>) -> Self {
+        self.cache = Some(cache);
+        self
+    }
+
+    /// 在持锁连接上执行 AI 侧的 DB 写入（审计 / 缓存 / 会话）。
+    ///
+    /// 失败只告警不抛出：辅助设施不得拖垮 AI 主链路（§16.1）；未装配 store
+    /// 时静默跳过。
+    fn with_db<T>(&self, what: &str, f: impl FnOnce(&Connection) -> AppResult<T>) -> Option<T> {
+        let store = self.store.as_ref()?;
+        // 锁中毒时仍复用内部连接（AI 侧只做单条短事务写入）。
+        let conn = store.lock().unwrap_or_else(|e| {
+            log::warn!("ai {what}: db lock poisoned, reusing connection");
+            e.into_inner()
+        });
+        match f(&conn) {
+            Ok(value) => Some(value),
+            Err(e) => {
+                log::warn!(
+                    "ai {what} failed: code={} message={}",
+                    e.code(),
+                    e
+                );
+                None
+            }
         }
     }
 
@@ -219,13 +275,15 @@ impl AiGateway {
         self.transition(&request_id, &request, &resolved, RequestPhase::ContextBuilding, None);
         let content = compose_request_text(&request);
         let findings = crate::core::secret::scan_secrets(&content);
+        // §10.4：审计只留「类别 → 计数」，不保留 Secret 原文/位置。
+        let secret_counts = audit::secret_counts(&findings);
         if !findings.is_empty() && !request.secret_warn_confirmed {
             let mut labels: Vec<&str> = findings.iter().map(|f| f.kind.label()).collect();
             labels.sort_unstable();
             labels.dedup();
             let kinds = labels.join("、");
             let error = AiError::SecretDetected { kinds };
-            self.reject(&request_id, &request, &resolved, &error);
+            self.reject(conn, &request_id, &request, &resolved, &error, &secret_counts);
             return Err(AppError::Ai(error));
         }
         if !findings.is_empty() {
@@ -262,11 +320,31 @@ impl AiGateway {
                 estimated_tokens: estimated,
                 budget_tokens: budget,
             };
-            self.reject(&request_id, &request, &resolved, &error);
+            self.reject(conn, &request_id, &request, &resolved, &error, &secret_counts);
             return Err(AppError::Ai(error));
         }
 
-        // 4. PreviewRequired：等待 approve（Preview 展示由 AI-03 承载）。
+        // 4. AI-04：缓存维度（§11.3）与审计起始行（§10.4）。
+        //    注意：本方法在调用方持 DB 锁的上下文执行，所有 DB 写入必须走
+        //    传入的 `conn`，不得再取 `self.store`（std::sync::Mutex 不可重入）。
+        let cache_key =
+            CacheKeyParts::for_request(&request, &resolved.provider.id, &resolved.model.id);
+        self.audit_start(
+            conn,
+            AuditStart {
+                request_id: &request_id,
+                session_id: request.session_id.as_deref(),
+                task_kind: request.task_kind,
+                provider_id: &resolved.provider.id,
+                model_id: &resolved.model.id,
+                input_hash: &cache_key.context_hash,
+                context_manifest: &request.context_manifest,
+                status: RequestPhase::PreviewRequired.as_str(),
+                secret_counts: &secret_counts,
+            },
+        );
+
+        // 5. PreviewRequired：等待 approve（Preview 展示由 AI-03 承载）。
         self.transition(&request_id, &request, &resolved, RequestPhase::PreviewRequired, None);
         let stream = request.stream;
         let task_kind = request.task_kind;
@@ -292,6 +370,8 @@ impl AiGateway {
                 usage: None,
                 result: None,
                 error: None,
+                cache_key: Some(cache_key),
+                from_cache: false,
             },
         );
         let snapshot = records.get(&request_id).expect("just inserted").snapshot();
@@ -378,14 +458,50 @@ impl AiGateway {
             _ = cancel.cancelled() => None,
         };
         let Some(_permit) = _permit else {
-            self.finalize(&request_id, RequestPhase::Cancelled, None);
+            self.finish_cancelled(&request_id, started);
             return;
         };
         if cancel.is_cancelled() {
-            self.finalize(&request_id, RequestPhase::Cancelled, None);
+            self.finish_cancelled(&request_id, started);
             return;
         }
         self.transition_by_id(&request_id, RequestPhase::Queued, None);
+
+        // AI-04：结果缓存（§11.3）——命中则直接复用，**不发起任何网络请求**。
+        // 维度不匹配（模型 / Provider / Prompt 版本 / contextHash / settingsHash）
+        // 不会命中；`use_cache = false`（重新生成）跳过缓存。
+        if request.use_cache {
+            if let Some(parts) = self.cache_key(&request_id) {
+                if let Some(hit) = self
+                    .cache
+                    .as_ref()
+                    .and_then(|cache| {
+                        self.with_db("cache get", |conn| {
+                            Ok(cache.get(conn, &parts))
+                        })
+                        .flatten()
+                    })
+                {
+                    self.transition_by_id(&request_id, RequestPhase::Sending, None);
+                    self.transition_by_id(&request_id, RequestPhase::Parsing, None);
+                    self.record_cache_hit(&request_id);
+                    self.record_result(&request_id, hit.result.clone());
+                    self.finalize(&request_id, RequestPhase::Succeeded, None);
+                    self.audit_finish_via_store(
+                        &request_id,
+                        &AuditFinish {
+                            status: AUDIT_STATUS_CACHED,
+                            error_code: None,
+                            usage: None,
+                            latency_ms: Some(started.elapsed().as_millis() as i64),
+                            finished_at: &chrono::Utc::now().to_rfc3339(),
+                        },
+                    );
+                    self.log_finished(&request_id, 0, started, true);
+                    return;
+                }
+            }
+        }
 
         // 凭证（§6.4）：在线策略缺少 Key 直接失败，不重试。
         let api_key = provider
@@ -400,7 +516,7 @@ impl AiGateway {
                     provider.name
                 ),
             };
-            self.fail(&request_id, &error);
+            self.fail_with_audit(&request_id, &error, started);
             return;
         }
 
@@ -414,13 +530,14 @@ impl AiGateway {
         let provider_request = self.build_provider_request(&request, &model);
         if let Err(e) = adapter.validate(&model, &provider_request) {
             match e {
-                AppError::Ai(ai_error) => self.fail(&request_id, &ai_error),
-                other => self.fail(
+                AppError::Ai(ai_error) => self.fail_with_audit(&request_id, &ai_error, started),
+                other => self.fail_with_audit(
                     &request_id,
                     &AiError::ProviderUnavailable {
                         message: other.to_string(),
                         transient: false,
                     },
+                    started,
                 ),
             }
             return;
@@ -461,15 +578,42 @@ impl AiGateway {
                     if let Some(u) = usage {
                         self.record_usage(&request_id, u);
                     }
-                    self.record_result(&request_id, result);
+                    self.record_result(&request_id, result.clone());
                     self.finalize(&request_id, RequestPhase::Succeeded, None);
+                    // AI-04：审计收尾 + 结果缓存 + 会话持久化（都经 store 写入）。
+                    let status = RequestPhase::Succeeded.as_str().to_string();
+                    let latency_ms = started.elapsed().as_millis() as i64;
+                    let finished_at = chrono::Utc::now().to_rfc3339();
+                    self.audit_finish_via_store(
+                        &request_id,
+                        &AuditFinish {
+                            status: &status,
+                            error_code: None,
+                            usage,
+                            latency_ms: Some(latency_ms),
+                            finished_at: &finished_at,
+                        },
+                    );
+                    let parts = self.cache_key(&request_id);
+                    let session_id = request.session_id.clone();
+                    let use_cache = request.use_cache;
+                    let outer = self.clone();
+                    let inner = outer.clone();
+                    outer.with_db("cache put", move |conn| {
+                        if use_cache {
+                            if let Some(parts) = &parts {
+                                inner.cache_put(conn, parts, &result, session_id.as_deref());
+                            }
+                        }
+                        inner.persist_session_exchange(conn, &request, &result);
+                        Ok(())
+                    });
                     self.log_finished(&request_id, attempt, started, true);
                     return;
                 }
                 Err(e) => {
                     if cancel.is_cancelled() {
-                        self.finalize(&request_id, RequestPhase::Cancelled, None);
-                        self.log_finished(&request_id, attempt, started, false);
+                        self.finish_cancelled(&request_id, started);
                         return;
                     }
                     let output_empty = self.output_chars(&request_id) == 0;
@@ -485,11 +629,24 @@ impl AiGateway {
                         );
                         tokio::time::sleep(backoff).await;
                         if cancel.is_cancelled() {
-                            self.finalize(&request_id, RequestPhase::Cancelled, None);
+                            self.finish_cancelled(&request_id, started);
                             return;
                         }
                         continue;
                     }
+                    // AI-04：失败进审计（状态 + 错误 code + 耗时）。
+                    let status = RequestPhase::Failed.as_str().to_string();
+                    let code = e.code().to_string();
+                    self.audit_finish_via_store(
+                        &request_id,
+                        &AuditFinish {
+                            status: &status,
+                            error_code: Some(&code),
+                            usage: None,
+                            latency_ms: Some(started.elapsed().as_millis() as i64),
+                            finished_at: &chrono::Utc::now().to_rfc3339(),
+                        },
+                    );
                     self.fail(&request_id, &e);
                     self.log_finished(&request_id, attempt, started, false);
                     return;
@@ -589,6 +746,17 @@ impl AiGateway {
             }
         };
         if let Some(output_chars) = direct_transition {
+            // AI-04：Preview 阶段取消也要落审计终态（用户已看到 Preview 后放弃）。
+            self.audit_finish_via_store(
+                request_id,
+                &AuditFinish {
+                    status: RequestPhase::Cancelled.as_str(),
+                    error_code: None,
+                    usage: None,
+                    latency_ms: None,
+                    finished_at: &chrono::Utc::now().to_rfc3339(),
+                },
+            );
             self.emit_event(request_id, RequestPhase::Cancelled, None, output_chars);
         }
         Ok(self.status(request_id).expect("record exists"))
@@ -715,6 +883,118 @@ impl AiGateway {
         }
     }
 
+    fn record_cache_hit(&self, request_id: &str) {
+        if let Some(rec) = self.lock_records().get_mut(request_id) {
+            rec.from_cache = true;
+        }
+    }
+
+    fn cache_key(&self, request_id: &str) -> Option<CacheKeyParts> {
+        self.lock_records()
+            .get(request_id)
+            .and_then(|r| r.cache_key.clone())
+    }
+
+    // -----------------------------------------------------------------
+    // AI-04：审计 / 缓存 / 会话持久化（§10.4 / §11.3）
+    // -----------------------------------------------------------------
+
+    /// 写审计起始行（失败只告警，不阻断请求，§16.1）。
+    fn audit_start(&self, conn: &Connection, start: AuditStart<'_>) {
+        if let Err(e) = audit::record_start(conn, &start) {
+            log::warn!(
+                "ai audit start failed: id={} error={}",
+                start.request_id,
+                e
+            );
+        }
+    }
+
+    /// 写审计收尾行（失败只告警）。
+    fn audit_finish(&self, conn: &Connection, request_id: &str, finish: AuditFinish<'_>) {
+        if let Err(e) = audit::record_finish(conn, request_id, &finish) {
+            log::warn!("ai audit finish failed: id={} error={}", request_id, e);
+        }
+    }
+
+    /// 经 `self.store` 写审计收尾（执行期路径；未装配 store 时跳过）。
+    fn audit_finish_via_store(&self, request_id: &str, finish: &AuditFinish<'_>) {
+        let status = finish.status.to_string();
+        let error_code = finish.error_code.map(|c| c.to_string());
+        let usage = finish.usage;
+        let latency_ms = finish.latency_ms;
+        let finished_at = finish.finished_at.to_string();
+        self.with_db("audit finish", move |conn| {
+            audit::record_finish(
+                conn,
+                request_id,
+                &AuditFinish {
+                    status: &status,
+                    error_code: error_code.as_deref(),
+                    usage,
+                    latency_ms,
+                    finished_at: &finished_at,
+                },
+            )
+        });
+    }
+
+    /// 成功后写入结果缓存（§11.3）。`session_id` 用于删除会话时级联清理。
+    fn cache_put(
+        &self,
+        conn: &Connection,
+        parts: &CacheKeyParts,
+        result: &AiResult,
+        session_id: Option<&str>,
+    ) {
+        let Some(cache) = self.cache.as_ref() else {
+            return;
+        };
+        let input = CacheEntryInput {
+            parts: parts.clone(),
+            result: result.clone(),
+            session_id: session_id.map(|s| s.to_string()),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        if let Err(e) = cache.put(conn, &input) {
+            log::warn!("ai cache put failed: {}", e);
+        }
+    }
+
+    /// 成功后把本轮对话追加到会话（§10.4：**持久化开关开启时才写正文**）。
+    fn persist_session_exchange(
+        &self,
+        conn: &Connection,
+        request: &AiRequest,
+        result: &AiResult,
+    ) {
+        let Some(session_id) = request.session_id.as_deref() else {
+            return;
+        };
+        if !session::persistence_enabled(conn).unwrap_or(false) {
+            return;
+        }
+        let user_content = serde_json::json!({
+            "messages": request
+                .messages
+                .iter()
+                .map(|m| serde_json::json!({"role": m.role.as_str(), "content": m.content}))
+                .collect::<Vec<_>>(),
+        });
+        let assistant_content = serde_json::to_value(result).unwrap_or_else(|e| {
+            log::warn!("ai session: result serialize failed: {}", e);
+            serde_json::json!({})
+        });
+        for (role, content) in [
+            (MessageRole::User, user_content),
+            (MessageRole::Assistant, assistant_content),
+        ] {
+            if let Err(e) = session::append_message_unchecked(conn, session_id, role, &content) {
+                log::warn!("ai session append failed: session={} error={}", session_id, e);
+            }
+        }
+    }
+
     /// 提交阶段的受控迁移（记录尚未入表，单独处理事件与日志）。
     fn transition(
         &self,
@@ -734,7 +1014,47 @@ impl AiGateway {
     }
 
     /// 提交阶段拒绝（Secret/预算）：入表并落终态，返回错误给调用方。
-    fn reject(&self, request_id: &str, request: &AiRequest, resolved: &super::model::ResolvedModel, error: &AiError) {
+    ///
+    /// AI-04：拒绝同样进审计（状态 `rejected` + 错误 code；Secret 只记计数）。
+    /// DB 写入用调用方传入的 `conn`（持锁上下文，不能重复取 `self.store`）。
+    #[allow(clippy::too_many_arguments)]
+    fn reject(
+        &self,
+        conn: &Connection,
+        request_id: &str,
+        request: &AiRequest,
+        resolved: &super::model::ResolvedModel,
+        error: &AiError,
+        secret_counts: &BTreeMap<String, i64>,
+    ) {
+        let context_hash = cache::request_content_hash(request);
+        self.audit_start(
+            conn,
+            AuditStart {
+                request_id,
+                session_id: request.session_id.as_deref(),
+                task_kind: request.task_kind,
+                provider_id: &resolved.provider.id,
+                model_id: &resolved.model.id,
+                input_hash: &context_hash,
+                context_manifest: &request.context_manifest,
+                status: RequestPhase::Rejected.as_str(),
+                secret_counts,
+            },
+        );
+        let error_code = error.code().to_string();
+        self.audit_finish(
+            conn,
+            request_id,
+            AuditFinish {
+                status: RequestPhase::Rejected.as_str(),
+                error_code: Some(&error_code),
+                usage: None,
+                latency_ms: Some(0),
+                finished_at: &chrono::Utc::now().to_rfc3339(),
+            },
+        );
+
         let mut lc = Lifecycle::new();
         lc.transition(RequestPhase::ContextBuilding)
             .expect("validated");
@@ -742,7 +1062,6 @@ impl AiGateway {
             .expect("validated");
         lc.transition(RequestPhase::Rejected)
             .expect("validated");
-        let error_code = error.code().to_string();
         let message = error.to_string();
         self.lock_records().insert(
             request_id.to_string(),
@@ -758,6 +1077,8 @@ impl AiGateway {
                 usage: None,
                 result: None,
                 error: Some((error_code, message)),
+                cache_key: None,
+                from_cache: false,
             },
         );
         self.emit_event(request_id, RequestPhase::Rejected, None, 0);
@@ -790,6 +1111,40 @@ impl AiGateway {
         }
         let output_chars = self.output_chars(request_id);
         self.emit_event(request_id, to, chunk, output_chars);
+    }
+
+    /// 失败终态 + 审计收尾（AI-04：错误 code 与耗时进 `ai_requests`）。
+    fn fail_with_audit(&self, request_id: &str, error: &AiError, started: Instant) {
+        let status = RequestPhase::Failed.as_str().to_string();
+        let code = error.code().to_string();
+        self.audit_finish_via_store(
+            request_id,
+            &AuditFinish {
+                status: &status,
+                error_code: Some(&code),
+                usage: None,
+                latency_ms: Some(started.elapsed().as_millis() as i64),
+                finished_at: &chrono::Utc::now().to_rfc3339(),
+            },
+        );
+        self.fail(request_id, error);
+    }
+
+    /// 取消终态 + 审计收尾（AI-04）。
+    fn finish_cancelled(&self, request_id: &str, started: Instant) {
+        let status = RequestPhase::Cancelled.as_str();
+        self.audit_finish_via_store(
+            request_id,
+            &AuditFinish {
+                status,
+                error_code: None,
+                usage: None,
+                latency_ms: Some(started.elapsed().as_millis() as i64),
+                finished_at: &chrono::Utc::now().to_rfc3339(),
+            },
+        );
+        self.finalize(request_id, RequestPhase::Cancelled, None);
+        self.log_finished(request_id, 0, started, false);
     }
 
     fn fail(&self, request_id: &str, error: &AiError) {

@@ -51,7 +51,8 @@
       "taskKind": "gitReview",
       "temperature": null,
       "tokenBudget": 24000,
-      "toolPolicy": "disabled"
+      "toolPolicy": "disabled",
+      "useCache": true
     },
     "requestId": "req-1",
     "secret": {
@@ -188,7 +189,39 @@
     "taskKind": "runtimeDiagnostic",
     "temperature": 0.2,
     "tokenBudget": 32000,
-    "toolPolicy": "readOnlyWhitelist"
+    "toolPolicy": "readOnlyWhitelist",
+    "useCache": true
+  },
+  "AiRequestAudit": {
+    "contextManifest": [
+      {
+        "charCount": 8192,
+        "displayName": "应用启动日志（最近 200 行）",
+        "estimatedTokens": 2048,
+        "excluded": false,
+        "exclusionReason": null,
+        "kind": "log",
+        "redacted": true,
+        "sourceId": "runtime/app:latest",
+        "truncated": false
+      }
+    ],
+    "createdAt": "2026-01-01T00:00:00Z",
+    "errorCode": null,
+    "finishedAt": "2026-01-01T00:00:02Z",
+    "id": "req-1",
+    "inputHash": "0123456789abcdef",
+    "inputTokens": 1024,
+    "latencyMs": 1500,
+    "modelId": "gpt-4o-mini",
+    "outputTokens": 256,
+    "providerId": "p1",
+    "secretCounts": {
+      "Password": 2
+    },
+    "sessionId": "sess-1",
+    "status": "succeeded",
+    "taskKind": "runtimeDiagnostic"
   },
   "AiRequestEvent": {
     "chunk": {
@@ -204,6 +237,7 @@
     "error": null,
     "errorCode": null,
     "estimatedPromptTokens": 2048,
+    "fromCache": false,
     "modelId": "gpt-4o-mini",
     "outputChars": 42,
     "phase": "succeeded",
@@ -257,6 +291,87 @@
       "type": "actionProposal"
     }
   ],
+  "AiSession": {
+    "archivedAt": null,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "id": "sess-1",
+    "messageCount": 2,
+    "repositoryScope": [
+      "D:/ws/repo"
+    ],
+    "role": "runtimeDiagnostician",
+    "runtimeScope": {
+      "processId": 12,
+      "runtimeName": "app"
+    },
+    "title": "运行时排障",
+    "updatedAt": "2026-01-02T00:00:00Z",
+    "workspaceId": 1
+  },
+  "AiSessionDetail": {
+    "messages": [
+      {
+        "content": {
+          "text": "启动失败"
+        },
+        "createdAt": "2026-01-01T00:00:00Z",
+        "id": 7,
+        "role": "user",
+        "sequence": 0,
+        "sessionId": "sess-1"
+      }
+    ],
+    "session": {
+      "archivedAt": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "id": "sess-1",
+      "messageCount": 2,
+      "repositoryScope": [],
+      "role": "assistant",
+      "runtimeScope": {},
+      "title": "运行时排障",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "workspaceId": null
+    },
+    "totalMessages": 2
+  },
+  "AiSessionList": {
+    "items": [
+      {
+        "archivedAt": null,
+        "createdAt": "2026-01-01T00:00:00Z",
+        "id": "sess-1",
+        "messageCount": 0,
+        "repositoryScope": [],
+        "role": "assistant",
+        "runtimeScope": {},
+        "title": "运行时排障",
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "workspaceId": null
+      }
+    ],
+    "total": 1
+  },
+  "AiSessionListQuery": {
+    "includeArchived": false,
+    "limit": 20,
+    "offset": 0,
+    "workspaceId": 1
+  },
+  "AiSessionMessage": {
+    "content": {
+      "text": "端口被占用"
+    },
+    "createdAt": "2026-01-01T00:00:00Z",
+    "id": 7,
+    "role": "assistant",
+    "sequence": 1,
+    "sessionId": "sess-1"
+  },
+  "AiSessionPersistence": {
+    "persistSessions": true,
+    "sessionCount": 3
+  },
   "AiSettingsSummary": {
     "enabledModelCount": 2,
     "enabledProviderCount": 1,
@@ -564,6 +679,15 @@
     "tokenBudget": 16000,
     "tokenEstimateFactor": 1.2,
     "userInstruction": "帮我诊断启动失败",
+    "workspaceId": 1
+  },
+  "CreateAiSessionRequest": {
+    "repositoryScope": [
+      "D:/ws/repo"
+    ],
+    "role": "gitAssistant",
+    "runtimeScope": null,
+    "title": "运行时排障",
     "workspaceId": 1
   },
   "CreateChangeSetRequest": {

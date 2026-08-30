@@ -357,6 +357,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             temperature: Some(0.2),
             stream: true,
             secret_warn_confirmed: false,
+            use_cache: true,
         }),
     );
     // 结果模型（§8.4）：枚举类型按 golden 约定序列化为全部变体数组。
@@ -427,6 +428,134 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             }),
             error: None,
             error_code: None,
+            from_cache: false,
+        }),
+    );
+    // AI-04 会话 / 消息 / 审计 / 缓存（§10.4 / §11.2 / §11.3）
+    m.insert(
+        "AiSession".into(),
+        json!(crate::ai::session::AiSession {
+            id: "sess-1".into(),
+            title: "运行时排障".into(),
+            role: crate::ai::session::AiSessionRole::RuntimeDiagnostician,
+            workspace_id: Some(1),
+            repository_scope: vec!["D:/ws/repo".into()],
+            runtime_scope: json!({"runtimeName": "app", "processId": 12}),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-02T00:00:00Z".into(),
+            archived_at: None,
+            message_count: 2,
+        }),
+    );
+    m.insert(
+        "CreateAiSessionRequest".into(),
+        json!(crate::ai::session::CreateAiSessionRequest {
+            title: "运行时排障".into(),
+            role: Some(crate::ai::session::AiSessionRole::GitAssistant),
+            workspace_id: Some(1),
+            repository_scope: vec!["D:/ws/repo".into()],
+            runtime_scope: None,
+        }),
+    );
+    m.insert(
+        "AiSessionListQuery".into(),
+        json!(crate::ai::session::AiSessionListQuery {
+            workspace_id: Some(1),
+            include_archived: false,
+            limit: Some(20),
+            offset: Some(0),
+        }),
+    );
+    m.insert(
+        "AiSessionList".into(),
+        json!(crate::ai::session::AiSessionList {
+            items: vec![crate::ai::session::AiSession {
+                id: "sess-1".into(),
+                title: "运行时排障".into(),
+                role: crate::ai::session::AiSessionRole::Assistant,
+                workspace_id: None,
+                repository_scope: vec![],
+                runtime_scope: json!({}),
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                archived_at: None,
+                message_count: 0,
+            }],
+            total: 1,
+        }),
+    );
+    m.insert(
+        "AiSessionMessage".into(),
+        json!(crate::ai::session::AiSessionMessage {
+            id: 7,
+            session_id: "sess-1".into(),
+            role: crate::ai::MessageRole::Assistant,
+            content: json!({"text": "端口被占用"}),
+            sequence: 1,
+            created_at: "2026-01-01T00:00:00Z".into(),
+        }),
+    );
+    m.insert(
+        "AiSessionDetail".into(),
+        json!(crate::ai::session::AiSessionDetail {
+            session: crate::ai::session::AiSession {
+                id: "sess-1".into(),
+                title: "运行时排障".into(),
+                role: crate::ai::session::AiSessionRole::Assistant,
+                workspace_id: None,
+                repository_scope: vec![],
+                runtime_scope: json!({}),
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                archived_at: None,
+                message_count: 2,
+            },
+            messages: vec![crate::ai::session::AiSessionMessage {
+                id: 7,
+                session_id: "sess-1".into(),
+                role: crate::ai::MessageRole::User,
+                content: json!({"text": "启动失败"}),
+                sequence: 0,
+                created_at: "2026-01-01T00:00:00Z".into(),
+            }],
+            total_messages: 2,
+        }),
+    );
+    m.insert(
+        "AiSessionPersistence".into(),
+        json!(crate::ai::session::AiSessionPersistence {
+            persist_sessions: true,
+            session_count: 3,
+        }),
+    );
+    m.insert(
+        "AiRequestAudit".into(),
+        json!(crate::ai::audit::AiRequestAudit {
+            id: "req-1".into(),
+            session_id: Some("sess-1".into()),
+            task_kind: crate::ai::AiTaskKind::RuntimeDiagnostic,
+            provider_id: "p1".into(),
+            model_id: "gpt-4o-mini".into(),
+            input_hash: "0123456789abcdef".into(),
+            context_manifest: vec![crate::ai::ContextItem {
+                kind: crate::ai::ContextKind::Log,
+                source_id: "runtime/app:latest".into(),
+                display_name: "应用启动日志（最近 200 行）".into(),
+                char_count: 8192,
+                estimated_tokens: 2048,
+                redacted: true,
+                truncated: false,
+                excluded: false,
+                exclusion_reason: None,
+            }],
+            status: "succeeded".into(),
+            error_code: None,
+            secret_counts: std::collections::BTreeMap::from([("Password".to_string(), 2i64)]),
+            input_tokens: Some(1024),
+            output_tokens: Some(256),
+            latency_ms: Some(1500),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            finished_at: Some("2026-01-01T00:00:02Z".into()),
         }),
     );
     // AI-03 Context Builder / Preview（设计文档 §8 / §10.1 / §10.2）：
@@ -567,6 +696,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 temperature: None,
                 stream: true,
                 secret_warn_confirmed: false,
+                use_cache: true,
             },
         }),
     );
@@ -743,4 +873,21 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ),
     ("SecretReport", "types/ai.ts", "SecretReport"),
     ("AiContextPreview", "types/ai.ts", "AiContextPreview"),
+    // AI-04 会话 / 消息 / 审计（§10.4 / §11.2 / §16.1）
+    ("AiSession", "types/ai.ts", "AiSession"),
+    (
+        "CreateAiSessionRequest",
+        "types/ai.ts",
+        "CreateAiSessionRequest",
+    ),
+    ("AiSessionListQuery", "types/ai.ts", "AiSessionListQuery"),
+    ("AiSessionList", "types/ai.ts", "AiSessionList"),
+    ("AiSessionMessage", "types/ai.ts", "AiSessionMessage"),
+    ("AiSessionDetail", "types/ai.ts", "AiSessionDetail"),
+    (
+        "AiSessionPersistence",
+        "types/ai.ts",
+        "AiSessionPersistence",
+    ),
+    ("AiRequestAudit", "types/ai.ts", "AiRequestAudit"),
 ];

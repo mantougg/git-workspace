@@ -714,7 +714,99 @@ DROP TABLE ai_providers;
 ALTER TABLE ai_providers_v14 RENAME TO ai_providers;
 "#;
 
+/// v15 (AI-04，设计文档 §11.2 / §10.4 / §11.3)：AI 会话、消息、请求审计、
+/// 结果缓存、Action Proposal 预留表与 AI 设置 KV。
+///
+/// - `ai_sessions` / `ai_messages`：完整会话持久化由用户设置控制
+///   （`ai_settings` 键 `persistSessions`，**默认关闭**——§10.4「默认不保存
+///   完整 Prompt 中的敏感原文」的保守取向；关闭时只写 `ai_requests` 审计）。
+///   删除会话经 FK `ON DELETE CASCADE` 级联删除消息与关联缓存行（§10.4）。
+/// - `ai_requests`：审计只存元数据（manifest JSON、内容 hash、Secret 计数
+///   与类别、token 用量、耗时、错误 code），**不存 Prompt/结果原文**。
+/// - `ai_result_cache`：行主键为组合 hash；`session_id` 仅作级联清理关联。
+/// - `ai_proposals`：AI-11 只建表与类型，不实现流程。
+pub const SCHEMA_V15: &str = r#"
+CREATE TABLE IF NOT EXISTS ai_sessions (
+    id                    TEXT PRIMARY KEY,
+    title                 TEXT NOT NULL,
+    role                  TEXT NOT NULL DEFAULT 'assistant',
+    workspace_id          INTEGER REFERENCES workspaces(id) ON DELETE SET NULL,
+    repository_scope_json TEXT NOT NULL DEFAULT '[]',
+    runtime_scope_json    TEXT NOT NULL DEFAULT '{}',
+    created_at            TEXT NOT NULL,
+    updated_at            TEXT NOT NULL,
+    archived_at           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_listing
+    ON ai_sessions(archived_at, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id   TEXT NOT NULL REFERENCES ai_sessions(id) ON DELETE CASCADE,
+    role         TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant')),
+    content_json TEXT NOT NULL,
+    sequence     INTEGER NOT NULL,
+    created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_session ON ai_messages(session_id, sequence);
+
+CREATE TABLE IF NOT EXISTS ai_requests (
+    id                    TEXT PRIMARY KEY,
+    session_id            TEXT REFERENCES ai_sessions(id) ON DELETE SET NULL,
+    task_kind             TEXT NOT NULL,
+    provider_id           TEXT NOT NULL,
+    model_id              TEXT NOT NULL,
+    input_hash            TEXT NOT NULL,
+    context_manifest_json TEXT NOT NULL DEFAULT '[]',
+    status                TEXT NOT NULL,
+    error_code            TEXT,
+    secret_counts_json    TEXT NOT NULL DEFAULT '{}',
+    input_tokens          INTEGER,
+    output_tokens         INTEGER,
+    latency_ms            INTEGER,
+    created_at            TEXT NOT NULL,
+    finished_at           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_requests_created ON ai_requests(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_result_cache (
+    cache_key      TEXT PRIMARY KEY,
+    task_kind      TEXT NOT NULL,
+    provider_id    TEXT NOT NULL,
+    model_id       TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    context_hash   TEXT NOT NULL,
+    settings_hash  TEXT NOT NULL,
+    result_json    TEXT NOT NULL,
+    session_id     TEXT REFERENCES ai_sessions(id) ON DELETE CASCADE,
+    created_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_result_cache_created ON ai_result_cache(created_at);
+
+CREATE TABLE IF NOT EXISTS ai_proposals (
+    id                TEXT PRIMARY KEY,
+    request_id        TEXT,
+    action_kind       TEXT NOT NULL,
+    risk_level        TEXT NOT NULL,
+    target_scope_json TEXT NOT NULL DEFAULT '{}',
+    diff_json         TEXT,
+    status            TEXT NOT NULL,
+    confirmed_at      TEXT,
+    executed_task_id  INTEGER,
+    created_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
-    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14,
+    SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14, SCHEMA_V15,
 ];

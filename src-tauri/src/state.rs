@@ -93,7 +93,15 @@ pub struct AppState {
     /// 默认装配 Noop 出口；lib.rs 装配时替换为 Tauri 事件出口
     /// （`ai-request://progress`）。
     pub ai_gateway: Arc<crate::ai::AiGateway>,
+
+    /// AI-04（§11.3）：AI 结果缓存（内存 LRU + SQLite）。与 Gateway 共享同一
+    /// 实例，设置页的「清除缓存」也作用于它。
+    pub ai_result_cache: Arc<crate::ai::AiResultCache>,
 }
+
+/// AI 结果缓存的内存 LRU 上限（§16.1：每个 LRU 都有上限）。条目是结构化
+/// 结果 payload（通常 < 10 KB），64 条约 1 MB，远低于 500 MB 空闲内存目标。
+const AI_RESULT_CACHE_CAPACITY: usize = 64;
 
 /// Build the bounded LRU status cache.
 ///
@@ -123,8 +131,9 @@ impl AppState {
         pom_cache: Arc<PomCache>,
         git_link: Arc<crate::runtime::git_link::GitLinkEngine>,
     ) -> Self {
+        let ai_result_cache = Arc::new(crate::ai::AiResultCache::new(AI_RESULT_CACHE_CAPACITY));
         Self {
-            db,
+            db: Arc::clone(&db),
             status_cache: Arc::new(build_status_cache()),
             task_manager,
             watcher: Mutex::new(FileWatcher::new()),
@@ -134,11 +143,19 @@ impl AppState {
             runtime,
             git_link,
             ai_credentials: Arc::new(crate::ai::CredentialManager::production()),
-            ai_gateway: Arc::new(crate::ai::AiGateway::new(
-                crate::ai::GatewayConfig::default(),
-                Arc::new(crate::ai::transport::ReqwestTransport::new().expect("reqwest transport")),
-                Arc::new(crate::ai::events::NoopAiEventSink),
-            )),
+            // AI-04：Gateway 需要 DB 句柄写审计/会话，需要缓存复用结果。
+            ai_gateway: Arc::new(
+                crate::ai::AiGateway::new(
+                    crate::ai::GatewayConfig::default(),
+                    Arc::new(
+                        crate::ai::transport::ReqwestTransport::new().expect("reqwest transport"),
+                    ),
+                    Arc::new(crate::ai::events::NoopAiEventSink),
+                )
+                .with_store(Arc::clone(&db))
+                .with_cache(Arc::clone(&ai_result_cache)),
+            ),
+            ai_result_cache,
         }
     }
 }

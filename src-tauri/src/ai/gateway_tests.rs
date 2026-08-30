@@ -28,7 +28,8 @@ use super::transport::{
 // Fake transport
 // ---------------------------------------------------------------------------
 
-enum Body {
+/// 测试替身对同 crate 的其他测试模块（如 `session_tests`）开放。
+pub(crate) enum Body {
     Full(String),
     /// SSE 分块（按顺序逐块送达，模拟真实流式切分）。
     Chunks(Vec<String>),
@@ -53,27 +54,30 @@ impl ByteStream for FakeByteStream {
     }
 }
 
-enum Step {
+pub(crate) enum Step {
     /// 立即返回响应。
     Respond { status: u16, body: Body },
     /// 模拟慢响应：脚本延迟超过调用方 timeout 时直接返回 Timeout。
     SlowRespond { delay: Duration, status: u16, body: Body },
 }
 
-struct CapturedRequest {
+pub(crate) struct CapturedRequest {
+    #[allow(dead_code)]
     url: String,
+    #[allow(dead_code)]
     headers: Vec<(String, String)>,
+    #[allow(dead_code)]
     body: Option<String>,
 }
 
-struct FakeTransport {
+pub(crate) struct FakeTransport {
     steps: Mutex<VecDeque<Step>>,
     calls: AtomicUsize,
     requests: Mutex<Vec<CapturedRequest>>,
 }
 
 impl FakeTransport {
-    fn new(steps: Vec<Step>) -> Self {
+    pub(crate) fn new(steps: Vec<Step>) -> Self {
         Self {
             steps: Mutex::new(VecDeque::from(steps)),
             calls: AtomicUsize::new(0),
@@ -81,7 +85,7 @@ impl FakeTransport {
         }
     }
 
-    fn call_count(&self) -> usize {
+    pub(crate) fn call_count(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
 }
@@ -139,7 +143,8 @@ impl HttpTransport for FakeTransport {
 
 /// 事件捕获（断言事件序列与安全不变量）。
 #[derive(Default)]
-struct CaptureSink {
+pub(crate) struct CaptureSink {
+    #[allow(dead_code)]
     events: Mutex<Vec<AiRequestEvent>>,
 }
 
@@ -270,6 +275,7 @@ fn make_request(request_id: &str, stream: bool) -> AiRequest {
         temperature: None,
         stream,
         secret_warn_confirmed: false,
+        use_cache: false,
     }
 }
 

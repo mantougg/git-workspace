@@ -134,6 +134,13 @@ mod tests {
             "ai_providers",
             "ai_models",
             "ai_task_defaults",
+            // v15（AI-04 §11.2）：会话 / 消息 / 请求审计 / 结果缓存 / 提案预留
+            "ai_sessions",
+            "ai_messages",
+            "ai_requests",
+            "ai_result_cache",
+            "ai_proposals",
+            "ai_settings",
         ] {
             let count: i64 = conn
                 .query_row(
@@ -501,6 +508,56 @@ mod tests {
         dao::set_repo_identity(&conn, "D:/w/a", None, None).unwrap();
         let id = dao::resolve_commit_identity(&conn, "D:/w/a").unwrap().unwrap();
         assert_eq!(id.source, "group");
+    }
+
+    /// v15 (AI-04 §11.2 / §10.4): AI 表必须可在含 `ai_reviews` / `ai_tasks`
+    /// 存量数据的库上创建，且删除会话级联清理消息与缓存。
+    #[test]
+    fn v15_creates_ai_tables_and_cascades_session_delete() {
+        let mut conn = open_memory();
+        init_db(&mut conn).unwrap();
+
+        // 存量原型数据不受影响（向后兼容，不做破坏性删除）。
+        conn.execute(
+            "INSERT INTO ai_reviews (repo_path, summary, issues_json, model, created_at)
+             VALUES ('D:/w/r', 'legacy', '[]', 'gpt', 't')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ai_sessions (id, title, created_at, updated_at)
+             VALUES ('s1', '会话', 't', 't')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ai_messages (session_id, role, content_json, sequence, created_at)
+             VALUES ('s1', 'user', '{}', 0, 't')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ai_result_cache (cache_key, task_kind, provider_id, model_id, prompt_version, context_hash, settings_hash, result_json, session_id, created_at)
+             VALUES ('k1', 'chat', 'p1', 'm1', '1', 'c1', 's1', '{}', 's1', 't')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute("DELETE FROM ai_sessions WHERE id = 's1'", [])
+            .unwrap();
+
+        let messages: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ai_messages", [], |r| r.get(0))
+            .unwrap();
+        let cached: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ai_result_cache", [], |r| r.get(0))
+            .unwrap();
+        let reviews: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ai_reviews", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(messages, 0, "删除会话必须级联删除消息（§10.4）");
+        assert_eq!(cached, 0, "删除会话必须级联删除关联缓存（§8 / §10.4）");
+        assert_eq!(reviews, 1, "ai_reviews 历史数据必须保留");
     }
 
     /// v14 (AI-02): `kind` → `api_type` table rebuild must map every legacy

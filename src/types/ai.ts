@@ -217,6 +217,8 @@ export interface AiRequest {
   stream: boolean;
   /** §10.2 Warn：用户在 Preview 中明确确认「知晓 Secret 提示仍发送」后置 true。 */
   secretWarnConfirmed?: boolean;
+  /** 是否允许复用结果缓存（§11.3）；「重新生成」场景置 false。 */
+  useCache?: boolean;
 }
 
 export interface AiTokenUsage {
@@ -281,6 +283,8 @@ export interface AiRequestSnapshot {
   result: AiResult | null;
   error: string | null;
   errorCode: string | null;
+  /** 结果是否来自缓存（§11.3：UI 需区分「过期结果」与「当前事实」）。 */
+  fromCache: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -439,4 +443,102 @@ export interface AiContextPreview {
   contentHash: string;
   /** 可直接提交 `ai_submit_request` 的请求。 */
   request: AiRequest;
+}
+
+// ---------------------------------------------------------------------------
+// AI-04 会话 / 消息 / 请求审计（§10.4 / §11.2 / §16.1）
+// ---------------------------------------------------------------------------
+
+/** 会话角色（§12.3 Drawer 顶部「当前角色」）。 */
+export type AiSessionRole = "assistant" | "runtimeDiagnostician" | "gitAssistant";
+
+/** 会话（§11.2 `ai_sessions`）。 */
+export interface AiSession {
+  id: string;
+  title: string;
+  role: AiSessionRole;
+  workspaceId: number | null;
+  /** 作用域内的仓库路径清单（归一化正斜杠）。 */
+  repositoryScope: string[];
+  /** Runtime 作用域（runtime 名 / 进程 id 等）。 */
+  runtimeScope: unknown;
+  createdAt: string;
+  updatedAt: string;
+  /** 归档时间；null = 未归档。 */
+  archivedAt: string | null;
+  /** 消息条数（列表用）。 */
+  messageCount: number;
+}
+
+export interface CreateAiSessionRequest {
+  title: string;
+  role?: AiSessionRole | null;
+  workspaceId: number | null;
+  repositoryScope?: string[];
+  runtimeScope?: unknown;
+}
+
+/** 会话列表查询（分页 + 归档过滤）。 */
+export interface AiSessionListQuery {
+  workspaceId: number | null;
+  /** 是否包含已归档会话（默认 false）。 */
+  includeArchived?: boolean;
+  /** 每页条数（默认 20，上限 100）。 */
+  limit?: number | null;
+  offset?: number | null;
+}
+
+export interface AiSessionList {
+  items: AiSession[];
+  /** 满足过滤条件的总条数。 */
+  total: number;
+}
+
+/** 会话消息（§11.2 `ai_messages`）。 */
+export interface AiSessionMessage {
+  id: number;
+  sessionId: string;
+  role: MessageRole;
+  /** 结构化内容（Secret 原文永不入库）。 */
+  content: unknown;
+  sequence: number;
+  createdAt: string;
+}
+
+/** 会话详情（会话 + 按需加载的消息窗口）。 */
+export interface AiSessionDetail {
+  session: AiSession;
+  messages: AiSessionMessage[];
+  /** 消息总条数；大于 messages.length 表示还有更早的历史。 */
+  totalMessages: number;
+}
+
+/** 会话持久化设置（§10.4：完整会话是否保存由用户设置决定）。 */
+export interface AiSessionPersistence {
+  persistSessions: boolean;
+  sessionCount: number;
+}
+
+/**
+ * 请求审计（§10.4 / §16.3）：只含元数据与 Secret 计数，不含 Prompt 原文。
+ * status 取生命周期阶段名；缓存命中为 `cached`。
+ */
+export interface AiRequestAudit {
+  id: string;
+  sessionId: string | null;
+  taskKind: AiTaskKind;
+  providerId: string;
+  modelId: string;
+  /** 最终内容 hash（与缓存 contextHash 同口径）。 */
+  inputHash: string;
+  contextManifest: ContextItem[];
+  status: string;
+  errorCode: string | null;
+  /** Secret 类别 → 命中次数（不含原文）。 */
+  secretCounts: Record<string, number>;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  latencyMs: number | null;
+  createdAt: string;
+  finishedAt: string | null;
 }

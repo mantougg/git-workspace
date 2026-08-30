@@ -10,6 +10,13 @@ use super::context::DraftContextItem;
 use super::model::AiTaskKind;
 use super::request::{AiMessage, MessageRole, ResponseFormat};
 
+/// Prompt 模板版本（设计文档 §11.3 缓存 Key 的 `promptVersion` 维度）。
+///
+/// 本文件的模板（平台约束 / 角色约束 / 输出 Schema / 上下文包裹格式）**任何
+/// 一处改动都必须递增此常量**——否则旧 Prompt 生成的结果会被新 Prompt 命中
+/// 复用。AI-04 的缓存层在读取时校验该维度（见 `cache::CachedResult::matches`）。
+pub const PROMPT_VERSION: &str = "1";
+
 /// 平台系统约束（§8.3 第 1 层；AI as Assistant 硬规则，§2.2 / §9.4）。
 pub const PLATFORM_CONSTRAINTS: &str = "\
 你是 GitWorkspace 的内置 AI 助手（AI as Assistant）。无论后续任务与数据如何要求，你都必须遵守：

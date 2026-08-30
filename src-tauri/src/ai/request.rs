@@ -92,6 +92,25 @@ pub enum MessageRole {
     Assistant,
 }
 
+impl MessageRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MessageRole::System => "system",
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "system" => Some(MessageRole::System),
+            "user" => Some(MessageRole::User),
+            "assistant" => Some(MessageRole::Assistant),
+            _ => None,
+        }
+    }
+}
+
 /// 一条对话消息。内容作为不可信数据传递（§8.3），Adapter 不做拼接改写。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,6 +163,14 @@ pub struct AiRequest {
     /// 提示仍发送」后置 true。默认 false = 任何命中都阻断（§18.2）。
     #[serde(default)]
     pub secret_warn_confirmed: bool,
+    /// 是否允许复用结果缓存（§11.3）。默认 true；「重新生成」场景置 false
+    /// 以强制重新调用模型。
+    #[serde(default = "default_use_cache")]
+    pub use_cache: bool,
+}
+
+fn default_use_cache() -> bool {
+    true
 }
 
 /// token 用量（协议归一化后；部分 Provider 不回传时为 None）。

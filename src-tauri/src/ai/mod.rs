@@ -12,6 +12,9 @@
 //! - [`lifecycle`]：请求生命周期状态机（§7.3）；
 //! - [`adapters`]：三种协议的 Provider Adapter（§7.2）；
 //! - [`gateway`]：统一 Gateway——唯一允许访问 AI 网络的地方（§7.3）；
+//! - [`session`]：会话 / 消息 CRUD、按需加载与持久化开关（§10.4 / §11.2）；
+//! - [`audit`]：请求审计（只存 hash / manifest / Secret 计数，§10.4 / §16.3）；
+//! - [`cache`]：结果缓存（Key 隔离 + 内存 LRU + SQLite，§11.3）；
 //! - [`events`]：流式事件契约（`ai-request://progress`）；
 //! - [`error`]：结构化 AI 错误（§17），经 `AppError::Ai` 序列化到前端。
 //!
@@ -19,6 +22,8 @@
 //! 错误、URL、进程命令行（`docs/tasks-ai/00-全局开发约束.md` §4）。
 
 pub mod adapters;
+pub mod audit;
+pub mod cache;
 pub mod context;
 pub mod credentials;
 pub mod error;
@@ -32,10 +37,13 @@ pub mod prompt;
 pub mod provider;
 pub mod redact;
 pub mod request;
+pub mod session;
 pub mod transport;
 
 #[cfg(test)]
 mod gateway_tests;
+#[cfg(test)]
+mod session_tests;
 
 pub use credentials::CredentialManager;
 pub use error::AiError;
@@ -54,4 +62,10 @@ pub use provider::{
 pub use request::{
     parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, ContextItem, ContextKind,
     ExclusionReason, MessageRole, ResponseFormat, ToolPolicy,
+};
+pub use cache::{AiResultCache, CacheKeyParts, CachedResult};
+pub use session::{
+    create_session, delete_session, get_session_detail, list_sessions, AiSession,
+    AiSessionDetail, AiSessionList, AiSessionListQuery, AiSessionMessage, AiSessionRole,
+    CreateAiSessionRequest,
 };

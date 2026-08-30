@@ -205,16 +205,28 @@ pub fn run() {
             });
 
             // Create and manage app state
-            let mut state =
-                AppState::new(db, task_manager, Arc::clone(&runtime_service), pom_cache, git_link);
-            // AI-02：Gateway 事件出口指向 Tauri（`ai-request://progress`）。
-            state.ai_gateway = Arc::new(crate::ai::AiGateway::new(
-                crate::ai::GatewayConfig::default(),
-                std::sync::Arc::new(
-                    crate::ai::transport::ReqwestTransport::new().expect("reqwest transport"),
-                ),
-                std::sync::Arc::new(crate::ai::events::TauriAiEventSink::new(app.handle().clone())),
-            ));
+            let mut state = AppState::new(
+                Arc::clone(&db),
+                task_manager,
+                Arc::clone(&runtime_service),
+                pom_cache,
+                git_link,
+            );
+            // AI-02：Gateway 事件出口指向 Tauri（`ai-request://progress`）；
+            // AI-04：同时装配 DB 句柄（会话/审计）与结果缓存。
+            state.ai_gateway = Arc::new(
+                crate::ai::AiGateway::new(
+                    crate::ai::GatewayConfig::default(),
+                    std::sync::Arc::new(
+                        crate::ai::transport::ReqwestTransport::new().expect("reqwest transport"),
+                    ),
+                    std::sync::Arc::new(crate::ai::events::TauriAiEventSink::new(
+                        app.handle().clone(),
+                    )),
+                )
+                .with_store(Arc::clone(&db))
+                .with_cache(Arc::clone(&state.ai_result_cache)),
+            );
             app.manage(state);
 
             // F-06：修复打包后 Windows 任务栏无图标（详见函数注释）。
@@ -361,6 +373,18 @@ pub fn run() {
             commands::ai::ai_cancel_request,
             commands::ai::ai_get_request_status,
             commands::ai::ai_build_context_preview,
+            // AI commands（AI-04：会话 / 审计 / 缓存）
+            commands::ai::ai_create_session,
+            commands::ai::ai_list_sessions,
+            commands::ai::ai_get_session,
+            commands::ai::ai_rename_session,
+            commands::ai::ai_archive_session,
+            commands::ai::ai_delete_session,
+            commands::ai::ai_get_session_persistence,
+            commands::ai::ai_set_session_persistence,
+            commands::ai::ai_get_request_audit,
+            commands::ai::ai_list_session_audits,
+            commands::ai::ai_clear_result_cache,
             // Log commands
             commands::logs::list_log_files,
             commands::logs::open_logs,

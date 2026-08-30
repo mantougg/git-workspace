@@ -366,6 +366,138 @@ pub fn ai_get_request_status(
     Ok(state.ai_gateway.status(&request_id))
 }
 
+// ---------------------------------------------------------------------------
+// AI-04：会话 / 消息 / 请求审计 / 结果缓存（§10.4 / §11.2 / §11.3 / §12.1）
+// ---------------------------------------------------------------------------
+
+/// 创建会话（§11.2）。
+#[tauri::command]
+pub fn ai_create_session(
+    state: tauri::State<'_, crate::state::AppState>,
+    input: ai::CreateAiSessionRequest,
+) -> AppResult<ai::AiSession> {
+    let conn = lock_db(&state)?;
+    let session = ai::session::create_session(&conn, &input)?;
+    log::info!("ai session created: id={} role={}", session.id, session.role.as_str());
+    Ok(session)
+}
+
+/// 会话列表（分页，默认不含已归档；§16.1）。
+#[tauri::command]
+pub fn ai_list_sessions(
+    state: tauri::State<'_, crate::state::AppState>,
+    query: ai::AiSessionListQuery,
+) -> AppResult<ai::AiSessionList> {
+    let conn = lock_db(&state)?;
+    ai::session::list_sessions(&conn, &query)
+}
+
+/// 读取会话与消息窗口（`beforeSequence` 游标向前翻页；§16.1 按需加载）。
+#[tauri::command]
+pub fn ai_get_session(
+    state: tauri::State<'_, crate::state::AppState>,
+    session_id: String,
+    message_limit: Option<i64>,
+    before_sequence: Option<i64>,
+) -> AppResult<Option<ai::AiSessionDetail>> {
+    let conn = lock_db(&state)?;
+    ai::session::get_session_detail(
+        &conn,
+        &session_id,
+        message_limit.unwrap_or(50),
+        before_sequence,
+    )
+}
+
+#[tauri::command]
+pub fn ai_rename_session(
+    state: tauri::State<'_, crate::state::AppState>,
+    session_id: String,
+    title: String,
+) -> AppResult<ai::AiSession> {
+    let conn = lock_db(&state)?;
+    ai::session::rename_session(&conn, &session_id, &title)
+}
+
+/// 归档 / 取消归档（`archived = false` 为恢复）。
+#[tauri::command]
+pub fn ai_archive_session(
+    state: tauri::State<'_, crate::state::AppState>,
+    session_id: String,
+    archived: bool,
+) -> AppResult<ai::AiSession> {
+    let conn = lock_db(&state)?;
+    ai::session::set_archived(&conn, &session_id, archived)
+}
+
+/// 删除会话：级联删除消息内容与相关本地缓存（§10.4）。
+///
+/// DB 侧由外键与显式删除清理；内存 LRU 需显式失效——否则会话已删仍可能
+/// 命中内存里的旧结果。
+#[tauri::command]
+pub fn ai_delete_session(
+    state: tauri::State<'_, crate::state::AppState>,
+    session_id: String,
+) -> AppResult<()> {
+    let conn = lock_db(&state)?;
+    ai::session::delete_session(&conn, &session_id)?;
+    state.ai_result_cache.invalidate_session(&conn, &session_id);
+    log::info!("ai session deleted: id={}", session_id);
+    Ok(())
+}
+
+/// 会话持久化开关（§10.4：完整会话是否保存由用户设置决定）。
+#[tauri::command]
+pub fn ai_get_session_persistence(
+    state: tauri::State<'_, crate::state::AppState>,
+) -> AppResult<ai::session::AiSessionPersistence> {
+    let conn = lock_db(&state)?;
+    ai::session::persistence_settings(&conn)
+}
+
+#[tauri::command]
+pub fn ai_set_session_persistence(
+    state: tauri::State<'_, crate::state::AppState>,
+    persist: bool,
+) -> AppResult<ai::session::AiSessionPersistence> {
+    let conn = lock_db(&state)?;
+    ai::session::set_persistence(&conn, persist)?;
+    log::info!("ai session persistence set: persist={}", persist);
+    ai::session::persistence_settings(&conn)
+}
+
+/// 单条请求审计（§10.4 / §16.3：只含元数据，不含 Prompt 原文）。
+#[tauri::command]
+pub fn ai_get_request_audit(
+    state: tauri::State<'_, crate::state::AppState>,
+    request_id: String,
+) -> AppResult<Option<ai::audit::AiRequestAudit>> {
+    let conn = lock_db(&state)?;
+    ai::audit::get_audit(&conn, &request_id)
+}
+
+/// 会话维度的请求审计列表（最近的在前）。
+#[tauri::command]
+pub fn ai_list_session_audits(
+    state: tauri::State<'_, crate::state::AppState>,
+    session_id: String,
+    limit: Option<i64>,
+) -> AppResult<Vec<ai::audit::AiRequestAudit>> {
+    let conn = lock_db(&state)?;
+    ai::audit::list_session_audits(&conn, &session_id, limit.unwrap_or(50))
+}
+
+/// 清除 AI 结果缓存（§12.2「用量与诊断」）。
+#[tauri::command]
+pub fn ai_clear_result_cache(
+    state: tauri::State<'_, crate::state::AppState>,
+) -> AppResult<i64> {
+    let conn = lock_db(&state)?;
+    let removed = state.ai_result_cache.clear(&conn)?;
+    log::info!("ai result cache cleared: removed={}", removed);
+    Ok(removed as i64)
+}
+
 /// 构建发送前 Preview（AI-03，§10.1）：收集上下文（只调现有领域服务）
 /// → Secret 管道 → 预算策略 → Prompt 分层 → 内容 hash。**零网络访问**；
 /// 用户确认后把返回的 `request` 交给 `ai_submit_request`（Gateway 仍有
