@@ -208,7 +208,9 @@ export type ResponseFormat = "text" | "json";
 /** 工具策略（§9）：第一期只读。 */
 export type ToolPolicy = "disabled" | "readOnlyWhitelist";
 
-/** Restricted roles and scopes exposed by the AI-05 tool registry. */
+/** Restricted roles and scopes exposed by the AI-05 tool registry.
+ * `externalAgent`（AI-12）是外部 Agent 的独立身份，仅存在于 Adapter 层，
+ * 不进入任何工具白名单——前端调用工具时使用其余内置角色。 */
 export type ToolRole =
   | "workspaceAssistant"
   | "gitReviewer"
@@ -216,7 +218,8 @@ export type ToolRole =
   | "conflictAssistant"
   | "runtimeDiagnostician"
   | "runtimeConfigAdvisor"
-  | "actionPlanner";
+  | "actionPlanner"
+  | "externalAgent";
 export type ToolScope = "workspace" | "repository" | "runtime" | "jdk" | "maven" | "task";
 
 export interface AiToolDefinition {

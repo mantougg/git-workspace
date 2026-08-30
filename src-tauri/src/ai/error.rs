@@ -119,6 +119,11 @@ pub enum AiError {
     /// high 风险动作必须显式二次确认。
     #[error("高风险 Action Proposal 需要二次确认")]
     ActionConfirmationRequired { proposal_id: String },
+
+    /// AI-12（§15）：外部 Agent 的执行类请求缺少确认标记。机器可读 code
+    /// 复用 §17 的 `AiActionConfirmationRequired`。
+    #[error("外部执行类请求缺少确认标记: {tool}")]
+    ExternalConfirmationRequired { tool: String },
 }
 
 impl AiError {
@@ -148,6 +153,7 @@ impl AiError {
             AiError::ProposalExpired { .. } => "AiProposalExpired",
             AiError::ProposalStateInvalid { .. } => "AiProposalStateInvalid",
             AiError::ActionConfirmationRequired { .. } => "AiActionConfirmationRequired",
+            AiError::ExternalConfirmationRequired { .. } => "AiActionConfirmationRequired",
         }
     }
 
@@ -233,6 +239,9 @@ impl AiError {
             AiError::ProposalExpired { .. } => vec!["重新生成 Action Proposal"],
             AiError::ProposalStateInvalid { .. } => vec!["刷新 Proposal 状态"],
             AiError::ActionConfirmationRequired { .. } => vec!["检查影响范围后进行二次确认"],
+            AiError::ExternalConfirmationRequired { .. } => {
+                vec!["由外部调用方显式携带确认标记后重试", "在 GitWorkspace 中确认生成的 Proposal"]
+            }
         }
     }
 
@@ -300,6 +309,9 @@ impl AiError {
             | AiError::ProposalStateInvalid { proposal_id, .. }
             | AiError::ActionConfirmationRequired { proposal_id } => serde_json::json!({
                 "proposalId": proposal_id,
+            }),
+            AiError::ExternalConfirmationRequired { tool } => serde_json::json!({
+                "tool": tool,
             }),
             _ => serde_json::json!({}),
         };
@@ -438,6 +450,12 @@ mod tests {
                     timeout_ms: 5000,
                 },
                 "AiToolTimeout",
+            ),
+            (
+                AiError::ExternalConfirmationRequired {
+                    tool: "runtime.startProposal".into(),
+                },
+                "AiActionConfirmationRequired",
             ),
         ];
         for (err, code) in cases {

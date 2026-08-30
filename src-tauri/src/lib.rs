@@ -227,7 +227,14 @@ pub fn run() {
                 .with_store(Arc::clone(&db))
                 .with_cache(Arc::clone(&state.ai_result_cache)),
             );
+            // AI-12：外部 Agent Adapter 共用的工具执行上下文（必须在 state
+            // 被 manage 之前构建），工具唯一来源是 AI-05 注册表。
+            let ai_tool_context = crate::ai::ToolContext::from_state(&state);
             app.manage(state);
+
+            // AI-12：启动本地 MCP 端点（仅 127.0.0.1，生命周期随应用启停；
+            // Offline First——失败只记日志，不影响应用启动）。
+            crate::ai::external::server::spawn(ai_tool_context);
 
             // F-06：修复打包后 Windows 任务栏无图标（详见函数注释）。
             #[cfg(windows)]
@@ -517,6 +524,12 @@ pub fn run() {
             // Application lifecycle commands
             commands::app::restart_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running GitWorkspace");
+        .build(tauri::generate_context!())
+        .expect("error while building GitWorkspace")
+        .run(|_app_handle, event| {
+            // AI-12：应用退出时停止外部 Agent 端点并清理 discovery 文件。
+            if matches!(event, tauri::RunEvent::Exit) {
+                crate::ai::external::server::shutdown();
+            }
+        });
 }

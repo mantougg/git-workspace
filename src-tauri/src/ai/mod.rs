@@ -18,7 +18,10 @@
 //! - [`audit`]：请求审计（只存 hash / manifest / Secret 计数，§10.4 / §16.3）；
 //! - [`cache`]：结果缓存（Key 隔离 + 内存 LRU + SQLite，§11.3）；
 //! - [`events`]：流式事件契约（`ai-request://progress`）；
-//! - [`error`]：结构化 AI 错误（§17），经 `AppError::Ai` 序列化到前端。
+//! - [`error`]：结构化 AI 错误（§17），经 `AppError::Ai` 序列化到前端；
+//! - [`external`]：AI-12 外部 Agent Adapter（§15）——MCP/CLI 纯映射层，
+//!   唯一工具来源是 [`tools`] 注册表；只读工具直放、执行类需确认标记，
+//!   Proposal 执行仍走 AI-11 的 UI 确认。
 //!
 //! 全局约束：AI 层只编排，不重复实现 Git/Runtime 领域逻辑；Key 不进日志、
 //! 错误、URL、进程命令行（`docs/tasks-ai/00-全局开发约束.md` §4）。
@@ -31,6 +34,7 @@ pub mod credentials;
 pub mod diagnose;
 pub mod error;
 pub mod events;
+pub mod external;
 pub mod gateway;
 pub mod lifecycle;
 pub mod model;

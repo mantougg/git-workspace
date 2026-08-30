@@ -43,6 +43,11 @@ pub enum ToolRole {
     RuntimeDiagnostician,
     RuntimeConfigAdvisor,
     ActionPlanner,
+    /// AI-12（§15）：外部 Agent 的独立身份。刻意不加入任何工具的白名单
+    /// （权限由 `ai::external` 适配层按「不超过内置角色上限」的规则判定，
+    /// 注册表层仍以 ActionPlanner 上限角色复检），保证外部能力永远被
+    /// 内置角色矩阵约束。
+    ExternalAgent,
 }
 
 impl ToolRole {
@@ -55,6 +60,7 @@ impl ToolRole {
             Self::RuntimeDiagnostician => "runtimeDiagnostician",
             Self::RuntimeConfigAdvisor => "runtimeConfigAdvisor",
             Self::ActionPlanner => "actionPlanner",
+            Self::ExternalAgent => "externalAgent",
         }
     }
 }
@@ -651,7 +657,8 @@ fn guard_repo_path(
     Ok(candidate)
 }
 
-fn hash_parameters(value: &Value) -> String {
+/// `pub(crate)`：AI-12 外部调用审计复用同一参数 hash（不记录参数原文）。
+pub(crate) fn hash_parameters(value: &Value) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.to_string().hash(&mut hasher);
     format!("{:016x}", hasher.finish())
@@ -936,6 +943,16 @@ mod tests {
             .unwrap()
             .allowed_roles
             .contains(&ToolRole::GitReviewer));
+    }
+
+    /// AI-12：外部 Agent 是独立身份，不直接进入任何工具白名单；其权限由
+    /// ai::external 适配层按「不超过内置角色上限」判定（每个可被外部触达的
+    /// 工具都必须白名单 ActionPlanner，由上面的测试保证）。
+    #[test]
+    fn external_agent_is_not_in_any_tool_whitelist() {
+        assert!(!definitions()
+            .iter()
+            .any(|d| d.allowed_roles.contains(&ToolRole::ExternalAgent)));
     }
 
     #[test]
