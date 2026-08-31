@@ -172,11 +172,8 @@ pub(crate) fn execute_node_build(
         )?;
     }
 
-    let mut args = vec!["run".to_string(), script.to_string()];
-    if !config.program_arguments.is_empty() {
-        args.push("--".into());
-        args.extend(config.program_arguments.iter().cloned());
-    }
+    // 参数透传形状按包管理器区分（N-08）：npm 需 `--` 分隔，pnpm/yarn 直接透传。
+    let args = crate::node::build_run_args(decision.manager, script, &config.program_arguments);
     let mut preview_parts = vec![package_manager.executable.to_string_lossy().into_owned()];
     preview_parts.extend(args.iter().cloned());
     let preview = preview_parts.join(" ");

@@ -66,7 +66,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| N-08 | 包管理器增强与显式安装（pnpm/yarn 执行链 / `node_install` / 注册表） | P2 | ⬜ | N-05 | [N-08-package-manager-enhancement.md](./N-08-package-manager-enhancement.md) |
+| N-08 | 包管理器增强与显式安装（pnpm/yarn 执行链 / `node_install` / 注册表） | P2 | 🟦 | N-05 | [N-08-package-manager-enhancement.md](./N-08-package-manager-enhancement.md) |
 | N-09 | 展望：monorepo / bun / watch 联动 / 模板 | P2 | ⬜ | N-08 + 触发条件（设计文档 §7 P3） | [N-09-future-extensions.md](./N-09-future-extensions.md) |
 
 ---

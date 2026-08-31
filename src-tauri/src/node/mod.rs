@@ -14,11 +14,13 @@
 //!   `NodeNotFound` / `PackageManagerNotFound` 可行动错误（§4.7）。
 //! - MVP 不做注册表（自定义路径登记属 N-08）。
 
+pub mod command;
 pub mod decision;
 pub mod detect;
 pub mod discovery;
 pub mod model;
 
+pub use command::build_run_args;
 pub use decision::{
     decide_package_manager, parse_package_manager_field, DecisionInput, DecisionSource,
     LockfileSnapshot, PackageManagerDecision,
