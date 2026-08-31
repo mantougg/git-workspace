@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**9**
-- 已完成：**1** · 进行中：**0** · 未开始：**8**（N-09 条件触发）
-- 完成度：**1 / 9（11%）**
+- 已完成：**6** · 进行中：**0** · 未开始：**3**（N-09 条件触发）
+- 完成度：**6 / 9（67%）**
 
 ## MVP 口径（设计文档 §7）
 
@@ -43,7 +43,7 @@
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
 | N-01 | Node 工具链检测（node / 包管理器决策链 / 版本探测） | P0 | ✅ | — | [N-01-node-toolchain-detection.md](./N-01-node-toolchain-detection.md) |
-| N-02 | package.json 发现与索引（SCHEMA_V17 `node_projects`） | P0 | ⬜ | —（复用 T-01, T-03） | [N-02-package-json-discovery.md](./N-02-package-json-discovery.md) |
+| N-02 | package.json 发现与索引（SCHEMA_V17 `node_projects`） | P0 | ✅ | —（复用 T-01, T-03） | [N-02-package-json-discovery.md](./N-02-package-json-discovery.md) |
 
 ### Phase 1 · 配置与启动闭环（P0，3 个）
 
@@ -51,15 +51,15 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| N-03 | Runtime 配置模型扩展（`kind` / `node_script`，SCHEMA_V18） | P0 | ⬜ | N-02 | [N-03-runtime-config-kind.md](./N-03-runtime-config-kind.md) |
-| N-04 | `LaunchPlan::Script` 与 NodeBuildEngine | P0 | ⬜ | N-01, N-03 | [N-04-script-launch-plan-engine.md](./N-04-script-launch-plan-engine.md) |
-| N-05 | 启动检测器策略化与端口探测 | P0 | ⬜ | N-04 | [N-05-launch-detectors.md](./N-05-launch-detectors.md) |
+| N-03 | Runtime 配置模型扩展（`kind` / `node_script`，SCHEMA_V18） | P0 | ✅ | N-02 | [N-03-runtime-config-kind.md](./N-03-runtime-config-kind.md) |
+| N-04 | `LaunchPlan::Script` 与 NodeBuildEngine | P0 | ✅ | N-01, N-03 | [N-04-script-launch-plan-engine.md](./N-04-script-launch-plan-engine.md) |
+| N-05 | 启动检测器策略化与端口探测 | P0 | ✅ | N-04 | [N-05-launch-detectors.md](./N-05-launch-detectors.md) |
 
 ### Phase 2 · UI 与端到端验收（P0/P1，2 个）
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| N-06 | 前端 UI 接入（Wizard 类型选择 / Dashboard 降级 / api） | P0 | ⬜ | N-03, N-04 | [N-06-frontend-ui.md](./N-06-frontend-ui.md) |
+| N-06 | 前端 UI 接入（Wizard 类型选择 / Dashboard 降级 / api） | P0 | ✅ | N-03, N-04 | [N-06-frontend-ui.md](./N-06-frontend-ui.md) |
 | N-07 | 端到端验收与文档收尾（Windows + macOS 闭环） | P1 | ⬜ | N-05, N-06 | [N-07-e2e-acceptance.md](./N-07-e2e-acceptance.md) |
 
 ### Phase 3 · 增强与展望（P2，2 个）

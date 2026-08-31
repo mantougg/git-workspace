@@ -12,13 +12,16 @@ use std::net::TcpListener;
 
 use crate::error::{AppError, AppResult};
 use crate::process::port::{detect_port_occupier, PortOccupier};
-use crate::runtime::config::RuntimeApplicationConfig;
+use crate::runtime::config::{RuntimeApplicationConfig, RuntimeKind};
 
 /// 从配置解析显式声明的端口（去重、升序）。支持：
 /// - VM options：`-Dserver.port=N`
 /// - Program Arguments：`--server.port=N` / `--port=N`
 /// `0`（随机端口）与非法值忽略。
 pub fn explicit_ports(config: &RuntimeApplicationConfig) -> Vec<u16> {
+    if config.kind == RuntimeKind::Node {
+        return explicit_node_ports(config);
+    }
     let mut ports: Vec<u16> = Vec::new();
     for arg in config
         .vm_options
@@ -34,6 +37,49 @@ pub fn explicit_ports(config: &RuntimeApplicationConfig) -> Vec<u16> {
                 if port > 0 && !ports.contains(&port) {
                     ports.push(port);
                 }
+            }
+        }
+    }
+    ports.sort_unstable();
+    ports
+}
+
+fn explicit_node_ports(config: &RuntimeApplicationConfig) -> Vec<u16> {
+    let mut ports = Vec::new();
+    let args = &config.program_arguments;
+    let mut index = 0;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        let inline = arg
+            .strip_prefix("--port=")
+            .or_else(|| arg.strip_prefix("-p="));
+        let value = inline.or_else(|| {
+            if arg == "--port" || arg == "-p" {
+                args.get(index + 1).map(String::as_str)
+            } else {
+                None
+            }
+        });
+        if let Some(value) = value {
+            if let Ok(port) = value.parse::<u16>() {
+                if port > 0 && !ports.contains(&port) {
+                    ports.push(port);
+                }
+            }
+            if inline.is_none() {
+                index += 1;
+            }
+        }
+        index += 1;
+    }
+    if let Some(value) = config
+        .environment
+        .get("PORT")
+        .or_else(|| config.runtime_environment.get("PORT"))
+    {
+        if let Ok(port) = value.trim().parse::<u16>() {
+            if port > 0 && !ports.contains(&port) {
+                ports.push(port);
             }
         }
     }
@@ -132,5 +178,27 @@ mod tests {
         let mut config = RuntimeApplicationConfig::default();
         config.program_arguments = vec!["--server.port=0".into()];
         preflight(&config).expect("random port must skip preflight");
+    }
+
+    #[test]
+    fn parses_node_cli_and_environment_ports() {
+        let mut config = RuntimeApplicationConfig::default();
+        config.kind = RuntimeKind::Node;
+        config.program_arguments = vec![
+            "--port".into(),
+            "3000".into(),
+            "-p=5173".into(),
+            "--port=8080".into(),
+        ];
+        config.environment.insert("PORT".into(), "4000".into());
+        assert_eq!(explicit_ports(&config), vec![3000, 4000, 5173, 8080]);
+    }
+
+    #[test]
+    fn node_without_explicit_port_skips_preflight() {
+        let mut config = RuntimeApplicationConfig::default();
+        config.kind = RuntimeKind::Node;
+        config.program_arguments = vec!["--host".into(), "localhost".into()];
+        assert!(explicit_ports(&config).is_empty());
     }
 }

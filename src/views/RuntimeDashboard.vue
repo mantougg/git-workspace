@@ -334,6 +334,7 @@ import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRuntimeStore } from "@/stores/runtime";
 import * as runtimeApi from "@/api/runtime";
+import { nodeListProjects } from "@/api/node";
 import type {
   RuntimeApplicationConfig,
   RuntimeConfigSummary,
@@ -341,6 +342,7 @@ import type {
   SchedulerConfig,
 } from "@/types/runtime";
 import type { RuntimeScope } from "@/types/maven";
+import type { NodeProjectNode } from "@/types/node";
 import { errMsg } from "@/utils/error";
 import RuntimeErrorAlert from "@/components/runtime/RuntimeErrorAlert.vue";
 import PortDiagnosticsModal from "@/components/runtime/PortDiagnosticsModal.vue";
@@ -362,6 +364,7 @@ const selectedConfig = ref<RuntimeConfigSummary | null>(null);
 const configDetail = ref<RuntimeApplicationConfig | null>(null);
 const scheduler = ref<SchedulerConfig>({ maxConcurrentBuilds: 2, maxConcurrentResolves: 4 });
 const savingScheduler = ref(false);
+const nodeProjects = ref<NodeProjectNode[]>([]);
 
 // R-16 §81 端口诊断对话框（选中应用 + 默认端口取其探测端口）。
 const portModalShow = ref(false);
@@ -655,6 +658,20 @@ function envKeys(config: RuntimeApplicationConfig): string[] {
   return Object.keys(config.environment);
 }
 
+function nodeLaunchLabel(row: RuntimeConfigSummary): string {
+  const detail = store.configDetails.get(row.name);
+  const project = nodeProjects.value.find(
+    (candidate) => normalizePath(candidate.path) === normalizePath(row.project),
+  );
+  const manager = detail?.nodePackageManager || project?.packageManager || "npm";
+  const script = detail?.nodeScript || "script";
+  return `${manager} run ${script}`;
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
 // ------------------------------------------------------------------
 // n-data-table columns definitions
 // ------------------------------------------------------------------
@@ -699,6 +716,13 @@ const configColumns = [
     key: "launchMode",
     width: 120,
     render(row: RuntimeConfigSummary) {
+      if (row.kind === "node") {
+        return h(
+          NTag,
+          { size: "small", type: "info" },
+          { default: () => nodeLaunchLabel(row) },
+        );
+      }
       const info = store.closureInfo.get(row.name);
       if (!info) {
         return h(
@@ -1167,6 +1191,15 @@ async function reload() {
   // F-15：store.workspaceId 派生自全局工作区并自动加载；显式刷新走 reloadAll。
   if (store.workspaceId == null) return;
   await store.reloadAll();
+  if (store.configs.some((config) => config.kind === "node")) {
+    try {
+      nodeProjects.value = await nodeListProjects(store.workspaceId);
+    } catch (e) {
+      console.error("N-06: load Node project metadata failed:", e);
+    }
+  } else {
+    nodeProjects.value = [];
+  }
   try {
     scheduler.value = await runtimeApi.runtimeGetSchedulerConfig();
   } catch (e) {

@@ -123,6 +123,7 @@ mod tests {
             "ai_reviews",
             "ai_tasks",
             "maven_projects",
+            "node_projects",
             "maven_dependencies",
             "maven_modules",
             "maven_artifacts",
@@ -164,6 +165,32 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(version, schema::MIGRATIONS.len() as i64);
+    }
+
+    #[test]
+    fn runtime_kind_migration_defaults_existing_rows_to_spring_boot() {
+        let mut conn = open_memory();
+        init_db(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO workspaces (name, path, created_at, updated_at) VALUES ('w', '/tmp/w', 't', 't')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO runtime_projects (workspace_id, name, project, config_path, created_at, updated_at)
+             VALUES (1, 'boot', 'repo', '', 't', 't')",
+            [],
+        )
+        .unwrap();
+        let kind: String = conn
+            .query_row(
+                "SELECT kind FROM runtime_projects WHERE name='boot'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(kind, "springBoot");
+        init_db(&mut conn).unwrap();
     }
 
     /// A pre-existing (v0) DB with the original tables must be upgraded

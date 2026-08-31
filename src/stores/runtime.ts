@@ -150,6 +150,10 @@ export const useRuntimeStore = defineStore("runtime", () => {
       configs.value.map(async (c) => {
         try {
           const detail = await loadConfigDetail(c.name);
+          if (detail.kind === "node") {
+            map.set(c.name, null);
+            return;
+          }
           const preview = await runtimeApi.runtimeGetClosure(ws, c.project, detail.scope);
           const sources = preview.closure.projects.filter(
             (p) => p.projectId !== preview.closure.rootProjectId,

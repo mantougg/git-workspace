@@ -1,8 +1,9 @@
 //! Launcher（R-10，§29/§34）：把 R-09 的 [`LaunchPlan`] 组装成可 spawn 的
 //! `java` / `mvn` 进程命令，并定义进程监督 seam（[`LaunchRunner`]）。
 //!
-//! - 命令组装是纯函数 [`launch_command`]：三个 LaunchPlan 变体分别映射到
-//!   `mvn spring-boot:run` / `java -jar` / `java -cp <deps> <main-class>`，
+//! - 命令组装是纯函数 [`launch_command`]：LaunchPlan 变体分别映射到
+//!   `mvn spring-boot:run` / `java -jar` / `java -cp <deps> <main-class>` /
+//!   包管理器 `run <script>`，
 //!   并注入托管标记环境变量（[`MARKER_PROCESS_ID`] / [`MARKER_RUNTIME_NAME`]）。
 //! - [`LaunchRunner`] 抽象「spawn + 流式转发 + 阻塞等待 + 信号控制」：
 //!   生产实现 [`SystemLaunchRunner`] 复用 `process::streaming` /
@@ -15,6 +16,7 @@ use std::sync::Mutex;
 
 use crate::error::{AppError, AppResult};
 use crate::maven::executor;
+use crate::maven::detect_exec::needs_cmd_c;
 use crate::process::streaming::{spawn_streaming_ext, OutputStream, StreamingExit};
 use crate::runtime::build::LaunchPlan;
 use crate::runtime::launch::{MARKER_PROCESS_ID, MARKER_RUNTIME_NAME};
@@ -75,6 +77,24 @@ pub fn launch_command(plan: &LaunchPlan, process_id: i64, runtime_name: &str) ->
             apply_env(&mut command, env);
             command
         }
+        LaunchPlan::Script {
+            executable,
+            args,
+            env,
+            working_dir,
+            ..
+        } => {
+            let mut command = if cfg!(windows) && needs_cmd_c(executable) {
+                let mut command = Command::new("cmd");
+                command.arg("/C").arg(executable);
+                command
+            } else {
+                Command::new(executable)
+            };
+            command.args(args).current_dir(working_dir);
+            apply_env(&mut command, env);
+            command
+        }
     };
     command.env(MARKER_PROCESS_ID, process_id.to_string());
     command.env(MARKER_RUNTIME_NAME, runtime_name);
@@ -86,7 +106,8 @@ pub fn plan_preview(plan: &LaunchPlan) -> String {
     match plan {
         LaunchPlan::MavenGoal { preview, .. }
         | LaunchPlan::JavaJar { preview, .. }
-        | LaunchPlan::JavaClasspath { preview, .. } => preview.clone(),
+        | LaunchPlan::JavaClasspath { preview, .. }
+        | LaunchPlan::Script { preview, .. } => preview.clone(),
     }
 }
 
@@ -95,7 +116,8 @@ pub fn plan_working_dir(plan: &LaunchPlan) -> PathBuf {
     match plan {
         LaunchPlan::MavenGoal { request, .. } => request.working_dir.clone(),
         LaunchPlan::JavaJar { working_dir, .. }
-        | LaunchPlan::JavaClasspath { working_dir, .. } => working_dir.clone(),
+        | LaunchPlan::JavaClasspath { working_dir, .. }
+        | LaunchPlan::Script { working_dir, .. } => working_dir.clone(),
     }
 }
 
@@ -425,6 +447,40 @@ mod tests {
         assert!(rendered.contains("a.jar"));
         assert!(rendered.contains("com.example.Application"));
         assert!(rendered.contains("--debug"));
+    }
+
+    #[test]
+    fn script_command_uses_platform_wrapper_and_preserves_arguments() {
+        let executable = if cfg!(windows) {
+            PathBuf::from(r"C:\tools\npm.cmd")
+        } else {
+            PathBuf::from("/usr/bin/npm")
+        };
+        let plan = LaunchPlan::Script {
+            executable: executable.clone(),
+            args: vec!["run".into(), "dev".into(), "--".into(), "--host".into()],
+            env: vec![("PORT".into(), "5173".into())],
+            working_dir: PathBuf::from("/ws/web"),
+            preview: "npm run dev -- --host".into(),
+        };
+        let command = launch_command(&plan, 9, "web").unwrap();
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        if cfg!(windows) {
+            assert_eq!(command.get_program(), Path::new("cmd"));
+            assert_eq!(args.first().map(String::as_str), Some("/C"));
+            assert_eq!(args.get(1), Some(&executable.to_string_lossy().into_owned()));
+            assert_eq!(&args[2..], ["run", "dev", "--", "--host"]);
+        } else {
+            assert_eq!(command.get_program(), executable.as_path());
+            assert_eq!(args, ["run", "dev", "--", "--host"]);
+        }
+        assert_eq!(command.get_current_dir(), Some(Path::new("/ws/web")));
+        assert!(command
+            .get_envs()
+            .any(|(key, value)| key == "PORT" && value == Some(std::ffi::OsStr::new("5173"))));
     }
 
     #[test]

@@ -153,4 +153,99 @@ fn old_json_defaults_new_fields_and_profiles_support_both_injection_forms() {
     args.program_arguments.clear();
     args.vm_options = vec!["-Dspring.profiles.active=prod".into()];
     assert_eq!(args.injected_profile().as_deref(), Some("prod"));
+    assert_eq!(old.kind, RuntimeKind::SpringBoot);
+    assert!(old.node_script.is_none());
+    assert!(old.node_package_manager.is_none());
+}
+
+#[test]
+fn node_runtime_validates_script_against_index_and_reports_available_names() {
+    let (conn, root) = open_db();
+    let project_dir = root.join("web");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(
+        project_dir.join("package.json"),
+        r#"{"name":"web","scripts":{"dev":"vite","build":"vite build"}}"#,
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO node_projects (workspace_id, path, name, version, scripts_json, pkg_hash, last_scanned_at)
+         VALUES (1, ?1, 'web', '', '{\"dev\":\"vite\",\"build\":\"vite build\"}', 'h', 't')",
+        [project_dir.to_string_lossy().to_string()],
+    )
+    .unwrap();
+    let mut config = sample("node");
+    config.kind = RuntimeKind::Node;
+    config.project = project_dir.to_string_lossy().to_string();
+    config.node_script = Some("start".into());
+    let error = create_config(
+        &conn,
+        &CreateRuntimeConfigRequest {
+            workspace_id: 1,
+            config,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), "ScriptNotFound");
+    let payload = serde_json::to_value(error).unwrap();
+    let details: serde_json::Value =
+        serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        details["availableScripts"],
+        serde_json::json!(["build", "dev"])
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn node_runtime_falls_back_to_disk_when_index_is_stale() {
+    let (conn, root) = open_db();
+    let project_dir = root.join("web");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(
+        project_dir.join("package.json"),
+        r#"{"scripts":{"dev":"vite"}}"#,
+    )
+    .unwrap();
+    let mut config = sample("node");
+    config.kind = RuntimeKind::Node;
+    config.project = project_dir.to_string_lossy().to_string();
+    config.node_script = Some("dev".into());
+    let created = create_config(
+        &conn,
+        &CreateRuntimeConfigRequest {
+            workspace_id: 1,
+            config,
+        },
+    )
+    .unwrap();
+    assert_eq!(created.kind, RuntimeKind::Node);
+    let summary = list_configs(&conn, 1).unwrap();
+    assert_eq!(summary[0].kind, RuntimeKind::Node);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn spring_boot_rejects_node_fields() {
+    let (conn, _root) = open_db();
+    let mut config = sample("bad");
+    config.node_script = Some("dev".into());
+    let error = create_config(
+        &conn,
+        &CreateRuntimeConfigRequest {
+            workspace_id: 1,
+            config,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), "RuntimeConfigError");
+}
+
+#[test]
+fn unknown_runtime_kind_reports_supported_values() {
+    let error = serde_json::from_str::<RuntimeApplicationConfig>(
+        r#"{"name":"web","project":"web","kind":"deno"}"#,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("springBoot / node"));
 }

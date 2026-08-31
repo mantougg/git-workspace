@@ -9,6 +9,7 @@ use crate::runtime::launch::store;
 use crate::runtime::launch::{LifecycleStatus, RuntimeEvent, RuntimeProcessInfo};
 use crate::runtime::logs::LogPhase;
 
+use super::output::{startup_banner, startup_port};
 use super::*;
 
 /// adopted（非子进程）监控的轮询间隔。
@@ -24,6 +25,8 @@ impl RuntimeProcessManager {
         runtime_name: String,
         mut command: std::process::Command,
         handle: &ActiveProcess,
+        kind: crate::runtime::config::RuntimeKind,
+        start_grace: Duration,
     ) {
         let this = Arc::clone(self);
         let handle = handle.clone();
@@ -31,6 +34,7 @@ impl RuntimeProcessManager {
             let log_session = this.deps.logs.session(process_id);
             let mut ports_seen: Vec<u16> = Vec::new();
             let mut running_flagged = false;
+            let monitor_started = Instant::now();
             let result = this.deps.launch_runner.run(
                 &mut command,
                 &handle.force_kill,
@@ -41,16 +45,19 @@ impl RuntimeProcessManager {
                     if let Some(session) = &log_session {
                         session.log(LogPhase::Run, stream, line);
                     }
-                    let (started_re, port_re) = startup_detectors();
-                    if !running_flagged && started_re.is_match(line) {
+                    if !running_flagged && startup_banner(kind, line) {
                         running_flagged = true;
                         let (lock, cv) = &*handle.progress;
                         lock.lock().unwrap().running = true;
                         cv.notify_all();
                     }
-                    if let Some(captures) = port_re.captures(line) {
-                        if let Some(Ok(port)) = captures.get(1).map(|m| m.as_str().parse::<u16>()) {
-                            if !ports_seen.contains(&port) {
+                    let within_grace = monitor_started.elapsed() <= start_grace;
+                    if kind != crate::runtime::config::RuntimeKind::Node || within_grace {
+                        if let Some(port) = startup_port(kind, line) {
+                            if !ports_seen.contains(&port)
+                                && (kind != crate::runtime::config::RuntimeKind::Node
+                                    || ports_seen.is_empty())
+                            {
                                 ports_seen.push(port);
                                 let conn = this.db.lock().unwrap();
                                 if let Err(error) = store::set_ports(&conn, process_id, &ports_seen)

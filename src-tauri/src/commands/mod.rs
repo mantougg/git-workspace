@@ -19,6 +19,7 @@ pub mod heatmap;
 pub mod logs;
 pub mod manifest;
 pub mod maven;
+pub mod node;
 pub mod pipeline;
 pub mod repository;
 pub mod runtime;

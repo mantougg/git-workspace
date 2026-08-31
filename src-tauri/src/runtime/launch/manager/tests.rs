@@ -2,7 +2,7 @@ use super::*;
 use crate::runtime::build::runner::{FakeMavenRunner, FakeRun};
 use crate::runtime::build::BuildOptions;
 use crate::runtime::config::{
-    create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig,
+    create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeKind,
 };
 use crate::runtime::launch::launcher::{FakeBehavior, FakeLaunch, FakeLaunchRunner};
 use crate::runtime::launch::VecEventSink;
@@ -285,6 +285,86 @@ fn start_stop_full_cycle_emits_lifecycle_events() {
         e,
         RuntimeEvent::Exited { process_id, exit_code: Some(0), crashed: false, .. } if *process_id == info.process_id
     )));
+}
+
+#[test]
+fn node_start_detects_first_localhost_url_within_grace() {
+    if crate::node::detect_node().is_err()
+        || crate::node::detect_package_manager(crate::node::PackageManager::Npm).is_err()
+    {
+        eprintln!("N-05: node/npm unavailable; skipping Node monitor integration test");
+        return;
+    }
+    let root = unique_root("node-detector");
+    write(
+        &root.join("web/package.json"),
+        r#"{"name":"web","scripts":{"dev":"node -e \"console.log('ready')\""}}"#,
+    );
+    std::fs::create_dir_all(root.join("web/node_modules")).unwrap();
+    let mut conn = Connection::open_in_memory().unwrap();
+    crate::db::init_db(&mut conn).unwrap();
+    conn.execute(
+        "INSERT INTO workspaces (name, path, created_at, updated_at) VALUES ('w', ?1, 't', 't')",
+        [root.to_string_lossy().to_string()],
+    )
+    .unwrap();
+    let workspace_id = conn.last_insert_rowid();
+    create_config(
+        &conn,
+        &CreateRuntimeConfigRequest {
+            workspace_id,
+            config: RuntimeApplicationConfig {
+                name: "web".into(),
+                project: root.join("web").to_string_lossy().into_owned(),
+                main_class: Some("unused".into()),
+                kind: RuntimeKind::Node,
+                node_script: Some("dev".into()),
+                node_package_manager: Some("npm".into()),
+                ..Default::default()
+            },
+        },
+    )
+    .unwrap();
+    let db = Arc::new(Mutex::new(conn));
+    let events = Arc::new(VecEventSink::default());
+    let launcher = Arc::new(FakeLaunchRunner::new(vec![FakeLaunch {
+        lines: vec![
+            (OutputStream::Stdout, "Local: http://localhost:5173/".into()),
+            (OutputStream::Stdout, "Network: http://192.168.1.20:5173/".into()),
+        ],
+        behavior: FakeBehavior::StayAlive {
+            on_terminate: Some(0),
+        },
+        ..Default::default()
+    }]));
+    let manager = test_manager(
+        db,
+        launcher,
+        Arc::new(FakeMavenRunner::successful()),
+        events.clone(),
+        Duration::from_millis(20),
+    );
+    let info = manager
+        .start(
+            workspace_id,
+            "web",
+            StartOptions {
+                start_grace: Duration::from_millis(50),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(info.status, LifecycleStatus::Running);
+    assert_eq!(info.ports, vec![5173]);
+    assert_eq!(info.run_strategy, Some(RunStrategy::NodeScript));
+    assert!(info.command_preview.as_deref().unwrap().contains("npm"));
+    manager.stop(info.process_id, None).unwrap();
+    assert!(events.collected().iter().any(|event| matches!(
+        event,
+        RuntimeEvent::Ports { process_id, ports }
+            if *process_id == info.process_id && ports == &vec![5173]
+    )));
+    let _ = std::fs::remove_dir_all(root);
 }
 
 // --------------------------------------------------------------

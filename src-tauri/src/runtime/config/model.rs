@@ -11,8 +11,36 @@ use crate::maven::RuntimeScope;
 use super::validation::validate_environment;
 use super::validation::validate_runtime_name;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 pub const MASKED_VALUE: &str = "••••••••";
+
+/// Runtime 技术栈。历史配置缺省为 Spring Boot，保证零迁移兼容。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RuntimeKind {
+    SpringBoot,
+    Node,
+}
+
+impl<'de> Deserialize<'de> for RuntimeKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        match raw.as_str() {
+            "springBoot" => Ok(Self::SpringBoot),
+            "node" => Ok(Self::Node),
+            _ => Err(serde::de::Error::custom(format!(
+                "未知 Runtime kind '{raw}'；当前支持 springBoot / node"
+            ))),
+        }
+    }
+}
+
+fn default_kind_spring_boot() -> RuntimeKind {
+    RuntimeKind::SpringBoot
+}
 
 /// Complete user-editable Runtime configuration document.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +52,12 @@ pub struct RuntimeApplicationConfig {
     pub name: String,
     #[serde(default)]
     pub project: String,
+    #[serde(default = "default_kind_spring_boot")]
+    pub kind: RuntimeKind,
+    #[serde(default)]
+    pub node_script: Option<String>,
+    #[serde(default)]
+    pub node_package_manager: Option<String>,
     #[serde(default)]
     pub main_class: Option<String>,
     #[serde(default)]
@@ -78,6 +112,9 @@ impl Default for RuntimeApplicationConfig {
             schema_version: CURRENT_SCHEMA_VERSION,
             name: String::new(),
             project: String::new(),
+            kind: RuntimeKind::SpringBoot,
+            node_script: None,
+            node_package_manager: None,
             main_class: None,
             jdk: None,
             profile: None,
@@ -111,6 +148,29 @@ impl RuntimeApplicationConfig {
         }
         validate_environment(&self.environment)?;
         validate_environment(&self.runtime_environment)?;
+        match self.kind {
+            RuntimeKind::SpringBoot => {
+                if self.node_script.is_some() || self.node_package_manager.is_some() {
+                    return Err(AppError::RuntimeConfig(
+                        "springBoot Runtime 不允许设置 nodeScript 或 nodePackageManager；请清空 Node 字段"
+                            .into(),
+                    ));
+                }
+            }
+            RuntimeKind::Node => {
+                if self
+                    .node_script
+                    .as_deref()
+                    .is_none_or(|script| script.trim().is_empty())
+                {
+                    return Err(AppError::ScriptNotFound {
+                        project: self.project.clone(),
+                        script: None,
+                        available: vec![],
+                    });
+                }
+            }
+        }
         if let Some(health) = &self.health_check {
             health.validate()?;
         }
@@ -160,6 +220,8 @@ pub struct RuntimeConfigSummary {
     pub workspace_id: i64,
     pub name: String,
     pub project: String,
+    #[serde(default = "default_kind_spring_boot")]
+    pub kind: RuntimeKind,
     pub main_class: Option<String>,
     pub jdk: Option<String>,
     pub profile: Option<String>,

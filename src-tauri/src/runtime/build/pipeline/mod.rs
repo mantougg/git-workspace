@@ -19,6 +19,7 @@ use crate::maven::closure::RuntimeClosureCache;
 use crate::maven::executor;
 use crate::maven::index::{DependencyGraph, DependencyGraphCache, MavenProjectNode};
 use crate::maven::reactor::prepare_runtime_reactor;
+use crate::maven::reactor::RuntimeReactorKind;
 use crate::process::streaming::{spawn_streaming, OutputStream, StreamingExit};
 use crate::runtime::build::classpath;
 use crate::runtime::build::dep_cache;
@@ -27,7 +28,7 @@ use crate::runtime::build::scheduler::BuildScheduler;
 use crate::runtime::build::strategy;
 use crate::runtime::build::{
     default_strategy, engine_for, BuildContext, BuildEngine, BuildOptions, BuildOutcome,
-    BuildOutputSink, BuildRequest, RingTail, RunStrategy,
+    BuildOutputSink, BuildRequest, LaunchPlan, RingTail, RunStrategy,
 };
 use crate::runtime::config;
 use crate::runtime::logs::redact::{sensitive_env_values, LogRedactor};
@@ -63,6 +64,152 @@ impl BuildEngine for MavenBuildEngine {
     }
 }
 
+/// Execute the Node.js direct launch path. A Node frontend has no Maven
+/// reactor or compile phase: validate the toolchain and manifest, merge the
+/// standard runtime environment, then return a script launch plan.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_node_build(
+    db: &Arc<Mutex<Connection>>,
+    workspace_root: &Path,
+    script_approvals: &ScriptApprovalStore,
+    request: &BuildRequest,
+    sink: &mut dyn BuildOutputSink,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<BuildOutcome> {
+    let started = Instant::now();
+    let config = {
+        let conn = db.lock().unwrap();
+        config::load_config_unredacted(&conn, request.workspace_id, &request.runtime_name)?
+    };
+    if config.kind != crate::runtime::config::RuntimeKind::Node {
+        return Err(AppError::RuntimeConfig(format!(
+            "Runtime '{}' 不是 Node 类型，不能使用 node Build Engine",
+            request.runtime_name
+        )));
+    }
+    if cancel.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
+        return Err(AppError::Task("node build cancelled by user".into()));
+    }
+
+    let mut project_dir = PathBuf::from(&config.project);
+    if !project_dir.is_absolute() {
+        project_dir = workspace_root.join(project_dir);
+    }
+    if project_dir.is_file() {
+        project_dir = project_dir
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| workspace_root.to_path_buf());
+    }
+    let package_path = project_dir.join("package.json");
+    let package_bytes = std::fs::read(&package_path).map_err(|error| {
+        AppError::RuntimeConfig(format!(
+            "无法读取 Node 项目的 package.json {}：{}。请确认 project 指向 package.json 所在目录",
+            package_path.display(),
+            error
+        ))
+    })?;
+    let package: serde_json::Value = serde_json::from_slice(&package_bytes).map_err(|error| {
+        AppError::RuntimeConfig(format!(
+            "Node 项目的 package.json {} 无效：{}。请修复 JSON 后重试",
+            package_path.display(),
+            error
+        ))
+    })?;
+    let scripts = package
+        .get("scripts")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| AppError::ScriptNotFound {
+            project: config.project.clone(),
+            script: config.node_script.clone(),
+            available: vec![],
+        })?;
+    let script = config.node_script.as_deref().unwrap_or_default().trim();
+    if !scripts.contains_key(script) {
+        return Err(AppError::ScriptNotFound {
+            project: config.project.clone(),
+            script: Some(script.to_string()),
+            available: scripts.keys().cloned().collect(),
+        });
+    }
+
+    // Resolve node first so an invalid PATH is reported as NodeNotFound even
+    // when the package manager shim happens to exist.
+    crate::node::detect_node()?;
+    let decision = crate::node::decide_package_manager(&crate::node::DecisionInput {
+        configured: config.node_package_manager.clone(),
+        package_json_field: package
+            .get("packageManager")
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned),
+        lockfiles: crate::node::LockfileSnapshot::scan(&project_dir),
+    });
+    let package_manager = crate::node::resolve_package_manager(&decision)?;
+    if !project_dir.join("node_modules").is_dir() {
+        return Err(AppError::RuntimeConfig(format!(
+            "Node 项目 {} 缺少 node_modules，未自动安装依赖。Suggested Action：在项目目录执行 node_install（或手动运行 {} install）后重试",
+            project_dir.display(),
+            decision.manager.name()
+        )));
+    }
+
+    let env: Vec<(String, String)> = {
+        let conn = db.lock().unwrap();
+        config::resolve_environment(&conn, request.workspace_id, &request.runtime_name)?
+            .into_iter()
+            .collect()
+    };
+    let mut redacting = RedactingSink::new(sensitive_env_values(&env), sink);
+    if let Some(pre) = config.pre_build_script.as_deref() {
+        run_user_script(
+            pre,
+            "pre",
+            workspace_root,
+            script_approvals,
+            request,
+            &mut redacting,
+            cancel,
+        )?;
+    }
+
+    let mut args = vec!["run".to_string(), script.to_string()];
+    if !config.program_arguments.is_empty() {
+        args.push("--".into());
+        args.extend(config.program_arguments.iter().cloned());
+    }
+    let mut preview_parts = vec![package_manager.executable.to_string_lossy().into_owned()];
+    preview_parts.extend(args.iter().cloned());
+    let preview = preview_parts.join(" ");
+
+    if let Some(post) = config.post_build_script.as_deref() {
+        run_user_script(
+            post,
+            "post",
+            workspace_root,
+            script_approvals,
+            request,
+            &mut redacting,
+            cancel,
+        )?;
+    }
+
+    Ok(BuildOutcome {
+        strategy: RunStrategy::NodeScript,
+        reactor_kind: RuntimeReactorKind::Existing,
+        reactor_pom: package_path,
+        modules_built: vec![project_dir.to_string_lossy().into_owned()],
+        build_duration_ms: started.elapsed().as_millis(),
+        build_command_preview: preview.clone(),
+        launch: LaunchPlan::Script {
+            executable: package_manager.executable,
+            args,
+            env,
+            working_dir: project_dir,
+            preview,
+        },
+    })
+}
+
 /// 执行一次完整 Build（§28 流水线）。
 ///
 /// - 配置经内部未脱敏路径加载（`env` 含真实秘密，绝不外泄到 IPC）。
@@ -96,8 +243,17 @@ pub fn execute_build(
             config.main_class = Some(main_class.clone());
         }
     }
+    // Node 配置按技术栈直通 NodeBuildEngine；历史 Spring Boot 配置继续
+    // 使用 build_engine（maven/mvnd）语义，不改变既有链路。
+    let engine_id = if config.kind == crate::runtime::config::RuntimeKind::Node {
+        "node"
+    } else {
+        config.build_engine.as_deref().unwrap_or("maven")
+    };
+    if engine_id == "node" {
+        return execute_node_build(db, workspace_root, script_approvals, request, sink, cancel);
+    }
     // 只认 "maven" / "mvnd"（R-18）；Gradle（R-22）将来在这里分发。
-    let engine_id = config.build_engine.as_deref().unwrap_or("maven");
     let _engine = engine_for(engine_id)?;
     let engine_hint = if engine_id == "mvnd" {
         crate::runtime::build::runner::BuildEngineHint::Mvnd

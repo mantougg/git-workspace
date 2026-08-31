@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 1 · 配置与启动闭环 |
 | 优先级 | P0 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 依赖 | N-01, N-03 |
 | 对应设计文档 | §4.4 LaunchPlan 扩展、§4.5 BuildEngine 接入 |
 
@@ -42,18 +42,20 @@
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：已完成
+- 最近更新：2026-08-31
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
+| 2026-08-31 | 🟦 | 开始开发：按 N-03 RuntimeKind 与 node_projects 索引实施独立 NodeBuildEngine、Script LaunchPlan 和 launcher 分支。 |
+| 2026-08-31 | ✅ | 完成：新增 NodeScript 策略与 LaunchPlan::Script，NodeBuildEngine 直通校验工具链/脚本/依赖目录并合并环境，launcher 支持 Windows cmd /C 与进程托管；真实 npm fixture 输出与退出码验证通过，Maven 调用数为 0。全量测试 699/711 通过，12 项为既有 AI snapshot/JDK8-Maven 环境基线失败；前端类型检查通过。 |
 
 ### 子任务清单
 
-- [ ] LaunchPlan::Script 变体 + launcher 三分支
-- [ ] NodeBuildEngine 直通 + execute_build 分叉
-- [ ] cmd /C 包装与 env 注入
-- [ ] node_modules 缺失检测提示
-- [ ] 集成测试与四件套验证
+- [x] LaunchPlan::Script 变体 + launcher 三分支
+- [x] NodeBuildEngine 直通 + execute_build 分叉
+- [x] cmd /C 包装与 env 注入
+- [x] node_modules 缺失检测提示
+- [x] 集成测试与四件套验证（Node 专项通过；全量基线问题已记录）

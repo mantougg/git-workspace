@@ -64,3 +64,23 @@ pub struct ToolDetection {
     #[serde(default)]
     pub probe_ok: bool,
 }
+
+/// Persisted Node project metadata exposed by `node_list_projects`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeProjectNode {
+    pub project_id: i64,
+    pub repository_id: Option<i64>,
+    /// Package directory (the directory containing `package.json`), stored as
+    /// a normalized path key for cross-platform matching.
+    pub path: PathBuf,
+    pub name: String,
+    pub version: String,
+    pub package_manager: Option<String>,
+    /// Original JSON object text. Keeping this as text preserves script order
+    /// and lets the UI choose how to render values.
+    pub scripts_json: String,
+    /// Content hash used by the index synchronizer; omitted from IPC payloads.
+    #[serde(skip)]
+    pub pkg_hash: String,
+}

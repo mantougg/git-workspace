@@ -10,10 +10,16 @@ import type {
 } from "./maven";
 import type { RuntimeTaskOptions } from "./task";
 
+export type RuntimeKind = "springBoot" | "node";
+
 export interface RuntimeApplicationConfig {
   schemaVersion: number;
   name: string;
   project: string;
+  /** Runtime 技术栈；缺省值为 springBoot 以兼容历史配置。 */
+  kind?: RuntimeKind;
+  nodeScript?: string | null;
+  nodePackageManager?: string | null;
   mainClass: string | null;
   jdk: string | null;
   profile: string | null;
@@ -39,6 +45,7 @@ export interface RuntimeConfigSummary {
   workspaceId: number;
   name: string;
   project: string;
+  kind?: RuntimeKind;
   mainClass: string | null;
   jdk: string | null;
   profile: string | null;
@@ -64,7 +71,7 @@ export interface UpdateRuntimeConfigRequest {
 // ---------------------------------------------------------------------------
 
 /** R-09 Run Strategy（§30）。 */
-export type RunStrategy = "mavenRun" | "packageRun" | "classpathRun";
+export type RunStrategy = "mavenRun" | "packageRun" | "classpathRun" | "nodeScript";
 
 /** Runtime 任务操作（R-12，§63/§65；R-15/R-17 扩展）。 */
 export type RuntimeOp =

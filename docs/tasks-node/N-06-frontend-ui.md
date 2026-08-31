@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 2 · UI 与端到端验收 |
 | 优先级 | P0 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 依赖 | N-03, N-04 |
 | 对应设计文档 | §4.8 IPC 与契约、§4.9 前端 UI |
 
@@ -40,17 +40,19 @@
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：已完成
+- 最近更新：2026-08-31
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
+| 2026-08-31 | 🟦 | 开始开发：Wizard 增加 Runtime 类型与 Node 项目/script/包管理器分支，Dashboard 接入 Node 启动方式展示。 |
+| 2026-08-31 | ✅ | 完成：Wizard 支持 Spring Boot/前端工程切换、Node 项目和 script 原序选择、自动/显式包管理器及编辑回显；JVM 字段按 kind 隐藏；Dashboard 结合配置详情与 node_projects 显示 `<pm> run <script>`。`pnpm build` 通过，本地页面切换分支冒烟通过。 |
 
 ### 子任务清单
 
-- [ ] api/node.ts + types 同步
-- [ ] Wizard 类型选择与 node 分支表单
-- [ ] Dashboard 启动方式列降级
-- [ ] 回显/回归验证
+- [x] api/node.ts + types 同步
+- [x] Wizard 类型选择与 node 分支表单
+- [x] Dashboard 启动方式列降级
+- [x] 回显/回归验证

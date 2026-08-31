@@ -875,8 +875,11 @@
         "unhealthyAfter": 3
       },
       "jdk": "21",
+      "kind": "springBoot",
       "mainClass": "com.example.Application",
       "name": "boot",
+      "nodePackageManager": null,
+      "nodeScript": null,
       "postBuildScript": null,
       "preBuildScript": null,
       "profile": "dev",
@@ -1608,6 +1611,15 @@
       "type": "repoClean"
     }
   ],
+  "NodeProjectNode": {
+    "name": "web",
+    "packageManager": "npm",
+    "path": "/ws/web",
+    "projectId": 7,
+    "repositoryId": 3,
+    "scriptsJson": "{\"dev\":\"vite\",\"build\":\"vite build\"}",
+    "version": "1.2.3"
+  },
   "OperationLogDetail": {
     "createdAt": "2026-01-01T00:00:00Z",
     "id": 1,
@@ -2119,8 +2131,11 @@
       "unhealthyAfter": 3
     },
     "jdk": "21",
+    "kind": "springBoot",
     "mainClass": "com.example.Application",
     "name": "boot",
+    "nodePackageManager": null,
+    "nodeScript": null,
     "postBuildScript": null,
     "preBuildScript": null,
     "profile": "dev",
@@ -2165,6 +2180,7 @@
     "createdAt": "2026-08-18T00:00:00Z",
     "id": 1,
     "jdk": "21",
+    "kind": "springBoot",
     "mainClass": "com.example.Application",
     "name": "boot",
     "profile": "dev",
@@ -2333,8 +2349,11 @@
       "environment": {},
       "healthCheck": null,
       "jdk": "21",
+      "kind": "springBoot",
       "mainClass": null,
       "name": "",
+      "nodePackageManager": null,
+      "nodeScript": null,
       "postBuildScript": null,
       "preBuildScript": null,
       "profile": "dev",
@@ -2769,8 +2788,11 @@
         "unhealthyAfter": 3
       },
       "jdk": "21",
+      "kind": "springBoot",
       "mainClass": "com.example.Application",
       "name": "boot",
+      "nodePackageManager": null,
+      "nodeScript": null,
       "postBuildScript": null,
       "preBuildScript": null,
       "profile": "dev",

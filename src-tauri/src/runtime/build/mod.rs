@@ -1,12 +1,13 @@
 //! Build Engine（R-09，§28 Build 流程、§29 Start 抽象、§30 Run Strategy、§73）。
 //!
-//! 把「校验 JDK → 校验 Maven → 依赖图 → Runtime Closure → Reactor → Maven
-//! 构建 → 生成 Classpath」串成可观测流水线，并抽象三种 Run Strategy：
+//! 把 Spring Boot 的 Maven 构建步骤串成可观测流水线，并抽象 Maven 与
+//! Node.js 的启动策略：
 //!
 //! - [`RunStrategy::MavenRun`]：`mvn spring-boot:run`；
 //! - [`RunStrategy::PackageRun`]：`mvn package` + `java -jar`；
 //! - [`RunStrategy::ClasspathRun`]：`mvn compile` + `dependency:build-classpath`
-//!   + `java -cp`。
+//!   + `java -cp`；
+//! - [`RunStrategy::NodeScript`]：直接执行包管理器 `run <script>`。
 //!
 //! 边界（任务文档）：构建范围只含 Runtime Closure 模块；Java 编译缓存完全
 //! 依赖 Maven 原生 `~/.m2`（§73 第一阶段）；并发由 [`scheduler::BuildScheduler`]
@@ -20,6 +21,7 @@ pub mod classpath;
 pub mod dep_cache;
 pub mod pathing_jar;
 pub mod pipeline;
+pub mod node_engine;
 pub mod runner;
 pub mod scheduler;
 pub mod strategy;
@@ -35,7 +37,8 @@ use crate::maven::exec_model::MavenExecutionRequest;
 use crate::maven::reactor::RuntimeReactorKind;
 use crate::process::streaming::OutputStream;
 
-/// Run Strategy（§30）。`camelCase` 序列化：mavenRun / packageRun / classpathRun。
+/// Run Strategy（§30）。`camelCase` 序列化：mavenRun / packageRun /
+/// classpathRun / nodeScript。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RunStrategy {
@@ -45,6 +48,8 @@ pub enum RunStrategy {
     PackageRun,
     /// `mvn compile` + 解析 classpath + `java -cp`：跳过打包，启动最快。
     ClasspathRun,
+    /// 直接执行 Node.js package.json script。
+    NodeScript,
 }
 
 impl RunStrategy {
@@ -54,6 +59,7 @@ impl RunStrategy {
             RunStrategy::MavenRun => "mavenRun",
             RunStrategy::PackageRun => "packageRun",
             RunStrategy::ClasspathRun => "classpathRun",
+            RunStrategy::NodeScript => "nodeScript",
         }
     }
 
@@ -63,6 +69,7 @@ impl RunStrategy {
             "mavenRun" => Some(RunStrategy::MavenRun),
             "packageRun" => Some(RunStrategy::PackageRun),
             "classpathRun" => Some(RunStrategy::ClasspathRun),
+            "nodeScript" => Some(RunStrategy::NodeScript),
             _ => None,
         }
     }
@@ -156,6 +163,14 @@ pub enum LaunchPlan {
         main_class: String,
         vm_options: Vec<String>,
         program_arguments: Vec<String>,
+        env: Vec<(String, String)>,
+        working_dir: PathBuf,
+        preview: String,
+    },
+    /// 以包管理器执行 npm script（`npm run dev` / `pnpm run dev`）。
+    Script {
+        executable: PathBuf,
+        args: Vec<String>,
         env: Vec<(String, String)>,
         working_dir: PathBuf,
         preview: String,
@@ -263,9 +278,10 @@ pub trait BuildEngine {
 /// （[`runner::BuildEngineHint`]）与 daemon 回退，Engine 抽象不变。
 pub fn engine_for(id: &str) -> AppResult<Box<dyn BuildEngine>> {
     match id {
+        "node" => Ok(Box::new(node_engine::NodeBuildEngine)),
         "maven" | "mvnd" => Ok(Box::new(pipeline::MavenBuildEngine)),
         other => Err(AppError::RuntimeConfig(format!(
-            "未知的 Build Engine '{other}'；当前支持 'maven' / 'mvnd'（Gradle 由 R-22 预留）"
+            "未知的 Build Engine '{other}'；当前支持 'maven' / 'mvnd' / 'node'（Gradle 由 R-22 预留）"
         ))),
     }
 }
@@ -280,6 +296,7 @@ mod tests {
             (RunStrategy::MavenRun, "mavenRun"),
             (RunStrategy::PackageRun, "packageRun"),
             (RunStrategy::ClasspathRun, "classpathRun"),
+            (RunStrategy::NodeScript, "nodeScript"),
         ] {
             assert_eq!(strategy.as_str(), text);
             assert_eq!(RunStrategy::parse(text), Some(strategy));
@@ -327,6 +344,7 @@ mod tests {
         assert_eq!(engine_for("maven").unwrap().id(), "maven");
         // R-18：mvnd 与 maven 共用流水线，是合法 engine id。
         assert_eq!(engine_for("mvnd").unwrap().id(), "maven");
+        assert_eq!(engine_for("node").unwrap().id(), "node");
         let error = engine_for("gradle").err().expect("unknown engine must fail");
         assert_eq!(error.code(), "RuntimeConfigError");
         assert!(error.to_string().contains("gradle"));

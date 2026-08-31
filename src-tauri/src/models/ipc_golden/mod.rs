@@ -28,6 +28,7 @@ use serde_json::{Map, Value};
 
 mod common;
 mod git;
+mod node;
 mod runtime;
 mod task;
 
@@ -40,6 +41,7 @@ fn samples() -> Map<String, Value> {
     common::samples(&mut m);
     runtime::samples(&mut m);
     git::samples(&mut m);
+    node::samples(&mut m);
     task::samples(&mut m);
 
     m
@@ -52,6 +54,7 @@ fn ts_type_map() -> impl Iterator<Item = &'static (&'static str, &'static str, &
         .iter()
         .chain(runtime::TS_TYPE_MAP.iter())
         .chain(git::TS_TYPE_MAP.iter())
+        .chain(node::TS_TYPE_MAP.iter())
         .chain(task::TS_TYPE_MAP.iter())
 }
 

@@ -469,6 +469,8 @@ pub fn run() {
             commands::maven::set_maven_local_repo_override,
             // Spring Boot application discovery (R-06)
             commands::spring_boot::detect_spring_boot,
+            // Node.js package.json discovery (N-02)
+            commands::node::node_list_projects,
             // Runtime configuration (R-07)
             commands::runtime::create_runtime_config,
             commands::runtime::update_runtime_config,

@@ -33,6 +33,16 @@
           style="max-width: 320px"
         />
       </n-form-item>
+      <n-form-item label="运行时类型" path="kind">
+        <n-radio-group
+          v-model:value="form.kind"
+          :disabled="isEdit"
+          @update:value="onKindChange"
+        >
+          <n-radio-button value="springBoot">Spring Boot</n-radio-button>
+          <n-radio-button value="node">前端工程</n-radio-button>
+        </n-radio-group>
+      </n-form-item>
       <n-form-item v-if="!isEdit" label="从模板创建">
         <n-space>
           <n-select
@@ -48,9 +58,21 @@
         </n-space>
       </n-form-item>
 
-      <n-form-item label="Maven 项目" path="project">
+      <n-form-item :label="isNode ? '前端项目' : 'Maven 项目'" path="project">
         <div class="project-field">
           <n-select
+            v-if="isNode"
+            v-model:value="form.project"
+            :options="nodeProjectOptions"
+            placeholder="选择 workspace 内的 package.json 项目"
+            filterable
+            :loading="nodeLoading"
+            class="node-mono"
+            style="width: 100%; max-width: 560px"
+            @update:value="onProjectChange"
+          />
+          <n-select
+            v-else
             v-model:value="form.project"
             :options="store.projects.map(p => ({ label: projectLabel(p), value: p.path }))"
             placeholder="选择 workspace 内的 Maven 项目"
@@ -62,7 +84,27 @@
           <!-- R-14 空态引导：索引为空（未解析依赖 / 仓库无 .git 标记）时给出
                明确动作，而不是裸 no data。 -->
           <n-alert
-            v-if="store.workspaceId && store.projects.length === 0 && !store.loading"
+            v-if="isNode && store.workspaceId && nodeProjects.length === 0 && !nodeLoading"
+            type="info"
+            :show-icon="true"
+            :bordered="false"
+            class="projects-empty-alert"
+          >
+            尚未发现 package.json 项目。刷新项目索引后重试。
+          </n-alert>
+          <n-button
+            v-if="isNode && store.workspaceId && nodeProjects.length === 0"
+            size="small"
+            type="primary"
+            dashed
+            :loading="nodeLoading"
+            @click="loadNodeProjects"
+          >
+            <template #icon><n-icon><RefreshOutline /></n-icon></template>
+            刷新前端项目
+          </n-button>
+          <n-alert
+            v-if="!isNode && store.workspaceId && store.projects.length === 0 && !store.loading"
             type="info"
             :show-icon="true"
             :bordered="false"
@@ -72,7 +114,7 @@
             也可在 Dashboard 执行，长任务进度见任务面板）。
           </n-alert>
           <n-button
-            v-if="store.workspaceId && store.projects.length === 0"
+            v-if="!isNode && store.workspaceId && store.projects.length === 0"
             size="small"
             type="primary"
             dashed
@@ -85,7 +127,26 @@
         </div>
       </n-form-item>
 
-      <n-form-item label="Main Class">
+      <n-form-item v-if="isNode" label="启动脚本" path="nodeScript">
+        <n-select
+          v-model:value="form.nodeScript"
+          :options="nodeScriptOptions"
+          placeholder="选择 package.json scripts"
+          :disabled="!form.project"
+          class="node-mono"
+          style="width: 100%; max-width: 560px"
+        />
+      </n-form-item>
+
+      <n-form-item v-if="isNode" label="包管理器">
+        <n-select
+          v-model:value="form.nodePackageManager"
+          :options="nodePackageManagerOptions"
+          style="width: 100%; max-width: 320px"
+        />
+      </n-form-item>
+
+      <n-form-item v-if="!isNode" label="Main Class">
         <div class="main-class-row">
           <n-input
             v-model:value="form.mainClass"
@@ -99,7 +160,7 @@
         </div>
       </n-form-item>
 
-      <n-form-item label="JDK">
+      <n-form-item v-if="!isNode" label="JDK">
         <n-select
           v-model:value="form.jdk"
           :options="jdkOptions"
@@ -109,7 +170,7 @@
         />
       </n-form-item>
 
-      <n-form-item label="Profile">
+      <n-form-item v-if="!isNode" label="Profile">
         <n-input
           v-model:value="form.profile"
           placeholder="例如 dev（等价 --spring.profiles.active=dev）"
@@ -117,7 +178,7 @@
         />
       </n-form-item>
 
-      <n-form-item label="启动预设">
+      <n-form-item v-if="!isNode" label="启动预设">
         <div class="preset-field">
           <n-select
             :options="presetOptions"
@@ -130,7 +191,7 @@
         </div>
       </n-form-item>
 
-      <n-form-item label="VM Options">
+      <n-form-item v-if="!isNode" label="VM Options">
         <n-input
           v-model:value="vmOptionsText"
           type="textarea"
@@ -145,7 +206,7 @@
           v-model:value="programArgsText"
           type="textarea"
           :rows="2"
-          placeholder="每行一个，例如 --server.port=8080"
+          :placeholder="isNode ? '每行一个，例如 --port / 5173' : '每行一个，例如 --server.port=8080'"
           style="width: 100%; max-width: 560px"
         />
       </n-form-item>
@@ -197,7 +258,7 @@
         </div>
       </n-form-item>
 
-      <n-form-item label="构建引擎">
+      <n-form-item v-if="!isNode" label="构建引擎">
         <n-select
           v-model:value="form.buildEngine"
           :options="buildEngineOptions"
@@ -319,10 +380,16 @@ import {
   runtimeSaveConfigAsTemplate,
 } from "@/api/runtime";
 import { detectMvnd } from "@/api/maven";
+import { nodeListProjects } from "@/api/node";
 import { LAUNCH_PRESETS } from "@/config/launchPresets";
 import type { JdkInstallation } from "@/types/jdk";
 import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
-import type { RuntimeApplicationConfig, RuntimeTemplate } from "@/types/runtime";
+import type { NodeProjectNode } from "@/types/node";
+import type {
+  RuntimeApplicationConfig,
+  RuntimeKind,
+  RuntimeTemplate,
+} from "@/types/runtime";
 import { errMsg } from "@/utils/error";
 
 const message = useMessage();
@@ -339,14 +406,52 @@ const detecting = ref(false);
 const resolving = ref(false);
 const formRef = ref<InstanceType<typeof import("naive-ui").NForm>>();
 
-const form = reactive({
+const form = reactive<{
+  name: string;
+  project: string;
+  kind: RuntimeKind;
+  nodeScript: string;
+  nodePackageManager: "auto" | "npm" | "pnpm" | "yarn";
+  mainClass: string;
+  jdk: string;
+  profile: string;
+  buildEngine: string;
+}>({
   name: "",
   project: "",
+  kind: "springBoot",
+  nodeScript: "",
+  nodePackageManager: "auto",
   mainClass: "",
   jdk: "",
   profile: "",
   buildEngine: "maven",
 });
+
+const isNode = computed(() => form.kind === "node");
+const nodeProjects = ref<NodeProjectNode[]>([]);
+const nodeLoading = ref(false);
+const nodeProjectOptions = computed(() =>
+  nodeProjects.value.map((project) => ({
+    label: `${project.name || "package.json"}  (${project.path})`,
+    value: project.path,
+  })),
+);
+const selectedNodeProject = computed(() =>
+  nodeProjects.value.find((project) => normalizePath(project.path) === normalizePath(form.project)),
+);
+const nodeScriptOptions = computed(() =>
+  scriptNames(selectedNodeProject.value).map((script) => ({
+    label: script,
+    value: script,
+  })),
+);
+const nodePackageManagerOptions = [
+  { label: "自动推断", value: "auto" },
+  { label: "npm", value: "npm" },
+  { label: "pnpm", value: "pnpm" },
+  { label: "yarn", value: "yarn" },
+];
 
 /** 编辑模式保留原有 Scope（向导不负责 Scope 编辑；Scope 视图专属）。 */
 const originalScope = ref<RuntimeScope>({ mode: "auto" });
@@ -405,6 +510,66 @@ const templateOptions = computed(() =>
   })),
 );
 
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
+function packageManagerValue(
+  value: string | null | undefined,
+): "auto" | "npm" | "pnpm" | "yarn" {
+  return value === "npm" || value === "pnpm" || value === "yarn" ? value : "auto";
+}
+
+function scriptNames(project?: NodeProjectNode): string[] {
+  if (!project) return [];
+  try {
+    const scripts = JSON.parse(project.scriptsJson) as Record<string, unknown>;
+    return scripts && typeof scripts === "object" ? Object.keys(scripts) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function loadNodeProjects() {
+  if (!store.workspaceId) return;
+  nodeLoading.value = true;
+  try {
+    nodeProjects.value = await nodeListProjects(store.workspaceId);
+    if (isNode.value && form.project) {
+      const matchingProject = nodeProjects.value.find(
+        (project) => normalizePath(project.path) === normalizePath(form.project),
+      );
+      if (matchingProject) form.project = matchingProject.path;
+      onNodeProjectChange();
+    }
+  } catch (e) {
+    message.error("加载前端项目失败：" + errMsg(e));
+  } finally {
+    nodeLoading.value = false;
+  }
+}
+
+function onNodeProjectChange() {
+  const scripts = scriptNames(selectedNodeProject.value);
+  if (!scripts.includes(form.nodeScript)) {
+    form.nodeScript = scripts[0] ?? "";
+  }
+}
+
+async function onKindChange(kind: RuntimeKind) {
+  form.project = "";
+  form.nodeScript = "";
+  if (kind === "node") {
+    form.mainClass = "";
+    form.jdk = "";
+    form.profile = "";
+    vmOptionsText.value = "";
+    await loadNodeProjects();
+  } else {
+    form.nodePackageManager = "auto";
+  }
+}
+
 /** 应用模板：把模板载荷预填进表单（名称/项目仍由用户填写）。 */
 async function onApplyTemplate() {
   if (!selectedTemplate.value || !store.workspaceId) return;
@@ -413,6 +578,9 @@ async function onApplyTemplate() {
     const template = templates.value.find((t) => t.name === selectedTemplate.value);
     if (!template) return;
     const payload = template.config;
+    form.kind = payload.kind ?? "springBoot";
+    form.nodeScript = payload.nodeScript ?? "";
+    form.nodePackageManager = packageManagerValue(payload.nodePackageManager);
     form.jdk = payload.jdk ?? "";
     form.profile = payload.profile ?? "";
     form.buildEngine = payload.buildEngine ?? "maven";
@@ -429,6 +597,7 @@ async function onApplyTemplate() {
       healthForm.intervalMs = payload.healthCheck.intervalMs ?? null;
     }
     autoRestartEnabled.value = payload.autoRestart === true;
+    if (form.kind === "node") await loadNodeProjects();
     message.success(`已应用模板「${template.name}」，请填写名称并选择项目`);
   } catch (e) {
     message.error("应用模板失败：" + errMsg(e));
@@ -543,7 +712,14 @@ const envColumns = [
 
 const rules = {
   name: [{ required: true, message: "请输入应用名称", trigger: "blur" }],
-  project: [{ required: true, message: "请选择 Maven 项目", trigger: "change" }],
+  project: [{ required: true, message: "请选择项目", trigger: "change" }],
+  nodeScript: [
+    {
+      validator: () => !isNode.value || !!form.nodeScript,
+      message: "请选择启动脚本",
+      trigger: "change",
+    },
+  ],
 };
 
 // ------------------------------------------------------------------
@@ -583,13 +759,17 @@ function toConfig(): RuntimeApplicationConfig {
     if (key) env[key] = row.value;
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     name: form.name.trim(),
     project: form.project,
-    mainClass: form.mainClass.trim() || null,
-    jdk: form.jdk || null,
-    profile: form.profile.trim() || null,
-    vmOptions: vmOptionsText.value
+    kind: form.kind,
+    nodeScript: isNode.value ? form.nodeScript || null : null,
+    nodePackageManager:
+      isNode.value && form.nodePackageManager !== "auto" ? form.nodePackageManager : null,
+    mainClass: isNode.value ? null : form.mainClass.trim() || null,
+    jdk: isNode.value ? null : form.jdk || null,
+    profile: isNode.value ? null : form.profile.trim() || null,
+    vmOptions: (isNode.value ? "" : vmOptionsText.value)
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean),
@@ -599,7 +779,7 @@ function toConfig(): RuntimeApplicationConfig {
       .filter(Boolean),
     environment: env,
     runtimeEnvironment: {},
-    buildEngine: form.buildEngine || null,
+    buildEngine: isNode.value ? "node" : form.buildEngine || null,
     scope: originalScope.value,
     preBuildScript: preBuildScriptText.value.trim() || null,
     postBuildScript: postBuildScriptText.value.trim() || null,
@@ -631,6 +811,9 @@ function healthConfig(): RuntimeApplicationConfig["healthCheck"] {
 function fillForm(config: RuntimeApplicationConfig) {
   form.name = config.name;
   form.project = config.project;
+  form.kind = config.kind ?? "springBoot";
+  form.nodeScript = config.nodeScript ?? "";
+  form.nodePackageManager = packageManagerValue(config.nodePackageManager);
   form.mainClass = config.mainClass ?? "";
   form.jdk = config.jdk ?? "";
   form.profile = config.profile ?? "";
@@ -673,12 +856,17 @@ function removeEnvRow(index: number) {
 }
 
 async function onProjectChange() {
+  if (isNode.value) {
+    onNodeProjectChange();
+    return;
+  }
   // 项目变化时尝试用 R-06 检测结果预填 Main Class（仅当用户未手填）。
   if (form.mainClass.trim()) return;
   await onDetectMainClass();
 }
 
 async function onDetectMainClass() {
+  if (isNode.value) return;
   if (!form.project) {
     message.warning("请先选择 Maven 项目");
     return;
@@ -788,6 +976,7 @@ onMounted(async () => {
     try {
       const config = await store.loadConfigDetail(name);
       fillForm(config);
+      if (form.kind === "node") await loadNodeProjects();
     } catch (e) {
       message.error("加载配置失败：" + errMsg(e));
       goBack();
@@ -852,6 +1041,9 @@ onMounted(async () => {
 .projects-empty-alert {
   width: 100%;
   max-width: 560px;
+}
+.node-mono {
+  font-family: var(--gw-font-mono);
 }
 .main-class-row {
   display: flex;

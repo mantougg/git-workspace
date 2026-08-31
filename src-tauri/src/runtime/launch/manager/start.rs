@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::error::{AppError, AppResult};
 use crate::runtime::build::pipeline::execute_build;
-use crate::runtime::build::{BuildOptions, BuildRequest};
+use crate::runtime::build::{BuildOptions, BuildRequest, LaunchPlan};
 use crate::runtime::config;
 use crate::runtime::launch::launcher;
 use crate::runtime::launch::store;
@@ -141,7 +141,19 @@ impl RuntimeProcessManager {
                 return Err(error);
             }
         }
-        self.spawn_monitor(process_id, runtime_name.to_string(), command, handle);
+        let detector_kind = if matches!(&plan, LaunchPlan::Script { .. }) {
+            crate::runtime::config::RuntimeKind::Node
+        } else {
+            crate::runtime::config::RuntimeKind::SpringBoot
+        };
+        self.spawn_monitor(
+            process_id,
+            runtime_name.to_string(),
+            command,
+            handle,
+            detector_kind,
+            options.start_grace,
+        );
 
         // spawn 失败 / 拿到 pid 之前进程就没了 → outcome 先到。
         let pid = match self.wait_pid_or_outcome(handle, Duration::from_secs(10)) {

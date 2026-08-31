@@ -13,7 +13,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::error::{AppError, AppResult};
 
 use super::model::{
-    CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeConfigSummary,
+    CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeKind,
     UpdateRuntimeConfigRequest,
 };
 use super::storage::{
@@ -31,6 +31,7 @@ pub fn create_config(
 ) -> AppResult<RuntimeApplicationConfig> {
     request.config.validate()?;
     let root = workspace_root(conn, request.workspace_id)?;
+    validate_for_workspace(conn, request.workspace_id, &request.config)?;
     ensure_runtime_dir(&root)?;
     let path = config_path(&root, &request.config.name)?;
     if path.exists() {
@@ -61,7 +62,7 @@ pub fn list_configs(conn: &Connection, workspace_id: i64) -> AppResult<Vec<Runti
     // Validate the workspace id without opening any Runtime JSON files.
     let _ = workspace_root(conn, workspace_id)?;
     let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, name, project, main_class, jdk, profile,
+        "SELECT id, workspace_id, name, project, kind, main_class, jdk, profile,
                 build_engine, config_path, created_at, updated_at
          FROM runtime_projects WHERE workspace_id = ?1 ORDER BY name COLLATE NOCASE",
     )?;
@@ -71,13 +72,14 @@ pub fn list_configs(conn: &Connection, workspace_id: i64) -> AppResult<Vec<Runti
             workspace_id: row.get(1)?,
             name: row.get(2)?,
             project: row.get(3)?,
-            main_class: row.get(4)?,
-            jdk: row.get(5)?,
-            profile: row.get(6)?,
-            build_engine: row.get(7)?,
-            config_path: row.get(8)?,
-            created_at: row.get(9)?,
-            updated_at: row.get(10)?,
+            kind: parse_runtime_kind(row.get::<_, String>(4)?),
+            main_class: row.get(5)?,
+            jdk: row.get(6)?,
+            profile: row.get(7)?,
+            build_engine: row.get(8)?,
+            config_path: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
@@ -106,6 +108,7 @@ pub(crate) fn load_config_unredacted(
     let mut config = read_config_file(Path::new(&summary.config_path), name)?;
     config = normalized_loaded_config(config, name);
     config.validate()?;
+    validate_for_workspace(conn, workspace_id, &config)?;
     sync_metadata_if_changed(conn, &summary, &config)?;
     Ok(config)
 }
@@ -132,6 +135,7 @@ pub fn update_config(
     }
     config.validate()?;
     let root = workspace_root(conn, request.workspace_id)?;
+    validate_for_workspace(conn, request.workspace_id, &config)?;
     ensure_runtime_dir(&root)?;
     let new_path = config_path(&root, &config.name)?;
     if config.name != request.name && runtime_name_exists(conn, request.workspace_id, &config.name)?
@@ -158,13 +162,14 @@ pub fn update_config(
     let root_project_id = resolve_root_project_id(conn, request.workspace_id, &config.project)?;
     let update_result = conn.execute(
         "UPDATE runtime_projects
-         SET name = ?1, project = ?2, root_project_id = ?3, main_class = ?4,
-             jdk = ?5, profile = ?6, build_engine = ?7, config_path = ?8,
-             updated_at = ?9
-         WHERE workspace_id = ?10 AND name = ?11",
+         SET name = ?1, project = ?2, kind = ?3, root_project_id = ?4, main_class = ?5,
+             jdk = ?6, profile = ?7, build_engine = ?8, config_path = ?9,
+             updated_at = ?10
+         WHERE workspace_id = ?11 AND name = ?12",
         params![
             config.name,
             config.project,
+            runtime_kind_name(config.kind),
             root_project_id,
             config.main_class,
             config.jdk,
@@ -272,13 +277,14 @@ fn insert_metadata(
     let root_project_id = resolve_root_project_id(conn, workspace_id, &config.project)?;
     conn.execute(
         "INSERT INTO runtime_projects (
-            workspace_id, name, project, root_project_id, main_class, jdk, profile,
+            workspace_id, name, project, kind, root_project_id, main_class, jdk, profile,
             build_engine, config_path, created_at, updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
         params![
             workspace_id,
             config.name,
             config.project,
+            runtime_kind_name(config.kind),
             root_project_id,
             config.main_class,
             config.jdk,
@@ -297,7 +303,7 @@ pub(super) fn get_summary(
     name: &str,
 ) -> AppResult<Option<RuntimeConfigSummary>> {
     conn.query_row(
-        "SELECT id, workspace_id, name, project, main_class, jdk, profile,
+        "SELECT id, workspace_id, name, project, kind, main_class, jdk, profile,
                 build_engine, config_path, created_at, updated_at
          FROM runtime_projects WHERE workspace_id = ?1 AND name = ?2",
         params![workspace_id, name],
@@ -307,13 +313,14 @@ pub(super) fn get_summary(
                 workspace_id: row.get(1)?,
                 name: row.get(2)?,
                 project: row.get(3)?,
-                main_class: row.get(4)?,
-                jdk: row.get(5)?,
-                profile: row.get(6)?,
-                build_engine: row.get(7)?,
-                config_path: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                kind: parse_runtime_kind(row.get::<_, String>(4)?),
+                main_class: row.get(5)?,
+                jdk: row.get(6)?,
+                profile: row.get(7)?,
+                build_engine: row.get(8)?,
+                config_path: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
             })
         },
     )
@@ -331,16 +338,18 @@ fn sync_metadata_if_changed(
         && summary.jdk == config.jdk
         && summary.profile == config.profile
         && summary.build_engine == config.build_engine
+        && summary.kind == config.kind
     {
         return Ok(());
     }
     conn.execute(
         "UPDATE runtime_projects
-         SET project = ?1, main_class = ?2, jdk = ?3, profile = ?4,
-             build_engine = ?5, updated_at = ?6
-         WHERE id = ?7",
+         SET project = ?1, kind = ?2, main_class = ?3, jdk = ?4, profile = ?5,
+             build_engine = ?6, updated_at = ?7
+         WHERE id = ?8",
         params![
             config.project,
+            runtime_kind_name(config.kind),
             config.main_class,
             config.jdk,
             config.profile,
@@ -350,4 +359,107 @@ fn sync_metadata_if_changed(
         ],
     )?;
     Ok(())
+}
+
+fn runtime_kind_name(kind: RuntimeKind) -> &'static str {
+    match kind {
+        RuntimeKind::SpringBoot => "springBoot",
+        RuntimeKind::Node => "node",
+    }
+}
+
+fn parse_runtime_kind(value: String) -> RuntimeKind {
+    if value.eq_ignore_ascii_case("node") {
+        RuntimeKind::Node
+    } else {
+        RuntimeKind::SpringBoot
+    }
+}
+
+/// Validate Node script references against the indexed manifest, with a disk
+/// fallback when the discovery index is stale or not yet populated.
+fn validate_for_workspace(
+    conn: &Connection,
+    workspace_id: i64,
+    config: &RuntimeApplicationConfig,
+) -> AppResult<()> {
+    if config.kind != RuntimeKind::Node {
+        return Ok(());
+    }
+    let script = config.node_script.as_deref().unwrap_or_default().trim();
+    let project_key = normalize_path(Path::new(&config.project));
+    let indexed = {
+        let mut stmt =
+            conn.prepare("SELECT path, scripts_json FROM node_projects WHERE workspace_id = ?1")?;
+        let rows = stmt.query_map([workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut value = None;
+        for row in rows {
+            let (path, json) = row?;
+            if normalize_path(Path::new(&path)) == project_key {
+                value = Some(json);
+                break;
+            }
+        }
+        value.and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+    };
+    let scripts = indexed.or_else(|| read_scripts_from_disk(conn, workspace_id, &config.project));
+    let available = scripts
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .map(|object| {
+            let mut names = object.keys().cloned().collect::<Vec<_>>();
+            names.sort();
+            names
+        })
+        .unwrap_or_default();
+    if scripts
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .map(|object| !object.contains_key(script))
+        .unwrap_or(true)
+    {
+        return Err(AppError::ScriptNotFound {
+            project: config.project.clone(),
+            script: Some(script.to_string()),
+            available,
+        });
+    }
+    Ok(())
+}
+
+fn read_scripts_from_disk(
+    conn: &Connection,
+    workspace_id: i64,
+    project: &str,
+) -> Option<serde_json::Value> {
+    let root = workspace_root(conn, workspace_id).ok()?;
+    let mut path = PathBuf::from(project);
+    if !path.is_absolute() {
+        path = root.join(path);
+    }
+    let package = if path.is_file() {
+        path
+    } else {
+        path.join("package.json")
+    };
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(package).ok()?).ok()?;
+    value.get("scripts").cloned()
+}
+
+fn normalize_path(path: &Path) -> String {
+    let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let value = canonical.to_string_lossy();
+    let value = value
+        .strip_prefix(r"\\?\UNC\")
+        .map(|rest| format!(r"\\{rest}"))
+        .or_else(|| value.strip_prefix(r"\\?\").map(str::to_string))
+        .unwrap_or_else(|| value.to_string());
+    let value = value.replace('\\', "/");
+    if cfg!(windows) {
+        value.to_ascii_lowercase()
+    } else {
+        value
+    }
 }

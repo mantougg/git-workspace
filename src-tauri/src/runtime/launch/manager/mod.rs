@@ -70,7 +70,7 @@ mod output;
 mod start;
 mod types;
 
-use output::{startup_detectors, BuildLogSink};
+use output::BuildLogSink;
 
 use types::{
     classify_exit, ActiveProcess, Built, CachedLaunch, MonitorOutcome, PidWait, Prepared, RunWait,

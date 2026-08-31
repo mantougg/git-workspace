@@ -4,6 +4,7 @@ use crate::error::AppResult;
 use crate::process::streaming::OutputStream;
 use crate::runtime::build::BuildOutputSink;
 use crate::runtime::config;
+use crate::runtime::config::RuntimeKind;
 use crate::runtime::logs::redact::sensitive_env_values;
 use crate::runtime::logs::{LogPhase, LogSession};
 
@@ -51,17 +52,71 @@ impl BuildOutputSink for BuildLogSink {
     }
 }
 
-/// 启动横幅 / 端口探测正则（只读日志流，不做端口扫描；端口管理归 R-16）。
-pub(super) fn startup_detectors() -> &'static (regex::Regex, regex::Regex) {
-    static DETECTORS: std::sync::OnceLock<(regex::Regex, regex::Regex)> =
-        std::sync::OnceLock::new();
-    DETECTORS.get_or_init(|| {
-        (
-            // Spring Boot 启动完成横幅："Started Application in 3.2 seconds ..."。
-            regex::Regex::new(r"Started \S+ in [\d.]+ seconds").unwrap(),
-            // 内嵌容器端口："Tomcat started on port 8080 (http) ..." /
-            // 旧版 "Tomcat started on port(s): 8080" / Netty 同构。
-            regex::Regex::new(r"started on port(?:\(s\))?:?\s+(\d+)").unwrap(),
-        )
-    })
+/// 检测启动横幅 / 端口（只读日志流，不做端口扫描；端口管理归 R-16）。
+/// Node 没有可靠的 ready banner，只从宽限期内的 localhost URL 采集首个端口。
+pub(super) fn startup_banner(kind: RuntimeKind, line: &str) -> bool {
+    static SPRING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    kind == RuntimeKind::SpringBoot
+        && SPRING
+            .get_or_init(|| regex::Regex::new(r"Started \S+ in [\d.]+ seconds").unwrap())
+            .is_match(line)
+}
+
+pub(super) fn startup_port(kind: RuntimeKind, line: &str) -> Option<u16> {
+    static SPRING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static NODE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let regex = match kind {
+        RuntimeKind::SpringBoot => SPRING.get_or_init(|| {
+            regex::Regex::new(r"started on port(?:\(s\))?:?\s+(\d+)").unwrap()
+        }),
+        RuntimeKind::Node => NODE.get_or_init(|| {
+            regex::Regex::new(
+                r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)",
+            )
+            .unwrap()
+        }),
+    };
+    regex
+        .captures(line)
+        .and_then(|captures| captures.get(1))
+        .and_then(|value| value.as_str().parse::<u16>().ok())
+        .filter(|port| *port > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spring_boot_detectors_preserve_existing_banner_and_port_shapes() {
+        assert!(startup_banner(
+            RuntimeKind::SpringBoot,
+            "Started Application in 3.2 seconds (process running)"
+        ));
+        assert_eq!(
+            startup_port(
+                RuntimeKind::SpringBoot,
+                "Tomcat started on port(s): 8080 (http)"
+            ),
+            Some(8080)
+        );
+        assert!(!startup_banner(RuntimeKind::Node, "Started Application in 3.2 seconds"));
+    }
+
+    #[test]
+    fn node_detector_accepts_real_dev_server_output_and_localhost_only() {
+        let samples = [
+            "  Local:   http://localhost:5173/",
+            "Project is running at http://127.0.0.1:8080/",
+            "- Local: http://localhost:3000",
+        ];
+        assert_eq!(startup_port(RuntimeKind::Node, samples[0]), Some(5173));
+        assert_eq!(startup_port(RuntimeKind::Node, samples[1]), Some(8080));
+        assert_eq!(startup_port(RuntimeKind::Node, samples[2]), Some(3000));
+        assert_eq!(
+            startup_port(RuntimeKind::Node, "Network: http://192.168.1.20:5173/"),
+            None
+        );
+        assert_eq!(startup_port(RuntimeKind::Node, "compiled successfully"), None);
+    }
 }

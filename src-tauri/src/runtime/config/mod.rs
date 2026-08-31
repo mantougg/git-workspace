@@ -27,7 +27,7 @@ pub use environment::{
     EnvironmentLayers,
 };
 pub use model::{
-    CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeConfigSummary,
+    CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeKind,
     UpdateRuntimeConfigRequest, CURRENT_SCHEMA_VERSION, MASKED_VALUE,
 };
 pub use repository::{create_config, delete_config, get_config, list_configs, update_config};

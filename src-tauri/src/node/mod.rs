@@ -16,6 +16,7 @@
 
 pub mod decision;
 pub mod detect;
+pub mod discovery;
 pub mod model;
 
 pub use decision::{
@@ -23,4 +24,8 @@ pub use decision::{
     LockfileSnapshot, PackageManagerDecision,
 };
 pub use detect::{detect_node, detect_package_manager, extract_version, resolve_package_manager};
-pub use model::{PackageManager, ToolDetection};
+pub use discovery::{
+    discover_package_jsons, global_package_cache, list_node_projects, sync_node_projects,
+    NodeDiscoveryResult, NodePackageCache,
+};
+pub use model::{NodeProjectNode, PackageManager, ToolDetection};

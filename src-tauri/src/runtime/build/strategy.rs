@@ -24,6 +24,7 @@ pub fn build_goals(strategy: RunStrategy) -> Vec<String> {
     match strategy {
         RunStrategy::MavenRun | RunStrategy::ClasspathRun => vec!["compile".into()],
         RunStrategy::PackageRun => vec!["package".into()],
+        RunStrategy::NodeScript => vec![],
     }
 }
 
@@ -123,6 +124,9 @@ pub fn launch_plan(strategy: RunStrategy, inputs: &LaunchInputs) -> AppResult<La
         RunStrategy::MavenRun => maven_run_plan(inputs),
         RunStrategy::PackageRun => package_run_plan(inputs),
         RunStrategy::ClasspathRun => classpath_run_plan(inputs),
+        RunStrategy::NodeScript => Err(AppError::RuntimeConfig(
+            "NodeScript 必须由 NodeBuildEngine 构造 LaunchPlan::Script".into(),
+        )),
     }
 }
 

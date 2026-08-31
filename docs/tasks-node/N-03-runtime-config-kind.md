@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 1 · 配置与启动闭环 |
 | 优先级 | P0 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 依赖 | N-02 |
 | 对应设计文档 | §4.3 Runtime 配置模型扩展、§4.7（ScriptNotFound） |
 
@@ -41,18 +41,20 @@
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：已完成
+- 最近更新：2026-08-31
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
+| 2026-08-31 | 🟦 | 开始开发：基于 N-02 已完成的 node_projects 索引，实施 RuntimeKind、V18 迁移与 Node 配置校验。 |
+| 2026-08-31 | ✅ | 完成：RuntimeKind 与 Node 字段、V18 迁移、脚本索引/磁盘回退校验、ScriptNotFound 结构化错误、Summary/golden/前端类型同步；专项测试与 `pnpm build` 通过。完整测试 696/711 通过，剩余为既有 AI snapshot/JDK8-Maven 环境基线失败；fmt/clippy 仍受仓库既有格式与告警影响。 |
 
 ### 子任务清单
 
-- [ ] 配置字段与 RuntimeKind 枚举
-- [ ] SCHEMA_V18 迁移 + 幂等测试
-- [ ] 保存校验（含 ScriptNotFound）
-- [ ] Summary/golden/前端类型同步
-- [ ] 四件套验证
+- [x] 配置字段与 RuntimeKind 枚举
+- [x] SCHEMA_V18 迁移 + 幂等测试
+- [x] 保存校验（含 ScriptNotFound）
+- [x] Summary/golden/前端类型同步
+- [x] 四件套验证（专项通过；全量基线问题已记录）

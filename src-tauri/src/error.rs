@@ -65,6 +65,14 @@ pub enum AppError {
     #[error("package manager not found or not executable: {0}")]
     PackageManagerNotFound(String),
 
+    /// N-03: Node Runtime 配置引用了缺失的 npm script。
+    #[error("script {script:?} not found in Node project {project}")]
+    ScriptNotFound {
+        project: String,
+        script: Option<String>,
+        available: Vec<String>,
+    },
+
     #[error("Invalid pom at {path}: {reason}")]
     InvalidPom { path: String, reason: String },
 
@@ -162,6 +170,7 @@ impl AppError {
             AppError::MavenNotFound(_) => "MavenNotFound",
             AppError::NodeNotFound(_) => "NodeNotFound",
             AppError::PackageManagerNotFound(_) => "PackageManagerNotFound",
+            AppError::ScriptNotFound { .. } => "ScriptNotFound",
             AppError::InvalidPom { .. } => "InvalidPom",
             AppError::PortOccupied { .. } => "PortOccupied",
             AppError::HealthCheckFailed { .. } => "HealthCheckFailed",
@@ -329,6 +338,22 @@ impl Serialize for AppError {
                 })
                 .to_string(),
             ),
+            AppError::ScriptNotFound {
+                project,
+                script,
+                available,
+            } => Some(
+                serde_json::json!({
+                    "project": project,
+                    "script": script,
+                    "availableScripts": available,
+                    "suggestedActions": [
+                        "从 package.json 的 scripts 中选择一个脚本",
+                        "运行 Node 项目发现以刷新脚本列表",
+                    ],
+                })
+                .to_string(),
+            ),
             // AI（§17）：details 携带非敏感上下文 + suggestedActions。
             AppError::Ai(e) => Some(e.details_json()),
             _ => None,
@@ -451,6 +476,15 @@ mod tests {
                 true,
             ),
             (
+                AppError::ScriptNotFound {
+                    project: "/ws/web".into(),
+                    script: Some("start".into()),
+                    available: vec!["dev".into()],
+                },
+                "ScriptNotFound",
+                true,
+            ),
+            (
                 AppError::JdkNotFound("JDK 21 未安装".into()),
                 "JdkNotFound",
                 true,
@@ -541,6 +575,11 @@ mod tests {
         let structured = [
             AppError::NodeNotFound("node 不在 PATH".into()),
             AppError::PackageManagerNotFound("pnpm 未安装".into()),
+            AppError::ScriptNotFound {
+                project: "/ws/web".into(),
+                script: Some("start".into()),
+                available: vec!["dev".into()],
+            },
             AppError::InvalidPom {
                 path: "/ws/pom.xml".into(),
                 reason: "missing artifactId".into(),

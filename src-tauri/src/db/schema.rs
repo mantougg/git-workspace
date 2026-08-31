@@ -848,8 +848,33 @@ FROM ai_proposals_v15;
 DROP TABLE ai_proposals_v15;
 "#;
 
+/// v17 (N-02)：workspace Node.js `package.json` metadata index.
+pub const SCHEMA_V17: &str = r#"
+CREATE TABLE IF NOT EXISTS node_projects (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id     INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    repository_id    INTEGER REFERENCES repositories(id) ON DELETE SET NULL,
+    path             TEXT NOT NULL,
+    name             TEXT NOT NULL,
+    version          TEXT NOT NULL DEFAULT '',
+    package_manager  TEXT,
+    scripts_json     TEXT NOT NULL,
+    pkg_hash         TEXT NOT NULL,
+    last_scanned_at  TEXT NOT NULL,
+    UNIQUE(workspace_id, path)
+);
+CREATE INDEX IF NOT EXISTS idx_node_projects_workspace
+    ON node_projects(workspace_id);
+"#;
+
+/// v18 (N-03)：Runtime 配置技术栈标记，历史行默认 Spring Boot。
+pub const SCHEMA_V18: &str = r#"
+ALTER TABLE runtime_projects
+    ADD COLUMN kind TEXT NOT NULL DEFAULT 'springBoot';
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
     SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14, SCHEMA_V15,
-    SCHEMA_V16,
+    SCHEMA_V16, SCHEMA_V17, SCHEMA_V18,
 ];
