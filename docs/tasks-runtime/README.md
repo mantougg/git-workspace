@@ -22,9 +22,9 @@
 
 ## 总体进度
 
-- 任务总数：**26**
-- 已完成：**22** · 进行中：**0** · 未开始：**4**
-- 完成度：**22 / 26（85%）**
+- 任务总数：**27**
+- 已完成：**23** · 进行中：**0** · 未开始：**4**
+- 完成度：**23 / 27（85%）**
 
 ## MVP 口径（源文档 §91 / §92）
 
@@ -74,7 +74,7 @@
 | R-20 | Runtime 依赖图可视化 | P1 | ✅ | R-02, R-13 | [R-20-dependency-visualization.md](./R-20-dependency-visualization.md) |
 | R-21 | Git 联动（Status 提示 / Branch 联动 / 操作保护） | P1 | ✅ | R-10, T-02, T-09 | [R-21-git-integration.md](./R-21-git-integration.md) |
 
-### Phase 3 · 扩展运行时（P2，5 个）
+### Phase 3 · 扩展运行时（P1~P2，6 个）
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
@@ -83,6 +83,7 @@
 | R-24 | Docker / Kubernetes Runtime | P2 | ⬜ | R-10 | [R-24-docker-k8s.md](./R-24-docker-k8s.md) |
 | R-25 | JVM 监控 / JMX / Runtime Metrics | P2 | ⬜ | R-10 | [R-25-jvm-monitoring.md](./R-25-jvm-monitoring.md) |
 | R-26 | AI Runtime Assistant | P2 | ✅ | R-11, T-08 | [R-26-ai-runtime-assistant.md](./R-26-ai-runtime-assistant.md) |
+| R-27 | Maven 发现与 Git 解耦（workspace 级补扫） | P1 | ✅ | R-01 | [R-27-non-git-workspace-discovery.md](./R-27-non-git-workspace-discovery.md) |
 
 ---
 

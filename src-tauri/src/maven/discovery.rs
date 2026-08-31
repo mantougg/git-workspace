@@ -66,6 +66,10 @@ pub struct MavenDiscoveryResult {
 
 /// Workspace 级 `pom.xml` 扫描 + 解析 + effective model 构建。
 ///
+/// 仓库清单（T-01 Scanner 输出的 `.git` 仓库）内逐 repo 下钻，并始终以 workspace
+/// 根补扫仓库边界之外的区域（R-27：Runtime 发现以 workspace 为边界、与 git 解耦，
+/// 覆盖无 git / 混合工作区）。
+///
 /// - `workspace_root`：workspace 根目录。
 /// - `scan_depth`：最大下钻深度（与 T-01 Scanner 一致语义）。
 /// - `cache`：可选 POM Cache，传入则命中缓存跳过重新解析。
@@ -95,6 +99,28 @@ pub fn discover_poms(
         projects.extend(repo.poms.into_iter().map(|pom| pom.project));
         errors.extend(repo.errors);
     }
+
+    // R-27 仓库边界外补扫：Runtime 发现以 workspace 为边界、与 git 解耦。除仓库清
+    // 单扫描外，始终以 workspace 根为伪仓库补扫一遍——`collect_pom_paths` 对含
+    // `.git` 的目录保持边界跳过，补扫只会额外命中非仓库区域的 pom；忽略规则 /
+    // POM Cache / 取消语义全部复用，不新增配置。非仓库区域的零散 pom（备份目录
+    // 等）可用 `.gitworkspaceignore` 排除。
+    let root = [workspace_root.to_string_lossy().to_string()];
+    for repo in discover_poms_in_repos(&root, workspace_root, cache, cancel) {
+        projects.extend(repo.poms.into_iter().map(|pom| pom.project));
+        errors.extend(repo.errors);
+    }
+    if is_cancelled(cancel) {
+        return empty_result(start);
+    }
+
+    // 根目录本身是仓库时，根级 pom 会被仓库扫描与补扫各收集一次，按路径去重
+    //（补扫的重复解析走 POM Cache，零成本）。
+    let mut seen = std::collections::HashSet::new();
+    projects.retain(|project| seen.insert(canonical_or_original(&project.path)));
+    let mut seen_error_paths = std::collections::HashSet::new();
+    errors.retain(|error| seen_error_paths.insert(error.path.clone()));
+
     projects.sort_by(|left, right| left.path.cmp(&right.path));
     errors.sort_by(|left, right| left.path.cmp(&right.path));
 
@@ -378,6 +404,16 @@ mod tests {
         dir
     }
 
+    /// R-27 fixture：不初始化 git 的纯目录工作区（模拟源码导出包）。
+    fn make_plain_workspace() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_disc_plain_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
     #[test]
     fn discovers_multi_module_workspace() {
         let ws = make_workspace();
@@ -536,6 +572,101 @@ mod tests {
         let _ = std::fs::remove_dir_all(&ws);
     }
 
+    /// R-27：无 `.git` 的工作区（源码导出包）通过补扫发现 Maven 项目。
+    #[test]
+    fn discovers_plain_workspace_without_git() {
+        let ws = make_plain_workspace();
+        write(
+            &ws.join("app/pom.xml"),
+            r#"<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>g</groupId>
+  <artifactId>plain-app</artifactId>
+  <version>1</version>
+</project>"#,
+        );
+
+        let result = discover_poms(&ws, 4, None, None);
+        assert_eq!(result.projects.len(), 1, "plain workspace pom discovered");
+        assert_eq!(result.projects[0].artifact_id, "plain-app");
+        let normalized = result.projects[0].path.to_string_lossy().replace('\\', "/");
+        assert!(normalized.ends_with("app/pom.xml"));
+
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    /// R-27：根目录本身是仓库时，根级 pom 经仓库扫描与补扫各收集一次，去重后不重复。
+    #[test]
+    fn root_repository_supplement_does_not_duplicate() {
+        let ws = make_workspace();
+        write(
+            &ws.join("pom.xml"),
+            r#"<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>g</groupId>
+  <artifactId>root-app</artifactId>
+  <version>1</version>
+</project>"#,
+        );
+        write(
+            &ws.join("mod-a/pom.xml"),
+            r#"<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>g</groupId>
+  <artifactId>mod-a</artifactId>
+  <version>1</version>
+</project>"#,
+        );
+
+        let result = discover_poms(&ws, 4, None, None);
+        assert_eq!(result.projects.len(), 2, "no duplicates from supplement");
+
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    /// R-27：仓库存在但没有任何 pom（如嵌套前端仓库）时，非 git 目录经补扫发现。
+    #[test]
+    fn discovers_plain_dirs_when_repositories_have_no_poms() {
+        let ws = make_plain_workspace();
+        let empty_repo = ws.join("frontend/pkg");
+        std::fs::create_dir_all(&empty_repo).unwrap();
+        git2::Repository::init(&empty_repo).unwrap();
+        write(
+            &ws.join("exported-app/pom.xml"),
+            r#"<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>g</groupId>
+  <artifactId>exported-app</artifactId>
+  <version>1</version>
+</project>"#,
+        );
+
+        let result = discover_poms(&ws, 6, None, None);
+        assert_eq!(result.projects.len(), 1);
+        assert_eq!(result.projects[0].artifact_id, "exported-app");
+
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    /// R-27：取消标志在补扫路径同样生效。
+    #[test]
+    fn cancellation_skips_workspace_supplement_scan() {
+        let ws = make_plain_workspace();
+        write(
+            &ws.join("a/pom.xml"),
+            r#"<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>g</groupId>
+  <artifactId>a</artifactId>
+  <version>1</version>
+</project>"#,
+        );
+        let flag = AtomicBool::new(true);
+        let result = discover_poms(&ws, 4, None, Some(&flag));
+        assert!(result.projects.is_empty());
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
     #[test]
     fn cache_accelates_second_discovery() {
         let ws = make_workspace();
@@ -558,8 +689,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&ws);
     }
 
+    /// R-27：混合工作区（git 仓库 + 非 git 目录）一并发现，Library 分类不受影响。
     #[test]
-    fn scans_only_t01_repository_inventory_and_classifies_workspace_library() {
+    fn discovers_repo_and_plain_dirs_and_classifies_workspace_library() {
         let ws = std::env::temp_dir().join(format!(
             "gw_disc_repos_{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
@@ -607,8 +739,12 @@ mod tests {
         );
 
         let result = discover_poms(&ws, 4, None, None);
-        assert_eq!(result.projects.len(), 2);
-        assert!(!result
+        assert_eq!(
+            result.projects.len(),
+            3,
+            "repo poms and plain-dir pom are all discovered (R-27)"
+        );
+        assert!(result
             .projects
             .iter()
             .any(|project| project.artifact_id == "outside"));
@@ -693,7 +829,11 @@ mod tests {
             single_hit_us < 50_000,
             "single POM cache-hit budget exceeded"
         );
-        assert_eq!(second.stats.hits, 100);
+        // R-27 补扫会让每个 pom 在单次发现内二次命中缓存，这里只锁定「全部来自缓存」。
+        assert!(
+            second.stats.hits >= 100,
+            "every POM served from cache on second discovery"
+        );
 
         let _ = std::fs::remove_dir_all(&ws);
     }
