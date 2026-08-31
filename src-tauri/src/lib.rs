@@ -1,15 +1,16 @@
+pub mod ai;
 mod commands;
 mod core;
 mod db;
 mod error;
-pub mod ai;
 pub mod java;
 pub mod maven;
 mod models;
+pub mod node;
 pub mod process;
+pub mod runtime;
 mod state;
 mod task;
-pub mod runtime;
 
 pub mod benchmark;
 

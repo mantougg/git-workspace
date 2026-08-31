@@ -39,10 +39,7 @@ pub fn discover_jdks() -> Vec<JdkInstallation> {
 ///
 /// 找不到 `java` 可执行 -> 视为非 JDK 目录，返回 `None`（不录入注册表）。
 /// 找到但探测失败 -> 录入 `is_valid=false` + raw 原文，便于用户排查。
-fn probe_into_installation(
-    home: &Path,
-    source: JdkDiscoverySource,
-) -> Option<JdkInstallation> {
+fn probe_into_installation(home: &Path, source: JdkDiscoverySource) -> Option<JdkInstallation> {
     let java_exec = java_exec_for_home(home)?;
     let javac_exec = javac_exec_for_home(home);
     let (info, is_valid) = probe_java_version(&java_exec);
@@ -142,27 +139,42 @@ fn path_java_home() -> Option<PathBuf> {
 pub(crate) fn find_in_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     let sep = if cfg!(windows) { ';' } else { ':' };
-    for dir in path.to_string_lossy().split(sep) {
-        if dir.is_empty() {
-            continue;
-        }
-        if cfg!(windows) {
-            // PATHEXT 语义：目录内优先可执行扩展名。mise 等工具会把 Unix
-            // shell 脚本（无扩展名，Windows 不可执行，error 193）与
-            // `mvn.cmd` 放在同一 bin 目录——必须先命中 `.cmd`（R-14 修复）。
-            for extension in [".exe", ".cmd", ".bat"] {
-                let exe = Path::new(dir).join(format!("{name}{extension}"));
-                if exe.is_file() {
-                    return Some(exe);
-                }
+    let dirs: Vec<PathBuf> = path
+        .to_string_lossy()
+        .split(sep)
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .collect();
+    find_executable_in_dirs(name, &dirs)
+}
+
+/// 在给定目录列表中按顺序查找可执行（不读环境变量，便于注入目录单测）。
+pub(crate) fn find_executable_in_dirs(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    for dir in dirs {
+        for candidate in executable_candidates(name, cfg!(windows)) {
+            let exe = dir.join(&candidate);
+            if exe.is_file() {
+                return Some(exe);
             }
-        }
-        let candidate = Path::new(dir).join(name);
-        if candidate.is_file() {
-            return Some(candidate);
         }
     }
     None
+}
+
+/// 可执行候选名排序（纯函数，不依赖真实 PATH，任意平台可单测两侧语义）：
+/// Windows PATHEXT 语义 `.exe → .cmd → .bat → 裸名`；Unix 仅裸名。
+/// mise 等工具会把 Unix shell 脚本（无扩展名，Windows 不可执行，error 193）
+/// 与 `mvn.cmd` / `npm.cmd` 放在同一 bin 目录——必须先命中扩展名候选
+///（R-14 修复；N-01 node/npm/pnpm/yarn 检测复用同一顺序）。
+pub(crate) fn executable_candidates(name: &str, windows: bool) -> Vec<String> {
+    if windows {
+        [".exe", ".cmd", ".bat", ""]
+            .iter()
+            .map(|ext| format!("{name}{ext}"))
+            .collect()
+    } else {
+        vec![name.to_string()]
+    }
 }
 
 /// JDK home 下的 `java` 可执行（`<home>/bin/java` 或 Windows `java.exe`）。
@@ -226,7 +238,11 @@ fn scan_dirs_for_jdks(parents: &[PathBuf]) -> Vec<PathBuf> {
 fn system_install_dirs() -> Vec<PathBuf> {
     let mut parents: Vec<PathBuf> = Vec::new();
     if cfg!(target_os = "windows") {
-        for base in ["C:\\Program Files\\Java", "C:\\Program Files\\Eclipse Adoptium", "C:\\Program Files\\Microsoft"] {
+        for base in [
+            "C:\\Program Files\\Java",
+            "C:\\Program Files\\Eclipse Adoptium",
+            "C:\\Program Files\\Microsoft",
+        ] {
             parents.push(PathBuf::from(base));
         }
         // 用户级 %LOCALAPPDATA%\Programs\Eclipse Adoptium 等。
@@ -236,7 +252,11 @@ fn system_install_dirs() -> Vec<PathBuf> {
     } else if cfg!(target_os = "macos") {
         parents.push(PathBuf::from("/Library/Java/JavaVirtualMachines"));
         if let Some(home) = dirs::home_dir() {
-            parents.push(home.join("Library").join("Java").join("JavaVirtualMachines"));
+            parents.push(
+                home.join("Library")
+                    .join("Java")
+                    .join("JavaVirtualMachines"),
+            );
         }
         // Homebrew formula 符号链接目录。
         parents.push(PathBuf::from("/opt/homebrew/opt"));
@@ -284,7 +304,13 @@ fn mise_homes() -> Vec<PathBuf> {
     }
     if let Some(home) = dirs::home_dir() {
         parents.push(home.join(".mise").join("installs").join("java"));
-        parents.push(home.join(".local").join("share").join("mise").join("installs").join("java"));
+        parents.push(
+            home.join(".local")
+                .join("share")
+                .join("mise")
+                .join("installs")
+                .join("java"),
+        );
         // 旧名 asdf。
         parents.push(home.join(".asdf").join("installs").join("java"));
     }
@@ -350,8 +376,15 @@ mod tests {
             "gw_jdk_jre_{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
-        stamp(&tmp.join(if cfg!(windows) { "bin/java.exe" } else { "bin/java" }));
-        assert!(javac_exec_for_home(&tmp).is_none(), "JRE layout has no javac");
+        stamp(&tmp.join(if cfg!(windows) {
+            "bin/java.exe"
+        } else {
+            "bin/java"
+        }));
+        assert!(
+            javac_exec_for_home(&tmp).is_none(),
+            "JRE layout has no javac"
+        );
         let _ = fs::remove_dir_all(&tmp);
     }
 
@@ -380,7 +413,11 @@ mod tests {
             "gw_jdk_disc_{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
-        stamp(&home.join(if cfg!(windows) { "bin/java.exe" } else { "bin/java" }));
+        stamp(&home.join(if cfg!(windows) {
+            "bin/java.exe"
+        } else {
+            "bin/java"
+        }));
         // 直接调用 probe_into_installation 验证：有 java 可执行 -> 录入；
         // fork 会失败（空文件非可执行 ELF/PE）-> is_valid=false。
         let inst = probe_into_installation(&home, JdkDiscoverySource::System);
@@ -389,7 +426,10 @@ mod tests {
         assert_eq!(inst.source, JdkDiscoverySource::System);
         assert!(inst.java_exec.is_some());
         // 空文件 fork 不会产出版本 -> is_valid=false，但不阻断录入。
-        assert!(!inst.is_valid, "non-executable java probe is invalid but recorded");
+        assert!(
+            !inst.is_valid,
+            "non-executable java probe is invalid but recorded"
+        );
 
         let _ = fs::remove_dir_all(&home);
     }
@@ -434,7 +474,9 @@ mod tests {
         let java = match java {
             Some(p) => p,
             None => {
-                eprintln!("R-04: no `java` on PATH / JAVA_HOME; skipping real probe integration test");
+                eprintln!(
+                    "R-04: no `java` on PATH / JAVA_HOME; skipping real probe integration test"
+                );
                 return;
             }
         };

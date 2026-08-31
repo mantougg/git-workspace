@@ -54,6 +54,17 @@ pub enum AppError {
     #[error("Maven not found: {0}")]
     MavenNotFound(String),
 
+    /// N-01（§4.7 显式扩展）：PATH/配置均无 node。
+    /// details 携带 suggestedActions（安装 Node / 加入 PATH）。
+    #[error("Node.js not found: {0}")]
+    NodeNotFound(String),
+
+    /// N-01（§4.7 显式扩展）：决策链选中的包管理器不可执行
+    /// （如 `pnpm-lock.yaml` 存在但没装 pnpm；bun 只识别不执行）。
+    /// details 携带 suggestedActions（安装该 pm / 改选 npm）。
+    #[error("package manager not found or not executable: {0}")]
+    PackageManagerNotFound(String),
+
     #[error("Invalid pom at {path}: {reason}")]
     InvalidPom { path: String, reason: String },
 
@@ -149,6 +160,8 @@ impl AppError {
             AppError::ProjectNotFound(_) => "ProjectNotFound",
             AppError::JdkNotFound(_) => "JdkNotFound",
             AppError::MavenNotFound(_) => "MavenNotFound",
+            AppError::NodeNotFound(_) => "NodeNotFound",
+            AppError::PackageManagerNotFound(_) => "PackageManagerNotFound",
             AppError::InvalidPom { .. } => "InvalidPom",
             AppError::PortOccupied { .. } => "PortOccupied",
             AppError::HealthCheckFailed { .. } => "HealthCheckFailed",
@@ -296,6 +309,26 @@ impl Serialize for AppError {
                 })
                 .to_string(),
             ),
+            // N-01（§4.7 扩展，§80 可行动错误）：Node 工具链错误携带
+            // Suggested Actions，供 UI 直接渲染下一步操作。
+            AppError::NodeNotFound(_) => Some(
+                serde_json::json!({
+                    "suggestedActions": [
+                        "安装 Node.js LTS（https://nodejs.org）并把 node 加入 PATH",
+                        "安装后重启 GitWorkspace 使 PATH 生效",
+                    ],
+                })
+                .to_string(),
+            ),
+            AppError::PackageManagerNotFound(_) => Some(
+                serde_json::json!({
+                    "suggestedActions": [
+                        "安装决策链选中的包管理器（如 npm i -g pnpm / corepack enable）",
+                        "或在 Runtime 配置中显式改选 npm",
+                    ],
+                })
+                .to_string(),
+            ),
             // AI（§17）：details 携带非敏感上下文 + suggestedActions。
             AppError::Ai(e) => Some(e.details_json()),
             _ => None,
@@ -408,6 +441,16 @@ mod tests {
                 true,
             ),
             (
+                AppError::NodeNotFound("node 不在 PATH".into()),
+                "NodeNotFound",
+                true,
+            ),
+            (
+                AppError::PackageManagerNotFound("pnpm 未安装".into()),
+                "PackageManagerNotFound",
+                true,
+            ),
+            (
                 AppError::JdkNotFound("JDK 21 未安装".into()),
                 "JdkNotFound",
                 true,
@@ -476,7 +519,12 @@ mod tests {
         ];
         for (error, expected_code, expected_recoverable) in cases {
             assert_eq!(error.code(), expected_code);
-            assert_eq!(error.recoverable(), expected_recoverable, "code {}", expected_code);
+            assert_eq!(
+                error.recoverable(),
+                expected_recoverable,
+                "code {}",
+                expected_code
+            );
             let payload = serde_json::to_value(&error).unwrap();
             assert_eq!(payload["code"], expected_code);
             assert_eq!(payload["recoverable"], expected_recoverable);
@@ -488,8 +536,11 @@ mod tests {
         }
 
         // 结构化变体（携带上下文字段）必须有 details：R-14 新增的错误与
-        // 既有进程/构建错误（String 类错误的 message 即完整信息，无 details）。
+        // 既有进程/构建错误；N-01 的 Node 工具链错误虽为 String payload
+        // （message 即完整信息），details 仍携带 suggestedActions（§4.7/§80）。
         let structured = [
+            AppError::NodeNotFound("node 不在 PATH".into()),
+            AppError::PackageManagerNotFound("pnpm 未安装".into()),
             AppError::InvalidPom {
                 path: "/ws/pom.xml".into(),
                 reason: "missing artifactId".into(),

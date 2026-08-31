@@ -213,7 +213,10 @@ pub fn resolve_maven_for_project(
                 uses_wrapper,
             });
         }
-        log::warn!("Maven candidate {} unusable: {fallback_reason}", exe.executable_path);
+        log::warn!(
+            "Maven candidate {} unusable: {fallback_reason}",
+            exe.executable_path
+        );
     }
     None
 }
@@ -282,13 +285,19 @@ pub(crate) fn build_version_command(exe: &Path) -> Command {
 /// 判断一个路径是否需要 `cmd /c`（Windows `.cmd` / `.bat`）。
 pub(crate) fn needs_cmd_c(exe: &Path) -> bool {
     matches!(
-        exe.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(),
+        exe.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref(),
         Some("cmd") | Some("bat")
     )
 }
 
 /// 等待子进程完成，带超时。超时则 kill。
-fn wait_with_timeout(
+///
+/// pub(crate)：N-01 node/npm 版本探测（`node/detect.rs`）复用同一
+/// 「超时 + 输出上限」模式，不另起一套。
+pub(crate) fn wait_with_timeout(
     mut child: std::process::Child,
     timeout: Duration,
 ) -> Result<String, String> {
@@ -462,7 +471,10 @@ mod tests {
         assert!(!candidate_is_usable(&m2), "Maven 2 is below minimum");
 
         m3.major_version = None;
-        assert!(!candidate_is_usable(&m3), "unparseable version is not usable");
+        assert!(
+            !candidate_is_usable(&m3),
+            "unparseable version is not usable"
+        );
     }
 
     #[test]
@@ -502,7 +514,10 @@ mod tests {
         // 不可执行（0o644）。
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&mvnw, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(find_wrapper_in_dir(&tmp).is_none(), "non-executable wrapper is skipped");
+        assert!(
+            find_wrapper_in_dir(&tmp).is_none(),
+            "non-executable wrapper is skipped"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -530,7 +545,10 @@ mod tests {
         assert!(!candidates.is_empty());
         // wrapper 必须排第一。
         assert_eq!(candidates[0].source, MavenSource::ProjectWrapper);
-        assert_eq!(candidates[0].project_path.as_deref(), Some(tmp.to_str().unwrap()));
+        assert_eq!(
+            candidates[0].project_path.as_deref(),
+            Some(tmp.to_str().unwrap())
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -556,7 +574,8 @@ mod tests {
             .expect("configured candidate must be present");
         // Windows canonicalize 加 `\\?\` 前缀，用 ends_with 比较 basename。
         assert!(
-            cfg.executable_path.ends_with(fake_mvn.file_name().unwrap().to_string_lossy().as_ref()),
+            cfg.executable_path
+                .ends_with(fake_mvn.file_name().unwrap().to_string_lossy().as_ref()),
             "configured path should point to the fake mvn: got {}",
             cfg.executable_path
         );
@@ -574,7 +593,11 @@ mod tests {
     #[test]
     fn build_version_command_uses_cmd_c_on_windows_for_cmd() {
         // 这个测试验证命令构造逻辑，不实际 spawn。
-        let exe = Path::new(if cfg!(windows) { "C:/mvnw.cmd" } else { "/usr/bin/mvn" });
+        let exe = Path::new(if cfg!(windows) {
+            "C:/mvnw.cmd"
+        } else {
+            "/usr/bin/mvn"
+        });
         let cmd = build_version_command(exe);
         // 跨平台：只是确保不 panic 且构造出 Command。
         let _ = cmd;
@@ -602,6 +625,9 @@ mod tests {
             return;
         }
         assert!(info.major_version.is_some());
-        eprintln!("R-05 real probe: major={:?} full={:?}", info.major_version, info.full_version);
+        eprintln!(
+            "R-05 real probe: major={:?} full={:?}",
+            info.major_version, info.full_version
+        );
     }
 }
