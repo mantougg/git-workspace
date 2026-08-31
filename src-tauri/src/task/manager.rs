@@ -512,6 +512,7 @@ fn label_for(req: &TaskRequest) -> String {
             return format!("Runtime {} · {}", kind, req.repo_name);
         }
         TaskType::RuntimeUpdateConfig { .. } => "Runtime Update Config",
+        TaskType::NodeInstall { .. } => "Node Install",
     };
     format!("{} · {}", kind, req.repo_name)
 }

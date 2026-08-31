@@ -124,6 +124,7 @@ mod tests {
             "ai_tasks",
             "maven_projects",
             "node_projects",
+            "node_executables",
             "maven_dependencies",
             "maven_modules",
             "maven_artifacts",

@@ -135,6 +135,14 @@ pub enum AppError {
         preview: String,
     },
 
+    /// N-08: dependency installation is an explicit network action.
+    #[error("node dependency installation for '{project_dir}' requires user confirmation")]
+    NodeInstallConfirmationRequired {
+        project_dir: String,
+        package_manager: String,
+        command_preview: String,
+    },
+
     #[error("script `{script_type}` for '{runtime}' failed with exit code {exit_code:?}")]
     ScriptFailed {
         script_type: String,
@@ -175,6 +183,7 @@ impl AppError {
             AppError::PortOccupied { .. } => "PortOccupied",
             AppError::HealthCheckFailed { .. } => "HealthCheckFailed",
             AppError::ScriptConfirmationRequired { .. } => "ScriptConfirmationRequired",
+            AppError::NodeInstallConfirmationRequired { .. } => "NodeInstallConfirmationRequired",
             AppError::ScriptFailed { .. } => "ScriptFailed",
             AppError::RuntimeConfig(_) => "RuntimeConfigError",
             AppError::Task(_) => "TaskError",
@@ -315,6 +324,19 @@ impl Serialize for AppError {
                     "runtime": runtime,
                     "exitCode": exit_code,
                     "logTail": log_tail,
+                })
+                .to_string(),
+            ),
+            AppError::NodeInstallConfirmationRequired {
+                project_dir,
+                package_manager,
+                command_preview,
+            } => Some(
+                serde_json::json!({
+                    "projectDir": project_dir,
+                    "packageManager": package_manager,
+                    "commandPreview": command_preview,
+                    "suggestedActions": ["确认后再次执行 node_install", "检查依赖源与网络设置"],
                 })
                 .to_string(),
             ),

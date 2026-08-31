@@ -9,3 +9,31 @@ export interface NodeProjectNode {
   /** JSON object text preserving package.json script order. */
   scriptsJson: string
 }
+
+export type NodeExecutableKind = "node" | "packageManager"
+export type NodePackageManager = "npm" | "pnpm" | "yarn" | "bun"
+
+export interface NodeExecutable {
+  id: number | null
+  kind: NodeExecutableKind
+  packageManager: NodePackageManager | null
+  executablePath: string
+  version: string | null
+  rawOutput: string
+  isValid: boolean
+  lastChecked: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface NodeExecutableRequest {
+  kind: NodeExecutableKind
+  packageManager?: NodePackageManager | null
+  executablePath: string
+}
+
+export interface NodeInstallRequest {
+  projectDir: string
+  packageManager: NodePackageManager
+  confirmed?: boolean
+}

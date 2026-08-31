@@ -18,16 +18,24 @@ pub mod command;
 pub mod decision;
 pub mod detect;
 pub mod discovery;
+pub mod install;
 pub mod model;
+pub mod registry;
 
 pub use command::build_run_args;
 pub use decision::{
     decide_package_manager, parse_package_manager_field, DecisionInput, DecisionSource,
     LockfileSnapshot, PackageManagerDecision,
 };
-pub use detect::{detect_node, detect_package_manager, extract_version, resolve_package_manager};
+pub use detect::{
+    detect_node, detect_package_manager, extract_version, resolve_node_with_registry,
+    resolve_package_manager, resolve_package_manager_with_registry,
+};
 pub use discovery::{
     discover_package_jsons, global_package_cache, list_node_projects, sync_node_projects,
     NodeDiscoveryResult, NodePackageCache,
 };
-pub use model::{NodeProjectNode, PackageManager, ToolDetection};
+pub use model::{
+    NodeExecutable, NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, PackageManager,
+    ToolDetection, ToolDetectionSource,
+};

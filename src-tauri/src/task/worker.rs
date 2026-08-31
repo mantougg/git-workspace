@@ -178,10 +178,17 @@ async fn execute_task(
         let task_type_for_exec = task_type.clone();
         // R-12: Runtime 任务拿到自己的 cancel flag（构建/启动可中途终止），
         // 并使用更长的硬超时（git 的 5 分钟上限对构建不适用）。
-        let is_runtime = matches!(task_type_for_exec, TaskType::Runtime { .. } | TaskType::RuntimeUpdateConfig { .. });
+        let is_runtime = matches!(
+            task_type_for_exec,
+            TaskType::Runtime { .. }
+                | TaskType::RuntimeUpdateConfig { .. }
+                | TaskType::NodeInstall { .. }
+        );
         let runtime_handler = runtime_handler.clone();
         let cancel_flag = cancel_flags.get(&task.id).map(|f| Arc::clone(&f));
         let db_for_exec = Arc::clone(db);
+        let app_for_exec = app.clone();
+        let task_id_for_exec = task.id.clone();
         let hard_timeout = if is_runtime {
             RUNTIME_TASK_TIMEOUT
         } else {
@@ -212,6 +219,42 @@ async fn execute_task(
                             return Err(AppError::Task("Runtime 配置提案作用域不匹配".into()));
                         }
                         crate::runtime::config::update_config(&conn, &config).map(|_| None)
+                    }
+                    TaskType::NodeInstall {
+                        project_dir,
+                        package_manager,
+                    } => {
+                        let conn = db_for_exec
+                            .lock()
+                            .map_err(|e| AppError::Other(format!("DB lock error: {e}")))?;
+                        let decision = crate::node::PackageManagerDecision {
+                            manager: *package_manager,
+                            source: crate::node::DecisionSource::Configured,
+                            reason: format!("node_install 显式指定 {}", package_manager.name()),
+                        };
+                        let detection = crate::node::resolve_package_manager_with_registry(
+                            &conn,
+                            &decision,
+                        )?;
+                        drop(conn);
+                        let cancel = cancel_flag.as_deref();
+                        let summary = crate::node::install::execute_install(
+                            detection,
+                            *package_manager,
+                            std::path::Path::new(project_dir),
+                            cancel,
+                            |stream, line| {
+                                let _ = app_for_exec.emit(
+                                    "node_install_output",
+                                    serde_json::json!({
+                                    "taskId": task_id_for_exec.clone(),
+                                        "stream": stream,
+                                        "line": line,
+                                    }),
+                                );
+                            },
+                        )?;
+                        Ok(Some(summary))
                     }
                     TaskType::ConflictApply { path, strategy, content } => {
                         let repo = std::path::Path::new(&repo_path);
@@ -311,6 +354,10 @@ async fn execute_task(
         TaskType::Push => Some("git push".to_string()),
         TaskType::Clone { url, .. } => Some(format!("git clone {}", url)),
         TaskType::ShellCommand { command, .. } => Some(command.clone()),
+        TaskType::NodeInstall {
+            project_dir,
+            package_manager,
+        } => Some(format!("{} install (cwd {})", package_manager.name(), project_dir)),
         TaskType::Commit {
             then_push: true, ..
         } => Some("git commit && git push".to_string()),

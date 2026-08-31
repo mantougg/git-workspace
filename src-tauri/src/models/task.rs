@@ -93,6 +93,12 @@ pub enum TaskType {
         name: String,
         config_json: String,
     },
+    /// Explicit Node dependency installation (N-08). Created only by the
+    /// confirmed `node_install` IPC command.
+    NodeInstall {
+        project_dir: String,
+        package_manager: crate::node::PackageManager,
+    },
 }
 
 /// Runtime task operations (R-12, §63/§65). Plain camelCase string union.

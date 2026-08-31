@@ -471,6 +471,13 @@ pub fn run() {
             commands::spring_boot::detect_spring_boot,
             // Node.js package.json discovery (N-02)
             commands::node::node_list_projects,
+            // N-08：Node / package-manager executable registry
+            commands::node::node_list_executables,
+            commands::node::node_add_executable,
+            commands::node::node_validate_executable,
+            commands::node::node_remove_executable,
+            commands::node::node_prune_executables,
+            commands::node::node_install,
             // Runtime configuration (R-07)
             commands::runtime::create_runtime_config,
             commands::runtime::update_runtime_config,

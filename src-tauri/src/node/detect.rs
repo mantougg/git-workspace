@@ -18,7 +18,7 @@ use crate::error::{AppError, AppResult};
 use crate::java::detect::find_in_path;
 use crate::maven::detect_exec::{needs_cmd_c, wait_with_timeout};
 use crate::node::decision::PackageManagerDecision;
-use crate::node::model::{PackageManager, ToolDetection};
+use crate::node::model::{PackageManager, ToolDetection, ToolDetectionSource};
 
 /// 版本探测超时（秒）。仿 `MVN_VERSION_TIMEOUT_SECS`；`node -v` / `<pm> -v`
 /// 正常亚秒返回，超时多为 shim 异常。
@@ -67,6 +67,43 @@ pub fn resolve_package_manager(decision: &PackageManagerDecision) -> AppResult<T
     })
 }
 
+/// Resolve Node.js from the persistent registry before consulting PATH.
+pub fn resolve_node_with_registry(
+    conn: &rusqlite::Connection,
+) -> AppResult<ToolDetection> {
+    if let Some(entry) = crate::node::registry::find_valid_node(conn)? {
+        return Ok(ToolDetection {
+            executable: std::path::PathBuf::from(entry.executable_path),
+            version: entry.version,
+            raw_output: entry.raw_output,
+            probe_ok: entry.is_valid,
+            source: ToolDetectionSource::Registry,
+        });
+    }
+    detect_node()
+}
+
+/// Resolve the selected package manager from the persistent registry before
+/// falling back to the normal PATHEXT-aware PATH lookup.
+pub fn resolve_package_manager_with_registry(
+    conn: &rusqlite::Connection,
+    decision: &PackageManagerDecision,
+) -> AppResult<ToolDetection> {
+    if decision.manager == PackageManager::Bun {
+        return resolve_package_manager(decision);
+    }
+    if let Some(entry) = crate::node::registry::find_valid_package_manager(conn, decision.manager)? {
+        return Ok(ToolDetection {
+            executable: std::path::PathBuf::from(entry.executable_path),
+            version: entry.version,
+            raw_output: entry.raw_output,
+            probe_ok: entry.is_valid,
+            source: ToolDetectionSource::Registry,
+        });
+    }
+    resolve_package_manager(decision)
+}
+
 /// 对可执行体跑 `-v` 探测版本。探测失败降级「未知版本」，不报错。
 pub fn probe_tool(executable: &Path) -> ToolDetection {
     let (version, raw, ok) = probe_version(executable);
@@ -75,6 +112,7 @@ pub fn probe_tool(executable: &Path) -> ToolDetection {
         version,
         raw_output: raw,
         probe_ok: ok,
+        source: ToolDetectionSource::Path,
     }
 }
 

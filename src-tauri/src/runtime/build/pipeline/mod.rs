@@ -133,9 +133,10 @@ pub(crate) fn execute_node_build(
         });
     }
 
-    // Resolve node first so an invalid PATH is reported as NodeNotFound even
-    // when the package manager shim happens to exist.
-    crate::node::detect_node()?;
+    // Resolve node first so an invalid registry/PATH is reported as
+    // NodeNotFound even when the package manager shim happens to exist.
+    let conn = db.lock().unwrap();
+    crate::node::resolve_node_with_registry(&conn)?;
     let decision = crate::node::decide_package_manager(&crate::node::DecisionInput {
         configured: config.node_package_manager.clone(),
         package_json_field: package
@@ -144,7 +145,8 @@ pub(crate) fn execute_node_build(
             .map(ToOwned::to_owned),
         lockfiles: crate::node::LockfileSnapshot::scan(&project_dir),
     });
-    let package_manager = crate::node::resolve_package_manager(&decision)?;
+    let package_manager = crate::node::resolve_package_manager_with_registry(&conn, &decision)?;
+    drop(conn);
     if !project_dir.join("node_modules").is_dir() {
         return Err(AppError::RuntimeConfig(format!(
             "Node 项目 {} 缺少 node_modules，未自动安装依赖。Suggested Action：在项目目录执行 node_install（或手动运行 {} install）后重试",

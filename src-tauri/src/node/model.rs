@@ -20,6 +20,31 @@ pub enum PackageManager {
     Bun,
 }
 
+/// Node tool registered by the user. A package manager entry carries its
+/// concrete manager name; the `Node` variant represents the Node.js runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NodeExecutableKind {
+    Node,
+    PackageManager,
+}
+
+impl NodeExecutableKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Node => "node",
+            Self::PackageManager => "packageManager",
+        }
+    }
+
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "packageManager" => Self::PackageManager,
+            _ => Self::Node,
+        }
+    }
+}
+
 impl PackageManager {
     /// 稳定名字（package.json `packageManager` 字段与 CLI 名一致）。
     pub fn name(self) -> &'static str {
@@ -63,6 +88,74 @@ pub struct ToolDetection {
     /// 探测进程成功退出并解析出版本。
     #[serde(default)]
     pub probe_ok: bool,
+    /// Whether the executable came from the persistent registry or PATH.
+    #[serde(default)]
+    pub source: ToolDetectionSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolDetectionSource {
+    Registry,
+    #[default]
+    Path,
+}
+
+/// A user-registered Node.js or package-manager executable.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeExecutable {
+    #[serde(default)]
+    pub id: Option<i64>,
+    pub kind: NodeExecutableKind,
+    /// `None` for Node.js; the selected manager for package-manager entries.
+    #[serde(default)]
+    pub package_manager: Option<PackageManager>,
+    pub executable_path: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub raw_output: String,
+    #[serde(default)]
+    pub is_valid: bool,
+    #[serde(default)]
+    pub last_checked: String,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// Request used by the registry IPC commands. The path is intentionally a
+/// user-provided concrete executable, never a shell command or PATH token.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeExecutableRequest {
+    pub kind: NodeExecutableKind,
+    #[serde(default)]
+    pub package_manager: Option<PackageManager>,
+    pub executable_path: String,
+}
+
+impl NodeExecutable {
+    pub fn new(
+        kind: NodeExecutableKind,
+        package_manager: Option<PackageManager>,
+        executable_path: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: None,
+            kind,
+            package_manager,
+            executable_path: executable_path.into(),
+            version: None,
+            raw_output: String::new(),
+            is_valid: false,
+            last_checked: String::new(),
+            created_at: None,
+            updated_at: None,
+        }
+    }
 }
 
 /// Persisted Node project metadata exposed by `node_list_projects`.

@@ -873,8 +873,30 @@ ALTER TABLE runtime_projects
     ADD COLUMN kind TEXT NOT NULL DEFAULT 'springBoot';
 "#;
 
+/// v19 (N-08)：user-registered Node.js / package-manager executables.
+pub const SCHEMA_V19: &str = r#"
+CREATE TABLE IF NOT EXISTS node_executables (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind             TEXT NOT NULL,
+    package_manager  TEXT,
+    executable_path  TEXT NOT NULL UNIQUE,
+    version          TEXT,
+    raw_output       TEXT NOT NULL DEFAULT '',
+    is_valid         INTEGER NOT NULL DEFAULT 0,
+    last_checked     TEXT NOT NULL DEFAULT '',
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    CHECK (
+        (kind = 'node' AND package_manager IS NULL)
+        OR (kind = 'packageManager' AND package_manager IS NOT NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_node_executables_kind
+    ON node_executables(kind, package_manager, is_valid);
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
     SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14, SCHEMA_V15,
-    SCHEMA_V16, SCHEMA_V17, SCHEMA_V18,
+    SCHEMA_V16, SCHEMA_V17, SCHEMA_V18, SCHEMA_V19,
 ];
