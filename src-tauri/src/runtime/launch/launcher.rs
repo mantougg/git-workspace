@@ -15,8 +15,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 use crate::error::{AppError, AppResult};
-use crate::maven::executor;
 use crate::maven::detect_exec::needs_cmd_c;
+use crate::maven::executor;
 use crate::process::streaming::{spawn_streaming_ext, OutputStream, StreamingExit};
 use crate::runtime::build::LaunchPlan;
 use crate::runtime::launch::{MARKER_PROCESS_ID, MARKER_RUNTIME_NAME};
@@ -25,7 +25,11 @@ use crate::runtime::launch::{MARKER_PROCESS_ID, MARKER_RUNTIME_NAME};
 ///
 /// 只做构造，不 spawn。`env` 原样透传（含未脱敏秘密）——命令对象与环境
 /// 绝不跨 IPC。
-pub fn launch_command(plan: &LaunchPlan, process_id: i64, runtime_name: &str) -> AppResult<Command> {
+pub fn launch_command(
+    plan: &LaunchPlan,
+    process_id: i64,
+    runtime_name: &str,
+) -> AppResult<Command> {
     let mut command = match plan {
         LaunchPlan::MavenGoal { request, env, .. } => executor::build_process(request, env),
         LaunchPlan::JavaJar {
@@ -57,15 +61,14 @@ pub fn launch_command(plan: &LaunchPlan, process_id: i64, runtime_name: &str) ->
             working_dir,
             ..
         } => {
-            let joined = std::env::join_paths(classpath).map_err(|error| {
-                AppError::ProcessStartFailed {
+            let joined =
+                std::env::join_paths(classpath).map_err(|error| AppError::ProcessStartFailed {
                     runtime: runtime_name.to_string(),
                     reason: format!(
                         "classpath 含非法路径字符，无法拼接启动参数：{error}。\
                          请检查本地仓库与模块路径"
                     ),
-                }
-            })?;
+                })?;
             let mut command = Command::new(java_exec);
             command
                 .args(vm_options)
@@ -96,6 +99,16 @@ pub fn launch_command(plan: &LaunchPlan, process_id: i64, runtime_name: &str) ->
             command
         }
     };
+    // N-07（unix）：启动子进程独立成组（`process_group(0)` = 新组长），Stop
+    // 的 SIGTERM / 升级 SIGKILL 经 killpg 覆盖被 reparent 的孙子进程——npm
+    // 收到 SIGTERM 后先于 vite 退出，parent 链 kill_tree 对「父死孙活」
+    // 失效（设计文档 §9；Windows 无进程组语义，root cmd 存活期间 parent
+    // 链完整，维持 kill_tree 路径不变）。
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     command.env(MARKER_PROCESS_ID, process_id.to_string());
     command.env(MARKER_RUNTIME_NAME, runtime_name);
     Ok(command)
@@ -312,7 +325,11 @@ pub mod fake {
 
             match launch.behavior {
                 FakeBehavior::Exit(code) => {
-                    self.procs.lock().unwrap().entry(pid).and_modify(|p| p.alive = false);
+                    self.procs
+                        .lock()
+                        .unwrap()
+                        .entry(pid)
+                        .and_modify(|p| p.alive = false);
                     Ok(StreamingExit {
                         exit_code: code,
                         timed_out: false,
@@ -323,7 +340,11 @@ pub mod fake {
                     let deadline = Instant::now() + Duration::from_secs(30);
                     loop {
                         if kill.load(Ordering::Relaxed) {
-                            self.procs.lock().unwrap().entry(pid).and_modify(|p| p.alive = false);
+                            self.procs
+                                .lock()
+                                .unwrap()
+                                .entry(pid)
+                                .and_modify(|p| p.alive = false);
                             return Ok(StreamingExit {
                                 exit_code: None,
                                 timed_out: false,
@@ -338,7 +359,11 @@ pub mod fake {
                             .map(|p| p.terminated)
                             .unwrap_or(true);
                         if terminated {
-                            self.procs.lock().unwrap().entry(pid).and_modify(|p| p.alive = false);
+                            self.procs
+                                .lock()
+                                .unwrap()
+                                .entry(pid)
+                                .and_modify(|p| p.alive = false);
                             return Ok(StreamingExit {
                                 exit_code: on_terminate,
                                 timed_out: false,
@@ -369,9 +394,11 @@ pub mod fake {
         }
 
         fn alive(&self, pid: u32, start_time: Option<u64>) -> bool {
-            self.procs.lock().unwrap().get(&pid).is_some_and(|proc| {
-                proc.alive && start_time.is_none_or(|t| t == proc.start_time)
-            })
+            self.procs
+                .lock()
+                .unwrap()
+                .get(&pid)
+                .is_some_and(|proc| proc.alive && start_time.is_none_or(|t| t == proc.start_time))
         }
 
         fn start_time(&self, pid: u32) -> Option<u64> {
@@ -432,7 +459,10 @@ mod tests {
     fn classpath_command_joins_paths_and_puts_main_class_last_before_program_args() {
         let plan = LaunchPlan::JavaClasspath {
             java_exec: PathBuf::from("java"),
-            classpath: vec![PathBuf::from("/ws/app/target/classes"), PathBuf::from("/m2/a.jar")],
+            classpath: vec![
+                PathBuf::from("/ws/app/target/classes"),
+                PathBuf::from("/m2/a.jar"),
+            ],
             main_class: "com.example.Application".into(),
             vm_options: vec![],
             program_arguments: vec!["--debug".into()],
@@ -471,7 +501,10 @@ mod tests {
         if cfg!(windows) {
             assert_eq!(command.get_program(), Path::new("cmd"));
             assert_eq!(args.first().map(String::as_str), Some("/C"));
-            assert_eq!(args.get(1), Some(&executable.to_string_lossy().into_owned()));
+            assert_eq!(
+                args.get(1),
+                Some(&executable.to_string_lossy().into_owned())
+            );
             assert_eq!(&args[2..], ["run", "dev", "--", "--host"]);
         } else {
             assert_eq!(command.get_program(), executable.as_path());

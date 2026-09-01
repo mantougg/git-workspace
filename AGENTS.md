@@ -80,6 +80,11 @@ This project is indexed by GitNexus as **git-workspace** (11418 symbols, 25357 r
 - **执行 `.cmd` / `.bat` 必须经 `cmd /C`**（`needs_cmd_c`，见
   `maven/detect_exec.rs`）；Unix 用 `sh -c`。脚本执行器按平台分支
   （参照 `runtime/build/pipeline/mod.rs::user_script_command`）。
+- **npm/pnpm/yarn 等包管理器（N-07 增补）**：Windows 实体是 `.cmd` shim，
+  检测必须走 `find_in_path` 扩展名候选（参照 `node/detect.rs`），执行必须经
+  `cmd /C`（参照 `runtime/launch/launcher.rs::launch_command` 的
+  `LaunchPlan::Script` 分支）；禁止 `Command::new("npm")` 裸名兜底——测试内
+  spawn 同样遵守（解析绝对路径再 spawn）。
 - PATH 分隔符：Windows `;`，Unix `:`（`find_in_path` 已处理，新增遍历 PATH 的代码
   不得硬编码）。
 
@@ -90,6 +95,14 @@ This project is indexed by GitNexus as **git-workspace** (11418 symbols, 25357 r
   `detect_port_occupier` 一个入口。
 - **进程树终止 / 优雅停止**：统一走 `process/kill_tree.rs`（sysinfo 跨平台）；
   Windows 无 SIGTERM 语义，优雅停止用 `terminate_process`，超时升级整树终止。
+- **「父死孙活」进程组规则（N-07 增补）**：npm 这类中间进程收到 SIGTERM 后
+  不等待孙子进程（vite）退出就先行终止，孙子被 reparent 到 init 且继续持有
+  输出管道——parent 链枚举与从已死 root 出发的 kill_tree 全部失效，Stop 后
+  端口不释放。因此 **unix 上 launch 子进程必须 `process_group(0)` 独立成组，
+  优雅/强杀先走 `killpg` 组信号**（`launcher.rs::launch_command` +
+  `kill_tree.rs::signal_process_group`），parent 链遍历仅作非组长 root
+  （adopted 进程）的回退。E2E 回归：`real_vite_project_full_loop_with_port_release`
+  （Stop 后端口真实释放断言）。
 - **子进程 spawn**：Windows 必须设 `CREATE_NO_WINDOW`（`process/streaming.rs` 已有）；
   禁止依赖 shell 特定行为（`ls`、`pgrep` 等）编写业务逻辑。
 - **子进程输出监控（F-12）**：流式监控循环在输出 reader 全部断开后**不得阻塞

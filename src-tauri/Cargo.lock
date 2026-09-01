@@ -1279,6 +1279,7 @@ dependencies = [
  "dirs 5.0.1",
  "git2",
  "keyring",
+ "libc",
  "log",
  "moka",
  "notify",

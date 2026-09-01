@@ -60,6 +60,12 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+# N-07：launch 子进程独立进程组（CommandExt::process_group）+ killpg 整组
+# 终止——SIGTERM 后 npm 先退、vite 被 reparent 后 parent 链 kill_tree 杀不到
+# （设计文档 §9 风险实锤），组信号才能保证 Stop 后端口真实释放。
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # macOS：universal 构建的 x86_64 交叉腿找不到系统 OpenSSL（runner 上 brew
 # 只装得到 arm64 库，pkg-config 不支持交叉），git2 的 https 传输在 macOS
 # 改用 vendored OpenSSL（按目标架构从源码编译）。Windows 走 WinHTTP、

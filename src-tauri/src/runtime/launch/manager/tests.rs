@@ -1,22 +1,21 @@
 use super::*;
+use crate::process::streaming::OutputStream;
 use crate::runtime::build::runner::{FakeMavenRunner, FakeRun};
 use crate::runtime::build::BuildOptions;
+use crate::runtime::build::RunStrategy;
 use crate::runtime::config::{
     create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeKind,
 };
 use crate::runtime::launch::launcher::{FakeBehavior, FakeLaunch, FakeLaunchRunner};
 use crate::runtime::launch::VecEventSink;
+use crate::runtime::logs::LogPhase;
+use crate::test_support::write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
-use crate::process::streaming::OutputStream;
-use crate::runtime::logs::LogPhase;
-use crate::runtime::build::RunStrategy;
-use crate::test_support::write;
 
 // --------------------------------------------------------------
 // fixtures
 // --------------------------------------------------------------
-
 
 fn unique_root(tag: &str) -> PathBuf {
     crate::test_support::temp_root("gw_r10", tag)
@@ -178,7 +177,10 @@ fn test_manager(
     ))
 }
 
-fn lifecycle_chain(events: &VecEventSink, process_id: i64) -> Vec<(LifecycleStatus, LifecycleStatus)> {
+fn lifecycle_chain(
+    events: &VecEventSink,
+    process_id: i64,
+) -> Vec<(LifecycleStatus, LifecycleStatus)> {
     events
         .collected()
         .iter()
@@ -206,7 +208,10 @@ fn wait_for_status(
         if info.status == status {
             return info;
         }
-        assert!(Instant::now() < deadline, "timeout waiting for {status:?}, last {info:?}");
+        assert!(
+            Instant::now() < deadline,
+            "timeout waiting for {status:?}, last {info:?}"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
 }
@@ -330,7 +335,10 @@ fn node_start_detects_first_localhost_url_within_grace() {
     let launcher = Arc::new(FakeLaunchRunner::new(vec![FakeLaunch {
         lines: vec![
             (OutputStream::Stdout, "Local: http://localhost:5173/".into()),
-            (OutputStream::Stdout, "Network: http://192.168.1.20:5173/".into()),
+            (
+                OutputStream::Stdout,
+                "Network: http://192.168.1.20:5173/".into(),
+            ),
         ],
         behavior: FakeBehavior::StayAlive {
             on_terminate: Some(0),
@@ -440,9 +448,15 @@ fn build_and_run_output_flow_into_masked_log_session() {
         .join(".gitworkspace/logs/app")
         .join(format!("{}.log", info.process_id));
     let on_disk = std::fs::read_to_string(&log_file).unwrap();
-    assert!(on_disk.contains("[INFO] BUILD SUCCESS"), "构建输出进同一日志");
+    assert!(
+        on_disk.contains("[INFO] BUILD SUCCESS"),
+        "构建输出进同一日志"
+    );
     assert!(on_disk.contains("Started Application"), "运行输出落盘");
-    assert!(!on_disk.contains("topsecret-value"), "磁盘上不得有明文 secret");
+    assert!(
+        !on_disk.contains("topsecret-value"),
+        "磁盘上不得有明文 secret"
+    );
 
     // 聚合事件：Build / Run 两阶段都经 RuntimeEvent::Logs 推送且已脱敏。
     let log_lines: Vec<_> = events
@@ -457,7 +471,9 @@ fn build_and_run_output_flow_into_masked_log_session() {
         .collect();
     assert!(log_lines.iter().any(|l| l.phase == LogPhase::Build));
     assert!(log_lines.iter().any(|l| l.phase == LogPhase::Run));
-    assert!(log_lines.iter().all(|l| !l.line.contains("topsecret-value")));
+    assert!(log_lines
+        .iter()
+        .all(|l| !l.line.contains("topsecret-value")));
     assert!(log_lines
         .iter()
         .any(|l| l.level == Some(crate::runtime::logs::LogLevel::Info)));
@@ -508,7 +524,12 @@ fn build_failure_marks_row_failed_and_returns_structured_error() {
     use LifecycleStatus::*;
     assert_eq!(
         lifecycle_chain(&events, rows[0].process_id),
-        vec![(Created, Preparing), (Preparing, Resolving), (Resolving, Building), (Building, Failed)]
+        vec![
+            (Created, Preparing),
+            (Preparing, Resolving),
+            (Resolving, Building),
+            (Building, Failed)
+        ]
     );
     let _ = std::fs::remove_dir_all(&fixture.root);
 }
@@ -561,7 +582,12 @@ fn crash_after_running_marks_failed_with_exit_code() {
         .unwrap();
     assert_eq!(info.status, LifecycleStatus::Running);
 
-    let failed = wait_for_status(&manager, info.process_id, LifecycleStatus::Failed, Duration::from_secs(3));
+    let failed = wait_for_status(
+        &manager,
+        info.process_id,
+        LifecycleStatus::Failed,
+        Duration::from_secs(3),
+    );
     assert_eq!(failed.exit_code, Some(1));
     assert!(events.collected().iter().any(|e| matches!(
         e,
@@ -605,10 +631,14 @@ fn early_exit_maps_to_process_start_failed() {
     );
 
     let error = manager
-        .start(fixture.workspace_id, "app", StartOptions {
-            skip_build: true,
-            ..Default::default()
-        })
+        .start(
+            fixture.workspace_id,
+            "app",
+            StartOptions {
+                skip_build: true,
+                ..Default::default()
+            },
+        )
         .unwrap_err();
     assert_eq!(error.code(), "ProcessStartFailed");
     assert!(error.to_string().contains("启动宽限期内退出"));
@@ -649,11 +679,15 @@ fn duplicate_start_is_rejected_with_conflict() {
     );
 
     let first = manager
-        .start(fixture.workspace_id, "app", StartOptions {
-            skip_build: true,
-            start_grace: Duration::from_millis(200),
-            ..Default::default()
-        })
+        .start(
+            fixture.workspace_id,
+            "app",
+            StartOptions {
+                skip_build: true,
+                start_grace: Duration::from_millis(200),
+                ..Default::default()
+            },
+        )
         .unwrap();
     assert_eq!(first.status, LifecycleStatus::Running);
 
@@ -712,7 +746,14 @@ fn restart_reuses_cached_artifacts_without_rebuilding() {
     // skip-build 路径：Preparing 直达 Starting。
     use LifecycleStatus::*;
     let chain = lifecycle_chain(&events, second.process_id);
-    assert_eq!(chain[..3], [(Created, Preparing), (Preparing, Starting), (Starting, Running)]);
+    assert_eq!(
+        chain[..3],
+        [
+            (Created, Preparing),
+            (Preparing, Starting),
+            (Starting, Running)
+        ]
+    );
 
     let first_row = manager.get_process(first.process_id).unwrap().unwrap();
     assert_eq!(first_row.status, LifecycleStatus::Stopped);
@@ -754,10 +795,14 @@ fn missing_main_class_is_inferred_via_spring_boot_detection() {
     );
 
     let info = manager
-        .start(fixture.workspace_id, "app", StartOptions {
-            start_grace: Duration::from_millis(200),
-            ..Default::default()
-        })
+        .start(
+            fixture.workspace_id,
+            "app",
+            StartOptions {
+                start_grace: Duration::from_millis(200),
+                ..Default::default()
+            },
+        )
         .unwrap();
     assert_eq!(info.status, LifecycleStatus::Running);
     let preview = info.command_preview.unwrap();
@@ -825,10 +870,14 @@ fn bound_jdk_is_used_for_launch_command() {
     );
 
     let info = manager
-        .start(fixture.workspace_id, "app", StartOptions {
-            start_grace: Duration::from_millis(200),
-            ..Default::default()
-        })
+        .start(
+            fixture.workspace_id,
+            "app",
+            StartOptions {
+                start_grace: Duration::from_millis(200),
+                ..Default::default()
+            },
+        )
         .unwrap();
     assert_eq!(info.status, LifecycleStatus::Running);
     let preview = info.command_preview.unwrap();
@@ -841,21 +890,40 @@ fn bound_jdk_is_used_for_launch_command() {
     let _ = std::fs::remove_dir_all(&fixture.root);
 }
 
-
 #[test]
 fn classify_exit_table() {
     use LifecycleStatus::*;
-    let clean = MonitorOutcome { exit_code: Some(0), cancelled: false, spawn_error: None };
-    let crash = MonitorOutcome { exit_code: Some(137), cancelled: false, spawn_error: None };
-    let signaled = MonitorOutcome { exit_code: None, cancelled: true, spawn_error: None };
-    let spawn_fail = MonitorOutcome { exit_code: None, cancelled: false, spawn_error: Some("io".into()) };
+    let clean = MonitorOutcome {
+        exit_code: Some(0),
+        cancelled: false,
+        spawn_error: None,
+    };
+    let crash = MonitorOutcome {
+        exit_code: Some(137),
+        cancelled: false,
+        spawn_error: None,
+    };
+    let signaled = MonitorOutcome {
+        exit_code: None,
+        cancelled: true,
+        spawn_error: None,
+    };
+    let spawn_fail = MonitorOutcome {
+        exit_code: None,
+        cancelled: false,
+        spawn_error: Some("io".into()),
+    };
 
     assert_eq!(classify_exit(Running, &clean, false), (Stopped, false));
     assert_eq!(classify_exit(Running, &crash, false), (Failed, true));
     assert_eq!(classify_exit(Starting, &crash, false), (Failed, true));
     assert_eq!(classify_exit(Stopping, &crash, false), (Stopped, false));
     assert_eq!(classify_exit(Running, &signaled, false), (Failed, true));
-    assert_eq!(classify_exit(Running, &signaled, true), (Stopped, false), "adopted 无码宽容");
+    assert_eq!(
+        classify_exit(Running, &signaled, true),
+        (Stopped, false),
+        "adopted 无码宽容"
+    );
     assert_eq!(classify_exit(Starting, &spawn_fail, false), (Failed, false));
 }
 
@@ -910,18 +978,26 @@ mod real_process {
             RunStrategy::MavenRun,
         );
         manager
-            .start(fixture.workspace_id, "app", StartOptions {
-                skip_build: true,
-                start_grace: Duration::from_millis(300),
-                ..Default::default()
-            })
+            .start(
+                fixture.workspace_id,
+                "app",
+                StartOptions {
+                    skip_build: true,
+                    start_grace: Duration::from_millis(300),
+                    ..Default::default()
+                },
+            )
             .unwrap()
     }
 
     #[test]
     fn force_kill_requires_confirmation_and_leaves_no_orphan() {
         let fixture = mini_fixture("fkill");
-        let manager = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_millis(50));
+        let manager = real_manager(
+            &fixture,
+            Arc::new(VecEventSink::default()),
+            Duration::from_millis(50),
+        );
         let info = start_sh(&manager, &fixture, "sleep 300 & wait");
         assert_eq!(info.status, LifecycleStatus::Running);
 
@@ -943,16 +1019,27 @@ mod real_process {
             .values()
             .filter(|p| p.name() == "sleep" && p.cmd().iter().any(|a| a == "300"))
             .collect();
-        assert!(survivors.is_empty(), "sleep 300 must be killed: {survivors:?}");
+        assert!(
+            survivors.is_empty(),
+            "sleep 300 must be killed: {survivors:?}"
+        );
         let _ = std::fs::remove_dir_all(&fixture.root);
     }
 
     #[test]
     fn stop_escalates_to_tree_kill_when_sigterm_is_ignored() {
         let fixture = mini_fixture("escalate");
-        let manager = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_millis(50));
+        let manager = real_manager(
+            &fixture,
+            Arc::new(VecEventSink::default()),
+            Duration::from_millis(50),
+        );
         // 忽略 SIGTERM 的进程：grace 超时后必须升级杀树。
-        let info = start_sh(&manager, &fixture, "trap '' TERM; while true; do sleep 0.05; done");
+        let info = start_sh(
+            &manager,
+            &fixture,
+            "trap '' TERM; while true; do sleep 0.05; done",
+        );
         let pid = info.pid.unwrap();
 
         let stopped = manager
@@ -960,7 +1047,10 @@ mod real_process {
             .unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         std::thread::sleep(Duration::from_millis(200));
-        assert!(!process_alive(pid, None), "SIGTERM-ignoring process must be tree-killed");
+        assert!(
+            !process_alive(pid, None),
+            "SIGTERM-ignoring process must be tree-killed"
+        );
         let _ = std::fs::remove_dir_all(&fixture.root);
     }
 
@@ -970,7 +1060,11 @@ mod real_process {
     #[test]
     fn stop_kills_sigterm_ignoring_process_that_closed_streams() {
         let fixture = mini_fixture("f12unix");
-        let manager = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_millis(50));
+        let manager = real_manager(
+            &fixture,
+            Arc::new(VecEventSink::default()),
+            Duration::from_millis(50),
+        );
         let info = start_sh(
             &manager,
             &fixture,
@@ -997,7 +1091,11 @@ mod real_process {
         let events = Arc::new(VecEventSink::default());
         let manager = real_manager(&fixture, events.clone(), Duration::from_millis(50));
         // trap TERM → 记录并 exit 0：若先收到 SIGTERM 则优雅退出码 0。
-        let info = start_sh(&manager, &fixture, "trap 'exit 0' TERM; while true; do sleep 0.1; done");
+        let info = start_sh(
+            &manager,
+            &fixture,
+            "trap 'exit 0' TERM; while true; do sleep 0.1; done",
+        );
 
         let stopped = manager.stop(info.process_id, None).unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
@@ -1013,7 +1111,11 @@ mod real_process {
     fn reconcile_adopts_live_orphan_and_fails_gone_rows() {
         let fixture = mini_fixture("orphan");
         // 会话 A：启动真实 sleep 后「崩溃」（drop manager，不 stop）。
-        let manager_a = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_secs(3600));
+        let manager_a = real_manager(
+            &fixture,
+            Arc::new(VecEventSink::default()),
+            Duration::from_secs(3600),
+        );
         let info = start_sh(&manager_a, &fixture, "sleep 300");
         let pid = info.pid.unwrap();
         let pid_start = process_start_time(pid).unwrap();
@@ -1039,8 +1141,14 @@ mod real_process {
         };
 
         // 会话 B：reconcile 接管。
-        let manager_b = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_secs(3600));
-        let adopted = manager_b.reconcile_on_startup(fixture.workspace_id).unwrap();
+        let manager_b = real_manager(
+            &fixture,
+            Arc::new(VecEventSink::default()),
+            Duration::from_secs(3600),
+        );
+        let adopted = manager_b
+            .reconcile_on_startup(fixture.workspace_id)
+            .unwrap();
         assert_eq!(adopted.len(), 1);
         assert_eq!(adopted[0].process_id, info.process_id);
         assert!(adopted[0].adopted);
@@ -1057,7 +1165,10 @@ mod real_process {
             .unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         std::thread::sleep(Duration::from_millis(200));
-        assert!(!process_alive(pid, Some(pid_start)), "adopted orphan must be stopped");
+        assert!(
+            !process_alive(pid, Some(pid_start)),
+            "adopted orphan must be stopped"
+        );
         let _ = std::fs::remove_dir_all(&fixture.root);
     }
 
@@ -1109,7 +1220,8 @@ mod real_process_windows {
                     "$b=[byte[]](255,254,10); \
                          [Console]::OpenStandardOutput().Write($b,0,3); \
                          [Console]::OpenStandardError().Write($b,0,3); \
-                         Start-Sleep -Seconds 300".into(),
+                         Start-Sleep -Seconds 300"
+                        .into(),
                 ],
                 extra_args: vec![],
                 via_cmd_c: false,
@@ -1138,11 +1250,15 @@ mod real_process_windows {
         );
         // 非法字节杀死 reader → 等不到横幅，start_grace 到期按存活判 Running。
         let info = manager
-            .start(fixture.workspace_id, "app", StartOptions {
-                skip_build: true,
-                start_grace: Duration::from_secs(3),
-                ..Default::default()
-            })
+            .start(
+                fixture.workspace_id,
+                "app",
+                StartOptions {
+                    skip_build: true,
+                    start_grace: Duration::from_secs(3),
+                    ..Default::default()
+                },
+            )
             .unwrap();
         assert_eq!(info.status, LifecycleStatus::Running);
         let pid = info.pid.expect("spawn 后应有 pid");
@@ -1282,14 +1398,13 @@ mod real_maven {
         let bound_jdk = std::env::var("JAVA_HOME")
             .ok()
             .filter(|home| !home.is_empty())
-            .map(|home| {
+            .inspect(|home| {
                 let mut jdk = crate::java::model::JdkInstallation::new(
                     home.clone(),
                     crate::java::model::JdkDiscoverySource::System,
                 );
                 jdk.is_valid = true;
                 crate::java::registry::upsert_jdk(&conn, &jdk).unwrap();
-                home
             });
         create_config(
             &conn,
@@ -1317,10 +1432,13 @@ mod real_maven {
         db: Arc<Mutex<Connection>>,
         events: Arc<VecEventSink>,
     ) -> Arc<RuntimeProcessManager> {
-        Arc::new(RuntimeProcessManager::with_deps(db, RuntimeProcessDeps {
-            events,
-            ..Default::default()
-        }))
+        Arc::new(RuntimeProcessManager::with_deps(
+            db,
+            RuntimeProcessDeps {
+                events,
+                ..Default::default()
+            },
+        ))
     }
 
     fn classpath_options() -> StartOptions {
@@ -1499,8 +1617,7 @@ mod real_maven {
         crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &m2).unwrap();
 
         // 构建与运行同源 JDK（R-14）：hussar 场景绑 JAVA_HOME（temurin-8）。
-        let jdk_home =
-            std::env::var("JAVA_HOME").expect("manual 测试需要 JAVA_HOME（temurin-8）");
+        let jdk_home = std::env::var("JAVA_HOME").expect("manual 测试需要 JAVA_HOME（temurin-8）");
         let mut jdk = crate::java::model::JdkInstallation::new(
             jdk_home.clone(),
             crate::java::model::JdkDiscoverySource::System,
@@ -1524,7 +1641,10 @@ mod real_maven {
         )
         .unwrap();
 
-        let manager = real_manager(Arc::new(Mutex::new(conn)), Arc::new(VecEventSink::default()));
+        let manager = real_manager(
+            Arc::new(Mutex::new(conn)),
+            Arc::new(VecEventSink::default()),
+        );
         let info = manager
             .start(workspace_id, "app", classpath_options())
             .unwrap_or_else(|error| panic!("F-12 manual: start failed: {error}"));
@@ -1540,5 +1660,246 @@ mod real_maven {
             !crate::process::process_alive(pid, None),
             "F-12: stop 后 JVM 必须真实消失（pid={pid}）"
         );
+    }
+}
+
+// --------------------------------------------------------------
+// N-07 端到端验收：真实 Vite 模板工程全闭环
+// --------------------------------------------------------------
+
+mod real_node_vite {
+    use super::*;
+    use std::net::TcpStream;
+
+    /// N-07 验收（设计文档 §8 第 1 条）：`npm create vite` 产物全闭环——
+    /// 发现 → 建配置 → 启动 → 端口正确识别 → 日志流 → 停止 + 端口真实释放。
+    /// 与 `real_maven` 的 Spring Boot 真实闭环对称；依赖真实 node/npm 与
+    /// 网络（脚手架 + 依赖安装），探测不到即 skip 并打印原因。
+    #[test]
+    fn real_vite_project_full_loop_with_port_release() {
+        if crate::node::detect_node().is_err()
+            || crate::node::detect_package_manager(crate::node::PackageManager::Npm).is_err()
+        {
+            eprintln!("N-07: node/npm unavailable; skipping real Vite e2e");
+            return;
+        }
+        if !npm_registry_reachable() {
+            eprintln!("N-07: npm registry unreachable; skipping real Vite e2e (network required)");
+            return;
+        }
+        // 测试内 spawn 同样遵守可执行检测硬规则：find_in_path 解析绝对路径，
+        // 不用裸名兜底（AGENTS.md §2）。
+        let npm = crate::node::detect_package_manager(crate::node::PackageManager::Npm)
+            .expect("npm must resolve via find_in_path")
+            .executable;
+        let root = unique_root("n07-vite");
+        std::fs::create_dir_all(&root).unwrap();
+        let web = root.join("web");
+
+        // 1. 真实 Vite 模板工程（spec 固定样例：npm create vite 产物）。
+        let scaffold = std::process::Command::new(&npm)
+            .args([
+                "create",
+                "vite@latest",
+                "web",
+                "--",
+                "--template",
+                "vanilla",
+            ])
+            .current_dir(&root)
+            .output()
+            .expect("spawn npm create vite");
+        assert!(
+            scaffold.status.success(),
+            "npm create vite failed: {}{}",
+            String::from_utf8_lossy(&scaffold.stdout),
+            String::from_utf8_lossy(&scaffold.stderr)
+        );
+        // 2. 依赖安装：仅测试行为（产品启动链路禁止自动 install，全局约束 §2）。
+        let install = std::process::Command::new(&npm)
+            .args(["install", "--no-audit", "--no-fund", "--loglevel=error"])
+            .current_dir(&web)
+            .output()
+            .expect("spawn npm install");
+        assert!(
+            install.status.success(),
+            "npm install failed: {}{}",
+            String::from_utf8_lossy(&install.stdout),
+            String::from_utf8_lossy(&install.stderr)
+        );
+
+        // 3. 发现：package.json 扫描 + V17 索引 + 列表查询。
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::db::init_db(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO workspaces (name, path, created_at, updated_at) VALUES ('w', ?1, 't', 't')",
+            [root.to_string_lossy().to_string()],
+        )
+        .unwrap();
+        let workspace_id = conn.last_insert_rowid();
+        let discovery = crate::node::discovery::discover_package_jsons(&root, 5, None, None);
+        assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
+        let projects =
+            crate::node::discovery::sync_node_projects(&mut conn, workspace_id, &discovery)
+                .unwrap();
+        let web_project = projects
+            .iter()
+            .find(|project| project.name == "web")
+            .unwrap_or_else(|| panic!("vite project must be discovered, got {projects:?}"));
+        assert!(
+            web_project.scripts_json.contains("dev"),
+            "dev script must be visible: {}",
+            web_project.scripts_json
+        );
+
+        // 4. 建配置：kind=Node + node_script=dev。
+        create_config(
+            &conn,
+            &CreateRuntimeConfigRequest {
+                workspace_id,
+                config: RuntimeApplicationConfig {
+                    name: "web".into(),
+                    project: web.to_string_lossy().into_owned(),
+                    kind: RuntimeKind::Node,
+                    node_script: Some("dev".into()),
+                    node_package_manager: Some("npm".into()),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+
+        // 5. 启动：真实构建链（NodeBuildEngine → LaunchPlan::Script）+ 真实
+        //    spawn（SystemLaunchRunner）。grace 放宽到 30s：vite 首次依赖
+        //    预构建可能明显慢于默认 5s。
+        let db = Arc::new(Mutex::new(conn));
+        let events = Arc::new(VecEventSink::default());
+        let manager = test_manager(
+            db.clone(),
+            Arc::new(crate::runtime::launch::SystemLaunchRunner),
+            Arc::new(FakeMavenRunner::successful()),
+            events.clone(),
+            Duration::from_millis(50),
+        );
+        let info = manager
+            .start(
+                workspace_id,
+                "web",
+                StartOptions {
+                    start_grace: Duration::from_secs(30),
+                    ..Default::default()
+                },
+            )
+            .unwrap_or_else(|error| panic!("real node start failed: {error}"));
+        assert_eq!(info.status, LifecycleStatus::Running);
+        assert_eq!(info.run_strategy, Some(RunStrategy::NodeScript));
+        assert!(
+            info.command_preview
+                .as_deref()
+                .unwrap_or_default()
+                .contains("npm"),
+            "preview should mention npm: {:?}",
+            info.command_preview
+        );
+        // preview 落库可查（设计文档 §6/§8：command_preview 入 runtime_processes）。
+        let persisted_preview: Option<String> = {
+            let conn = db.lock().unwrap();
+            conn.query_row(
+                "SELECT command_preview FROM runtime_processes WHERE id = ?1",
+                [info.process_id],
+                |row| row.get(0),
+            )
+            .ok()
+        };
+        assert!(
+            persisted_preview
+                .as_deref()
+                .unwrap_or_default()
+                .contains("npm"),
+            "command_preview must be persisted, got {persisted_preview:?}"
+        );
+
+        // 6. 端口正确识别：探测到的端口必须真实在监听（vite 写库异步，轮询兜底）。
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let ports = loop {
+            let ports = manager
+                .get_process(info.process_id)
+                .unwrap()
+                .map(|row| row.ports)
+                .unwrap_or_default();
+            if !ports.is_empty() || Instant::now() > deadline {
+                break ports;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        };
+        assert!(!ports.is_empty(), "启动日志应探测到 vite 端口");
+        let port = ports[0];
+        assert!(
+            TcpStream::connect(("127.0.0.1", port)).is_ok(),
+            "探测端口 {port} 必须真实可连（= vite 实际服务端口）"
+        );
+
+        // 7. 日志流：真实 vite 输出经日志引擎（含脱敏）进入事件流。
+        let log_deadline = Instant::now() + Duration::from_secs(10);
+        let has_vite_log = loop {
+            let hit = events.collected().iter().any(|event| match event {
+                RuntimeEvent::Logs { lines, .. } => lines
+                    .iter()
+                    .any(|line| line.line.contains("VITE") || line.line.contains("Local:")),
+                _ => false,
+            });
+            if hit || Instant::now() > log_deadline {
+                break hit;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        };
+        assert!(
+            has_vite_log,
+            "日志流应包含真实 vite 输出（VITE 横幅 / Local: 行）"
+        );
+
+        // 8. 停止 + 端口真实释放（§9：kill_tree 整树终止 npm → vite 孙子进程）。
+        let stopped = manager
+            .stop(info.process_id, Some(Duration::from_secs(15)))
+            .unwrap();
+        assert_eq!(stopped.status, LifecycleStatus::Stopped);
+        let release_deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let still_listening = TcpStream::connect(("127.0.0.1", port)).is_ok();
+            if !still_listening {
+                break;
+            }
+            assert!(
+                Instant::now() < release_deadline,
+                "Stop 后端口 {port} 必须真实释放（kill_tree 整树终止）"
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        use LifecycleStatus::*;
+        assert_eq!(
+            lifecycle_chain(&events, info.process_id),
+            vec![
+                (Created, Preparing),
+                (Preparing, Resolving),
+                (Resolving, Building),
+                (Building, Starting),
+                (Starting, Running),
+                (Running, Stopping),
+                (Stopping, Stopped),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// npm registry 可达性探测（DNS + TCP connect，3s 超时）。
+    fn npm_registry_reachable() -> bool {
+        use std::net::ToSocketAddrs;
+        match ("registry.npmjs.org", 443).to_socket_addrs() {
+            Ok(mut addrs) => match addrs.next() {
+                Some(addr) => TcpStream::connect_timeout(&addr, Duration::from_secs(3)).is_ok(),
+                None => false,
+            },
+            Err(_) => false,
+        }
     }
 }

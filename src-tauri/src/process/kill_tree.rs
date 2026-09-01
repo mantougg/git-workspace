@@ -4,16 +4,35 @@
 //! post-order（先叶子后 root）发送 kill；随后再枚举一轮兜底「枚举期间
 //! 新 fork 出来」的竞态后代。Windows 没有进程组（pgid）语义，sysinfo
 //! 的 parent 链枚举在两个平台上行为一致。
+//!
+//! N-07 补充（unix）：launch 子进程经 `process_group(0)` 成为组长，root
+//! 为组长时优先对整组投递信号——SIGTERM 先杀死 npm 这类「不等待子孙退出」
+//! 的中间进程后，vite 等孙子进程被 reparent 到 init，parent 链枚举再也
+//! 找不到（设计文档 §9 风险实锤），只有组信号能保证整树终止。
 
 use std::collections::{HashMap, HashSet};
 
 use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
 
+/// 向进程组发信号（仅 unix）。`pgid` 为进程组长 pid 时对整组投递；组不存在
+/// （目标不是组长 / 已全部退出）返回 false，调用方回退 parent 链遍历。
+#[cfg(unix)]
+fn signal_process_group(pgid: u32, signal: i32) -> bool {
+    // 安全性：killpg 只向目标进程组投递信号，无内存副作用。
+    unsafe { libc::killpg(pgid as libc::pid_t, signal) == 0 }
+}
+
 /// 终止 `root_pid` 及其全部后代进程。root 已退出时只清理残余后代。
 ///
 /// 使用 SIGKILL 语义（sysinfo `Process::kill`），不等待退出——调用方负责
 /// 对 root 做 `wait()` reap。
+///
+/// unix 上若 `root_pid` 是进程组长（launch 链路 `process_group(0)` 产物），
+/// 先对整组 SIGKILL——覆盖已被 reparent、parent 链枚举不到的孙子进程；
+/// 随后的 parent 链遍历保留，兜底非组长 root（如 adopted 进程）。
 pub fn kill_process_tree(root_pid: u32) {
+    #[cfg(unix)]
+    signal_process_group(root_pid, libc::SIGKILL);
     let root = Pid::from_u32(root_pid);
     // 两轮：第一轮杀当前可见的整棵树；短暂停顿后第二轮兜底竞态中
     // 新 fork 的后代（例如 mvn 脚本在被杀前刚好 exec 出 java）。
@@ -21,8 +40,9 @@ pub fn kill_process_tree(root_pid: u32) {
         if round > 0 {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        let mut system =
-            System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+        let mut system = System::new_with_specifics(
+            RefreshKind::new().with_processes(ProcessRefreshKind::new()),
+        );
         system.refresh_processes();
 
         let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
@@ -61,9 +81,16 @@ pub fn kill_process_tree(root_pid: u32) {
 /// 只发信号、不等待退出；grace 超时后的进程树升级由调用方走
 /// [`kill_process_tree`]。返回 `false` 表示平台无优雅信号语义（Windows 无
 /// SIGTERM）或进程已不存在——调用方应直接升级为强杀进程树。
+///
+/// unix 上 root 为组长（launch 链路 `process_group(0)` 产物）时对整组
+/// SIGTERM：npm 收到信号后可能不等待 vite 退出就先行终止，单 pid 信号
+/// 无法覆盖「父死孙活」的中间态；adopted 进程（非组长）回退单 pid。
 pub fn terminate_process(pid: u32) -> bool {
     #[cfg(unix)]
     {
+        if signal_process_group(pid, libc::SIGTERM) {
+            return true;
+        }
         let system = System::new_with_specifics(
             RefreshKind::new().with_processes(ProcessRefreshKind::new()),
         );
@@ -91,9 +118,8 @@ pub fn process_alive(pid: u32, expected_start_time: Option<u64>) -> bool {
 /// 读取进程的 `start_time`（epoch 秒）；进程不存在返回 `None`。
 /// spawn 后记录该值，后续存活核对可防 PID 复用误判。
 pub fn process_start_time(pid: u32) -> Option<u64> {
-    let mut system = System::new_with_specifics(
-        RefreshKind::new().with_processes(ProcessRefreshKind::new()),
-    );
+    let mut system =
+        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
     system.refresh_processes();
     system
         .process(Pid::from_u32(pid))
@@ -130,11 +156,12 @@ mod tests {
         let survivors: Vec<_> = system
             .processes()
             .values()
-            .filter(|p| {
-                p.name() == "sleep" && p.cmd().iter().any(|arg| arg == "300")
-            })
+            .filter(|p| p.name() == "sleep" && p.cmd().iter().any(|arg| arg == "300"))
             .collect();
-        assert!(survivors.is_empty(), "sleep 300 should be killed: {survivors:?}");
+        assert!(
+            survivors.is_empty(),
+            "sleep 300 should be killed: {survivors:?}"
+        );
     }
 
     #[cfg(unix)]
@@ -162,7 +189,13 @@ mod tests {
         assert_eq!(status.code(), Some(0), "trap must turn SIGTERM into exit 0");
 
         std::thread::sleep(std::time::Duration::from_millis(100));
-        assert!(!super::process_alive(pid, Some(start)), "exited process is gone");
-        assert!(!super::terminate_process(pid), "no signal target after exit");
+        assert!(
+            !super::process_alive(pid, Some(start)),
+            "exited process is gone"
+        );
+        assert!(
+            !super::terminate_process(pid),
+            "no signal target after exit"
+        );
     }
 }

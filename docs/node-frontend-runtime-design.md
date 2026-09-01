@@ -259,7 +259,13 @@ N-01 / N-03 spec 与 `tasks-node/00-全局开发约束.md` §4 中声明为对 �
 - 子进程 spawn 走 `process/streaming.rs`（已含 `CREATE_NO_WINDOW`）；
   输出监控沿用字节读 + `from_utf8_lossy`（中文 Windows 下 npm 输出同样可能非 UTF-8）。
 - 命令行长度：npm script 命令短，不触及 32767 上限；无需 pathing jar 类设施。
-- 端口占用检测/进程树终止复用 `process/port.rs` / `kill_tree.rs`，无平台分支新增。
+- 端口占用检测复用 `process/port.rs`。进程树终止（N-07 修订）：unix 上 launch
+  子进程经 `process_group(0)` 独立成组，优雅停止/升级强杀先走 `killpg`
+  （`kill_tree.rs::signal_process_group`）——SIGTERM 会先杀死 npm 这类
+  「不等待子孙退出」的中间进程，vite 等孙子进程被 reparent 到 init 后
+  parent 链枚举再也找不到，只有组信号能保证 Stop 后端口真实释放；
+  parent 链遍历保留作非组长 root（adopted 进程）的回退。Windows 无进程组
+  语义：root `cmd /C` 在 vite 存活期间整链存活，维持 kill_tree parent 链路径。
 
 ## 6. 安全与边界
 
@@ -282,13 +288,13 @@ N-01 / N-03 spec 与 `tasks-node/00-全局开发约束.md` §4 中声明为对 �
 
 ## 8. 验收标准（MVP）
 
-- [ ] 含 `dev` script 的样例前端工程（Vite）：发现 → 建配置 → 启动 → 端口正确识别 → 停止，全闭环可用（Windows + macOS 各验证一次）。
-- [ ] Windows 上 npm 经 `.cmd` + `cmd /C` 执行，无 os error 193；日志中文不丢行。
-- [ ] 旧 `springBoot` 配置零迁移加载、语义不变；新配置缺省 kind 兼容。
-- [ ] `node_modules` 缺失 / script 不存在 / pm 缺失三类错误均为可行动提示。
-- [ ] 启动命令 preview 落库可查；敏感 env 在日志与 UI 脱敏。
-- [ ] ipc_golden 快照更新；schema V17 迁移在旧库上幂等通过。
-- [ ] 性能：package.json 发现 < 500ms（对齐 §5 发现类指标，以 Benchmark 实测为准）。
+- [x] 含 `dev` script 的样例前端工程（Vite）：发现 → 建配置 → 启动 → 端口正确识别 → 停止，全闭环可用（N-07 自动化集成测试 `real_vite_project_full_loop_with_port_release`：真实 `npm create vite` 产物 + 真实启动/停止 + 端口释放断言；Linux 实测通过，Windows/macOS 真机复核待补）。
+- [x] Windows 上 npm 经 `.cmd` + `cmd /C` 执行，无 os error 193；日志中文不丢行（纯函数测试覆盖扩展名候选序与 `needs_cmd_c`：`node::detect::tests::candidate_order_windows_prefers_extensions` 等；真机复核待补）。
+- [x] 旧 `springBoot` 配置零迁移加载、语义不变；新配置缺省 kind 兼容（真实 Spring Boot 闭环测试通过 + golden/schema 测试）。
+- [x] `node_modules` 缺失 / script 不存在 / pm 缺失三类错误均为可行动提示（`node_engine_reports_missing_dependencies_without_installing`、`ScriptNotFound` 校验测试、`bun_decision_is_actionable_error_not_executable`）。
+- [x] 启动命令 preview 落库可查；敏感 env 在日志与 UI 脱敏（E2E 断言 `command_preview` 落库；脱敏三处共用 `is_sensitive_environment_key`，`core::secret` 8 测试 + `logs::redact` 4 测试 + IPC 不回传敏感值）。
+- [x] ipc_golden 快照更新；schema V17 迁移在旧库上幂等通过（`golden_samples_match_snapshot`、`migrate_creates_full_schema_and_bumps_version`）。
+- [x] 性能：package.json 发现 < 500ms（N-02 100 包 fixture 断言实测通过）。
 
 ## 9. 风险与开放问题
 
@@ -298,7 +304,11 @@ N-01 / N-03 spec 与 `tasks-node/00-全局开发约束.md` §4 中声明为对 �
   不支持 stdin 注入——文档化为限制，遇到时建议用户改用非交互 script。
 - **`npm run` 的信号传播**：Windows 上 `cmd /C npm run dev` 的孙子进程（vite）
   需靠 `kill_tree` 整树终止——R-10 已有此语义，回归测试必须覆盖「Stop 后
-  端口真实释放」。
+  端口真实释放」。**N-07 实锤并修复**：unix 上 SIGTERM 先杀死 npm（npm 不
+  等待 vite 退出就终止），vite 被 reparent 到 init 且继续持有输出管道——
+  parent 链 kill_tree 对「父死孙活」失效，Stop 后端口不释放。修复：launch
+  子进程 `process_group(0)` 独立成组 + `killpg` 组信号（§5 已更新）；
+  E2E `real_vite_project_full_loop_with_port_release` 覆盖该回归。
 - **开放问题**：是否在 `runtime_list_projects` 之外再做统一项目视图（§4.8 暂不做）；
   前端工程是否纳入 R-15 Runtime Environment 的分组启停（倾向纳入，实现成本低，
   连同 monorepo/bun 等一并留作 N-09 触发条件，见 N-09 spec）。

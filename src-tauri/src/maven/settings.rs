@@ -21,18 +21,24 @@ pub fn default_local_repository() -> PathBuf {
 /// 生效的本地仓库路径：应用级覆盖（F-16，Maven 设置页可选）> settings.xml
 /// 探测 > `~/.m2/repository`。
 pub fn resolve_local_repository_effective(global_settings_path: Option<&Path>) -> PathBuf {
-    resolve_with_override(global_settings_path, local_repository_override())
+    resolve_with_override(
+        user_settings_path().as_deref(),
+        global_settings_path,
+        local_repository_override(),
+    )
 }
 
-/// 覆盖优先级判断（纯函数，便于单测）。
+/// 覆盖优先级判断（纯函数，便于单测）：应用级覆盖 > 用户级 settings.xml >
+/// 全局级 settings.xml > 默认。
 fn resolve_with_override(
+    user_settings_path: Option<&Path>,
     global_settings_path: Option<&Path>,
     override_path: Option<PathBuf>,
 ) -> PathBuf {
     if let Some(override_path) = override_path {
         return override_path;
     }
-    resolve_local_repository(global_settings_path)
+    resolve_local_repository_from(user_settings_path, global_settings_path)
 }
 
 // ---------------------------------------------------------------------------
@@ -72,8 +78,7 @@ fn write_override_to(path: &Path, value: Option<&str>) -> std::io::Result<()> {
     let settings = MavenAppSettings {
         local_repository: value.map(str::to_string),
     };
-    let content = serde_json::to_string_pretty(&settings)
-        .map_err(std::io::Error::other)?;
+    let content = serde_json::to_string_pretty(&settings).map_err(std::io::Error::other)?;
     std::fs::write(path, content)
 }
 
@@ -83,10 +88,19 @@ fn write_override_to(path: &Path, value: Option<&str>) -> std::io::Result<()> {
 /// `global_settings_path` 为全局 `settings.xml`（`${maven.home}/conf/settings.xml`），
 /// 可选；用户级 `~/.m2/settings.xml` 优先于全局级。
 pub fn resolve_local_repository(global_settings_path: Option<&Path>) -> PathBuf {
+    resolve_local_repository_from(user_settings_path().as_deref(), global_settings_path)
+}
+
+/// 上式的纯函数核心：显式注入用户级/全局级 settings.xml 路径，测试用它隔离
+/// 真实 `~/.m2/settings.xml`（用户环境可能带 `localRepository`）。
+pub fn resolve_local_repository_from(
+    user_settings_path: Option<&Path>,
+    global_settings_path: Option<&Path>,
+) -> PathBuf {
     // 用户级 settings.xml 优先。
-    if let Some(user_settings) = user_settings_path() {
+    if let Some(user_settings) = user_settings_path {
         if user_settings.is_file() {
-            if let Some(local) = parse_local_repository(&user_settings) {
+            if let Some(local) = parse_local_repository(user_settings) {
                 return expand_path(&local);
             }
         }
@@ -250,13 +264,13 @@ mod tests {
 
     #[test]
     fn resolve_falls_back_to_default_without_settings() {
-        // 临时目录下无 settings.xml -> 回退默认。
+        // 注入路径下无 settings.xml -> 回退默认（不读真实 ~/.m2/settings.xml）。
         let tmp = std::env::temp_dir().join(format!(
             "gw_mvn_settings_{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
         std::fs::create_dir_all(&tmp).unwrap();
-        let resolved = resolve_local_repository(Some(&tmp.join("settings.xml")));
+        let resolved = resolve_local_repository_from(None, Some(&tmp.join("settings.xml")));
         assert_eq!(resolved, default_local_repository());
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -274,8 +288,32 @@ mod tests {
             r#"<settings><localRepository>/from/settings/repo</localRepository></settings>"#,
         )
         .unwrap();
-        let resolved = resolve_local_repository(Some(&settings));
+        let resolved = resolve_local_repository_from(None, Some(&settings));
         assert_eq!(resolved, PathBuf::from("/from/settings/repo"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn user_settings_beats_global_settings() {
+        let tmp = std::env::temp_dir().join(format!(
+            "gw_mvn_settings3_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let user = tmp.join("user-settings.xml");
+        std::fs::write(
+            &user,
+            r#"<settings><localRepository>/from/user/repo</localRepository></settings>"#,
+        )
+        .unwrap();
+        let global = tmp.join("global-settings.xml");
+        std::fs::write(
+            &global,
+            r#"<settings><localRepository>/from/global/repo</localRepository></settings>"#,
+        )
+        .unwrap();
+        let resolved = resolve_local_repository_from(Some(&user), Some(&global));
+        assert_eq!(resolved, PathBuf::from("/from/user/repo"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -294,12 +332,12 @@ mod tests {
         .unwrap();
         // 无覆盖 → settings.xml 生效
         assert_eq!(
-            resolve_with_override(Some(&settings), None),
+            resolve_with_override(None, Some(&settings), None),
             PathBuf::from("/from/settings/repo")
         );
         // 有覆盖 → 覆盖最优先
         assert_eq!(
-            resolve_with_override(Some(&settings), Some(PathBuf::from("/override/repo"))),
+            resolve_with_override(None, Some(&settings), Some(PathBuf::from("/override/repo"))),
             PathBuf::from("/override/repo")
         );
         let _ = std::fs::remove_dir_all(&tmp);
@@ -316,10 +354,7 @@ mod tests {
 
         assert_eq!(read_override_from(&file), None);
         write_override_to(&file, Some("D:/m2/repo")).unwrap();
-        assert_eq!(
-            read_override_from(&file),
-            Some(PathBuf::from("D:/m2/repo"))
-        );
+        assert_eq!(read_override_from(&file), Some(PathBuf::from("D:/m2/repo")));
         // 空白串视为无覆盖
         write_override_to(&file, Some("  ")).unwrap();
         assert_eq!(read_override_from(&file), None);
