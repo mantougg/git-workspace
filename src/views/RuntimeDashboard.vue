@@ -333,8 +333,9 @@ import {
 import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRuntimeStore } from "@/stores/runtime";
+import { useTaskStore } from "@/stores/task";
 import * as runtimeApi from "@/api/runtime";
-import { nodeListProjects } from "@/api/node";
+import { nodeListProjects, nodeInstall } from "@/api/node";
 import type {
   RuntimeApplicationConfig,
   RuntimeConfigSummary,
@@ -342,7 +343,8 @@ import type {
   SchedulerConfig,
 } from "@/types/runtime";
 import type { RuntimeScope } from "@/types/maven";
-import type { NodeProjectNode } from "@/types/node";
+import type { NodePackageManager, NodeProjectNode } from "@/types/node";
+import type { ErrorResponse } from "@/utils/error";
 import { errMsg } from "@/utils/error";
 import RuntimeErrorAlert from "@/components/runtime/RuntimeErrorAlert.vue";
 import PortDiagnosticsModal from "@/components/runtime/PortDiagnosticsModal.vue";
@@ -354,6 +356,7 @@ import type { DiagnosticErrorInput, RuntimeDiagnosticRequest } from "@/types/ai"
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const store = useRuntimeStore();
+const taskStore = useTaskStore();
 const message = useMessage();
 const dialog = useDialog();
 const { openAssistant } = useAiAssistant();
@@ -849,6 +852,19 @@ const configColumns = [
           },
           { default: () => "构建" },
         ),
+        ...(row.kind === "node"
+          ? [
+              h(
+                NButton,
+                {
+                  size: "small",
+                  disabled: isBusy(row.name),
+                  onClick: () => onInstallDeps(row),
+                },
+                { default: () => "装依赖" },
+              ),
+            ]
+          : []),
         h(
           NButton,
           {
@@ -1100,6 +1116,59 @@ async function onBuild(name: string) {
     message.success(`已提交构建任务：${name}`);
   } catch (e) {
     handleError("构建", e, () => onBuild(name));
+  }
+}
+
+/** N-08 §75：显式依赖安装。首次调用只拿结构化确认错误（含命令预览），
+ * 用户确认后才真正提交 node_install 任务（网络行为，永不自动触发）。 */
+async function onInstallDeps(row: RuntimeConfigSummary) {
+  clearError();
+  const detail = store.configDetails.get(row.name);
+  const project = nodeProjects.value.find(
+    (candidate) => normalizePath(candidate.path) === normalizePath(row.project),
+  );
+  const packageManager = (detail?.nodePackageManager ||
+    project?.packageManager ||
+    "npm") as NodePackageManager;
+  const request = { projectDir: row.project, packageManager };
+  // 第一跳：后端返回 NodeInstallConfirmationRequired + 命令预览。
+  let preview = `${packageManager} install (cwd ${row.project})`;
+  try {
+    await nodeInstall({ ...request, confirmed: false });
+    return; // 不应发生：后端要求确认
+  } catch (e) {
+    const err = e as ErrorResponse;
+    if (err?.code !== "NodeInstallConfirmationRequired") {
+      handleError("依赖安装", e, () => onInstallDeps(row));
+      return;
+    }
+    try {
+      const details = err.details ? (JSON.parse(err.details) as Record<string, unknown>) : null;
+      if (typeof details?.commandPreview === "string") {
+        preview = details.commandPreview;
+      }
+    } catch {
+      // details 非 JSON 时保持默认预览
+    }
+  }
+  const confirmed = await new Promise<boolean>((resolve) => {
+    dialog.warning({
+      title: "确认安装依赖",
+      content: `将在项目目录执行网络安装：\n\n${preview}\n\n依赖版本由 package.json 与锁文件决定；可随时在任务面板取消。`,
+      positiveText: "确认并安装",
+      negativeText: "取消",
+      onPositiveClick: () => resolve(true),
+      onNegativeClick: () => resolve(false),
+      onClose: () => resolve(false),
+    });
+  });
+  if (!confirmed) return;
+  try {
+    const taskId = await nodeInstall({ ...request, confirmed: true });
+    message.success(`依赖安装任务已提交：${taskId}`);
+    taskStore.showPanel();
+  } catch (e) {
+    handleError("依赖安装", e, () => onInstallDeps(row));
   }
 }
 

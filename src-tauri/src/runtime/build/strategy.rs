@@ -386,8 +386,13 @@ mod tests {
             Some(&["com.example:lib".to_string(), "com.example:app".to_string()]),
         );
         assert!(request.extra_args.contains(&"-pl".to_string()));
-        assert!(request.extra_args.contains(&"com.example:lib,com.example:app".to_string()));
-        assert!(!request.extra_args.contains(&"-am".to_string()), "subset must not carry -am");
+        assert!(request
+            .extra_args
+            .contains(&"com.example:lib,com.example:app".to_string()));
+        assert!(
+            !request.extra_args.contains(&"-am".to_string()),
+            "subset must not carry -am"
+        );
         assert!(request.extra_args.contains(&"-f".to_string()));
         // 保留 -f 与策略无关参数（无 skipTests/offline）。
         assert!(request.extra_args.contains(&"/ws/repo/pom.xml".to_string()));
@@ -457,7 +462,10 @@ mod tests {
             classpath: None,
         };
         let plan = launch_plan(RunStrategy::MavenRun, &inputs).unwrap();
-        let LaunchPlan::MavenGoal { request, preview, .. } = plan else {
+        let LaunchPlan::MavenGoal {
+            request, preview, ..
+        } = plan
+        else {
             panic!("expected MavenGoal");
         };
         assert_eq!(request.goals, ["spring-boot:run"]);

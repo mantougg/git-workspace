@@ -58,6 +58,7 @@ import {
   FolderOutline,
   BuildOutline,
   OptionsOutline,
+  HardwareChipOutline,
   InformationCircleOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
@@ -102,6 +103,7 @@ const ICON_MAP: Record<string, any> = {
   workspaces: FolderOutline,
   "jdk-manager": BuildOutline,
   "maven-settings": OptionsOutline,
+  "node-toolchain": HardwareChipOutline,
   about: InformationCircleOutline,
 };
 

@@ -590,8 +590,8 @@ mod tests {
     fn nested_git_repository_is_discovered_once() {
         let root = std::env::temp_dir().join(format!("gw_node_nested_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("repo/pkg")).unwrap();
-        git2::Repository::init(&root.join("repo")).unwrap();
-        git2::Repository::init(&root.join("repo/pkg")).unwrap();
+        git2::Repository::init(root.join("repo")).unwrap();
+        git2::Repository::init(root.join("repo/pkg")).unwrap();
         write(&root.join("repo/package.json"), r#"{"name":"repo"}"#);
         write(&root.join("repo/pkg/package.json"), r#"{"name":"pkg"}"#);
         let result = discover_package_jsons(&root, 5, None, None);

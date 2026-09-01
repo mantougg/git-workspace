@@ -68,9 +68,7 @@ pub fn resolve_package_manager(decision: &PackageManagerDecision) -> AppResult<T
 }
 
 /// Resolve Node.js from the persistent registry before consulting PATH.
-pub fn resolve_node_with_registry(
-    conn: &rusqlite::Connection,
-) -> AppResult<ToolDetection> {
+pub fn resolve_node_with_registry(conn: &rusqlite::Connection) -> AppResult<ToolDetection> {
     if let Some(entry) = crate::node::registry::find_valid_node(conn)? {
         return Ok(ToolDetection {
             executable: std::path::PathBuf::from(entry.executable_path),
@@ -92,7 +90,8 @@ pub fn resolve_package_manager_with_registry(
     if decision.manager == PackageManager::Bun {
         return resolve_package_manager(decision);
     }
-    if let Some(entry) = crate::node::registry::find_valid_package_manager(conn, decision.manager)? {
+    if let Some(entry) = crate::node::registry::find_valid_package_manager(conn, decision.manager)?
+    {
         return Ok(ToolDetection {
             executable: std::path::PathBuf::from(entry.executable_path),
             version: entry.version,

@@ -19,9 +19,9 @@
 
 pub mod classpath;
 pub mod dep_cache;
+pub mod node_engine;
 pub mod pathing_jar;
 pub mod pipeline;
-pub mod node_engine;
 pub mod runner;
 pub mod scheduler;
 pub mod strategy;
@@ -313,7 +313,10 @@ mod tests {
         assert_eq!(default_strategy(None), RunStrategy::ClasspathRun);
         assert_eq!(default_strategy(Some("dev")), RunStrategy::ClasspathRun);
         assert_eq!(default_strategy(Some("prod")), RunStrategy::PackageRun);
-        assert_eq!(default_strategy(Some("Production")), RunStrategy::PackageRun);
+        assert_eq!(
+            default_strategy(Some("Production")),
+            RunStrategy::PackageRun
+        );
         assert_eq!(default_strategy(Some("PROD")), RunStrategy::PackageRun);
     }
 
@@ -345,7 +348,9 @@ mod tests {
         // R-18：mvnd 与 maven 共用流水线，是合法 engine id。
         assert_eq!(engine_for("mvnd").unwrap().id(), "maven");
         assert_eq!(engine_for("node").unwrap().id(), "node");
-        let error = engine_for("gradle").err().expect("unknown engine must fail");
+        let error = engine_for("gradle")
+            .err()
+            .expect("unknown engine must fail");
         assert_eq!(error.code(), "RuntimeConfigError");
         assert!(error.to_string().contains("gradle"));
     }

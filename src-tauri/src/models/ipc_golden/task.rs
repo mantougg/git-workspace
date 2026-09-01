@@ -60,6 +60,10 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 name: "app".into(),
                 config_json: "{}".into(),
             },
+            task::TaskType::NodeInstall {
+                project_dir: "/home/user/web".into(),
+                package_manager: crate::node::PackageManager::Pnpm,
+            },
         ]),
     );
     m.insert(

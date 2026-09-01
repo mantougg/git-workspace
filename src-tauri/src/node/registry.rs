@@ -47,7 +47,11 @@ pub fn list_node_executables(conn: &Connection) -> AppResult<Vec<NodeExecutable>
         b.is_valid
             .cmp(&a.is_valid)
             .then_with(|| a.kind.as_str().cmp(b.kind.as_str()))
-            .then_with(|| a.package_manager.map(PackageManager::name).cmp(&b.package_manager.map(PackageManager::name)))
+            .then_with(|| {
+                a.package_manager
+                    .map(PackageManager::name)
+                    .cmp(&b.package_manager.map(PackageManager::name))
+            })
             .then_with(|| a.executable_path.cmp(&b.executable_path))
     });
     Ok(entries)
@@ -77,16 +81,21 @@ pub fn apply_node_probe(
     conn.execute(
         "UPDATE node_executables SET version = ?2, raw_output = ?3,
          is_valid = ?4, last_checked = ?5, updated_at = ?5 WHERE id = ?1",
-        params![id, entry.version, entry.raw_output, entry.is_valid as i64, checked_at],
+        params![
+            id,
+            entry.version,
+            entry.raw_output,
+            entry.is_valid as i64,
+            checked_at
+        ],
     )?;
     Ok(())
 }
 
 pub fn prune_invalid_paths(conn: &mut Connection) -> AppResult<usize> {
     let now = chrono::Utc::now().to_rfc3339();
-    let mut stmt = conn.prepare(
-        "SELECT id, executable_path FROM node_executables WHERE is_valid = 1",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT id, executable_path FROM node_executables WHERE is_valid = 1")?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;

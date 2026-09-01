@@ -285,22 +285,19 @@ pub fn execute_build(
     let local_repository = crate::maven::settings::resolve_local_repository_effective(None);
     let project_dir = strategy::module_directory(root);
     // R-18：mvnd 偏好解析；不可用回退 mvn（可选增强，不构成硬依赖）。
-    let mut resolved = match runner.resolve_maven_for_engine(
-        &project_dir,
-        &local_repository,
-        engine_hint,
-    )? {
-        Some(resolved) => resolved,
-        None => {
-            log::warn!("R-18: build_engine=mvnd 但 mvnd 不可用，回退普通 Maven");
-            // 固定提示行（无秘密），直接进 sink 供日志可证。
-            sink.on_line(
-                OutputStream::Stdout,
-                "[R-18] mvnd 不可用（未安装或探测失败），本次构建回退普通 Maven",
-            );
-            runner.resolve_maven(&project_dir, &local_repository)?
-        }
-    };
+    let mut resolved =
+        match runner.resolve_maven_for_engine(&project_dir, &local_repository, engine_hint)? {
+            Some(resolved) => resolved,
+            None => {
+                log::warn!("R-18: build_engine=mvnd 但 mvnd 不可用，回退普通 Maven");
+                // 固定提示行（无秘密），直接进 sink 供日志可证。
+                sink.on_line(
+                    OutputStream::Stdout,
+                    "[R-18] mvnd 不可用（未安装或探测失败），本次构建回退普通 Maven",
+                );
+                runner.resolve_maven(&project_dir, &local_repository)?
+            }
+        };
 
     // ---- 5. Runtime Closure + Reactor ----
     // Scope 来自 Runtime 配置（R-03 §15，缺省 Auto；R-13 起 UI 可调）。
@@ -357,7 +354,10 @@ pub fn execute_build(
             },
             |module| {
                 // 产物存在性：jar 模块看 target/classes（compile 产物）。
-                strategy::module_directory(module).join("target").join("classes").is_dir()
+                strategy::module_directory(module)
+                    .join("target")
+                    .join("classes")
+                    .is_dir()
             },
         );
         match plan {
@@ -455,9 +455,9 @@ pub fn execute_build(
     // R-12：等 permit 期间响应任务取消（排队取消），拿到 permit 后的构建
     // 取消由 runner 的 50ms 轮询负责。
     let _permit = match cancel {
-        Some(flag) => scheduler
-            .acquire_cancelable(flag)
-            .ok_or_else(|| AppError::Task("build cancelled by user（排队等待构建位时取消）".into()))?,
+        Some(flag) => scheduler.acquire_cancelable(flag).ok_or_else(|| {
+            AppError::Task("build cancelled by user（排队等待构建位时取消）".into())
+        })?,
         None => scheduler.acquire(),
     };
     let start = Instant::now();
@@ -505,7 +505,13 @@ pub fn execute_build(
             cancel,
             request.options.timeout,
         )?;
-        check_exit(&retry_exit, root, &redacting, "build", request.options.timeout)?;
+        check_exit(
+            &retry_exit,
+            root,
+            &redacting,
+            "build",
+            request.options.timeout,
+        )?;
     }
     // 构建成功：写入/刷新依赖缓存状态（R-18）。
     if request.options.dependency_cache && !skip_build_call {
@@ -646,9 +652,14 @@ fn run_user_script(
     let mut command = user_script_command(script);
     command.current_dir(workspace_root);
     let prefix = format!("[{script_type}-build] ");
-    let exit = spawn_streaming(&mut command, cancel, Some(SCRIPT_TIMEOUT), &mut |stream, line| {
-        sink.on_line(stream, &format!("{prefix}{line}"));
-    })?;
+    let exit = spawn_streaming(
+        &mut command,
+        cancel,
+        Some(SCRIPT_TIMEOUT),
+        &mut |stream, line| {
+            sink.on_line(stream, &format!("{prefix}{line}"));
+        },
+    )?;
     approvals.record_execution(
         request.workspace_id,
         &request.runtime_name,
@@ -738,9 +749,13 @@ fn resolve_classpath(
     sink: &mut RedactingSink,
     cancel: Option<&AtomicBool>,
 ) -> AppResult<Vec<PathBuf>> {
-    if let Some(entries) =
-        classpath::cached_classpath(workspace_root, runtime_name, root, graph_fingerprint, local_repository)
-    {
+    if let Some(entries) = classpath::cached_classpath(
+        workspace_root,
+        runtime_name,
+        root,
+        graph_fingerprint,
+        local_repository,
+    ) {
         log::info!(
             "R-09: classpath cache hit for {}",
             root.coordinates.artifact_id
@@ -752,8 +767,7 @@ fn resolve_classpath(
     // R-14 §78 只读护栏：classpath 缓存只落 workspace/.gitworkspace。
     crate::runtime::guard::assert_workspace_write_path(&dir, workspace_root, "Classpath 缓存")?;
     let key = classpath::classpath_cache_key(root, graph_fingerprint, local_repository);
-    let output_file =
-        classpath::prepare_cache_write(&dir, &root.coordinates.artifact_id, &key)?;
+    let output_file = classpath::prepare_cache_write(&dir, &root.coordinates.artifact_id, &key)?;
     let request = classpath::build_classpath_request(
         executable,
         workspace_root,
@@ -764,7 +778,13 @@ fn resolve_classpath(
         Some(local_repository.to_path_buf()),
     );
     let exit = runner.run(&request, env, sink, cancel, options.timeout)?;
-    check_exit(&exit, root, sink, "dependency:build-classpath", options.timeout)?;
+    check_exit(
+        &exit,
+        root,
+        sink,
+        "dependency:build-classpath",
+        options.timeout,
+    )?;
 
     if !output_file.is_file() {
         return Err(AppError::BuildFailed {

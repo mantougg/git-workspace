@@ -7,9 +7,7 @@ use super::*;
 use crate::runtime::build::runner::{FakeMavenRunner, FakeRun};
 use crate::runtime::build::scheduler::BuildScheduler;
 use crate::runtime::build::LaunchPlan;
-use crate::runtime::config::{
-    create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig,
-};
+use crate::runtime::config::{create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig};
 use crate::test_support::write;
 
 /// 单仓多模块 fixture：parent(pom) + lib(jar) + app(jar，依赖 lib)。
@@ -18,7 +16,6 @@ struct Fixture {
     db: Arc<Mutex<Connection>>,
     workspace_id: i64,
 }
-
 
 fn setup_fixture(name: &str) -> Fixture {
     let root = std::env::temp_dir().join(format!(
@@ -70,13 +67,8 @@ fn setup_fixture(name: &str) -> Fixture {
 
     let discovery = crate::maven::discover_poms(&root, 5, None, None);
     assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-    crate::maven::sync_workspace_index(
-        &mut conn,
-        workspace_id,
-        &discovery,
-        &root.join("m2"),
-    )
-    .unwrap();
+    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
+        .unwrap();
     Fixture {
         root,
         db: Arc::new(Mutex::new(conn)),
@@ -92,11 +84,7 @@ impl Fixture {
             .to_string()
     }
 
-    fn create_runtime(
-        &mut self,
-        name: &str,
-        mutate: impl FnOnce(&mut RuntimeApplicationConfig),
-    ) {
+    fn create_runtime(&mut self, name: &str, mutate: impl FnOnce(&mut RuntimeApplicationConfig)) {
         let mut config = RuntimeApplicationConfig {
             name: name.into(),
             project: self.app_pom_path(),
@@ -187,7 +175,10 @@ fn classpath_run_full_pipeline_with_fake_maven() {
     .unwrap();
 
     assert_eq!(outcome.strategy, RunStrategy::ClasspathRun);
-    assert_eq!(outcome.reactor_kind, crate::maven::reactor::RuntimeReactorKind::Existing);
+    assert_eq!(
+        outcome.reactor_kind,
+        crate::maven::reactor::RuntimeReactorKind::Existing
+    );
     assert_eq!(
         outcome.modules_built,
         ["com.example:lib".to_string(), "com.example:app".to_string()]
@@ -206,7 +197,9 @@ fn classpath_run_full_pipeline_with_fake_maven() {
 
     // LaunchPlan：target/classes 在首元素，依赖 jar 随后。
     let LaunchPlan::JavaClasspath {
-        classpath, main_class, ..
+        classpath,
+        main_class,
+        ..
     } = &outcome.launch
     else {
         panic!("expected JavaClasspath");
@@ -216,9 +209,7 @@ fn classpath_run_full_pipeline_with_fake_maven() {
     assert!(classpath.contains(&PathBuf::from("/m2/lib-dep.jar")));
 
     // 缓存文件落在 .gitworkspace 下。
-    let cache_dir = fixture
-        .root
-        .join(".gitworkspace/runtime/app/classpath");
+    let cache_dir = fixture.root.join(".gitworkspace/runtime/app/classpath");
     assert!(fs::read_dir(&cache_dir).unwrap().count() == 1);
 
     // 第二次构建：classpath 缓存命中，只有 compile 一次调用。
@@ -255,7 +246,10 @@ fn maven_run_preview_scopes_to_app_without_am() {
     )
     .unwrap();
 
-    let LaunchPlan::MavenGoal { request, preview, .. } = &outcome.launch else {
+    let LaunchPlan::MavenGoal {
+        request, preview, ..
+    } = &outcome.launch
+    else {
         panic!("expected MavenGoal");
     };
     assert_eq!(request.goals, ["spring-boot:run"]);
@@ -292,7 +286,12 @@ fn package_run_launch_uses_packaged_jar() {
     assert!(runner.requests()[0]
         .extra_args
         .contains(&"-DskipTests".to_string()));
-    let LaunchPlan::JavaJar { jar_path, vm_options, .. } = &outcome.launch else {
+    let LaunchPlan::JavaJar {
+        jar_path,
+        vm_options,
+        ..
+    } = &outcome.launch
+    else {
         panic!("expected JavaJar");
     };
     assert_eq!(jar_path, &jar);
@@ -334,7 +333,10 @@ fn failed_build_returns_structured_build_failed() {
     else {
         panic!("expected BuildFailed, got {error:?}");
     };
-    assert_eq!(module, "com.example:app", "reactor summary names the module");
+    assert_eq!(
+        module, "com.example:app",
+        "reactor summary names the module"
+    );
     assert_eq!(*exit_code, Some(1));
     assert!(log_tail.contains("COMPILATION ERROR"));
     assert_eq!(error.code(), "BuildFailed");
@@ -377,10 +379,7 @@ fn cancelled_build_maps_to_task_error() {
 fn sensitive_environment_values_are_masked_in_stream() {
     let mut fixture = setup_fixture("mask");
     fixture.create_runtime("app", |config| {
-        config.environment = BTreeMap::from([(
-            "DB_PASSWORD".into(),
-            "supersecret-value".into(),
-        )]);
+        config.environment = BTreeMap::from([("DB_PASSWORD".into(), "supersecret-value".into())]);
     });
     let runner = FakeMavenRunner::new(vec![
         FakeRun {
@@ -420,18 +419,15 @@ fn sensitive_environment_values_are_masked_in_stream() {
 #[test]
 fn configured_jdk_injects_java_home_and_unknown_jdk_fails_fast() {
     let mut fixture = setup_fixture("jdk");
-    crate::java::registry::upsert_jdk(
-        &fixture.db.lock().unwrap(),
-        &{
-            let mut jdk = crate::java::model::JdkInstallation::new(
-                "/jdk-21",
-                crate::java::model::JdkDiscoverySource::System,
-            );
-            jdk.major_version = Some(21);
-            jdk.is_valid = true;
-            jdk
-        },
-    )
+    crate::java::registry::upsert_jdk(&fixture.db.lock().unwrap(), &{
+        let mut jdk = crate::java::model::JdkInstallation::new(
+            "/jdk-21",
+            crate::java::model::JdkDiscoverySource::System,
+        );
+        jdk.major_version = Some(21);
+        jdk.is_valid = true;
+        jdk
+    })
     .unwrap();
     fixture.create_runtime("app", |config| {
         config.jdk = Some("21".into());
@@ -630,7 +626,10 @@ fn approved_script_executes_forwarding_marked_output_and_records() {
         .into_iter()
         .find(|a| a.script_hash == hash)
         .expect("approval entry exists");
-    assert!(entry.last_executed_at.is_some(), "execution must be recorded");
+    assert!(
+        entry.last_executed_at.is_some(),
+        "execution must be recorded"
+    );
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -660,7 +659,12 @@ fn script_content_change_requires_reapproval() {
     store.approve(1, "app", "pre", &h1, "echo v1").unwrap();
     assert!(store.is_approved(1, "app", "pre", &h1));
     assert!(
-        !store.is_approved(1, "app", "pre", &crate::runtime::script_approval::script_hash("echo v2")),
+        !store.is_approved(
+            1,
+            "app",
+            "pre",
+            &crate::runtime::script_approval::script_hash("echo v2")
+        ),
         "script content change must invalidate the approval"
     );
     let _ = fs::remove_dir_all(dir);
@@ -892,13 +896,8 @@ fn register_workspace(root: &Path, repos: &[&str]) -> (Connection, i64) {
     crate::db::dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned).unwrap();
     let discovery = crate::maven::discover_poms(root, 6, None, None);
     assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-    crate::maven::sync_workspace_index(
-        &mut conn,
-        workspace_id,
-        &discovery,
-        &root.join("m2"),
-    )
-    .unwrap();
+    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
+        .unwrap();
     (conn, workspace_id)
 }
 
@@ -1008,7 +1007,10 @@ fn package_run_builds_spring_boot_app_with_real_maven() {
     let LaunchPlan::JavaJar { jar_path, .. } = &outcome.launch else {
         panic!("expected JavaJar");
     };
-    assert!(jar_path.is_file(), "repackaged jar must exist: {jar_path:?}");
+    assert!(
+        jar_path.is_file(),
+        "repackaged jar must exist: {jar_path:?}"
+    );
     let _ = fs::remove_dir_all(fixture.root);
 }
 
@@ -1041,9 +1043,9 @@ fn classpath_run_resolves_and_caches_classpath_with_real_maven() {
         .path();
     let cached = classpath::read_classpath_file(&cache_file).unwrap();
     assert!(
-        cached.iter().any(|entry| entry
-            .to_string_lossy()
-            .contains("spring-boot-starter")),
+        cached
+            .iter()
+            .any(|entry| entry.to_string_lossy().contains("spring-boot-starter")),
         "classpath must contain spring-boot-starter jar: {cached:?}"
     );
 
@@ -1116,8 +1118,7 @@ fn dependency_cache_skips_unchanged_modules_with_real_maven() {
     real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
         .unwrap_or_else(|error| panic!("second build failed: {error}\n{}", sink.tail.tail()));
     assert_eq!(
-        sink.invocations,
-        after_first,
+        sink.invocations, after_first,
         "unchanged modules must skip the maven build entirely"
     );
     assert!(
@@ -1127,7 +1128,9 @@ fn dependency_cache_skips_unchanged_modules_with_real_maven() {
     );
 
     // 修改 lib 源码 → 只重建 lib + app（-pl 子集，一次 Maven 调用）。
-    let lib_java = fixture.root.join("repo/lib/src/main/java/com/r09/lib/Lib.java");
+    let lib_java = fixture
+        .root
+        .join("repo/lib/src/main/java/com/r09/lib/Lib.java");
     std::fs::write(&lib_java, "package com.r09.lib;\n\npublic final class Lib {\n    public static String greet() { return \"hi v2\"; }\n}\n").unwrap();
     real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
         .unwrap_or_else(|error| panic!("incremental build failed: {error}\n{}", sink.tail.tail()));
@@ -1142,8 +1145,9 @@ fn dependency_cache_skips_unchanged_modules_with_real_maven() {
         sink.tail.tail()
     );
     // 第三次：增量构建后全部未变 → 再次跳过。
-    real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
-        .unwrap_or_else(|error| panic!("post-increment build failed: {error}\n{}", sink.tail.tail()));
+    real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None).unwrap_or_else(|error| {
+        panic!("post-increment build failed: {error}\n{}", sink.tail.tail())
+    });
     assert_eq!(sink.invocations, after_first + 1);
     let _ = fs::remove_dir_all(fixture.root);
 }
@@ -1183,8 +1187,7 @@ fn affected_modules_override_dependency_cache_skip_with_real_maven() {
     )
     .unwrap_or_else(|error| panic!("affected build failed: {error}\n{}", sink.tail.tail()));
     assert_eq!(
-        sink.invocations,
-        2,
+        sink.invocations, 2,
         "affected_modules must override the SkipAll verdict with exactly one maven call"
     );
     assert!(
@@ -1216,7 +1219,10 @@ fn maven_run_builds_and_previews_spring_boot_run_with_real_maven() {
     // 只断言 build 成功 + preview；不真跑 spring-boot:run。
     let outcome = real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
         .unwrap_or_else(|error| panic!("maven-run build failed: {error}\n{}", sink.tail.tail()));
-    let LaunchPlan::MavenGoal { preview, request, .. } = &outcome.launch else {
+    let LaunchPlan::MavenGoal {
+        preview, request, ..
+    } = &outcome.launch
+    else {
         panic!("expected MavenGoal");
     };
     assert!(preview.contains("spring-boot:run"));
@@ -1246,7 +1252,10 @@ fn cross_repo_synthetic_reactor_builds_with_real_maven() {
 
     let outcome = real_build(&mut fixture, RunStrategy::PackageRun, &mut sink, None)
         .unwrap_or_else(|error| {
-            panic!("synthetic reactor build failed: {error}\n{}", sink.tail.tail())
+            panic!(
+                "synthetic reactor build failed: {error}\n{}",
+                sink.tail.tail()
+            )
         });
     assert_eq!(
         outcome.reactor_kind,
@@ -1283,10 +1292,19 @@ fn cancelling_real_maven_build_kills_process_tree() {
     };
     let start = Instant::now();
 
-    let error = real_build(&mut fixture, RunStrategy::PackageRun, &mut sink, Some(&cancel))
-        .unwrap_err();
+    let error = real_build(
+        &mut fixture,
+        RunStrategy::PackageRun,
+        &mut sink,
+        Some(&cancel),
+    )
+    .unwrap_err();
 
-    assert_eq!(error.code(), "TaskError", "cancel must map to Task error: {error}");
+    assert_eq!(
+        error.code(),
+        "TaskError",
+        "cancel must map to Task error: {error}"
+    );
     assert!(
         start.elapsed() < INTEGRATION_TIMEOUT,
         "cancel must interrupt the build, not wait for completion"
@@ -1301,14 +1319,12 @@ fn cancelling_real_maven_build_kills_process_tree() {
     let survivors: Vec<String> = system
         .processes()
         .values()
-        .filter(|process| {
-            process
-                .cmd()
-                .iter()
-                .any(|arg| arg.contains(&marker))
-        })
+        .filter(|process| process.cmd().iter().any(|arg| arg.contains(&marker)))
         .map(|process| format!("{:?} {:?}", process.pid(), process.cmd()))
         .collect();
-    assert!(survivors.is_empty(), "build process tree must be gone: {survivors:?}");
+    assert!(
+        survivors.is_empty(),
+        "build process tree must be gone: {survivors:?}"
+    );
     let _ = fs::remove_dir_all(fixture.root);
 }

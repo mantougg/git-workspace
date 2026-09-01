@@ -109,10 +109,7 @@ pub fn build_classpath_request(
     offline: bool,
     local_repository: Option<PathBuf>,
 ) -> MavenExecutionRequest {
-    let mut extra_args = vec![
-        "-f".into(),
-        reactor.pom_path.to_string_lossy().into_owned(),
-    ];
+    let mut extra_args = vec!["-f".into(), reactor.pom_path.to_string_lossy().into_owned()];
     if reactor.module_paths.len() > 1 {
         extra_args.extend([
             "-pl".into(),
@@ -123,7 +120,10 @@ pub fn build_classpath_request(
             "-am".into(),
         ]);
     }
-    extra_args.push(format!("-Dmdep.outputFile={}", output_file.to_string_lossy()));
+    extra_args.push(format!(
+        "-Dmdep.outputFile={}",
+        output_file.to_string_lossy()
+    ));
     extra_args.push(format!("-Dmdep.includeScope={CLASSPATH_INCLUDE_SCOPE}"));
     if offline {
         extra_args.push("-o".into());
@@ -185,7 +185,10 @@ mod tests {
         let entries = vec![root_dir.join("m2/a.jar"), root_dir.join("m2/b.jar")];
         fs::write(
             &target,
-            std::env::join_paths(&entries).unwrap().to_string_lossy().as_ref(),
+            std::env::join_paths(&entries)
+                .unwrap()
+                .to_string_lossy()
+                .as_ref(),
         )
         .unwrap();
 

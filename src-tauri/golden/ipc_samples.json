@@ -1611,6 +1611,28 @@
       "type": "repoClean"
     }
   ],
+  "NodeExecutable": {
+    "createdAt": "2026-09-01T00:00:00+00:00",
+    "executablePath": "/usr/local/bin/pnpm",
+    "id": 1,
+    "isValid": true,
+    "kind": "packageManager",
+    "lastChecked": "2026-09-01T00:00:00+00:00",
+    "packageManager": "pnpm",
+    "rawOutput": "11.24.0",
+    "updatedAt": "2026-09-01T00:00:00+00:00",
+    "version": "11.24.0"
+  },
+  "NodeExecutableRequest": {
+    "executablePath": "/usr/local/bin/pnpm",
+    "kind": "packageManager",
+    "packageManager": "pnpm"
+  },
+  "NodeInstallRequest": {
+    "confirmed": false,
+    "packageManager": "pnpm",
+    "projectDir": "/ws/web"
+  },
   "NodeProjectNode": {
     "name": "web",
     "packageManager": "npm",
@@ -2717,6 +2739,11 @@
       "name": "app",
       "type": "runtimeUpdateConfig",
       "workspaceId": 1
+    },
+    {
+      "packageManager": "pnpm",
+      "projectDir": "/home/user/web",
+      "type": "nodeInstall"
     }
   ],
   "ToolCallRequest": {

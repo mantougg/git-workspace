@@ -141,6 +141,12 @@ const router = createRouter({
       meta: { group: "设置", title: "Maven 设置" },
     },
     {
+      path: "/node-toolchain",
+      name: "node-toolchain",
+      component: () => import("@/views/NodeToolchainView.vue"),
+      meta: { group: "设置", title: "Node 工具链" },
+    },
+    {
       path: "/ai-settings",
       name: "ai-settings",
       component: () => import("@/views/AiSettingsView.vue"),

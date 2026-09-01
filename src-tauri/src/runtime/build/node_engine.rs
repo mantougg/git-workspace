@@ -169,6 +169,119 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// N-08 验收：pnpm / yarn 样例工程真实启动闭环。参数形状差异由
+    /// `build_run_args` 决定（两者均无 `--` 分隔），启动复用同一 spawn 链。
+    fn node_engine_launch_loopback(manager: PackageManager, manager_name: &str, marker: &str) {
+        if detect_node().is_err() || detect_package_manager(manager).is_err() {
+            eprintln!(
+                "N-08: node/{} unavailable; skipping real launch loopback",
+                manager_name
+            );
+            return;
+        }
+        let (root, db, workspace_id) = fixture();
+        let project = root.join("web");
+        std::fs::write(
+            project.join("package.json"),
+            format!(
+                r#"{{"name":"web","scripts":{{"dev":"node -e \"console.log('{}')\""}}}}"#,
+                marker
+            ),
+        )
+        .unwrap();
+        create_config(
+            &db.lock().unwrap(),
+            &CreateRuntimeConfigRequest {
+                workspace_id,
+                config: RuntimeApplicationConfig {
+                    name: "web".into(),
+                    project: project.to_string_lossy().into_owned(),
+                    kind: RuntimeKind::Node,
+                    node_script: Some("dev".into()),
+                    node_package_manager: Some(manager_name.into()),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        let request = BuildRequest {
+            workspace_id,
+            runtime_name: "web".into(),
+            options: Default::default(),
+        };
+        let mut sink = Sink(Vec::new());
+        let outcome = crate::runtime::build::pipeline::execute_build(
+            &db,
+            &root,
+            &DependencyGraphCache::new(),
+            &RuntimeClosureCache::new(),
+            &BuildScheduler::new(1),
+            &FakeMavenRunner::successful(),
+            &request,
+            &ScriptApprovalStore::new(root.join("approvals.json")),
+            &mut sink,
+            None,
+        )
+        .unwrap();
+        assert_eq!(outcome.strategy, RunStrategy::NodeScript);
+        assert!(
+            outcome.build_command_preview.contains(manager_name),
+            "preview should mention {}: {}",
+            manager_name,
+            outcome.build_command_preview
+        );
+        let LaunchPlan::Script {
+            executable,
+            args,
+            working_dir,
+            ..
+        } = outcome.launch
+        else {
+            panic!("{} engine must return LaunchPlan::Script", manager_name);
+        };
+        assert_eq!(args, ["run", "dev"]);
+        assert_eq!(working_dir, project);
+        let mut command = crate::runtime::launch::launcher::launch_command(
+            &LaunchPlan::Script {
+                executable,
+                args,
+                env: vec![],
+                working_dir: working_dir.clone(),
+                preview: String::new(),
+            },
+            1,
+            "web",
+        )
+        .unwrap();
+        let mut output = Vec::new();
+        let exit = spawn_streaming(
+            &mut command,
+            None,
+            Some(Duration::from_secs(30)),
+            &mut |_stream, line| output.push(line.to_string()),
+        )
+        .unwrap();
+        assert_eq!(exit.exit_code, Some(0));
+        assert!(
+            output.iter().any(|line| line.contains(marker)),
+            "{} run dev output should contain {}: {:?}",
+            manager_name,
+            marker,
+            output
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pnpm_engine_launches_real_dev_script() {
+        node_engine_launch_loopback(PackageManager::Pnpm, "pnpm", "pnpm-fixture");
+    }
+
+    #[test]
+    fn yarn_engine_launches_real_dev_script() {
+        node_engine_launch_loopback(PackageManager::Yarn, "yarn", "yarn-fixture");
+    }
+
     #[test]
     fn node_engine_reports_missing_dependencies_without_installing() {
         if detect_node().is_err() || detect_package_manager(PackageManager::Npm).is_err() {

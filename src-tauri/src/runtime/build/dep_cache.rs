@@ -85,15 +85,16 @@ pub fn compute_module_fingerprint(pom: &Path, module_dir: &Path) -> Option<Strin
         for file in entries {
             let relative = file.strip_prefix(module_dir).unwrap_or(&file);
             std::hash::Hasher::write(&mut hasher, b"file\x00");
-            std::hash::Hasher::write(
-                &mut hasher,
-                relative.to_string_lossy().as_bytes(),
-            );
+            std::hash::Hasher::write(&mut hasher, relative.to_string_lossy().as_bytes());
             let mut file_handle = std::fs::File::open(&file).ok()?;
             let mut buffer = Vec::new();
             // 大文件防御性截断（>8MB 只哈希前 8MB——源码文件不至此量；
             // 截断方向是「指纹更易碰撞 → 更倾向重建」，不违反宁可重建）。
-            file_handle.by_ref().take(8 * 1024 * 1024).read_to_end(&mut buffer).ok()?;
+            file_handle
+                .by_ref()
+                .take(8 * 1024 * 1024)
+                .read_to_end(&mut buffer)
+                .ok()?;
             std::hash::Hasher::write(&mut hasher, &buffer);
         }
     }
@@ -195,10 +196,7 @@ where
                 downstream.coordinates.group_id, downstream.coordinates.artifact_id
             );
             let in_closure = closure_modules.iter().any(|m| {
-                format!(
-                    "{}:{}",
-                    m.coordinates.group_id, m.coordinates.artifact_id
-                ) == downstream_ga
+                format!("{}:{}", m.coordinates.group_id, m.coordinates.artifact_id) == downstream_ga
             });
             if in_closure && !rebuild.contains(&downstream_ga) {
                 propagated.insert(downstream_ga);
@@ -382,14 +380,7 @@ mod tests {
             modules: BTreeMap::from([("com.example:common".into(), "fp-1".into())]),
         };
         assert_eq!(
-            compute_rebuild_plan(
-                &g,
-                &closure,
-                Some(&stored),
-                "fp-1",
-                |_| None,
-                artifacts_ok
-            ),
+            compute_rebuild_plan(&g, &closure, Some(&stored), "fp-1", |_| None, artifacts_ok),
             RebuildPlan::RebuildAll
         );
     }

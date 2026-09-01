@@ -362,6 +362,8 @@ function taskTypeLabel(task: Task): string {
       return "Runtime";
     case "runtimeUpdateConfig":
       return "Runtime 配置更新";
+    case "nodeInstall":
+      return "Node Install";
   }
 }
 

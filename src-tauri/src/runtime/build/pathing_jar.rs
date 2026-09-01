@@ -81,14 +81,20 @@ fn write_pathing_jar(dir: &Path, classpath: &[PathBuf]) -> AppResult<PathBuf> {
     let manifest = build_manifest(classpath);
     let file = std::fs::File::create(&jar_path)?;
     let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     use std::io::Write;
     zip.start_file("META-INF/MANIFEST.MF", options)
-        .and_then(|_| zip.write_all(manifest.as_bytes()).map_err(zip::result::ZipError::Io))
+        .and_then(|_| {
+            zip.write_all(manifest.as_bytes())
+                .map_err(zip::result::ZipError::Io)
+        })
         .and_then(|_| zip.finish())
         .map_err(|error| {
-            crate::error::AppError::Other(format!("写 pathing jar 失败 {}：{error}", jar_path.display()))
+            crate::error::AppError::Other(format!(
+                "写 pathing jar 失败 {}：{error}",
+                jar_path.display()
+            ))
         })?;
     Ok(jar_path)
 }
@@ -124,8 +130,9 @@ fn percent_encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/'
-            | b':' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' | b':' => {
+                out.push(byte as char)
+            }
             _ => out.push_str(&format!("%{byte:02X}")),
         }
     }
@@ -163,7 +170,11 @@ mod tests {
     #[test]
     fn manifest_lines_respect_72_bytes_and_crlf() {
         let long: Vec<PathBuf> = (0..50)
-            .map(|i| PathBuf::from(format!("C:/m2/repository/some/long/dependency/path/number-{i}-with-a-long-name.jar")))
+            .map(|i| {
+                PathBuf::from(format!(
+                    "C:/m2/repository/some/long/dependency/path/number-{i}-with-a-long-name.jar"
+                ))
+            })
             .collect();
         let manifest = build_manifest(&long);
         assert!(manifest.starts_with("Manifest-Version: 1.0\r\n"));
@@ -200,8 +211,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
 
         let short_cp = vec![PathBuf::from("target/classes")];
-        let unchanged =
-            shorten_if_needed(&root, "app", short_cp.clone(), 100).unwrap();
+        let unchanged = shorten_if_needed(&root, "app", short_cp.clone(), 100).unwrap();
         assert_eq!(unchanged, short_cp, "低于阈值不动");
 
         let long_cp: Vec<PathBuf> = (0..5)
@@ -215,8 +225,8 @@ mod tests {
         assert!(jar.starts_with(root.join(".gitworkspace")), "护栏目录内");
 
         // 内容寻址：同 classpath 复用同一文件。
-        let again = shorten_if_needed(&root, "app", long_cp.clone(), COMMAND_LINE_SOFT_LIMIT)
-            .unwrap();
+        let again =
+            shorten_if_needed(&root, "app", long_cp.clone(), COMMAND_LINE_SOFT_LIMIT).unwrap();
         assert_eq!(&again[0], jar);
 
         // manifest 内容包含全部条目（先展开续行再断言：折行可能从条目
@@ -232,7 +242,10 @@ mod tests {
             .unwrap();
         let unwrapped = content.replace("\r\n ", "");
         for i in 0..5 {
-            assert!(unwrapped.contains(&format!("dep-{i}.jar")), "manifest 缺 dep-{i}");
+            assert!(
+                unwrapped.contains(&format!("dep-{i}.jar")),
+                "manifest 缺 dep-{i}"
+            );
         }
         let _ = std::fs::remove_dir_all(&root);
     }

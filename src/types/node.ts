@@ -10,8 +10,11 @@ export interface NodeProjectNode {
   scriptsJson: string
 }
 
-export type NodeExecutableKind = "node" | "packageManager"
-export type NodePackageManager = "npm" | "pnpm" | "yarn" | "bun"
+// Union declarations end with `;` — the IPC golden parser (models/ipc_golden)
+// terminates a union body on a `;`-ended line and skips pure string-literal
+// unions, so these must not rely on ASI.
+export type NodeExecutableKind = "node" | "packageManager";
+export type NodePackageManager = "npm" | "pnpm" | "yarn" | "bun";
 
 export interface NodeExecutable {
   id: number | null

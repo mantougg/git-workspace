@@ -34,7 +34,13 @@ export type TaskType =
       runtimeName?: string;
       options?: RuntimeTaskOptions;
     }
-  | { type: "runtimeUpdateConfig"; workspaceId: number; name: string; configJson: string };
+  | { type: "runtimeUpdateConfig"; workspaceId: number; name: string; configJson: string }
+  | {
+      /** 显式依赖安装（N-08）：仅由确认后的 node_install IPC 创建。 */
+      type: "nodeInstall";
+      projectDir: string;
+      packageManager: string;
+    };
 
 /** Runtime 任务的用户可调选项（R-12）；未指定项由后端跟随
  * BuildOptions / StartOptions 默认（对齐 IDEA Build 语义）。 */
