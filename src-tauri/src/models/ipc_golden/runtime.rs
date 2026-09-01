@@ -23,6 +23,14 @@ use serde_json::{json, Map, Value};
 pub(super) fn samples(m: &mut Map<String, Value>) {
     // R-01 Maven model
     m.insert(
+        "PomCoordinates".into(),
+        json!(maven_model::PomCoordinates {
+            group_id: "com.example".into(),
+            artifact_id: "app".into(),
+            version: "1.0.0".into(),
+        }),
+    );
+    m.insert(
         "MavenProject".into(),
         json!(maven_model::MavenProject {
             path: PathBuf::from("/ws/repo/pom.xml"),
@@ -86,9 +94,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 class_name: "com.example.Application".into(),
                 simple_name: "Application".into(),
                 module: "app".into(),
-                source_path: PathBuf::from(
-                    "/ws/repo/src/main/java/com/example/Application.java",
-                ),
+                source_path: PathBuf::from("/ws/repo/src/main/java/com/example/Application.java",),
             }],
             default_main_class: Some("com.example.Application".into()),
             source_files_scanned: 1,
@@ -312,6 +318,43 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     );
 
     // R-12 Runtime IPC / Event API（§63/§64/§66）
+    // N-09 统一项目视图。
+    m.insert(
+        "UnifiedNodeProjectPayload".into(),
+        json!(crate::commands::runtime::UnifiedNodeProjectPayload {
+            package_manager: Some("npm".into()),
+            scripts_json: r#"{"dev":"vite"}"#.into(),
+            workspace_root: Some("/ws".into()),
+        }),
+    );
+    m.insert(
+        "UnifiedMavenProjectPayload".into(),
+        json!(crate::commands::runtime::UnifiedMavenProjectPayload {
+            coordinates: maven_model::PomCoordinates {
+                group_id: "com.example".into(),
+                artifact_id: "app".into(),
+                version: "1.0.0".into(),
+            },
+            packaging: "jar".into(),
+        }),
+    );
+    m.insert(
+        "UnifiedProjectNode".into(),
+        json!(crate::commands::runtime::UnifiedProjectNode {
+            source: "node".into(),
+            project_id: 7,
+            repository_id: Some(3),
+            path: "/ws/web".into(),
+            name: "web".into(),
+            version: "1.2.3".into(),
+            node: Some(crate::commands::runtime::UnifiedNodeProjectPayload {
+                package_manager: Some("npm".into()),
+                scripts_json: r#"{"dev":"vite"}"#.into(),
+                workspace_root: Some("/ws".into()),
+            }),
+            maven: None,
+        }),
+    );
     let sample_node = maven_index::MavenProjectNode {
         project_id: 10,
         repository_id: Some(2),
@@ -408,10 +451,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     );
     m.insert(
         "LogPhase".into(),
-        json!([
-            runtime_logs::LogPhase::Build,
-            runtime_logs::LogPhase::Run,
-        ]),
+        json!([runtime_logs::LogPhase::Build, runtime_logs::LogPhase::Run,]),
     );
     m.insert(
         "OutputStream".into(),
@@ -539,7 +579,10 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 depends_on: vec!["auth".into()],
                 jdk: Some("21".into()),
                 profile: Some("dev".into()),
-                environment: BTreeMap::from([("GATEWAY_UPSTREAM".into(), "http://auth:8081".into())]),
+                environment: BTreeMap::from([(
+                    "GATEWAY_UPSTREAM".into(),
+                    "http://auth:8081".into()
+                )]),
                 port: Some(8080),
                 external_notes: Some("依赖外部 MySQL".into()),
                 ready_timeout_seconds: Some(90),
@@ -880,7 +923,9 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     );
     m.insert(
         "JdkNotFoundError".into(),
-        json!(AppError::JdkNotFound("未在 /opt/jdk/bin 下找到 java 可执行文件".into())),
+        json!(AppError::JdkNotFound(
+            "未在 /opt/jdk/bin 下找到 java 可执行文件".into()
+        )),
     );
 
     // R-05 Maven 检测与执行策略 model
@@ -975,8 +1020,25 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
 
 /// Domain portion of `TS_TYPE_MAP`; merged in the parent module.
 pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
+    // N-09 统一项目视图
+    (
+        "UnifiedProjectNode",
+        "types/runtime.ts",
+        "UnifiedProjectNode",
+    ),
+    (
+        "UnifiedNodeProjectPayload",
+        "types/runtime.ts",
+        "UnifiedNodeProjectPayload",
+    ),
+    (
+        "UnifiedMavenProjectPayload",
+        "types/runtime.ts",
+        "UnifiedMavenProjectPayload",
+    ),
     // R-01 Maven model
     ("MavenProject", "types/maven.ts", "MavenProject"),
+    ("PomCoordinates", "types/maven.ts", "MavenCoordinates"),
     // R-06 Spring Boot application discovery
     (
         "SpringBootCandidate",
@@ -1115,8 +1177,16 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("PortKillOutcome", "types/runtime.ts", "PortKillOutcome"),
     ("PortOccupier", "types/runtime.ts", "PortOccupier"),
     // R-15 环境编排
-    ("RuntimeEnvironment", "types/runtime.ts", "RuntimeEnvironment"),
-    ("EnvironmentService", "types/runtime.ts", "EnvironmentService"),
+    (
+        "RuntimeEnvironment",
+        "types/runtime.ts",
+        "RuntimeEnvironment",
+    ),
+    (
+        "EnvironmentService",
+        "types/runtime.ts",
+        "EnvironmentService",
+    ),
     (
         "EnvironmentProgressPayload",
         "types/runtime.ts",
@@ -1127,7 +1197,11 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/runtime.ts",
         "EnvironmentCompletedPayload",
     ),
-    ("EnvironmentServiceOutcome", "types/runtime.ts", "EnvironmentServiceOutcome"),
+    (
+        "EnvironmentServiceOutcome",
+        "types/runtime.ts",
+        "EnvironmentServiceOutcome",
+    ),
     ("RuntimeTemplate", "types/runtime.ts", "RuntimeTemplate"),
     // R-21 §47/§48/§49 Git 联动
     (
@@ -1135,7 +1209,11 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/runtime.ts",
         "DependencyChangedPayload",
     ),
-    ("RuntimeRunningBrief", "types/runtime.ts", "RuntimeRunningBrief"),
+    (
+        "RuntimeRunningBrief",
+        "types/runtime.ts",
+        "RuntimeRunningBrief",
+    ),
     // R-13 Runtime Scope 预览
     ("ClosurePreview", "types/runtime.ts", "ClosurePreview"),
     // R-14 §75 Command Safety 脚本确认
@@ -1152,7 +1230,11 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("MavenVersionInfo", "types/maven.ts", "MavenVersionInfo"),
     ("MavenExecutable", "types/maven.ts", "MavenExecutable"),
     ("ResolvedMaven", "types/maven.ts", "ResolvedMaven"),
-    ("MavenExecutionRequest", "types/maven.ts", "MavenExecutionRequest"),
+    (
+        "MavenExecutionRequest",
+        "types/maven.ts",
+        "MavenExecutionRequest",
+    ),
     ("TaskType", "types/task.ts", "TaskType"),
     ("RuntimeTaskOptions", "types/task.ts", "RuntimeTaskOptions"),
     ("TaskStatus", "types/task.ts", "TaskStatus"),
@@ -1184,11 +1266,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("CommitInfo", "types/graph.ts", "CommitInfo"),
     ("BranchInfo", "types/graph.ts", "BranchInfo"),
     ("BranchEntry", "types/branch.ts", "BranchEntry"),
-    (
-        "RemoteBranchEntry",
-        "types/branch.ts",
-        "RemoteBranchEntry",
-    ),
+    ("RemoteBranchEntry", "types/branch.ts", "RemoteBranchEntry"),
     ("TagEntry", "types/branch.ts", "TagEntry"),
     ("BranchOverview", "types/branch.ts", "BranchOverview"),
     ("CompareResult", "types/branch.ts", "CompareResult"),

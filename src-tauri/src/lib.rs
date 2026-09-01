@@ -489,6 +489,7 @@ pub fn run() {
             commands::runtime::set_workspace_runtime_environment,
             // Runtime 控制面（R-12，§63）
             commands::runtime::runtime_list_projects,
+            commands::runtime::runtime_list_unified_projects,
             commands::runtime::runtime_inspect_project,
             commands::runtime::runtime_resolve_dependencies,
             commands::runtime::runtime_get_dependency_graph,

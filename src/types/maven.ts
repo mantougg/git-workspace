@@ -9,7 +9,7 @@ type ResolutionReason =
   | "ambiguousWorkspaceCoordinate"
   | "missingVersion"
 
-interface MavenCoordinates {
+export interface MavenCoordinates {
   groupId: string
   artifactId: string
   version: string

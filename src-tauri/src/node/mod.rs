@@ -21,6 +21,7 @@ pub mod discovery;
 pub mod install;
 pub mod model;
 pub mod registry;
+pub mod workspace;
 
 pub use command::build_run_args;
 pub use decision::{

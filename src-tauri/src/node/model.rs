@@ -173,6 +173,10 @@ pub struct NodeProjectNode {
     /// Original JSON object text. Keeping this as text preserves script order
     /// and lets the UI choose how to render values.
     pub scripts_json: String,
+    /// N-09：workspace 根目录（npm/yarn `workspaces` 字段或 pnpm-workspace.yaml
+    /// 命中）；独立工程为 `None`。列表查询时按目录向上推断。
+    #[serde(default)]
+    pub workspace_root: Option<String>,
     /// Content hash used by the index synchronizer; omitted from IPC payloads.
     #[serde(skip)]
     pub pkg_hash: String,

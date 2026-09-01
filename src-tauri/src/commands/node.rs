@@ -3,13 +3,13 @@
 use tauri::{command, State};
 
 use crate::error::{AppError, AppResult};
+use crate::models::task::{TaskRequest, TaskType};
 use crate::node::{
     discover_package_jsons, global_package_cache, sync_node_projects, NodeExecutable,
     NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, PackageManager,
 };
 use crate::runtime::config::workspace_root;
 use crate::state::AppState;
-use crate::models::task::{TaskRequest, TaskType};
 
 /// Discover and index workspace `package.json` files, then return the hot-path
 /// SQLite list. The workspace path and scan depth are read from the DB so the
@@ -78,11 +78,7 @@ pub fn node_add_executable(
         }
         _ => {}
     }
-    if request.package_manager == Some(PackageManager::Bun) {
-        return Err(AppError::PackageManagerNotFound(
-            "当前版本不支持注册 bun 执行链；请注册 npm、pnpm 或 yarn".into(),
-        ));
-    }
+    // N-09：bun 与 npm/pnpm/yarn 同权，可注册自定义 bun 执行链。
     let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let mut entry = NodeExecutable::new(
         request.kind,
@@ -111,18 +107,14 @@ pub fn node_add_executable(
 
 /// Re-probe one registered executable and update its cached version/validity.
 #[command]
-pub fn node_validate_executable(
-    id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<NodeExecutable> {
+pub fn node_validate_executable(id: i64, state: State<'_, AppState>) -> AppResult<NodeExecutable> {
     let existing = {
         let conn = state
             .db
             .lock()
             .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
-        crate::node::registry::get_node_executable(&conn, id)?.ok_or_else(|| {
-            AppError::NotFound(format!("Node executable id={id} 不在注册表中"))
-        })?
+        crate::node::registry::get_node_executable(&conn, id)?
+            .ok_or_else(|| AppError::NotFound(format!("Node executable id={id} 不在注册表中")))?
     };
     let mut updated = existing.clone();
     let path = std::path::Path::new(&existing.executable_path);
@@ -174,10 +166,7 @@ pub struct NodeInstallRequest {
 /// Submit an explicit dependency installation. A first call without
 /// confirmation only returns a structured confirmation error.
 #[command]
-pub fn node_install(
-    request: NodeInstallRequest,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
+pub fn node_install(request: NodeInstallRequest, state: State<'_, AppState>) -> AppResult<String> {
     let project = std::path::Path::new(request.project_dir.trim());
     if !project.is_dir() || !project.join("package.json").is_file() {
         return Err(AppError::ProjectNotFound(format!(
@@ -185,27 +174,26 @@ pub fn node_install(
             request.project_dir
         )));
     }
-    if request.package_manager == PackageManager::Bun {
-        return Err(AppError::PackageManagerNotFound(
-            "当前版本不支持 bun install；请改选 npm、pnpm 或 yarn".into(),
-        ));
-    }
+    // N-09：bun install 放开，与 npm/pnpm/yarn 同权。
     let project = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    // N-09：monorepo 安装路由——workspace 子包的依赖统一装在根
+    // （npm/pnpm/yarn 的依赖提升与 lockfile 都在根），非子包维持原目录。
+    let install_dir = crate::node::workspace::install_dir_for(&project);
     let preview = format!(
         "{} install (cwd {})",
         request.package_manager.name(),
-        project.display()
+        install_dir.display()
     );
     if !request.confirmed {
         return Err(AppError::NodeInstallConfirmationRequired {
-            project_dir: project.to_string_lossy().into_owned(),
+            project_dir: install_dir.to_string_lossy().into_owned(),
             package_manager: request.package_manager.name().into(),
             command_preview: preview,
         });
     }
     let task = TaskRequest {
         task_type: TaskType::NodeInstall {
-            project_dir: project.to_string_lossy().into_owned(),
+            project_dir: install_dir.to_string_lossy().into_owned(),
             package_manager: request.package_manager,
         },
         repo_path: project.to_string_lossy().into_owned(),

@@ -377,10 +377,10 @@ import { detectSpringBoot } from "@/api/springBoot";
 import {
   runtimeApplyTemplate,
   runtimeListTemplates,
+  runtimeListUnifiedProjects,
   runtimeSaveConfigAsTemplate,
 } from "@/api/runtime";
 import { detectMvnd } from "@/api/maven";
-import { nodeListProjects } from "@/api/node";
 import { LAUNCH_PRESETS } from "@/config/launchPresets";
 import type { JdkInstallation } from "@/types/jdk";
 import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
@@ -411,7 +411,7 @@ const form = reactive<{
   project: string;
   kind: RuntimeKind;
   nodeScript: string;
-  nodePackageManager: "auto" | "npm" | "pnpm" | "yarn";
+  nodePackageManager: "auto" | "npm" | "pnpm" | "yarn" | "bun";
   mainClass: string;
   jdk: string;
   profile: string;
@@ -433,7 +433,9 @@ const nodeProjects = ref<NodeProjectNode[]>([]);
 const nodeLoading = ref(false);
 const nodeProjectOptions = computed(() =>
   nodeProjects.value.map((project) => ({
-    label: `${project.name || "package.json"}  (${project.path})`,
+    label: `${project.name || "package.json"}  (${project.path})${
+      project.workspaceRoot ? `  ⌂ ${project.workspaceRoot}` : ""
+    }`,
     value: project.path,
   })),
 );
@@ -451,6 +453,7 @@ const nodePackageManagerOptions = [
   { label: "npm", value: "npm" },
   { label: "pnpm", value: "pnpm" },
   { label: "yarn", value: "yarn" },
+  { label: "bun", value: "bun" },
 ];
 
 /** 编辑模式保留原有 Scope（向导不负责 Scope 编辑；Scope 视图专属）。 */
@@ -516,8 +519,10 @@ function normalizePath(path: string): string {
 
 function packageManagerValue(
   value: string | null | undefined,
-): "auto" | "npm" | "pnpm" | "yarn" {
-  return value === "npm" || value === "pnpm" || value === "yarn" ? value : "auto";
+): "auto" | "npm" | "pnpm" | "yarn" | "bun" {
+  return value === "npm" || value === "pnpm" || value === "yarn" || value === "bun"
+    ? value
+    : "auto";
 }
 
 function scriptNames(project?: NodeProjectNode): string[] {
@@ -534,7 +539,20 @@ async function loadNodeProjects() {
   if (!store.workspaceId) return;
   nodeLoading.value = true;
   try {
-    nodeProjects.value = await nodeListProjects(store.workspaceId);
+    // N-09 统一项目视图：一次取 Maven/Node 合并列表，本视图取 node 源。
+    const unified = await runtimeListUnifiedProjects(store.workspaceId);
+    nodeProjects.value = unified
+      .filter((entry) => entry.source === "node" && entry.node)
+      .map((entry) => ({
+        projectId: entry.projectId,
+        repositoryId: entry.repositoryId,
+        path: entry.path,
+        name: entry.name,
+        version: entry.version,
+        packageManager: entry.node?.packageManager ?? null,
+        scriptsJson: entry.node?.scriptsJson ?? "{}",
+        workspaceRoot: entry.node?.workspaceRoot ?? null,
+      }));
     if (isNode.value && form.project) {
       const matchingProject = nodeProjects.value.find(
         (project) => normalizePath(project.path) === normalizePath(form.project),

@@ -216,6 +216,7 @@ fn parse_project(
             version: parsed.version,
             package_manager: Some(decision.manager.name().to_string()),
             scripts_json: parsed.scripts_json,
+            workspace_root: None,
             pkg_hash: hash,
         },
         cache_hit,
@@ -469,10 +470,17 @@ pub fn list_node_projects(conn: &Connection, workspace_id: i64) -> AppResult<Vec
             version: row.get(4)?,
             package_manager: row.get(5)?,
             scripts_json: row.get(6)?,
+            workspace_root: None,
             pkg_hash: row.get(7)?,
         })
     })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
+    let mut projects = rows.collect::<Result<Vec<_>, _>>()?;
+    // N-09：逐项向上推断 workspace 归属（几级 stat/read，量级可忽略）。
+    for project in &mut projects {
+        project.workspace_root = super::workspace::find_workspace_root(&project.path, 4)
+            .map(|root| root.to_string_lossy().into_owned());
+    }
+    Ok(projects)
 }
 
 fn delete_stale(tx: &Transaction<'_>, workspace_id: i64, stale: &[String]) -> AppResult<()> {

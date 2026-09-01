@@ -8,6 +8,8 @@ export interface NodeProjectNode {
   packageManager: string | null
   /** JSON object text preserving package.json script order. */
   scriptsJson: string
+  /** workspace 根目录（N-09）；独立工程为 null。 */
+  workspaceRoot: string | null
 }
 
 // Union declarations end with `;` — the IPC golden parser (models/ipc_golden)

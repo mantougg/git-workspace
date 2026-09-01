@@ -235,8 +235,10 @@ N-01 / N-03 spec 与 `tasks-node/00-全局开发约束.md` §4 中声明为对 �
   version/packageManager/scripts）；`node_detect_toolchain()`；`node_install`（后置）。
 - 复用不变：`runtime_start/stop/restart/kill`、`runtime_list_configs` 等全套
   （`RuntimeConfigSummary` 加 `kind` 字段，serde 缺省兼容）。
-- **不做**统一项目视图抽象（把 Maven/Node 项目合成一个列表）——MVP 保持
-  两个并列 IPC，避免为 UI 一处便利引入跨领域抽象；wizard 内部按 kind 分源取数。
+- MVP **不做**统一项目视图抽象（把 Maven/Node 项目合成一个列表）——保持
+  两个并列 IPC；wizard 内部按 kind 分源取数。N-09 触发后经用户决策**已做**：
+  新增 `runtime_list_unified_projects`（扁平结构 + node/maven 专属 payload，
+  golden/TS 同步登记），wizard node 分支已切换为统一列表取数。
 - `src/types/runtime.ts` 同步 + `models/ipc_golden` 快照重新生成
   （`GW_UPDATE_GOLDEN=1`，全局约束 §7 单一事实来源）。
 
@@ -284,14 +286,14 @@ N-01 / N-03 spec 与 `tasks-node/00-全局开发约束.md` §4 中声明为对 �
 |---|---|---|
 | **MVP（N-01 ~ N-07）** | §4.1 PATH 检测 + npm；§4.2 发现/解析/落库；§4.3 配置扩展；§4.4/§4.5 LaunchPlan + 引擎直通；§4.6 通用 URL 端口探测；§4.7 错误；§4.8 两个 IPC；§4.9 wizard/dashboard；端到端验收 | 只保 `npm run <script>`，pnpm/yarn 仅决策链识别、不可用时报可行动错误 |
 | P2 增强（N-08） | pnpm/yarn 执行链；显式 `node_install` 动作；node 注册表（自定义路径）；显式端口预检 | 按真实用户环境排期 |
-| P3 展望（N-09，条件触发） | monorepo（npm workspaces 子包 script 路由）；bun；R-17 watch 联动重启；R-19 模板 | 无真实需求不启动，触发条件见 N-09 spec |
+| P3 增强（N-09，2026-09-02 触发并完成） | monorepo（workspaces 解析 + 安装路由到根 + workspaceRoot 展示）；bun 可执行（run/install/注册表同权）；R-19 node 模板；统一项目视图 IPC；node 纳入 R-15 分组启停（端口覆盖按 kind 分流） | watch 联动经用户确认不做（dev server 自带 HMR） |
 
 ## 8. 验收标准（MVP）
 
 - [x] 含 `dev` script 的样例前端工程（Vite）：发现 → 建配置 → 启动 → 端口正确识别 → 停止，全闭环可用（N-07 自动化集成测试 `real_vite_project_full_loop_with_port_release`：真实 `npm create vite` 产物 + 真实启动/停止 + 端口释放断言；Linux 实测通过，Windows/macOS 真机复核待补）。
 - [x] Windows 上 npm 经 `.cmd` + `cmd /C` 执行，无 os error 193；日志中文不丢行（纯函数测试覆盖扩展名候选序与 `needs_cmd_c`：`node::detect::tests::candidate_order_windows_prefers_extensions` 等；真机复核待补）。
 - [x] 旧 `springBoot` 配置零迁移加载、语义不变；新配置缺省 kind 兼容（真实 Spring Boot 闭环测试通过 + golden/schema 测试）。
-- [x] `node_modules` 缺失 / script 不存在 / pm 缺失三类错误均为可行动提示（`node_engine_reports_missing_dependencies_without_installing`、`ScriptNotFound` 校验测试、`bun_decision_is_actionable_error_not_executable`）。
+- [x] `node_modules` 缺失 / script 不存在 / pm 缺失三类错误均为可行动提示（`node_engine_reports_missing_dependencies_without_installing`、`ScriptNotFound` 校验测试、`bun_decision_resolves_like_other_managers`；N-09 起 bun 可执行，pm 缺失错误仍可行动）。
 - [x] 启动命令 preview 落库可查；敏感 env 在日志与 UI 脱敏（E2E 断言 `command_preview` 落库；脱敏三处共用 `is_sensitive_environment_key`，`core::secret` 8 测试 + `logs::redact` 4 测试 + IPC 不回传敏感值）。
 - [x] ipc_golden 快照更新；schema V17 迁移在旧库上幂等通过（`golden_samples_match_snapshot`、`migrate_creates_full_schema_and_bumps_version`）。
 - [x] 性能：package.json 发现 < 500ms（N-02 100 包 fixture 断言实测通过）。

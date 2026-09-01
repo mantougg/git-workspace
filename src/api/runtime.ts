@@ -19,6 +19,7 @@ import type {
   RuntimeTemplate,
   SchedulerConfig,
   ScriptApproval,
+  UnifiedProjectNode,
   UpdateRuntimeConfigRequest,
 } from "@/types/runtime";
 import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
@@ -117,6 +118,15 @@ export function runtimeListProjects(
   workspaceId: number,
 ): Promise<MavenProjectNode[]> {
   return invoke<MavenProjectNode[]>("runtime_list_projects", { workspaceId });
+}
+
+/** N-09 统一项目视图：Maven/Node 合并项目列表。 */
+export function runtimeListUnifiedProjects(
+  workspaceId: number,
+): Promise<UnifiedProjectNode[]> {
+  return invoke<UnifiedProjectNode[]>("runtime_list_unified_projects", {
+    workspaceId,
+  });
 }
 
 export function runtimeInspectProject(

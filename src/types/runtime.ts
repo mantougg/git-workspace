@@ -4,6 +4,7 @@ import type {
   DependencyEdge,
   MavenModuleLink,
   MavenProjectNode,
+  MavenCoordinates,
   RuntimeClosure,
   RuntimeScope,
   SourceMapping,
@@ -11,6 +12,33 @@ import type {
 import type { RuntimeTaskOptions } from "./task";
 
 export type RuntimeKind = "springBoot" | "node";
+
+/** N-09 统一项目视图：node 项目专属字段。 */
+export interface UnifiedNodeProjectPayload {
+  packageManager: string | null;
+  /** JSON object text preserving package.json script order. */
+  scriptsJson: string;
+  /** workspace 根目录；独立工程为 null。 */
+  workspaceRoot: string | null
+}
+
+/** N-09 统一项目视图：maven 项目专属字段。 */
+export interface UnifiedMavenProjectPayload {
+  coordinates: MavenCoordinates;
+  packaging: string;
+}
+
+/** N-09 统一项目视图：Maven/Node 合并列表项（source 区分）。 */
+export interface UnifiedProjectNode {
+  source: string;
+  projectId: number;
+  repositoryId: number | null
+  path: string;
+  name: string;
+  version: string;
+  node: UnifiedNodeProjectPayload | null;
+  maven: UnifiedMavenProjectPayload | null;
+}
 
 export interface RuntimeApplicationConfig {
   schemaVersion: number;

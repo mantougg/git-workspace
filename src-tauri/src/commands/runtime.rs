@@ -9,6 +9,7 @@ use tauri::{command, State};
 use crate::error::{AppError, AppResult};
 use crate::maven::{MavenProjectNode, RuntimeScope};
 use crate::models::task::RuntimeOp;
+use crate::runtime::logs::LogEntry;
 use crate::runtime::{
     create_config, delete_config, get_config, get_workspace_environment, list_configs,
     resolve_environment, set_workspace_environment, update_config, ClosurePreview,
@@ -17,7 +18,6 @@ use crate::runtime::{
     RuntimeProcessInfo, RuntimeRunningBrief, SchedulerConfig, ScriptApproval,
     UpdateRuntimeConfigRequest,
 };
-use crate::runtime::logs::LogEntry;
 use crate::state::AppState;
 
 fn lock_db<'a>(state: &'a State<'_, AppState>) -> AppResult<MutexGuard<'a, Connection>> {
@@ -128,7 +128,10 @@ pub fn set_workspace_runtime_environment(
 // ---------------------------------------------------------------------------
 
 /// 提交单个 Runtime 任务，返回任务 id。
-fn submit_one(state: &State<'_, AppState>, req: crate::models::task::TaskRequest) -> AppResult<String> {
+fn submit_one(
+    state: &State<'_, AppState>,
+    req: crate::models::task::TaskRequest,
+) -> AppResult<String> {
     let mut ids = state.task_manager.submit(&[req])?;
     ids.pop()
         .ok_or_else(|| AppError::Task("任务提交失败：未返回任务 id".into()))
@@ -141,6 +144,107 @@ pub fn runtime_list_projects(
     state: State<'_, AppState>,
 ) -> AppResult<Vec<MavenProjectNode>> {
     state.runtime.list_projects(workspace_id)
+}
+
+/// N-09 统一项目视图：Maven 与 Node 项目合并列表（§4.8 开放问题的用户决策）。
+/// node 侧与 `node_list_projects` 同源（发现 + 索引同步）；maven 侧与
+/// `runtime_list_projects` 同源（DB 索引热路径）。各自的专属字段打包在
+/// `node` / `maven` payload 里，公共字段平铺。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedProjectNode {
+    /// `"maven"` 或 `"node"`。
+    pub source: String,
+    pub project_id: i64,
+    pub repository_id: Option<i64>,
+    pub path: String,
+    pub name: String,
+    pub version: String,
+    /// node 独有（maven 项目为 `None`）。
+    pub node: Option<UnifiedNodeProjectPayload>,
+    /// maven 独有（node 项目为 `None`）。
+    pub maven: Option<UnifiedMavenProjectPayload>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedNodeProjectPayload {
+    pub package_manager: Option<String>,
+    pub scripts_json: String,
+    pub workspace_root: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedMavenProjectPayload {
+    pub coordinates: crate::maven::model::PomCoordinates,
+    pub packaging: String,
+}
+
+/// N-09 `runtime.list_unified_projects`：Maven/Node 合并项目列表。
+#[command]
+pub fn runtime_list_unified_projects(
+    workspace_id: i64,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<UnifiedProjectNode>> {
+    let mut conn = state
+        .db
+        .lock()
+        .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
+    let mut unified: Vec<UnifiedProjectNode> = Vec::new();
+    for project in state
+        .runtime
+        .list_projects(workspace_id)
+        .unwrap_or_default()
+    {
+        unified.push(UnifiedProjectNode {
+            source: "maven".into(),
+            project_id: project.project_id,
+            repository_id: project.repository_id,
+            path: project.path.to_string_lossy().into_owned(),
+            name: project.coordinates.artifact_id.clone(),
+            version: project.coordinates.version.clone(),
+            node: None,
+            maven: Some(UnifiedMavenProjectPayload {
+                coordinates: project.coordinates,
+                packaging: project.packaging,
+            }),
+        });
+    }
+    // node 侧与 node_list_projects 同源：从 DB 读 workspace 边界 → 发现 → 索引同步。
+    let node_projects = (|| -> AppResult<Vec<crate::node::NodeProjectNode>> {
+        let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
+        let depth: i64 = conn.query_row(
+            "SELECT scan_depth FROM workspaces WHERE id = ?1",
+            [workspace_id],
+            |row| row.get(0),
+        )?;
+        let discovery = crate::node::discovery::discover_package_jsons(
+            &root,
+            depth.max(1) as usize,
+            Some(crate::node::discovery::global_package_cache()),
+            None,
+        );
+        crate::node::discovery::sync_node_projects(&mut conn, workspace_id, &discovery)
+    })()
+    .unwrap_or_default();
+    for project in node_projects {
+        unified.push(UnifiedProjectNode {
+            source: "node".into(),
+            project_id: project.project_id,
+            repository_id: project.repository_id,
+            path: project.path.to_string_lossy().into_owned(),
+            name: project.name,
+            version: project.version,
+            node: Some(UnifiedNodeProjectPayload {
+                package_manager: project.package_manager,
+                scripts_json: project.scripts_json,
+                workspace_root: project.workspace_root,
+            }),
+            maven: None,
+        });
+    }
+    Ok(unified)
 }
 
 /// §63 `runtime.inspect_project`：单项目详情（模块 / 依赖边 / 源码映射）。
@@ -186,7 +290,9 @@ pub fn runtime_get_closure(
     scope: RuntimeScope,
     state: State<'_, AppState>,
 ) -> AppResult<ClosurePreview> {
-    state.runtime.closure_preview(workspace_id, &project, &scope)
+    state
+        .runtime
+        .closure_preview(workspace_id, &project, &scope)
 }
 
 /// §63 `runtime.build`：提交 Build 任务（§66 限流 2，排队可取消）。
@@ -234,7 +340,9 @@ pub fn runtime_restart(
     req: RuntimeOperationRequest,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
-    let req = state.runtime.operation_task_request(&req, RuntimeOp::Restart);
+    let req = state
+        .runtime
+        .operation_task_request(&req, RuntimeOp::Restart);
     submit_one(&state, req)
 }
 
@@ -245,7 +353,9 @@ pub fn runtime_rebuild_restart(
     req: RuntimeOperationRequest,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
-    let req = state.runtime.operation_task_request(&req, RuntimeOp::RebuildRestart);
+    let req = state
+        .runtime
+        .operation_task_request(&req, RuntimeOp::RebuildRestart);
     submit_one(&state, req)
 }
 
@@ -387,12 +497,15 @@ pub fn runtime_change_runtime_port(
     let conn = lock_db(&state)?;
     let mut config = crate::runtime::config::get_config(&conn, workspace_id, &name)?;
     // 端口注入三处形态统一收敛到 --server.port=<port>（Spring Boot 标准形）。
-    config.program_arguments.retain(|arg| {
-        !arg.starts_with("--server.port=")
-            && !arg.starts_with("--server.port ")
-    });
-    config.vm_options.retain(|arg| !arg.starts_with("-Dserver.port="));
-    config.program_arguments.push(format!("--server.port={port}"));
+    config
+        .program_arguments
+        .retain(|arg| !arg.starts_with("--server.port=") && !arg.starts_with("--server.port "));
+    config
+        .vm_options
+        .retain(|arg| !arg.starts_with("-Dserver.port="));
+    config
+        .program_arguments
+        .push(format!("--server.port={port}"));
     crate::runtime::config::update_config(
         &conn,
         &UpdateRuntimeConfigRequest {
@@ -434,7 +547,11 @@ pub fn runtime_save_environment(
 
 /// R-15 `runtime.delete_environment`。
 #[command]
-pub fn runtime_delete_environment(workspace_id: i64, name: String, state: State<'_, AppState>) -> AppResult<()> {
+pub fn runtime_delete_environment(
+    workspace_id: i64,
+    name: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let conn = lock_db(&state)?;
     let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
     crate::runtime::environment::delete_environment(&root, &name)
@@ -502,7 +619,11 @@ pub fn runtime_save_template(
 
 /// R-19 `runtime.delete_template`：删除用户模板（内置模板拒绝）。
 #[command]
-pub fn runtime_delete_template(workspace_id: i64, name: String, state: State<'_, AppState>) -> AppResult<()> {
+pub fn runtime_delete_template(
+    workspace_id: i64,
+    name: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let conn = lock_db(&state)?;
     let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
     crate::runtime::templates::delete_template(&root, &name)
@@ -558,9 +679,7 @@ pub fn runtime_apply_template(
 
 /// 列出全部脚本确认记录（UI 管理列表；「不再询问」可重置）。
 #[command]
-pub fn runtime_get_script_approvals(
-    state: State<'_, AppState>,
-) -> AppResult<Vec<ScriptApproval>> {
+pub fn runtime_get_script_approvals(state: State<'_, AppState>) -> AppResult<Vec<ScriptApproval>> {
     Ok(state.runtime.script_approval_list())
 }
 

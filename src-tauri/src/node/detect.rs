@@ -49,16 +49,9 @@ pub fn detect_package_manager(pm: PackageManager) -> AppResult<ToolDetection> {
 
 /// 把决策链结果解析为可执行绝对路径。
 ///
-/// bun 只识别不执行（MVP 不支持，属 N-09）→ `PackageManagerNotFound`
-/// 可行动错误引导改选；其余选中但 PATH 不可执行 → 同款错误并附决策来源。
+/// N-09 起 bun 与 npm/pnpm/yarn 同权可执行；选中但 PATH 不可执行 →
+/// `PackageManagerNotFound` 可行动错误并附决策来源。
 pub fn resolve_package_manager(decision: &PackageManagerDecision) -> AppResult<ToolDetection> {
-    if decision.manager == PackageManager::Bun {
-        return Err(AppError::PackageManagerNotFound(format!(
-            "决策链选中 bun（{}），当前版本不支持 bun 执行（属 N-09）。\
-             请在配置中改选 npm，或改用 npm/pnpm/yarn 管理该工程。",
-            decision.reason
-        )));
-    }
     detect_package_manager(decision.manager).map_err(|err| match err {
         AppError::PackageManagerNotFound(msg) => {
             AppError::PackageManagerNotFound(format!("{msg}（决策来源：{}）", decision.reason))
@@ -232,23 +225,27 @@ mod tests {
         assert_eq!(extract_version(""), None);
     }
 
+    /// N-09：bun 决策与 npm/pnpm/yarn 同权解析——PATH 有 bun 时返回可执行，
+    /// 没有时返回点名 bun 的可行动错误（不硬失败）。
     #[test]
-    fn bun_decision_is_actionable_error_not_executable() {
+    fn bun_decision_resolves_like_other_managers() {
         let decision = PackageManagerDecision {
             manager: PackageManager::Bun,
             source: crate::node::decision::DecisionSource::Lockfile,
             reason: "lockfile 推断：bun.lockb".to_string(),
         };
-        let err = resolve_package_manager(&decision).unwrap_err();
-        match err {
-            AppError::PackageManagerNotFound(msg) => {
-                assert!(msg.contains("bun"), "error must name bun: {msg}");
+        match resolve_package_manager(&decision) {
+            Ok(detection) => {
                 assert!(
-                    msg.contains("npm"),
-                    "error must suggest switching to npm: {msg}"
+                    detection.executable.is_absolute(),
+                    "resolved bun must be absolute: {:?}",
+                    detection.executable
                 );
             }
-            other => panic!("expected PackageManagerNotFound, got {other:?}"),
+            Err(AppError::PackageManagerNotFound(msg)) => {
+                assert!(msg.contains("bun"), "error must name bun: {msg}");
+            }
+            other => panic!("expected Ok or PackageManagerNotFound, got {other:?}"),
         }
     }
 

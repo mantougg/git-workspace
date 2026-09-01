@@ -23,8 +23,8 @@
 ## 总体进度
 
 - 任务总数：**9**
-- 已完成：**7** · 进行中：**1**（N-07）· 未开始：**1**（N-09 条件触发）
-- 完成度：**7 / 9（78%）**
+- 已完成：**8** · 进行中：**1**（N-07，待 Windows/macOS 真机复核）· 未开始：**0**
+- 完成度：**8 / 9（89%）**
 
 ## MVP 口径（设计文档 §7）
 
@@ -67,7 +67,7 @@
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
 | N-08 | 包管理器增强与显式安装（pnpm/yarn 执行链 / `node_install` / 注册表） | P2 | ✅ | N-05 | [N-08-package-manager-enhancement.md](./N-08-package-manager-enhancement.md) |
-| N-09 | 展望：monorepo / bun / watch 联动 / 模板 | P2 | ⬜ | N-08 + 触发条件（设计文档 §7 P3） | [N-09-future-extensions.md](./N-09-future-extensions.md) |
+| N-09 | 展望：monorepo / bun / 模板 / 合并列表 / 分组启停（watch 联动经用户确认不做） | P2 | ✅ | N-08 + 触发条件（**2026-09-02 已触发**） | [N-09-future-extensions.md](./N-09-future-extensions.md) |
 
 ---
 

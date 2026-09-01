@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use serde_json::{json, Map, Value};
 
 use crate::commands::node::NodeInstallRequest;
-use crate::node::model::{NodeExecutable, NodeExecutableKind, NodeExecutableRequest, PackageManager};
+use crate::node::model::{
+    NodeExecutable, NodeExecutableKind, NodeExecutableRequest, PackageManager,
+};
 use crate::node::NodeProjectNode;
 
 pub(super) fn samples(m: &mut Map<String, Value>) {
@@ -19,6 +21,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             version: "1.2.3".into(),
             package_manager: Some("npm".into()),
             scripts_json: r#"{"dev":"vite","build":"vite build"}"#.into(),
+            workspace_root: Some("/ws".into()),
             pkg_hash: "0123456789abcdef".into(),
         }),
     );
@@ -58,6 +61,10 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
 pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("NodeProjectNode", "types/node.ts", "NodeProjectNode"),
     ("NodeExecutable", "types/node.ts", "NodeExecutable"),
-    ("NodeExecutableRequest", "types/node.ts", "NodeExecutableRequest"),
+    (
+        "NodeExecutableRequest",
+        "types/node.ts",
+        "NodeExecutableRequest",
+    ),
     ("NodeInstallRequest", "types/node.ts", "NodeInstallRequest"),
 ];

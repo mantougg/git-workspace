@@ -282,6 +282,12 @@ mod tests {
         node_engine_launch_loopback(PackageManager::Yarn, "yarn", "yarn-fixture");
     }
 
+    /// N-09：bun 与 npm/pnpm/yarn 同权——真实 bun run dev 闭环。
+    #[test]
+    fn bun_engine_launches_real_dev_script() {
+        node_engine_launch_loopback(PackageManager::Bun, "bun", "bun-fixture");
+    }
+
     #[test]
     fn node_engine_reports_missing_dependencies_without_installing() {
         if detect_node().is_err() || detect_package_manager(PackageManager::Npm).is_err() {

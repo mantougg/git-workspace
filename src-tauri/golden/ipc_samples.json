@@ -1640,7 +1640,8 @@
     "projectId": 7,
     "repositoryId": 3,
     "scriptsJson": "{\"dev\":\"vite\",\"build\":\"vite build\"}",
-    "version": "1.2.3"
+    "version": "1.2.3",
+    "workspaceRoot": "/ws"
   },
   "OperationLogDetail": {
     "createdAt": "2026-01-01T00:00:00Z",
@@ -1802,6 +1803,11 @@
     "name": "Build",
     "retries": 1,
     "timeoutSecs": 600
+  },
+  "PomCoordinates": {
+    "artifactId": "app",
+    "groupId": "com.example",
+    "version": "1.0.0"
   },
   "PortCheckResult": {
     "inUse": true,
@@ -2791,6 +2797,33 @@
     "repoName": "repo",
     "repoPath": "/ws/repo",
     "undone": false
+  },
+  "UnifiedMavenProjectPayload": {
+    "coordinates": {
+      "artifactId": "app",
+      "groupId": "com.example",
+      "version": "1.0.0"
+    },
+    "packaging": "jar"
+  },
+  "UnifiedNodeProjectPayload": {
+    "packageManager": "npm",
+    "scriptsJson": "{\"dev\":\"vite\"}",
+    "workspaceRoot": "/ws"
+  },
+  "UnifiedProjectNode": {
+    "maven": null,
+    "name": "web",
+    "node": {
+      "packageManager": "npm",
+      "scriptsJson": "{\"dev\":\"vite\"}",
+      "workspaceRoot": "/ws"
+    },
+    "path": "/ws/web",
+    "projectId": 7,
+    "repositoryId": 3,
+    "source": "node",
+    "version": "1.2.3"
   },
   "UpdateChangeSetRequest": {
     "description": "new desc",

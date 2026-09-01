@@ -34,11 +34,7 @@ pub fn execute_install(
     cancel: Option<&AtomicBool>,
     mut on_line: impl FnMut(OutputStream, &str),
 ) -> AppResult<String> {
-    if manager == PackageManager::Bun {
-        return Err(AppError::PackageManagerNotFound(
-            "当前版本不支持 bun install；请改选 npm、pnpm 或 yarn".into(),
-        ));
-    }
+    // N-09：bun 与 npm/pnpm/yarn 同权，`bun install` 直接执行。
     let mut command = build_install_command(&detection.executable, project_dir);
     let mut tail = String::new();
     let exit = spawn_streaming(
@@ -89,23 +85,11 @@ mod tests {
         assert_eq!(command.get_current_dir(), Some(dir.as_path()));
     }
 
+    /// N-09：bun install 与 npm/pnpm/yarn 同权——拒绝语义移除，回归改为
+    /// 真实冒烟（探测不到 bun 时 skip 并打印原因）。
     #[test]
-    fn bun_install_is_rejected_before_spawn() {
-        let error = execute_install(
-            ToolDetection {
-                executable: PathBuf::from("/missing/bun"),
-                version: None,
-                raw_output: String::new(),
-                probe_ok: false,
-                source: crate::node::ToolDetectionSource::Path,
-            },
-            PackageManager::Bun,
-            Path::new("/tmp"),
-            None,
-            |_, _| {},
-        )
-        .unwrap_err();
-        assert!(matches!(error, AppError::PackageManagerNotFound(_)));
+    fn bun_install_runs_real_loopback() {
+        real_install_loopback(PackageManager::Bun, "bun");
     }
 
     /// N-08 验收：显式安装真实冒烟。无依赖工程，`install` 在本地完成

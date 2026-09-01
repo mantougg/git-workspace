@@ -221,24 +221,42 @@ impl RuntimeProcessManager {
 
         // R-15 §82：环境覆盖项（内存生效，不改配置文件；应用层在五层合并的
         // Application 层之上追加，与「环境只存覆盖项」一致）。
+        // N-09：按 kind 分流——JVM 形状的 jdk/profile 与 Spring Boot 端口
+        // 参数只对 springBoot 生效；node 的端口覆盖走 PORT 环境变量
+        // （dev server 惯例，不向 npm script 追加未知参数）。
         if let Some(overrides) = &options.overrides {
-            if let Some(jdk) = &overrides.jdk {
-                config.jdk = Some(jdk.clone());
-            }
-            if let Some(profile) = &overrides.profile {
-                config.profile = Some(profile.clone());
-            }
-            config.environment.extend(overrides.environment.clone());
-            if let Some(port) = overrides.port {
-                config
-                    .program_arguments
-                    .retain(|arg| !arg.starts_with("--server.port="));
-                config
-                    .vm_options
-                    .retain(|arg| !arg.starts_with("-Dserver.port="));
-                config
-                    .program_arguments
-                    .push(format!("--server.port={port}"));
+            match config.kind {
+                crate::runtime::config::RuntimeKind::SpringBoot => {
+                    if let Some(jdk) = &overrides.jdk {
+                        config.jdk = Some(jdk.clone());
+                    }
+                    if let Some(profile) = &overrides.profile {
+                        config.profile = Some(profile.clone());
+                    }
+                    config.environment.extend(overrides.environment.clone());
+                    if let Some(port) = overrides.port {
+                        config
+                            .program_arguments
+                            .retain(|arg| !arg.starts_with("--server.port="));
+                        config
+                            .vm_options
+                            .retain(|arg| !arg.starts_with("-Dserver.port="));
+                        config
+                            .program_arguments
+                            .push(format!("--server.port={port}"));
+                    }
+                }
+                crate::runtime::config::RuntimeKind::Node => {
+                    if overrides.jdk.is_some() || overrides.profile.is_some() {
+                        log::warn!(
+                            "R-15/N-09: node runtime '{runtime_name}' ignores jdk/profile overrides"
+                        );
+                    }
+                    config.environment.extend(overrides.environment.clone());
+                    if let Some(port) = overrides.port {
+                        config.environment.insert("PORT".into(), port.to_string());
+                    }
+                }
             }
         }
 
