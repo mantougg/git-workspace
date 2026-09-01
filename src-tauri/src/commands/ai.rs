@@ -379,25 +379,64 @@ pub fn ai_get_proposal(
     proposal_id: String,
 ) -> AppResult<Option<ai::ActionProposal>> {
     let conn = lock_db(&state)?;
-    Ok(ai::proposal::get(&conn, &proposal_id).map(|r| r.map(|record| record.proposal))?)
+    ai::proposal::get(&conn, &proposal_id).map(|r| r.map(|record| record.proposal))
 }
 
 fn proposal_task_request(record: &ai::proposal::ProposalRecord) -> AppResult<TaskRequest> {
     let payload = &record.action_payload;
     match record.proposal.action_kind {
         ai::ActionKind::GitCreateCommit => {
-            let repo_path = payload.get("repoPath").and_then(Value::as_str).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "git.createCommitProposal".into(), message: "proposal repoPath missing".into() }))?;
-            let repo_name = payload.get("repoName").and_then(Value::as_str).unwrap_or("repository");
-            let files = payload.get("files").and_then(Value::as_array).map(|v| v.iter().filter_map(Value::as_str).map(ToOwned::to_owned).collect()).unwrap_or_default();
+            let repo_path = payload
+                .get("repoPath")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    AppError::Ai(AiError::ToolInputInvalid {
+                        tool: "git.createCommitProposal".into(),
+                        message: "proposal repoPath missing".into(),
+                    })
+                })?;
+            let repo_name = payload
+                .get("repoName")
+                .and_then(Value::as_str)
+                .unwrap_or("repository");
+            let files = payload
+                .get("files")
+                .and_then(Value::as_array)
+                .map(|v| {
+                    v.iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
             Ok(TaskRequest {
                 task_type: TaskType::Commit {
-                    message: payload.get("message").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    message: payload
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     files,
-                    amend: payload.get("amend").and_then(Value::as_bool).unwrap_or(false),
-                    no_edit: payload.get("noEdit").and_then(Value::as_bool).unwrap_or(false),
-                    index_only: payload.get("indexOnly").and_then(Value::as_bool).unwrap_or(false),
-                    then_push: payload.get("thenPush").and_then(Value::as_bool).unwrap_or(false),
-                    allow_unsafe: payload.get("allowUnsafe").and_then(Value::as_bool).unwrap_or(false),
+                    amend: payload
+                        .get("amend")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    no_edit: payload
+                        .get("noEdit")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    index_only: payload
+                        .get("indexOnly")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    then_push: payload
+                        .get("thenPush")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    allow_unsafe: payload
+                        .get("allowUnsafe")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
                     author_name: None,
                     author_email: None,
                 },
@@ -406,28 +445,130 @@ fn proposal_task_request(record: &ai::proposal::ProposalRecord) -> AppResult<Tas
             })
         }
         ai::ActionKind::RuntimeStart => {
-            let workspace_id = payload.get("workspaceId").and_then(Value::as_i64).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.startProposal".into(), message: "proposal workspaceId missing".into() }))?;
-            let runtime_name = payload.get("runtimeName").and_then(Value::as_str).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.startProposal".into(), message: "proposal runtimeName missing".into() }))?;
-            let options: RuntimeTaskOptions = serde_json::from_value(payload.get("options").cloned().unwrap_or_else(|| serde_json::json!({}))).map_err(|e| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.startProposal".into(), message: e.to_string() }))?;
-            Ok(TaskRequest { task_type: TaskType::Runtime { op: crate::models::task::RuntimeOp::Start, workspace_id, runtime_name: runtime_name.to_string(), options }, repo_path: String::new(), repo_name: runtime_name.to_string() })
+            let workspace_id = payload
+                .get("workspaceId")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| {
+                    AppError::Ai(AiError::ToolInputInvalid {
+                        tool: "runtime.startProposal".into(),
+                        message: "proposal workspaceId missing".into(),
+                    })
+                })?;
+            let runtime_name = payload
+                .get("runtimeName")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    AppError::Ai(AiError::ToolInputInvalid {
+                        tool: "runtime.startProposal".into(),
+                        message: "proposal runtimeName missing".into(),
+                    })
+                })?;
+            let options: RuntimeTaskOptions = serde_json::from_value(
+                payload
+                    .get("options")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({})),
+            )
+            .map_err(|e| {
+                AppError::Ai(AiError::ToolInputInvalid {
+                    tool: "runtime.startProposal".into(),
+                    message: e.to_string(),
+                })
+            })?;
+            Ok(TaskRequest {
+                task_type: TaskType::Runtime {
+                    op: crate::models::task::RuntimeOp::Start,
+                    workspace_id,
+                    runtime_name: runtime_name.to_string(),
+                    options,
+                },
+                repo_path: String::new(),
+                repo_name: runtime_name.to_string(),
+            })
         }
         ai::ActionKind::ConflictApply => {
-            let repo_path = payload.get("repoPath").and_then(Value::as_str).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "conflict.applyProposal".into(), message: "proposal repoPath missing".into() }))?;
-            let repo_name = payload.get("repoName").and_then(Value::as_str).unwrap_or("repository");
-            let path = payload.get("path").and_then(Value::as_str).unwrap_or_default();
-            let strategy = payload.get("strategy").and_then(Value::as_str).unwrap_or_default();
-            Ok(TaskRequest { task_type: TaskType::ConflictApply { path: path.to_string(), strategy: strategy.to_string(), content: payload.get("content").and_then(Value::as_str).map(ToOwned::to_owned) }, repo_path: repo_path.to_string(), repo_name: repo_name.to_string() })
+            let repo_path = payload
+                .get("repoPath")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    AppError::Ai(AiError::ToolInputInvalid {
+                        tool: "conflict.applyProposal".into(),
+                        message: "proposal repoPath missing".into(),
+                    })
+                })?;
+            let repo_name = payload
+                .get("repoName")
+                .and_then(Value::as_str)
+                .unwrap_or("repository");
+            let path = payload
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let strategy = payload
+                .get("strategy")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            Ok(TaskRequest {
+                task_type: TaskType::ConflictApply {
+                    path: path.to_string(),
+                    strategy: strategy.to_string(),
+                    content: payload
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .map(ToOwned::to_owned),
+                },
+                repo_path: repo_path.to_string(),
+                repo_name: repo_name.to_string(),
+            })
         }
         ai::ActionKind::RuntimeUpdateConfig => {
-            let workspace_id = payload.get("workspaceId").and_then(Value::as_i64).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.updateConfigProposal".into(), message: "proposal workspaceId missing".into() }))?;
-            let name = payload.get("runtimeName").and_then(Value::as_str).ok_or_else(|| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.updateConfigProposal".into(), message: "proposal runtimeName missing".into() }))?;
-            let config = payload.get("config").cloned().unwrap_or_else(|| serde_json::json!({}));
+            let workspace_id = payload
+                .get("workspaceId")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| {
+                    AppError::Ai(AiError::ToolInputInvalid {
+                        tool: "runtime.updateConfigProposal".into(),
+                        message: "proposal workspaceId missing".into(),
+                    })
+                })?;
+            let name = payload
+                .get("runtimeName")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    AppError::Ai(AiError::ToolInputInvalid {
+                        tool: "runtime.updateConfigProposal".into(),
+                        message: "proposal runtimeName missing".into(),
+                    })
+                })?;
+            let config = payload
+                .get("config")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
             let mut config = config;
             if let Some(object) = config.as_object_mut() {
-                object.entry("name").or_insert_with(|| Value::String(name.to_string()));
+                object
+                    .entry("name")
+                    .or_insert_with(|| Value::String(name.to_string()));
             }
-            let req = crate::runtime::UpdateRuntimeConfigRequest { workspace_id, name: name.to_string(), config: serde_json::from_value(config).map_err(|e| AppError::Ai(AiError::ToolInputInvalid { tool: "runtime.updateConfigProposal".into(), message: e.to_string() }))? };
-            Ok(TaskRequest { task_type: TaskType::RuntimeUpdateConfig { workspace_id, name: name.to_string(), config_json: serde_json::to_string(&req)? }, repo_path: String::new(), repo_name: name.to_string() })
+            let req = crate::runtime::UpdateRuntimeConfigRequest {
+                workspace_id,
+                name: name.to_string(),
+                config: serde_json::from_value(config).map_err(|e| {
+                    AppError::Ai(AiError::ToolInputInvalid {
+                        tool: "runtime.updateConfigProposal".into(),
+                        message: e.to_string(),
+                    })
+                })?,
+            };
+            Ok(TaskRequest {
+                task_type: TaskType::RuntimeUpdateConfig {
+                    workspace_id,
+                    name: name.to_string(),
+                    config_json: serde_json::to_string(&req)?,
+                },
+                repo_path: String::new(),
+                repo_name: name.to_string(),
+            })
         }
     }
 }
@@ -440,7 +581,11 @@ pub fn ai_confirm_proposal(
 ) -> AppResult<ai::ActionProposal> {
     let record = {
         let conn = lock_db(&state)?;
-        ai::proposal::get(&conn, &proposal_id)?.ok_or_else(|| AppError::Ai(AiError::ProposalNotFound { proposal_id: proposal_id.clone() }))?
+        ai::proposal::get(&conn, &proposal_id)?.ok_or_else(|| {
+            AppError::Ai(AiError::ProposalNotFound {
+                proposal_id: proposal_id.clone(),
+            })
+        })?
     };
     let request = proposal_task_request(&record)?;
     {
@@ -448,7 +593,10 @@ pub fn ai_confirm_proposal(
         ai::proposal::confirm(&conn, &proposal_id, second_confirmation)?;
     }
     let task_id = match state.task_manager.submit(&[request]) {
-        Ok(ids) => ids.into_iter().next().ok_or_else(|| AppError::Task("任务提交失败：未返回任务 id".into())),
+        Ok(ids) => ids
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::Task("任务提交失败：未返回任务 id".into())),
         Err(error) => Err(error),
     };
     let task_id = match task_id {
@@ -461,7 +609,12 @@ pub fn ai_confirm_proposal(
     };
     let conn = lock_db(&state)?;
     let proposal = ai::proposal::mark_executed(&conn, &proposal_id, &task_id)?;
-    log::info!("ai proposal confirmed and queued: id={} task_id={} action={}", proposal_id, task_id, proposal.action_kind.as_str());
+    log::info!(
+        "ai proposal confirmed and queued: id={} task_id={} action={}",
+        proposal_id,
+        task_id,
+        proposal.action_kind.as_str()
+    );
     Ok(proposal)
 }
 
@@ -574,9 +727,11 @@ pub fn ai_export_session(
             message: format!("会话不存在: {}", session_id),
         }));
     };
-    std::fs::write(&dest_path, markdown).map_err(|e| AppError::Ai(AiError::NotConfigured {
-        message: format!("导出会话失败（{}）: {}", dest_path, e),
-    }))?;
+    std::fs::write(&dest_path, markdown).map_err(|e| {
+        AppError::Ai(AiError::NotConfigured {
+            message: format!("导出会话失败（{}）: {}", dest_path, e),
+        })
+    })?;
     log::info!(
         "ai session exported: id={} messages={} dest={}",
         session_id,
@@ -937,7 +1092,7 @@ pub fn build_code_index(
             "gradle",
             "dockerfile",
         ];
-        if !text_exts.contains(&ext) && ext != "" {
+        if !text_exts.contains(&ext) && !ext.is_empty() {
             continue;
         }
 
@@ -989,7 +1144,7 @@ pub fn ai_search(
 
     // FTS5 MATCH query
     // Sanitize the query for FTS5 (escape special characters)
-    let sanitized = query.replace('"', "\"\"").replace('*', "").replace(':', "");
+    let sanitized = query.replace('"', "\"\"").replace(['*', ':'], "");
 
     let fts_query = format!("\"{}\"", sanitized);
 
@@ -1009,14 +1164,7 @@ pub fn ai_search(
             let rank: f64 = row.get(3)?;
 
             // Extract a snippet around the first match
-            let snippet = if let Some(pos) = content.to_lowercase().find(&query.to_lowercase()) {
-                let start = pos.saturating_sub(50);
-                let end = (pos + query.len() + 50).min(content.len());
-                let snip = &content[start..end];
-                format!("...{}...", snip.trim())
-            } else {
-                content.chars().take(100).collect()
-            };
+            let snippet = extract_snippet(&content, &query);
 
             Ok(SearchResult {
                 repo_path,
@@ -1029,6 +1177,83 @@ pub fn ai_search(
         .collect();
 
     Ok(results)
+}
+
+/// 从 content 中提取 query 首次（大小写不敏感）命中附近的片段。
+///
+/// 字符边界安全：中文等多字节内容下，匹配位置 ±N 字节的切片极易落在
+/// 字符中间，`&content[start..end]` 会 panic——release 曾是
+/// `panic = "abort"`，一个片段计算就能杀死整个应用（Windows 用户实测）。
+pub fn extract_snippet(content: &str, query: &str) -> String {
+    let lower_content = content.to_lowercase();
+    let lower_query = query.to_lowercase();
+    let Some(pos) = lower_content.find(&lower_query) else {
+        return content.chars().take(100).collect();
+    };
+    // `to_lowercase` 可能改变字节长度（如 'İ' 展开为两个字符），lowered 的
+    // 字节偏移不能直接切原文：用「字符序号」映射回原文的 char boundary。
+    let match_start_char = lower_content[..pos].chars().count();
+    let match_chars = lower_query.chars().count();
+    let nth_boundary = |n: usize| {
+        content
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(n)
+            .unwrap_or(content.len())
+    };
+    let match_start = nth_boundary(match_start_char);
+    let match_end = nth_boundary(match_start_char + match_chars);
+    let start = floor_char_boundary(content, match_start.saturating_sub(60));
+    let end = ceil_char_boundary(content, (match_end + 60).min(content.len()));
+    format!("...{}...", content[start..end].trim())
+}
+
+/// 不高于第 `i` 字节的最近字符边界（标准库该 API 仍 unstable）。
+fn floor_char_boundary(s: &str, mut i: usize) -> usize {
+    if i >= s.len() {
+        return s.len();
+    }
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// 不低于第 `i` 字节的最近字符边界。
+fn ceil_char_boundary(s: &str, mut i: usize) -> usize {
+    if i >= s.len() {
+        return s.len();
+    }
+    while !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+#[cfg(test)]
+mod snippet_tests {
+    use super::*;
+
+    #[test]
+    fn snippet_is_char_boundary_safe_for_multibyte_content() {
+        // 中文内容：匹配点 ±60 字节必然落在多字节字符中间。
+        let content = "构建失败：依赖解析出错。".repeat(20);
+        let snippet = extract_snippet(&content, "依赖解析");
+        assert!(snippet.contains("依赖解析"), "{snippet}");
+        // emoji（4 字节）夹在中文之间：同 IPv4 场景一样不允许 panic。
+        let emoji = "日志📋记录".repeat(30);
+        let snippet = extract_snippet(&emoji, "记录");
+        assert!(snippet.contains("记录"), "{snippet}");
+    }
+
+    #[test]
+    fn snippet_handles_case_folding_and_misses() {
+        assert_eq!(extract_snippet("Hello World", "WORLD"), "...Hello World...");
+        // 命中点字节序号超过原文（大小写折叠改变长度）也不 panic。
+        let _ = extract_snippet("İstanbul istanbul", "istanbul");
+        assert_eq!(extract_snippet("无命中内容", "xyz"), "无命中内容");
+        assert_eq!(extract_snippet("", "q"), "");
+    }
 }
 
 /// Clear the code index for a specific repository.

@@ -74,7 +74,10 @@ libc = "0.2"
 git2 = { version = "0.19", features = ["ssh", "https", "vendored-openssl"] }
 
 [profile.release]
-panic = "abort"
+# panic 策略改为默认 unwind：abort 会把任意一处 panic（如 AI 命令层对
+# 多字节内容的字节切片）直接变成整个应用退出（Windows 用户实测）。
+# unwind 下 Tauri 命令把 panic 转为失败返回，应用保持存活。
+panic = "unwind"
 codegen-units = 1
 lto = true
 opt-level = "s"

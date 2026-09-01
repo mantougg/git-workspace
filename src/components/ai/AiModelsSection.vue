@@ -38,15 +38,66 @@
             v-model:value="form.providerId"
             :options="providerOptions"
             :disabled="form.editing"
+            @update:value="onProviderChange"
           />
         </n-form-item>
-        <n-form-item label="模型 ID" required>
+        <n-form-item v-if="!form.editing" label="接口模型">
+          <n-button
+            size="small"
+            :loading="fetching"
+            :disabled="!form.providerId"
+            @click="fetchModels"
+          >
+            <template #icon><n-icon><CloudDownloadOutline /></n-icon></template>
+            从接口获取模型列表
+          </n-button>
+          <template #feedback>
+            拉取 Provider 的 /models 列表后勾选添加，避免手输出错；也可以手动输入。
+          </template>
+        </n-form-item>
+        <n-form-item
+          v-if="fetchError"
+          :show-label="false"
+        >
+          <n-alert type="error" :show-icon="false" style="width: 100%">
+            {{ fetchError }}
+          </n-alert>
+        </n-form-item>
+        <n-form-item
+          v-if="fetchedModels.length > 0"
+          :label="`勾选添加（${checkedModels.length}/${fetchedModels.length}）`"
+        >
+          <div class="model-candidates">
+            <n-checkbox-group v-model:value="checkedModels">
+              <n-space vertical size="small">
+                <n-checkbox
+                  v-for="m in fetchedModels"
+                  :key="m"
+                  :value="m"
+                  :disabled="addedModelIds.has(m)"
+                  class="mono"
+                >
+                  {{ m }}
+                  <n-tag v-if="addedModelIds.has(m)" size="tiny" :bordered="false">已添加</n-tag>
+                </n-checkbox>
+              </n-space>
+            </n-checkbox-group>
+          </div>
+        </n-form-item>
+        <n-form-item label="模型 ID" :required="checkedModels.length === 0">
           <n-input
             v-model:value="form.id"
             placeholder="如 gpt-4o-mini（Provider 侧的模型名）"
             :input-props="{ spellcheck: false }"
-            :disabled="form.editing"
+            :disabled="form.editing || checkedModels.length > 0"
           />
+          <template #feedback>
+            {{
+              checkedModels.length > 0
+                ? `已勾选 ${checkedModels.length} 个接口模型，保存时批量添加`
+                : "未勾选接口模型时按此处手动输入添加单个"
+            }}
+          </template>
         </n-form-item>
         <n-form-item label="显示名" required>
           <n-input v-model:value="form.displayName" placeholder="如 Team Review Model" />
@@ -87,8 +138,13 @@
       <template #footer>
         <div class="dialog-footer">
           <n-button @click="form.show = false">取消</n-button>
-          <n-button type="primary" :loading="form.saving" :disabled="!valid" @click="save">
-            保存
+          <n-button
+            type="primary"
+            :loading="form.saving"
+            :disabled="!valid"
+            @click="save"
+          >
+            {{ saveLabel }}
           </n-button>
         </div>
       </template>
@@ -98,9 +154,9 @@
 
 <script setup lang="ts">
 import { computed, h, reactive, ref } from "vue";
-import { useDialog, useMessage, NButton, NTag } from "naive-ui";
-import { AddOutline } from "@vicons/ionicons5";
-import { aiRemoveModel, aiSaveModel } from "@/api/ai";
+import { useDialog, useMessage, NButton, NTag, NIcon, NAlert } from "naive-ui";
+import { AddOutline, CloudDownloadOutline } from "@vicons/ionicons5";
+import { aiRemoveModel, aiSaveModel, aiTestProvider } from "@/api/ai";
 import { errMsg } from "@/utils/error";
 import type { AiModel, AiProvider, ModelCapability } from "@/types/ai";
 
@@ -144,13 +200,61 @@ const form = reactive({
   enabled: true,
 });
 
-const valid = computed(
-  () =>
-    form.providerId.length > 0 &&
-    form.id.trim().length > 0 &&
-    form.displayName.trim().length > 0 &&
-    form.capabilities.length > 0,
+// 从 Provider 接口拉取的候选模型（复选框批量添加；N-XX 用户反馈）。
+const fetching = ref(false);
+const fetchError = ref<string | null>(null);
+const fetchedModels = ref<string[]>([]);
+const checkedModels = ref<string[]>([]);
+
+const addedModelIds = computed(() => {
+  if (!form.providerId) return new Set<string>();
+  return new Set(
+    props.models.filter((m) => m.providerId === form.providerId).map((m) => m.id),
+  );
+});
+
+const saveLabel = computed(() =>
+  !form.editing && checkedModels.value.length > 0
+    ? `添加 ${checkedModels.value.length} 个模型`
+    : "保存",
 );
+
+const valid = computed(() => {
+  if (form.providerId.length === 0 || form.capabilities.length === 0) return false;
+  if (!form.editing && checkedModels.value.length > 0) return true;
+  return form.id.trim().length > 0 && form.displayName.trim().length > 0;
+});
+
+function onProviderChange() {
+  fetchedModels.value = [];
+  checkedModels.value = [];
+  fetchError.value = null;
+}
+
+/** 调 ai_test_provider 的 GET {base}/models 链路，拉取 Provider 侧模型目录。 */
+async function fetchModels() {
+  if (!form.providerId) return;
+  fetching.value = true;
+  fetchError.value = null;
+  try {
+    const result = await aiTestProvider(form.providerId);
+    if (!result.success) {
+      fetchError.value = result.message;
+      return;
+    }
+    if (result.models.length === 0) {
+      fetchError.value = "接口未返回任何模型（该 Provider 可能不支持 /models 列表），请手动输入";
+      return;
+    }
+    fetchedModels.value = result.models;
+    checkedModels.value = [];
+    message.success(`拉取到 ${result.models.length} 个模型`);
+  } catch (e) {
+    fetchError.value = errMsg(e);
+  } finally {
+    fetching.value = false;
+  }
+}
 
 function openCreate() {
   Object.assign(form, {
@@ -165,6 +269,9 @@ function openCreate() {
     temperature: null,
     enabled: true,
   });
+  fetchedModels.value = [];
+  checkedModels.value = [];
+  fetchError.value = null;
 }
 
 function openEdit(m: AiModel) {
@@ -185,6 +292,25 @@ function openEdit(m: AiModel) {
 async function save() {
   form.saving = true;
   try {
+    // 批量模式：勾选了接口模型 → 每个模型按当前表单能力/参数批量创建。
+    if (!form.editing && checkedModels.value.length > 0) {
+      const ids = checkedModels.value;
+      for (const id of ids) {
+        await aiSaveModel({
+          providerId: form.providerId,
+          id,
+          displayName: id,
+          capabilities: form.capabilities,
+          maxContextTokens: form.maxContextTokens ?? 0,
+          defaults: { temperature: form.temperature ?? undefined },
+          enabled: form.enabled,
+        });
+      }
+      message.success(`已添加 ${ids.length} 个模型`);
+      form.show = false;
+      emit("refresh");
+      return;
+    }
     await aiSaveModel({
       providerId: form.providerId,
       id: form.id.trim(),
@@ -316,5 +442,19 @@ const columns = [
 .row-actions {
   display: flex;
   gap: var(--gw-space-1);
+}
+
+.model-candidates {
+  width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: var(--gw-space-2);
+  border: 1px solid var(--gw-border-subtle, rgba(128, 128, 128, 0.25));
+  border-radius: var(--gw-radius-md, 6px);
+}
+
+.model-candidates .mono {
+  font-family: var(--gw-font-mono);
+  font-size: 12px;
 }
 </style>
