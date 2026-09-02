@@ -88,6 +88,7 @@ import { ChevronDownOutline, GitBranchOutline, PlayOutline, SparklesOutline } fr
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
 import { useAiStore } from "@/stores/ai";
+import type { Workspace } from "@/types/workspace";
 
 // F-07：构建期注入的全局常量
 const appVersion = __APP_VERSION__;
@@ -126,8 +127,8 @@ function showWorkspaceSwitcher() {
   showWsPopover.value = !showWsPopover.value;
 }
 
-function switchWorkspace(ws: { id: number; name: string }) {
-  workspaceStore.currentWorkspace = ws as any;
+function switchWorkspace(ws: Workspace) {
+  workspaceStore.selectWorkspace(ws);
   showWsPopover.value = false;
 }
 
