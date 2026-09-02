@@ -557,6 +557,18 @@ pub fn run() {
             commands::remote::resolve_remote_token,
             commands::remote::save_remote_token,
             commands::remote::delete_remote_token,
+            // Submodule / LFS / Hooks commands (T-30)
+            commands::repo_tools::list_submodules,
+            commands::repo_tools::submodule_op,
+            commands::repo_tools::lfs_list,
+            commands::repo_tools::lfs_op,
+            commands::repo_tools::lfs_locks,
+            commands::repo_tools::lfs_lock_op,
+            commands::repo_tools::list_hooks,
+            commands::repo_tools::get_hook,
+            commands::repo_tools::save_hook,
+            commands::repo_tools::set_hook_enabled,
+            commands::repo_tools::run_hook,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")

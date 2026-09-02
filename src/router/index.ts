@@ -67,6 +67,12 @@ const router = createRouter({
       meta: { group: "Git", title: "符号" },
     },
     {
+      path: "/repo-tools",
+      name: "repo-tools",
+      component: () => import("@/views/RepoToolsView.vue"),
+      meta: { group: "Git", title: "仓库工具" },
+    },
+    {
       path: "/reflog",
       name: "reflog-view",
       component: () => import("@/views/Reflog.vue"),
