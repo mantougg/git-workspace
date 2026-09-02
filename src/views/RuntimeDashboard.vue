@@ -268,35 +268,56 @@
     <Panel>
       <template #header>
         <span>脚本执行确认（§75 Command Safety）</span>
+        <n-tag
+          v-if="!approvalsExpanded && workspaceApprovals.length > 0"
+          size="small"
+          type="warning"
+          :bordered="false"
+        >
+          {{ workspaceApprovals.length }} 条
+        </n-tag>
       </template>
       <template #actions>
         <n-button size="small" :loading="approvalsLoading" @click="loadApprovals">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
         </n-button>
-        <n-popconfirm @positive-click="onResetApprovals(store.workspaceId, null)">
-          <template #trigger>
-            <n-button
-              size="small"
-              type="error"
-              :disabled="workspaceApprovals.length === 0"
-            >
-              全部重置
-            </n-button>
+        <n-button size="small" text type="primary" @click="approvalsExpanded = !approvalsExpanded">
+          <template #icon>
+            <n-icon>
+              <ChevronDownOutline v-if="!approvalsExpanded" />
+              <ChevronUpOutline v-else />
+            </n-icon>
           </template>
-          撤销当前 workspace 的全部脚本确认？
-        </n-popconfirm>
+          {{ approvalsExpanded ? "收起" : "展开" }}
+        </n-button>
       </template>
-      <n-spin :show="approvalsLoading">
-        <n-data-table
-          :columns="approvalColumns"
-          :data="workspaceApprovals"
-          size="small"
-          :single-line="false"
-        />
-      </n-spin>
-      <div class="section-hint">
-        脚本**默认禁止自动执行**：首次执行必须确认；脚本内容变更后需重新确认；「不再询问」可随时重置（全局约束 §3）。
+      <div v-if="approvalsExpanded">
+        <div class="script-approvals-toolbar">
+          <n-popconfirm @positive-click="onResetApprovals(store.workspaceId, null)">
+            <template #trigger>
+              <n-button
+                size="small"
+                type="error"
+                :disabled="workspaceApprovals.length === 0"
+              >
+                全部重置
+              </n-button>
+            </template>
+            撤销当前 workspace 的全部脚本确认？
+          </n-popconfirm>
+        </div>
+        <n-spin :show="approvalsLoading">
+          <n-data-table
+            :columns="approvalColumns"
+            :data="workspaceApprovals"
+            size="small"
+            :single-line="false"
+          />
+        </n-spin>
+        <div class="section-hint">
+          脚本**默认禁止自动执行**：首次执行必须确认；脚本内容变更后需重新确认；「不再询问」可随时重置（全局约束 §3）。
+        </div>
       </div>
     </Panel>
 
@@ -342,6 +363,7 @@ import { useRouter } from "vue-router";
 import { NButton, NTag, NIcon, NTooltip, NDropdown, useMessage, useDialog, type DropdownOption } from "naive-ui";
 import {
   AddOutline,
+  ChevronDownOutline,
   RefreshOutline,
   PlayOutline,
   StopOutline,
@@ -560,6 +582,7 @@ async function onConfirmScript(details: Record<string, unknown>) {
 /** 脚本确认管理（「不再询问」可重置，§75）。 */
 const approvals = ref<ScriptApproval[]>([]);
 const approvalsLoading = ref(false);
+const approvalsExpanded = ref(false);
 
 async function loadApprovals() {
   approvalsLoading.value = true;
@@ -1413,6 +1436,11 @@ onMounted(async () => {
    表现为「详情被截断且没有滚动条」。禁止收缩，超高由容器滚动承载。 */
 .runtime-dashboard > * {
   flex-shrink: 0;
+}
+.script-approvals-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--gw-space-2);
 }
 /* 选中的应用行高亮（Applications 表格；naive tr 无 data-v 需 deep） */
 :deep(.selected-config-row > td) {
