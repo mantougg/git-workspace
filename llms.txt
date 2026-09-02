@@ -1,0 +1,37 @@
+# GitWorkspace
+
+> Desktop workbench for projects split across dozens of Git repositories: batch Git operations across repos, build & run Spring Boot / Node.js services without an IDE, AI-assisted review with your own keys. Free (MIT), offline-first, cross-platform (Windows / macOS / Linux). Tauri 2 + Vue 3 + Rust core — scans 100 repositories in under 2 seconds.
+
+GitWorkspace targets engineers working on projects split across many separate Git repositories (microservices, platform codebases). One project root — which does not need to be a Git repo itself — is scanned to discover every nested repository. The whole workspace's changes appear in a single three-level tree with batch add / pull / fetch / push / commit, background task-queue orchestration (DAG, partial-failure semantics, cancellation), workspace pipelines, JSON manifests for batch re-cloning a repo set, and a unified undo log for every batch action.
+
+A complete Git client is included: branches, stash (incl. workspace-wide stash), interactive rebase with drag & drop ordering (pick / reword / squash / drop), merge with conflict resolution, cherry-pick / revert / reset, reflog recovery, worktrees, unified & side-by-side diff with hunk/line staging, SVG commit graph.
+
+Beyond Git, the Runtime workbench builds, launches, stops and monitors Spring Boot and Node.js services locally — JDK / Maven / Node toolchain management (incl. nvm / fnm / volta / mise), mvnd-accelerated builds with build cache, streaming per-service logs, health probes (Port / HTTP / TCP / Spring Boot Actuator), port-occupancy detection and resolution, incremental build with auto-restart, multi-service environments and dependency-graph visualization. No IDE required.
+
+An optional AI assistant works with your own API key (OpenAI Chat Completions, OpenAI Responses, Anthropic Messages protocols — OpenAI, Anthropic, DeepSeek or any compatible gateway): AI code review, AI commit messages, AI conflict resolution, AI PR descriptions with security review, and an assistant drawer with read-only Git/runtime tools and action proposals. Every mutating action is previewed before execution; secrets are redacted before requests; API keys are stored in the OS keychain.
+
+## When to use
+
+- You manage 10–100+ separate Git repositories under one project root and run batch operations daily
+- You need to build / run / stop / watch local Spring Boot or Node.js services without launching IntelliJ IDEA or VS Code
+- You want AI review / commit-message / conflict help with your own keys, offline-first and private
+- Not for: deep single-repo editing workflows (Fork / Sublime Merge / GitKraken fit better) or code editing (pair with your IDE)
+
+## Key facts
+
+- License: MIT, free, no account required
+- Stack: Tauri 2, Vue 3 + TypeScript, Rust (git2/libgit2 + system git CLI), SQLite (WAL), keyring
+- Performance (CI-gated): 100-repo initial scan < 2 s · per-repo status refresh < 100 ms · diff cache hit < 50 ms · commit graph first screen < 1 s
+
+## Docs
+
+- [README (English)](README.md)
+- [README (简体中文)](README.zh-CN.md)
+- [Release & code signing](docs/release.md)
+- [Task roadmap (core)](docs/tasks/README.md) — 35 task specs; answers "is feature X shipped?"
+
+## Optional
+
+- [Runtime workbench concept (Chinese)](docs/大型企业项目轻量级开发运行工作台.md) — why run services without an IDE: roles, scenarios, architecture
+- [Product roadmap (Chinese)](docs/GitWorkspace%20产品需求与技术架构%20Roadmap.md) — positioning and technical architecture
+- Per-track task indexes (Chinese, specs & completion status): [Desktop shell](docs/tasks-desktop/README.md) · [Runtime](docs/tasks-runtime/README.md) · [Node.js runtime](docs/tasks-node/README.md) · [AI assistant](docs/tasks-ai/README.md)
