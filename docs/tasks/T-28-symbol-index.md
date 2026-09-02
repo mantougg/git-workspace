@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | Phase 4 · Code Intelligence（P2） |
 | 优先级 | P2 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 依赖 | T-03 |
 | 对应 Roadmap | §26 Symbol Index、§25 Workspace Code Search、§41 schema（symbols / references） |
 
@@ -16,11 +16,11 @@
 
 ## 需求范围
 
-- [ ] 基于 Tree-sitter 建立 Symbol / Function / Class / Struct / Interface / Method / Variable / Reference
-- [ ] Symbol Search / Definition Search / Reference Search / Call Hierarchy
-- [ ] Go To Definition / Find References
-- [ ] 落库 `symbols` / `references`（与 `code_index` FTS5 互补）
-- [ ] 搜索过滤：`@repo:` / `@group:` / `@ext:` / `@path:` / `@status:`
+- [x] 基于 Tree-sitter 建立 Symbol / Function / Class / Struct / Interface / Method / Variable / Reference
+- [x] Symbol Search / Definition Search / Reference Search / Call Hierarchy
+- [x] Go To Definition / Find References
+- [x] 落库 `symbols` / `references`（与 `code_index` FTS5 互补）
+- [x] 搜索过滤：`@repo:` / `@group:` / `@ext:` / `@path:` / `@status:`
 
 ## 架构 / 性能注意点
 
@@ -29,27 +29,28 @@
 
 ## 验收标准
 
-- [ ] 多语言（按需至少覆盖主要语言）符号索引正确
-- [ ] Go To Definition / Find References 结果准确
-- [ ] 索引构建增量进行，单文件变更只重解析该文件
-- [ ] Symbol Search 响应 < 100ms（索引内）
+- [x] 多语言（按需至少覆盖主要语言）符号索引正确
+- [x] Go To Definition / Find References 结果准确
+- [x] 索引构建增量进行，单文件变更只重解析该文件
+- [x] Symbol Search 响应 < 100ms（索引内）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：未开始
-- 最近更新：—
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-02 完成开发
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
-| — | — | — |
+| 2026-09-02 | 🟦 | 开始开发。方案：tree-sitter 0.25 + rust/ts/tsx/js/py/go/java 语法 0.23；`symbols` 表扩列（end_line/container/signature）+ 新增 `symbol_refs`（按名引用，is_call 区分调用）+ `symbol_index_files`（内容 hash 增量）；查询走 name 基 join（定义/引用/调用层级）；过滤 @repo/@group/@status 复用批量选择器 facet，@ext/@path 走 SQL LIKE |
+| 2026-09-02 | ✅ | 完成。新增 `src-tauri/src/symbols/`（lang：按扩展名选语法与查询；extract：查询捕获 + kind/容器推断（impl/class/receiver 祖先）；index：SHA-256 hash 增量重建、按文件事务替换、定义/引用/调用层级查询（最深容器相关子查询）、过滤解析）；`commands/symbols.rs` 五个命令（build_symbol_index / search_symbols / find_symbol_definitions / find_symbol_references / symbol_call_hierarchy）；batch.rs 抽出 `facet_repo_paths` 供 @status 复用；前端 `api/symbols.ts` + 符号搜索视图（路由 /symbols，Git 分组）。边界说明：引用按 (name,line) 去重、不解析类型/作用域（LSP 级语义留待后续）；前端无编辑器跳转表面，Go To Definition / Find References 以准确定位数据 + 符号搜索视图呈现。验证：`cargo test --lib` 792 通过（symbols 15 项：多语言提取/增量单文件重解析/定义引用调用层级/过滤/10k 符号 <100ms）；`pnpm build` 通过 |
 
 ### 子任务清单
 
-- [ ] Tree-sitter 集成与符号提取
-- [ ] symbols / references 落库
-- [ ] Definition / References / Call Hierarchy 查询
-- [ ] 增量重建与过滤搜索
+- [x] Tree-sitter 集成与符号提取
+- [x] symbols / references 落库
+- [x] Definition / References / Call Hierarchy 查询
+- [x] 增量重建与过滤搜索

@@ -61,6 +61,12 @@ const router = createRouter({
       meta: { group: "Git", title: "Worktree" },
     },
     {
+      path: "/symbols",
+      name: "symbol-search",
+      component: () => import("@/views/SymbolSearchView.vue"),
+      meta: { group: "Git", title: "符号" },
+    },
+    {
       path: "/reflog",
       name: "reflog-view",
       component: () => import("@/views/Reflog.vue"),

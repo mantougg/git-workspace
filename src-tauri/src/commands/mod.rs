@@ -24,6 +24,7 @@ pub mod node;
 pub mod pipeline;
 pub mod repository;
 pub mod runtime;
+pub mod symbols;
 pub mod task;
 pub mod workspace;
 pub mod worktree;

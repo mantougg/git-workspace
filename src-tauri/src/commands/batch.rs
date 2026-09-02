@@ -30,8 +30,19 @@ pub fn select_repos(
         .db
         .lock()
         .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
-    let repos = dao::list_repositories_by_workspace(&conn, workspace_id)?;
-    let groups = dao::list_groups(&conn, workspace_id)?;
+    facet_repo_paths(&conn, &state.status_cache, workspace_id, &query)
+}
+
+/// `select_repos` 的核心：选择器 → 仓库路径列表。
+/// T-28 符号搜索的 `@group:` / `@status:` 过滤复用同一 facet 引擎。
+pub(crate) fn facet_repo_paths(
+    conn: &rusqlite::Connection,
+    status_cache: &std::sync::Arc<moka::sync::Cache<String, crate::models::repository::RepoStatus>>,
+    workspace_id: i64,
+    query: &str,
+) -> AppResult<Vec<String>> {
+    let repos = dao::list_repositories_by_workspace(conn, workspace_id)?;
+    let groups = dao::list_groups(conn, workspace_id)?;
     let group_names: std::collections::HashMap<i64, String> =
         groups.into_iter().map(|g| (g.id, g.name)).collect();
 
@@ -42,10 +53,10 @@ pub fn select_repos(
             // backfills the cache (same pattern as change_set/health). This
             // keeps @status:* selectors working even when the page was
             // entered directly without a prior list_repositories/scan.
-            let status = match state.status_cache.get(&r.path) {
+            let status = match status_cache.get(&r.path) {
                 Some(s) => Some(s),
                 None => git_status::get_repo_status(Path::new(&r.path)).ok().map(|s| {
-                    state.status_cache.insert(r.path.clone(), s.clone());
+                    status_cache.insert(r.path.clone(), s.clone());
                     s
                 }),
             };
@@ -68,7 +79,7 @@ pub fn select_repos(
         })
         .collect();
 
-    Ok(selector::select_paths(&query, &facets))
+    Ok(selector::select_paths(query, &facets))
 }
 
 /// Cheap conflict probe: in-progress merge/rebase/cherry-pick/revert markers

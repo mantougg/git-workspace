@@ -49,6 +49,14 @@ quick-xml = "0.41"
 # F-11：pathing jar（写 META-INF/MANIFEST.MF 的 stub jar）。zip 已是传递
 # 依赖，提升为直接依赖即可，无新增编译量；Stored 压缩无需默认 features。
 zip = { version = "4.6", default-features = false }
+tree-sitter = "0.25"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-java = "0.23"
+sha2 = "0.10"
 
 # F-06：仅 Windows 需要——tao/Tauri 的 set_icon 只设置窗口小图标
 # （WM_SETICON ICON_SMALL），任务栏大图标（ICON_BIG）需自己发消息设置。

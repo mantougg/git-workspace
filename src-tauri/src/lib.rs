@@ -10,6 +10,7 @@ pub mod node;
 pub mod process;
 pub mod runtime;
 mod state;
+pub mod symbols;
 mod task;
 
 pub mod benchmark;
@@ -541,6 +542,12 @@ pub fn run() {
             commands::integration::open_in_terminal,
             commands::integration::open_in_ide,
             commands::integration::list_integration_targets,
+            // Symbol index commands (T-28)
+            commands::symbols::build_symbol_index,
+            commands::symbols::search_symbols,
+            commands::symbols::find_symbol_definitions,
+            commands::symbols::find_symbol_references,
+            commands::symbols::symbol_call_hierarchy,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")

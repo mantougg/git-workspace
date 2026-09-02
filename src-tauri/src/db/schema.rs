@@ -895,8 +895,41 @@ CREATE INDEX IF NOT EXISTS idx_node_executables_kind
     ON node_executables(kind, package_manager, is_valid);
 "#;
 
+pub const SCHEMA_V20: &str = r#"
+-- T-28 Tree-sitter Symbol Index：扩列 + 按名引用表 + 增量文件表。
+-- symbols 扩列（ALTER 逐条，SQLite 不支持多列一条 ADD）。
+ALTER TABLE symbols ADD COLUMN end_line INTEGER;
+ALTER TABLE symbols ADD COLUMN container TEXT;
+ALTER TABLE symbols ADD COLUMN signature TEXT;
+CREATE INDEX IF NOT EXISTS idx_symbols_repo_file ON symbols(repo_id, file_path);
+
+-- 按名引用（不依赖符号定义存在；is_call 区分调用点与普通引用）。
+-- T-03 的 symbol_references 走 symbol_id 外键，无法表达「无定义的引用」，
+-- T-28 引入 name 基存储；旧表保留不动。
+CREATE TABLE IF NOT EXISTS symbol_refs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id    INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    file_path  TEXT NOT NULL,
+    line       INTEGER,
+    is_call    INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_symbol_refs_repo_name ON symbol_refs(repo_id, name);
+CREATE INDEX IF NOT EXISTS idx_symbol_refs_repo_file ON symbol_refs(repo_id, file_path);
+
+-- 每文件内容 hash：增量重建只重解析变更文件。
+CREATE TABLE IF NOT EXISTS symbol_index_files (
+    repo_id      INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    file_path    TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    PRIMARY KEY (repo_id, file_path)
+);
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
     SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14, SCHEMA_V15,
-    SCHEMA_V16, SCHEMA_V17, SCHEMA_V18, SCHEMA_V19,
+    SCHEMA_V16, SCHEMA_V17, SCHEMA_V18, SCHEMA_V19, SCHEMA_V20,
 ];
