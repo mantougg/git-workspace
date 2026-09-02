@@ -1,32 +1,46 @@
 /**
- * 键盘快捷键体系
+ * 键盘快捷键体系（T-31）
  * 全部走命令注册表的「命令 id → 按键」映射，视图内不各自绑定 keydown。
+ *
+ * 命令列表由调用方（App.vue / CommandPalette，均在 setup 期）构建后注入：
+ * keydown 事件上下文没有组件实例，useRouter() / useXxxStore() 拿不到值
+ * （D-14 隐患修复）。
  */
 
-import { getAllCommands, type Command } from "./registry";
+import type { Command, CommandContext } from "./registry";
+import { getAllCommands } from "./registry";
 
-/** 快捷键映射表：命令 id → 按键描述 */
-const SHORTCUT_MAP: Record<string, string> = {
-  "nav:dashboard": "Ctrl+1",
-  "nav:changes": "Ctrl+2",
-  "nav:health": "Ctrl+3",
-  "nav:git-graph": "Ctrl+4",
-  "nav:branch-manager": "Ctrl+5",
-  "nav:change-sets": "Ctrl+6",
-  "nav:pipeline": "Ctrl+7",
-  "nav:runtime-dashboard": "Ctrl+8",
-  "nav:workspaces": "Ctrl+9",
-  "action:toggle-assistant": "Ctrl+I",
+/** 快捷键映射表：命令 id → 按键（可绑定多个） */
+const SHORTCUT_MAP: Record<string, string[]> = {
+  "nav:dashboard": ["Ctrl+1"],
+  "nav:changes": ["Ctrl+2"],
+  "nav:health": ["Ctrl+3"],
+  "nav:git-graph": ["Ctrl+4", "Ctrl+Shift+G"],
+  "nav:branch-manager": ["Ctrl+5"],
+  "nav:change-sets": ["Ctrl+6"],
+  "nav:pipeline": ["Ctrl+7"],
+  "nav:runtime-dashboard": ["Ctrl+8"],
+  "nav:workspaces": ["Ctrl+9"],
+  "nav:diff-viewer": ["Ctrl+Shift+D"],
+  "action:toggle-assistant": ["Ctrl+I"],
+  "action:repo-search": ["Ctrl+P", "Ctrl+Shift+F"],
+  "action:refresh": ["F5"],
+  "action:commit": ["Ctrl+Enter"],
+  "action:commit-push": ["Ctrl+Shift+Enter"],
 };
 
-/** 获取命令的快捷键描述 */
+/** 输入框聚焦时仍允许触发的组合键（提交 / 刷新语义不与文本输入冲突） */
+const EDITABLE_ALLOWED = new Set(["Ctrl+Enter", "Ctrl+Shift+Enter", "F5"]);
+
+/** 展示用快捷键描述（多绑定用 " / " 连接） */
 export function getShortcutForCommand(commandId: string): string | undefined {
-  return SHORTCUT_MAP[commandId];
+  const keys = SHORTCUT_MAP[commandId];
+  return keys?.join(" / ");
 }
 
 /** 为所有命令附加快捷键信息 */
-export function getCommandsWithShortcuts(): Command[] {
-  return getAllCommands().map((cmd) => ({
+export function getCommandsWithShortcuts(ctx: CommandContext): Command[] {
+  return getAllCommands(ctx).map((cmd) => ({
     ...cmd,
     shortcut: getShortcutForCommand(cmd.id),
   }));
@@ -54,10 +68,15 @@ function parseKeyEvent(e: KeyboardEvent): string {
     return parts.join("+");
   }
 
+  // 命名键（Enter / F 系列）
+  if (e.key === "Enter" || /^F\d{1,2}$/.test(e.key)) {
+    parts.push(e.key);
+    return parts.join("+");
+  }
+
   return "";
 }
 
-/** 全局快捷键监听器 */
 /** 事件目标是否为可编辑区域（输入框聚焦时不触发非组合键快捷键） */
 function isEditableTarget(e: KeyboardEvent): boolean {
   const target = e.target as HTMLElement | null;
@@ -71,23 +90,31 @@ function isEditableTarget(e: KeyboardEvent): boolean {
   );
 }
 
-export function createShortcutListener() {
+/**
+ * 全局快捷键监听器。
+ * `getCommands` 在每次按键时求值（命令含导航/分组等运行时状态，不宜缓存）。
+ */
+export function createShortcutListener(
+  getCommands: () => Command[]
+): (e: KeyboardEvent) => void {
   return function onKeydown(e: KeyboardEvent) {
-    // 输入框聚焦时跳过快捷键分发（当前映射表全部为 Ctrl 组合键，
-    // 浏览器在输入框内对 Ctrl+数字 无输入语义，但守卫是 spec 要求的机制）
-    if (isEditableTarget(e)) return;
-
     // 解析按键
     const keyStr = parseKeyEvent(e);
     if (!keyStr) return;
 
+    // 输入框聚焦时跳过快捷键分发（Ctrl+Enter 提交、F5 刷新除外）
+    if (isEditableTarget(e) && !EDITABLE_ALLOWED.has(keyStr)) return;
+
     // 查找匹配的命令
-    const commands = getAllCommands();
+    const commands = getCommands();
     for (const cmd of commands) {
-      const shortcut = SHORTCUT_MAP[cmd.id];
-      if (shortcut && shortcut === keyStr) {
+      const keys = SHORTCUT_MAP[cmd.id];
+      if (keys && keys.includes(keyStr)) {
         e.preventDefault();
-        cmd.run();
+        void Promise.resolve(cmd.run()).catch(() => {
+          // 命令执行失败由调用方（如 Palette）提示；这里兜底吞掉
+          // 避免 unhandled rejection。
+        });
         return;
       }
     }

@@ -30,6 +30,7 @@
       </div>
       <div class="toolbar-right">
         <n-input
+          ref="searchInputRef"
           v-model:value="searchQuery"
           placeholder="搜索文件或仓库..."
           style="width: 240px"
@@ -383,7 +384,7 @@
             type="primary"
             :loading="actionLoading"
             :disabled="selectedFileCount === 0"
-            @click="handleCommit"
+            @click="handleCommit()"
           >
             <template #icon><n-icon><CreateOutline /></n-icon></template>
             提交
@@ -677,7 +678,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   AddCircleOutline,
@@ -750,6 +751,7 @@ import ChangeTree, {
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import LogManager from "@/components/common/LogManager.vue";
 import { errMsg } from "@/utils/error";
+import { COMMIT_REQUEST_EVENT } from "@/commands/registry";
 import { useAiAssistant } from "@/composables/useAiAssistant";
 
 interface SelectedDiff {
@@ -1148,6 +1150,31 @@ function onWindowResize() {
 onMounted(() => window.addEventListener("resize", onWindowResize));
 onUnmounted(() => window.removeEventListener("resize", onWindowResize));
 
+// T-31：Ctrl+P / Ctrl+Shift+F 聚焦变更页搜索框（命令注册表 focus 查询参数）。
+const searchInputRef = ref<{ focus: () => void } | null>(null);
+watch(
+  () => route.query.focus,
+  async (focus) => {
+    if (focus !== "search") return;
+    await nextTick();
+    searchInputRef.value?.focus();
+  }
+);
+
+// T-31：Ctrl+Enter / Ctrl+Shift+Enter → 提交面板提交（可选推送）。
+function onCommitRequest(e: Event) {
+  const push = (e as CustomEvent<{ push?: boolean }>).detail?.push ?? false;
+  if (!commitPanelOpen.value) {
+    message.warning("请先展开提交面板再提交");
+    return;
+  }
+  void handleCommit(push);
+}
+onMounted(() => window.addEventListener(COMMIT_REQUEST_EVENT, onCommitRequest));
+onUnmounted(() =>
+  window.removeEventListener(COMMIT_REQUEST_EVENT, onCommitRequest)
+);
+
 let unlistenScan: (() => void) | null = null;
 
 const scanPercentage = computed(() => {
@@ -1369,6 +1396,21 @@ async function applyRoutePrefill() {
       case "branch-create":
         openBranchOp("create");
         break;
+      // T-31：Sync = Fetch 全部 → Pull Clean 预演（推送保持显式操作）。
+      case "sync": {
+        const paths = changes.value.map((c) => c.repoPath);
+        if (paths.length === 0) break;
+        actionLoading.value = true;
+        try {
+          await batchFetch(paths);
+          message.success(`已提交 ${paths.length} 个 fetch 任务`);
+          await loadChanges();
+        } finally {
+          actionLoading.value = false;
+        }
+        runDryRun("pull");
+        break;
+      }
     }
   } catch (e) {
     message.error("预填快捷操作失败: " + errMsg(e));
@@ -1536,7 +1578,7 @@ async function handleRestore() {
   }
 }
 
-async function handleCommit() {
+async function handleCommit(forcePush = false) {
   const amend = commitForm.value.amend;
   const msg = commitForm.value.message.trim();
   if (!msg && !amend) {
@@ -1552,7 +1594,8 @@ async function handleCommit() {
       files,
       amend,
       noEdit: amend && !msg,
-      thenPush: commitForm.value.thenPush,
+      // T-31：Ctrl+Shift+Enter 以事件参数强制推送，不改动表单状态。
+      thenPush: forcePush || commitForm.value.thenPush,
     });
   }
   if (commits.length === 0) {

@@ -48,10 +48,15 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
+import { useRouter } from "vue-router";
+import { useMessage } from "naive-ui";
 import { NModal, NInput, NIcon } from "naive-ui";
 import { SearchOutline } from "@vicons/ionicons5";
 import { getCommandsWithShortcuts } from "@/commands/shortcuts";
-import type { Command } from "@/commands/registry";
+import { useWorkspaceStore } from "@/stores/workspace";
+import { useRepositoryStore } from "@/stores/repository";
+import { useAiStore } from "@/stores/ai";
+import type { Command, CommandContext } from "@/commands/registry";
 
 const props = defineProps<{
   show: boolean;
@@ -61,11 +66,21 @@ const emit = defineEmits<{
   (e: "update:show", value: boolean): void;
 }>();
 
+const message = useMessage();
+
+// 命令上下文在 setup 期构建（事件回调里拿不到组件实例）
+const ctx: CommandContext = {
+  router: useRouter(),
+  workspaceStore: useWorkspaceStore(),
+  repoStore: useRepositoryStore(),
+  aiStore: useAiStore(),
+};
+
 const query = ref("");
 const activeIndex = ref(0);
 const inputRef = ref<InstanceType<typeof NInput> | null>(null);
 
-const allCommands = computed(() => getCommandsWithShortcuts());
+const allCommands = computed(() => getCommandsWithShortcuts(ctx));
 
 /** 模糊搜索过滤 */
 const filtered = computed(() => {
@@ -101,8 +116,13 @@ function isActiveIndex(idx: number): boolean {
   return activeIndex.value === idx;
 }
 
-function execute(cmd: Command) {
-  cmd.run();
+async function execute(cmd: Command) {
+  try {
+    await cmd.run();
+  } catch (e) {
+    // 终端 / IDE 打开失败等可行动错误就地提示
+    message.error(e instanceof Error ? e.message : String(e));
+  }
   close();
 }
 

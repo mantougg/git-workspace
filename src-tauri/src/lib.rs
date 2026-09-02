@@ -537,6 +537,10 @@ pub fn run() {
             commands::runtime::runtime_apply_template,
             // Application lifecycle commands
             commands::app::restart_app,
+            // Terminal / IDE integration commands (T-31)
+            commands::integration::open_in_terminal,
+            commands::integration::open_in_ide,
+            commands::integration::list_integration_targets,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")

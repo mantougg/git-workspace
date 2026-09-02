@@ -21,6 +21,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
 import { zhCN, dateZhCN, darkTheme } from "naive-ui";
 import AppShell from "@/components/shell/AppShell.vue";
 import TaskPanel from "@/views/TaskPanel.vue";
@@ -29,6 +30,11 @@ import AssistantDrawer from "@/components/ai/AssistantDrawer.vue";
 import { useTheme } from "@/composables/useTheme";
 import { lightOverrides, darkOverrides } from "@/styles/naive-overrides";
 import { createShortcutListener } from "@/commands/shortcuts";
+import { getAllCommands } from "@/commands/registry";
+import type { CommandContext } from "@/commands/registry";
+import { useWorkspaceStore } from "@/stores/workspace";
+import { useRepositoryStore } from "@/stores/repository";
+import { useAiStore } from "@/stores/ai";
 
 // D-02：主题机制
 const { resolved } = useTheme();
@@ -41,13 +47,29 @@ const themeOverrides = computed(() =>
   resolved.value === "dark" ? darkOverrides : lightOverrides
 );
 
-// D-12/D-14：Command Palette + 快捷键
+// D-12/D-14 + T-31：Command Palette + 快捷键。
+// 命令上下文在 setup 期构建：keydown 事件上下文拿不到组件实例，
+// useRouter() / useXxxStore() 必须提前解析。
+const commandContext: CommandContext = {
+  router: useRouter(),
+  workspaceStore: useWorkspaceStore(),
+  repoStore: useRepositoryStore(),
+  aiStore: useAiStore(),
+};
+
 const showPalette = ref(false);
-const shortcutListener = createShortcutListener();
+const shortcutListener = createShortcutListener(() =>
+  getAllCommands(commandContext)
+);
 
 function onGlobalKeydown(e: KeyboardEvent) {
-  // Command Palette 快捷键优先
-  if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+  // Command Palette 快捷键优先（Ctrl+K / Ctrl+Shift+P）
+  if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+    e.preventDefault();
+    showPalette.value = !showPalette.value;
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "P" || e.key === "p")) {
     e.preventDefault();
     showPalette.value = !showPalette.value;
     return;
