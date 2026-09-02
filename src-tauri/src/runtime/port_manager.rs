@@ -11,7 +11,6 @@
 //! 自己的 Runtime 配置（`program_arguments` 注入 `--server.port=`），
 //! 不触碰用户项目文件（全局约束 §2 用户项目只读）。
 
-use std::net::TcpListener;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -30,21 +29,13 @@ pub struct PortCheckResult {
 /// 检查端口占用。以 bind 实测为准：bind 成功 → 空闲；失败 → 占用并尽力
 /// 识别占用方（找不到 netstat/lsof 时 occupier 为 None）。
 pub fn check_port(port: u16) -> PortCheckResult {
-    let bind = TcpListener::bind(("127.0.0.1", port));
-    match bind {
-        Ok(listener) => {
-            drop(listener);
-            PortCheckResult {
-                port,
-                in_use: false,
-                occupier: None,
-            }
-        }
-        Err(_) => PortCheckResult {
-            port,
-            in_use: true,
-            occupier: crate::process::port::detect_port_occupier(port),
-        },
+    let in_use = crate::process::port::is_port_in_use(port);
+    PortCheckResult {
+        port,
+        in_use,
+        occupier: in_use
+            .then(|| crate::process::port::detect_port_occupier(port))
+            .flatten(),
     }
 }
 
@@ -118,17 +109,29 @@ mod tests {
     #[test]
     fn check_port_reports_free_and_occupied() {
         // 系统分配一个空闲端口 → 空闲。
-        let probe = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let probe = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let free_port = probe.local_addr().unwrap().port();
         drop(probe);
         // 先占住一个端口再检查：必然 in_use。
-        let listener = TcpListener::bind(("127.0.0.1", free_port)).unwrap();
+        let listener = std::net::TcpListener::bind(("127.0.0.1", free_port)).unwrap();
         let result = check_port(free_port);
         assert!(result.in_use);
         drop(listener);
         // 释放后大概率空闲（本机自占，无并发竞争方）。
         let result = check_port(free_port);
-        assert!(!result.in_use, "port {free_port} should be free after close");
+        assert!(
+            !result.in_use,
+            "port {free_port} should be free after close"
+        );
+    }
+
+    #[test]
+    fn check_port_reports_wildcard_listener_as_occupied() {
+        let listener = std::net::TcpListener::bind(("0.0.0.0", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(check_port(port).in_use);
+        drop(listener);
+        assert!(!check_port(port).in_use);
     }
 
     #[test]

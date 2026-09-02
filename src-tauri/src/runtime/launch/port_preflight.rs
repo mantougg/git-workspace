@@ -8,8 +8,6 @@
 //! （Spring Boot 8080 未显式声明）不做预检——完整端口管理归 R-16
 //! Health Check / Port Manager。
 
-use std::net::TcpListener;
-
 use crate::error::{AppError, AppResult};
 use crate::process::port::{detect_port_occupier, PortOccupier};
 use crate::runtime::config::{RuntimeApplicationConfig, RuntimeKind};
@@ -90,21 +88,20 @@ fn explicit_node_ports(config: &RuntimeApplicationConfig) -> Vec<u16> {
 /// 预检：任一显式端口被占用即返回 `PortOccupied`（尽力附带占用方信息）。
 pub fn preflight(config: &RuntimeApplicationConfig) -> AppResult<()> {
     for port in explicit_ports(config) {
-        if TcpListener::bind(("127.0.0.1", port)).is_err() {
-            // bind 失败视为被占用（权限等罕见情况也按占用处理，宁可提示）。
-            let occupier = detect_port_occupier(port)
-                .unwrap_or(PortOccupier {
-                    pid: None,
-                    process_name: None,
-                    executable_path: None,
-                });
+        if crate::process::port::is_port_in_use(port) {
+            // 端口探测采用监听表 + 多地址 bind；权限等无法确认的错误
+            // 仍按占用处理，避免启动前误放行。
+            let occupier = detect_port_occupier(port).unwrap_or(PortOccupier {
+                pid: None,
+                process_name: None,
+                executable_path: None,
+            });
             return Err(AppError::PortOccupied {
                 port,
                 pid: occupier.pid,
                 process_name: occupier.process_name,
             });
         }
-        // 探测即释放：listener drop 后端口恢复空闲。
     }
     Ok(())
 }
@@ -112,6 +109,7 @@ pub fn preflight(config: &RuntimeApplicationConfig) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
 
     fn config_with(args: (&str, Vec<&str>)) -> RuntimeApplicationConfig {
         let (kind, args) = args;
@@ -140,7 +138,10 @@ mod tests {
 
     #[test]
     fn ignores_random_and_invalid_ports() {
-        let config = config_with(("args", vec!["--server.port=0", "--port=99999", "--port=abc"]));
+        let config = config_with((
+            "args",
+            vec!["--server.port=0", "--port=99999", "--port=abc"],
+        ));
         assert!(explicit_ports(&config).is_empty());
         let config = config_with(("args", vec!["--port"]));
         assert!(explicit_ports(&config).is_empty());
@@ -179,6 +180,18 @@ mod tests {
         let mut config = RuntimeApplicationConfig::default();
         config.program_arguments = vec!["--server.port=0".into()];
         preflight(&config).expect("random port must skip preflight");
+    }
+
+    #[test]
+    fn preflight_detects_wildcard_listener() {
+        let listener = TcpListener::bind(("0.0.0.0", 0)).expect("bind ephemeral");
+        let port = listener.local_addr().unwrap().port();
+        let mut config = RuntimeApplicationConfig::default();
+        config.program_arguments = vec![format!("--server.port={port}")];
+        match preflight(&config) {
+            Err(AppError::PortOccupied { port: occupied, .. }) => assert_eq!(occupied, port),
+            other => panic!("expected PortOccupied, got {other:?}"),
+        }
     }
 
     #[test]

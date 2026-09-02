@@ -7,6 +7,8 @@
 //! 解析函数（`parse_netstat_*` / `parse_lsof_*`）保持纯函数，便于单测；
 //! 系统调用仅在运行时（GUI 进程）发生。
 
+use std::io::ErrorKind;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -34,13 +36,52 @@ pub fn detect_port_occupier(port: u16) -> Option<PortOccupier> {
     }
 }
 
+/// Conservative TCP listener probe shared by Port Manager and Runtime
+/// preflight. The OS listener table catches wildcard/specific-address
+/// combinations that a single loopback bind can miss; socket binds remain the
+/// fallback when netstat/lsof is unavailable or cannot identify the process.
+pub fn is_port_in_use(port: u16) -> bool {
+    if detect_port_occupier(port).is_some() {
+        return true;
+    }
+
+    let addresses = [
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port),
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port),
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port),
+    ];
+
+    addresses
+        .iter()
+        .any(|address| match TcpListener::bind(address) {
+            Ok(listener) => {
+                drop(listener);
+                false
+            }
+            Err(error)
+                if address.is_ipv6()
+                    && matches!(
+                        error.kind(),
+                        ErrorKind::AddrNotAvailable | ErrorKind::Unsupported
+                    ) =>
+            {
+                // IPv6 may be disabled on the host; it is not evidence that the
+                // TCP port is occupied.
+                false
+            }
+            Err(_) => true,
+        })
+}
+
 /// 用 sysinfo 查询 pid 的可执行文件绝对路径。归一化 + 文件存在校验
 /// （sysinfo 部分平台路径带尾分隔/损坏则丢弃）。失败返回 None。
 fn executable_path_for_pid(pid: u32) -> Option<String> {
     use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
-    let mut system = System::new_with_specifics(RefreshKind::new().with_processes(
-        ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet),
-    ));
+    let mut system = System::new_with_specifics(
+        RefreshKind::new()
+            .with_processes(ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet)),
+    );
     system.refresh_processes();
     let raw = system
         .process(Pid::from_u32(pid))
@@ -62,11 +103,11 @@ fn executable_path_for_pid(pid: u32) -> Option<String> {
 fn detect_windows(port: u16) -> Option<PortOccupier> {
     let output = Command::new("netstat").arg("-ano").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
-    let pid = parse_netstat_occupier(&text, port);
-    let process_name = pid.and_then(process_name_windows);
-    let executable_path = pid.and_then(executable_path_for_pid);
+    let pid = parse_netstat_occupier(&text, port)?;
+    let process_name = process_name_windows(pid);
+    let executable_path = executable_path_for_pid(pid);
     Some(PortOccupier {
-        pid,
+        pid: Some(pid),
         process_name,
         executable_path,
     })
@@ -75,19 +116,15 @@ fn detect_windows(port: u16) -> Option<PortOccupier> {
 #[cfg(not(windows))]
 fn detect_unix(port: u16) -> Option<PortOccupier> {
     let output = Command::new("lsof")
-        .args([
-            "-nP",
-            &format!("-iTCP:{port}"),
-            "-sTCP:LISTEN",
-        ])
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])
         .output()
         .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
-    let pid = parse_lsof_pid(&text);
-    let process_name = pid.and_then(process_name_unix);
-    let executable_path = pid.and_then(executable_path_for_pid);
+    let pid = parse_lsof_pid(&text)?;
+    let process_name = process_name_unix(pid);
+    let executable_path = executable_path_for_pid(pid);
     Some(PortOccupier {
-        pid,
+        pid: Some(pid),
         process_name,
         executable_path,
     })
@@ -96,23 +133,34 @@ fn detect_unix(port: u16) -> Option<PortOccupier> {
 /// 从 `netstat -ano` 输出解析监听 `port` 的进程 PID（LISTENING 行尾 token）。
 /// 纯函数（单测覆盖）。
 pub fn parse_netstat_occupier(output: &str, port: u16) -> Option<u32> {
-    let needle = format!(":{port}");
     for line in output.lines() {
-        if !line.contains(&needle) {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let Some(local_address) = fields.get(1) else {
+            continue;
+        };
+        if parse_endpoint_port(local_address) != Some(port)
+            || !fields
+                .iter()
+                .any(|field| field.eq_ignore_ascii_case("LISTENING"))
+        {
             continue;
         }
-        if !line.to_ascii_uppercase().contains("LISTENING") {
+        let Some(pid) = fields.last().and_then(|token| token.parse::<u32>().ok()) else {
             continue;
-        }
-        if let Some(token) = line.split_whitespace().next_back() {
-            if let Ok(pid) = token.parse::<u32>() {
-                if pid > 0 {
-                    return Some(pid);
-                }
-            }
+        };
+        if pid > 0 {
+            return Some(pid);
         }
     }
     None
+}
+
+fn parse_endpoint_port(endpoint: &str) -> Option<u16> {
+    endpoint
+        .trim_matches(['[', ']'])
+        .rsplit(':')
+        .next()
+        .and_then(|value| value.parse::<u16>().ok())
 }
 
 /// 从 `tasklist /FI "PID eq N" /FO CSV /NH` 输出解析进程名（首列去引号）。
@@ -135,8 +183,12 @@ pub fn parse_tasklist_name(output: &str) -> Option<String> {
 pub fn parse_lsof_pid(output: &str) -> Option<u32> {
     for line in output.lines() {
         let mut parts = line.split_whitespace();
-        let _command = parts.next()?;
-        let pid = parts.next()?;
+        let Some(_command) = parts.next() else {
+            continue;
+        };
+        let Some(pid) = parts.next() else {
+            continue;
+        };
         if let Ok(pid) = pid.parse::<u32>() {
             return Some(pid);
         }
@@ -187,6 +239,17 @@ mod tests {
     }
 
     #[test]
+    fn netstat_parser_matches_exact_local_port() {
+        let sample = "\
+  TCP    0.0.0.0:18080         0.0.0.0:0              LISTENING       1234
+  TCP    [::]:8080             [::]:0                 LISTENING       5678
+";
+        assert_eq!(parse_netstat_occupier(sample, 8080), Some(5678));
+        assert_eq!(parse_netstat_occupier(sample, 808), None);
+        assert_eq!(parse_netstat_occupier(sample, 1808), None);
+    }
+
+    #[test]
     fn tasklist_parser_extracts_name() {
         let csv = "\"java.exe\",\"4242\",\"Console\",\"1\",\" 12,345 K\"\r\n";
         assert_eq!(parse_tasklist_name(csv).as_deref(), Some("java.exe"));
@@ -196,8 +259,34 @@ mod tests {
 
     #[test]
     fn lsof_parser_extracts_pid() {
-        let sample = "java    4242  user  123u  IPv4 123456 0t0  TCP *:8080 (LISTEN)\n";
+        let sample = "\
+COMMAND PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+java    4242 user   123u IPv4 123456      0t0 TCP *:8080 (LISTEN)
+";
         assert_eq!(parse_lsof_pid(sample), Some(4242));
         assert_eq!(parse_lsof_pid(""), None);
+    }
+
+    #[test]
+    fn port_probe_detects_ipv4_wildcard_listener() {
+        let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(is_port_in_use(port));
+        drop(listener);
+        assert!(!is_port_in_use(port));
+    }
+
+    #[test]
+    fn port_probe_detects_ipv6_listener_when_available() {
+        let listener = match TcpListener::bind((Ipv6Addr::LOCALHOST, 0)) {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!("IPv6 unavailable; skipping IPv6 port probe test: {error}");
+                return;
+            }
+        };
+        let port = listener.local_addr().unwrap().port();
+        assert!(is_port_in_use(port));
+        drop(listener);
     }
 }
