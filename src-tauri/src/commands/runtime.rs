@@ -183,27 +183,32 @@ pub struct UnifiedMavenProjectPayload {
 
 /// N-09 `runtime.list_unified_projects`：Maven/Node 合并项目列表。
 ///
-/// 性能修复（F-app-freeze）：`discover_package_jsons` 文件系统扫描移到
-/// DB 锁外，避免大 workspace 扫描期间全局 DB 锁阻塞所有 IPC 导致 UI 冻结。
-/// 第一把锁读 Maven 列表 + workspace 配置（root / scan_depth），释放锁后
-/// 做文件系统扫描，第二把锁写入 node_projects 索引。
+/// 修复（应用无响应）：本命令此前在持有 `state.db` 锁的闭包内调用
+/// `state.runtime.list_projects()`，后者内部再次 `self.db.lock()`——
+/// 同一个不可重入 Mutex 二次加锁 = 自死锁，切换到「前端工程」触发本
+/// 命令后整个应用永久无响应。Maven 列表改为直接用已持有的 conn 走
+/// `query_dependency_graph`，全程单次持锁；文件系统扫描（第二阶段）
+/// 保持在锁外，扫描期间不阻塞其他 IPC。
 #[command]
 pub fn runtime_list_unified_projects(
     workspace_id: i64,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<UnifiedProjectNode>> {
     // Phase 1: 读 Maven 列表 + workspace 配置（DB 锁内，快照）。
+    // 注意：这里不能调 state.runtime.list_projects()——RuntimeService
+    // 内部会再锁 self.db，与已持有的 state.db 锁形成自死锁。
     let (mut unified, node_root, scan_depth) = {
         let conn = state
             .db
             .lock()
             .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
         let mut unified = Vec::new();
-        for project in state
-            .runtime
-            .list_projects(workspace_id)
-            .unwrap_or_default()
-        {
+        // 只在取 Vec<MavenProjectNode> 后 unwrap_or_default（DependencyGraph
+        // 本身无 Default，不能对其整体 unwrap_or_default）。
+        let maven_projects = crate::maven::query_dependency_graph(&conn, workspace_id)
+            .map(|graph| graph.projects)
+            .unwrap_or_default();
+        for project in maven_projects {
             unified.push(UnifiedProjectNode {
                 source: "maven".into(),
                 project_id: project.project_id,

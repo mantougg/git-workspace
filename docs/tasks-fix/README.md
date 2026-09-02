@@ -20,8 +20,8 @@
 
 ## 总体进度
 
-- 任务总数：**23**（全部已转为正式任务）
-- 已完成：**20** · 修复中：**3** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**24**（全部已转为正式任务）
+- 已完成：**21** · 修复中：**3** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -52,6 +52,7 @@
 | F-21 | 概览热力图缺横纵坐标 + 摘要行未跟踪未水平对齐 | P1 | ✅ | [F-21-dashboard-heatmap-axis-alignment.md](./F-21-dashboard-heatmap-axis-alignment.md) |
 | F-22 | Git 视图（提交图/分支/Stash/Worktree/Reflog）支持切换仓库 | P1 | ✅ | [F-22-git-views-repo-switcher.md](./F-22-git-views-repo-switcher.md) |
 | F-23 | Runtime 总览加「启动方式」列（直接启动 vs 源码启动 ×n） | P1 | ✅ | [F-23-runtime-dashboard-launch-mode.md](./F-23-runtime-dashboard-launch-mode.md) |
+| F-24 | 新建应用切「前端工程」应用永久无响应（RuntimeService 自死锁） | P0 | ✅ | [F-24-wizard-node-unified-project-deadlock.md](./F-24-wizard-node-unified-project-deadlock.md) |
 
 ---
 
