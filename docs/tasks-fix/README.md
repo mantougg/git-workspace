@@ -1,6 +1,6 @@
 # GitWorkspace 问题修复任务总览
 
-> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）。
+> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）。
 > 拆分原则：**每个问题一个独立文档**（同目录下 `F-XX-<slug>.md`），可独立跟踪修复进度与验收。
 > 本文件是唯一的修复进度索引；每个任务文档内另有自己的「进度」章节。
 >
@@ -20,8 +20,8 @@
 
 ## 总体进度
 
-- 任务总数：**24**（全部已转为正式任务）
-- 已完成：**21** · 修复中：**3** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**31**（全部已转为正式任务）
+- 已完成：**21** · 修复中：**3** · 未开始：**7** · 仅讨论：**0**
 
 ---
 
@@ -53,6 +53,13 @@
 | F-22 | Git 视图（提交图/分支/Stash/Worktree/Reflog）支持切换仓库 | P1 | ✅ | [F-22-git-views-repo-switcher.md](./F-22-git-views-repo-switcher.md) |
 | F-23 | Runtime 总览加「启动方式」列（直接启动 vs 源码启动 ×n） | P1 | ✅ | [F-23-runtime-dashboard-launch-mode.md](./F-23-runtime-dashboard-launch-mode.md) |
 | F-24 | 新建应用切「前端工程」应用永久无响应（RuntimeService 自死锁） | P0 | ✅ | [F-24-wizard-node-unified-project-deadlock.md](./F-24-wizard-node-unified-project-deadlock.md) |
+| F-25 | 端口检测不准确：有端口仍被占用却判定空闲 | P1 | ⬜ | [F-25-port-detection-accuracy.md](./F-25-port-detection-accuracy.md) |
+| F-26 | Node 前端项目启动多端口展示/停止不完整 | P1 | ⬜ | [F-26-node-multi-port-runtime.md](./F-26-node-multi-port-runtime.md) |
+| F-27 | Node 工具链扫描闪窗且包管理器探测失败 | P1 | ⬜ | [F-27-node-toolchain-scan-window.md](./F-27-node-toolchain-scan-window.md) |
+| F-28 | 启动时恢复上次选中的工作区 | P1 | ⬜ | [F-28-workspace-restore-last-selection.md](./F-28-workspace-restore-last-selection.md) |
+| F-29 | Runtime 总览脚本确认区默认折叠并提示更新 | P2 | ⬜ | [F-29-runtime-script-approvals-collapsed.md](./F-29-runtime-script-approvals-collapsed.md) |
+| F-30 | StatusBar 工作区右侧 watcher 点接入真实状态 | P2 | ⬜ | [F-30-statusbar-watcher-state.md](./F-30-statusbar-watcher-state.md) |
+| F-31 | Runtime 总览 Applications 删除项危险样式强化 | P2 | ⬜ | [F-31-runtime-delete-action-danger-style.md](./F-31-runtime-delete-action-danger-style.md) |
 
 ---
 
