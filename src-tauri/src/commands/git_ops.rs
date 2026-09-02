@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::core::git_ops::GitOps;
 use crate::core::git_status;
@@ -232,20 +232,41 @@ pub fn start_watcher(
         .lock()
         .map_err(|e| crate::error::AppError::Other(format!("Watcher lock error: {}", e)))?;
 
-    watcher.watch_repositories(paths, status_cache, app_handle)?;
+    watcher.watch_repositories(paths, status_cache, app_handle.clone())?;
+    drop(watcher);
+    if let Err(e) = app_handle.emit("watcher_status_changed", true) {
+        log::warn!("Failed to emit watcher_status_changed: {}", e);
+    }
 
     Ok(())
 }
 
+/// Return whether the repository file watcher is currently running.
+#[tauri::command]
+pub fn watcher_status(state: State<'_, AppState>) -> AppResult<bool> {
+    let watcher = state
+        .watcher
+        .lock()
+        .map_err(|e| crate::error::AppError::Other(format!("Watcher lock error: {e}")))?;
+    Ok(watcher.is_running())
+}
+
 /// Stop the file watcher.
 #[tauri::command]
-pub fn stop_watcher(state: State<'_, AppState>) -> AppResult<()> {
+pub fn stop_watcher(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
     let mut watcher = state
         .watcher
         .lock()
         .map_err(|e| crate::error::AppError::Other(format!("Watcher lock error: {}", e)))?;
 
     watcher.stop();
+    drop(watcher);
+    if let Err(e) = app_handle.emit("watcher_status_changed", false) {
+        log::warn!("Failed to emit watcher_status_changed: {}", e);
+    }
     Ok(())
 }
 

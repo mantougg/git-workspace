@@ -343,6 +343,7 @@ pub fn run() {
             git_ops::sync_pull,
             git_ops::sync_push,
             git_ops::start_watcher,
+            git_ops::watcher_status,
             git_ops::stop_watcher,
             // Task commands
             commands::task::submit_tasks,

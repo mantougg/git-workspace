@@ -21,7 +21,7 @@
 ## 总体进度
 
 - 任务总数：**31**（全部已转为正式任务）
-- 已完成：**24** · 修复中：**3** · 未开始：**3** · 仅讨论：**0**
+- 已完成：**25** · 修复中：**2** · 未开始：**3** · 仅讨论：**0**
 
 ---
 
@@ -58,7 +58,7 @@
 | F-27 | Node 工具链扫描闪窗且包管理器探测失败 | P1 | ⬜ | [F-27-node-toolchain-scan-window.md](./F-27-node-toolchain-scan-window.md) |
 | F-28 | 启动时恢复上次选中的工作区 | P1 | ✅ | [F-28-workspace-restore-last-selection.md](./F-28-workspace-restore-last-selection.md) |
 | F-29 | Runtime 总览脚本确认区默认折叠并提示更新 | P2 | ✅ | [F-29-runtime-script-approvals-collapsed.md](./F-29-runtime-script-approvals-collapsed.md) |
-| F-30 | StatusBar 工作区右侧 watcher 点接入真实状态 | P2 | ⬜ | [F-30-statusbar-watcher-state.md](./F-30-statusbar-watcher-state.md) |
+| F-30 | StatusBar 工作区右侧 watcher 点接入真实状态 | P2 | ✅ | [F-30-statusbar-watcher-state.md](./F-30-statusbar-watcher-state.md) |
 | F-31 | Runtime 总览 Applications 删除项危险样式强化 | P2 | ✅ | [F-31-runtime-delete-action-danger-style.md](./F-31-runtime-delete-action-danger-style.md) |
 
 ---

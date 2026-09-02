@@ -81,10 +81,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { NIcon, NPopover } from "naive-ui";
 import { ChevronDownOutline, GitBranchOutline, PlayOutline, SparklesOutline } from "@vicons/ionicons5";
+import { WATCHER_EVENTS, watcherStatus } from "@/api/git_ops";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
 import { useAiStore } from "@/stores/ai";
@@ -110,11 +112,20 @@ const currentWorkspaceName = computed(() => currentWorkspace.value?.name ?? "未
 // 分支（仅 Git 类视图显示，此处预留接口，D-04 接入实际数据）
 const currentBranch = ref<string | null>(null);
 
-// watcher 状态（预留接口，D-04 接入实际数据）
+// watcher 状态：从后端查询初始值，并通过启停事件保持同步。
 const watcherActive = ref(false);
 const watcherTooltip = computed(() =>
   watcherActive.value ? "监听中" : "未启动"
 );
+let unlistenWatcher: UnlistenFn | null = null;
+
+async function loadWatcherStatus() {
+  try {
+    watcherActive.value = await watcherStatus();
+  } catch (e) {
+    console.error("Failed to load watcher status:", e);
+  }
+}
 
 // 任务
 const runningTaskCount = computed(() =>
@@ -142,6 +153,18 @@ function onTasksClick() {
     taskStore.togglePanel();
   }
 }
+
+onMounted(async () => {
+  unlistenWatcher = await listen<boolean>(WATCHER_EVENTS.statusChanged, (event) => {
+    watcherActive.value = event.payload;
+  });
+  await loadWatcherStatus();
+});
+
+onUnmounted(() => {
+  unlistenWatcher?.();
+  unlistenWatcher = null;
+});
 </script>
 
 <style scoped>
