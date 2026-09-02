@@ -5,6 +5,7 @@ pub mod branch;
 pub mod change_set;
 pub mod conflict;
 pub mod diff;
+pub mod diagnostics;
 pub mod history;
 pub mod jdk;
 pub mod merge_rebase;

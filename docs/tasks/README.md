@@ -20,8 +20,8 @@
 ## 总体进度
 
 - 任务总数：**35**
-- 已完成：**33** · 进行中：**0** · 未开始：**2**
-- 完成度：**33 / 35（94%）**
+- 已完成：**34** · 进行中：**0** · 未开始：**1**
+- 完成度：**34 / 35（97%）**
 
 ---
 
@@ -87,7 +87,7 @@
 | T-30 | Submodule / LFS / Hooks | P2 | ✅ | T-02 | [T-30-submodule-lfs-hooks.md](./T-30-submodule-lfs-hooks.md) |
 | T-31 | Command Palette + 快捷键 + IDE/Terminal 集成 | P2 | ✅ | — | [T-31-command-palette.md](./T-31-command-palette.md) |
 | T-32 | 插件系统 / Scheduled Tasks（Automation Platform） | P3 | ⬜ | T-23 | [T-32-plugin-system.md](./T-32-plugin-system.md) |
-| T-35 | 发布工程（Updater / 崩溃上报 / 日志闭环 / 遥测） | P2 | ⬜ | — | [T-35-release-engineering.md](./T-35-release-engineering.md) |
+| T-35 | 发布工程（Updater / 崩溃上报 / 日志闭环 / 遥测） | P2 | ✅ | — | [T-35-release-engineering.md](./T-35-release-engineering.md) |
 
 ---
 

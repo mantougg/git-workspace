@@ -127,6 +127,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
+            // T-35：崩溃捕获 panic hook（写 app data/crash-reports，失败静默）。
+            commands::diagnostics::install_panic_hook(app.handle().clone(), env!("CARGO_PKG_VERSION"));
+
             // Initialize database
             let app_data_dir = get_app_data_dir();
             let conn = init_database(&app_data_dir)?;
@@ -569,6 +572,13 @@ pub fn run() {
             commands::repo_tools::save_hook,
             commands::repo_tools::set_hook_enabled,
             commands::repo_tools::run_hook,
+            // Release engineering commands (T-35)
+            commands::diagnostics::get_crash_reports,
+            commands::diagnostics::clear_crash_reports,
+            commands::diagnostics::collect_feedback_bundle,
+            commands::diagnostics::get_telemetry_config,
+            commands::diagnostics::set_telemetry_config,
+            commands::diagnostics::track_event,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")

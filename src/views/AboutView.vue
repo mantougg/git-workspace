@@ -100,6 +100,35 @@
           </div>
         </n-alert>
       </section>
+
+      <!-- T-35：诊断与反馈闭环（崩溃报告 / 反馈包 / 遥测 opt-in） -->
+      <n-divider />
+
+      <section class="about-section" aria-labelledby="diagnostics-title">
+        <h2 id="diagnostics-title">诊断与反馈</h2>
+        <div class="about-info-list">
+          <div class="about-info-row">
+            <span class="about-info-label">崩溃报告</span>
+            <span class="about-info-value">{{ crashReports.length }} 份</span>
+            <n-button text type="primary" @click="loadCrashReports">刷新</n-button>
+            <n-button v-if="crashReports.length > 0" text type="error" @click="clearReports">
+              清空
+            </n-button>
+          </div>
+          <div class="about-info-row">
+            <span class="about-info-label">反馈包（日志 + 崩溃报告）</span>
+            <n-button text type="primary" :loading="bundleBusy" @click="makeBundle">
+              一键导出
+            </n-button>
+          </div>
+          <div class="about-info-row">
+            <span class="about-info-label">
+              匿名遥测<span class="about-telemetry-hint">（默认关闭；数据脱敏后仅本地留存）</span>
+            </span>
+            <n-switch v-model:value="telemetry.enabled" size="small" @update:value="saveTelemetry" />
+          </div>
+        </div>
+      </section>
     </Panel>
   </div>
 </template>
@@ -153,6 +182,71 @@ async function openExternalUrl(url: string) {
     await tauriOpen(url);
   } catch (cause) {
     message.error(cause instanceof Error ? cause.message : String(cause));
+  }
+}
+
+// ── T-35：诊断与反馈 ─────────────────────────────────────────
+import { onMounted, ref } from "vue";
+import { NAlert, NDivider, NProgress, NSwitch } from "naive-ui";
+import {
+  clearCrashReports,
+  collectFeedbackBundle,
+  getCrashReports,
+  getTelemetryConfig,
+  setTelemetryConfig,
+  type CrashReportInfo,
+  type TelemetrySettings,
+} from "@/api/diagnostics";
+
+const crashReports = ref<CrashReportInfo[]>([]);
+const bundleBusy = ref(false);
+const telemetry = ref<TelemetrySettings>({ enabled: false, crashUpload: false });
+
+onMounted(async () => {
+  await loadCrashReports();
+  try {
+    telemetry.value = await getTelemetryConfig();
+  } catch {
+    // 默认关闭
+  }
+});
+
+async function loadCrashReports() {
+  try {
+    crashReports.value = await getCrashReports();
+  } catch (e) {
+    message.error("读取崩溃报告失败: " + (e instanceof Error ? e.message : String(e)));
+  }
+}
+
+async function clearReports() {
+  try {
+    await clearCrashReports();
+    crashReports.value = [];
+    message.success("已清空崩溃报告");
+  } catch (e) {
+    message.error("清空失败: " + (e instanceof Error ? e.message : String(e)));
+  }
+}
+
+async function makeBundle() {
+  bundleBusy.value = true;
+  try {
+    const path = await collectFeedbackBundle();
+    message.success("反馈包已导出：" + path);
+  } catch (e) {
+    message.error("导出失败: " + (e instanceof Error ? e.message : String(e)));
+  } finally {
+    bundleBusy.value = false;
+  }
+}
+
+async function saveTelemetry(enabled: boolean) {
+  try {
+    await setTelemetryConfig({ ...telemetry.value, enabled });
+    message.success(enabled ? "遥测已开启（数据脱敏，仅本地留存）" : "遥测已关闭");
+  } catch (e) {
+    message.error("保存失败: " + (e instanceof Error ? e.message : String(e)));
   }
 }
 </script>
