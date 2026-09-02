@@ -913,7 +913,15 @@ const configColumns = [
         { label: "日志", key: "logs" },
         { label: "配置", key: "config" },
         { type: "divider", key: "d1" },
-        { label: "删除", key: "delete", danger: true },
+        {
+          label: "删除",
+          key: "delete",
+          danger: true,
+          props: {
+            style:
+              "color: var(--gw-danger); background: color-mix(in srgb, var(--gw-danger) 12%, transparent);",
+          },
+        },
       ];
       const onMore = (key: string | number) => {
         switch (key) {
