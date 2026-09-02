@@ -23,17 +23,17 @@
 
 ## 修复范围
 
-- [ ] 让 Node 启动过程能记录并持久化多个端口
-- [ ] 校验 Stop / Restart / Environment Stop 是否完整覆盖同一 runtime 的派生进程
-- [ ] Applications 与 Processes 两个表格的端口展示口径一致
-- [ ] 增加真实 Node dev server / 多端口 fixture 回归
+- [x] 让 Node 启动过程能记录并持久化多个端口
+- [x] 校验 Stop / Restart / Environment Stop 是否完整覆盖同一 runtime 的派生进程
+- [x] Applications 与 Processes 两个表格的端口展示口径一致
+- [x] 增加真实 Node dev server / 多端口 fixture 回归
 
 ## 验收标准
 
-- [ ] 多端口 Node 应用能完整展示所有监听端口
-- [ ] Stop 后相关端口真实释放，不遗留可运行进程
-- [ ] 刷新后进程记录仍与端口信息一致
-- [ ] 相关测试通过
+- [x] 多端口 Node 应用能完整展示所有监听端口
+- [x] Stop 后相关端口真实释放，不遗留可运行进程
+- [x] 刷新后进程记录仍与端口信息一致
+- [x] 相关测试通过
 
 ## 进度
 
