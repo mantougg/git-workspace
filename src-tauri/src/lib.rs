@@ -477,6 +477,8 @@ pub fn run() {
             commands::node::node_validate_executable,
             commands::node::node_remove_executable,
             commands::node::node_prune_executables,
+            // N-10：本机 Node 工具链扫描（只读候选发现）
+            commands::node::node_scan_executables,
             commands::node::node_install,
             // Runtime configuration (R-07)
             commands::runtime::create_runtime_config,

@@ -22,9 +22,9 @@
 
 ## 总体进度
 
-- 任务总数：**9**
-- 已完成：**8** · 进行中：**1**（N-07，待 Windows/macOS 真机复核）· 未开始：**0**
-- 完成度：**8 / 9（89%）**
+- 任务总数：**10**
+- 已完成：**9** · 进行中：**1**（N-07，待 Windows/macOS 真机复核）· 未开始：**0**
+- 完成度：**9 / 10（90%）**
 
 ## MVP 口径（设计文档 §7）
 
@@ -68,6 +68,7 @@
 |---|---|---|---|---|---|
 | N-08 | 包管理器增强与显式安装（pnpm/yarn 执行链 / `node_install` / 注册表） | P2 | ✅ | N-05 | [N-08-package-manager-enhancement.md](./N-08-package-manager-enhancement.md) |
 | N-09 | 展望：monorepo / bun / 模板 / 合并列表 / 分组启停（watch 联动经用户确认不做） | P2 | ✅ | N-08 + 触发条件（**2026-09-02 已触发**） | [N-09-future-extensions.md](./N-09-future-extensions.md) |
+| N-10 | Node 工具链扫描登记（本机常见位置 + nvm/fnm/volta/mise 等版本管理器） | P2 | ✅ | N-08 | [N-10-node-toolchain-scan.md](./N-10-node-toolchain-scan.md) |
 
 ---
 

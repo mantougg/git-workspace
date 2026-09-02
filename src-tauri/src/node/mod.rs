@@ -21,6 +21,7 @@ pub mod discovery;
 pub mod install;
 pub mod model;
 pub mod registry;
+pub mod scan;
 pub mod workspace;
 
 pub use command::build_run_args;
@@ -37,6 +38,7 @@ pub use discovery::{
     NodeDiscoveryResult, NodePackageCache,
 };
 pub use model::{
-    NodeExecutable, NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, PackageManager,
-    ToolDetection, ToolDetectionSource,
+    NodeExecutable, NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, NodeScanCandidate,
+    PackageManager, ToolDetection, ToolDetectionSource,
 };
+pub use scan::scan_node_toolchain;

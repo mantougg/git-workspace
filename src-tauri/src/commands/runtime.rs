@@ -182,52 +182,69 @@ pub struct UnifiedMavenProjectPayload {
 }
 
 /// N-09 `runtime.list_unified_projects`：Maven/Node 合并项目列表。
+///
+/// 性能修复（F-app-freeze）：`discover_package_jsons` 文件系统扫描移到
+/// DB 锁外，避免大 workspace 扫描期间全局 DB 锁阻塞所有 IPC 导致 UI 冻结。
+/// 第一把锁读 Maven 列表 + workspace 配置（root / scan_depth），释放锁后
+/// 做文件系统扫描，第二把锁写入 node_projects 索引。
 #[command]
 pub fn runtime_list_unified_projects(
     workspace_id: i64,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<UnifiedProjectNode>> {
-    let mut conn = state
-        .db
-        .lock()
-        .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
-    let mut unified: Vec<UnifiedProjectNode> = Vec::new();
-    for project in state
-        .runtime
-        .list_projects(workspace_id)
-        .unwrap_or_default()
-    {
-        unified.push(UnifiedProjectNode {
-            source: "maven".into(),
-            project_id: project.project_id,
-            repository_id: project.repository_id,
-            path: project.path.to_string_lossy().into_owned(),
-            name: project.coordinates.artifact_id.clone(),
-            version: project.coordinates.version.clone(),
-            node: None,
-            maven: Some(UnifiedMavenProjectPayload {
-                coordinates: project.coordinates,
-                packaging: project.packaging,
-            }),
-        });
-    }
-    // node 侧与 node_list_projects 同源：从 DB 读 workspace 边界 → 发现 → 索引同步。
-    let node_projects = (|| -> AppResult<Vec<crate::node::NodeProjectNode>> {
+    // Phase 1: 读 Maven 列表 + workspace 配置（DB 锁内，快照）。
+    let (mut unified, node_root, scan_depth) = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
+        let mut unified = Vec::new();
+        for project in state
+            .runtime
+            .list_projects(workspace_id)
+            .unwrap_or_default()
+        {
+            unified.push(UnifiedProjectNode {
+                source: "maven".into(),
+                project_id: project.project_id,
+                repository_id: project.repository_id,
+                path: project.path.to_string_lossy().into_owned(),
+                name: project.coordinates.artifact_id.clone(),
+                version: project.coordinates.version.clone(),
+                node: None,
+                maven: Some(UnifiedMavenProjectPayload {
+                    coordinates: project.coordinates,
+                    packaging: project.packaging,
+                }),
+            });
+        }
         let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
         let depth: i64 = conn.query_row(
             "SELECT scan_depth FROM workspaces WHERE id = ?1",
             [workspace_id],
             |row| row.get(0),
         )?;
-        let discovery = crate::node::discovery::discover_package_jsons(
-            &root,
-            depth.max(1) as usize,
-            Some(crate::node::discovery::global_package_cache()),
-            None,
-        );
+        (unified, root, depth.max(1) as usize)
+        // conn 被 drop，DB 锁释放——其他 IPC 可正常访问 DB。
+    };
+
+    // Phase 2: 文件系统扫描（DB 锁外，不阻塞其他 IPC）。
+    let discovery = crate::node::discovery::discover_package_jsons(
+        &node_root,
+        scan_depth,
+        Some(crate::node::discovery::global_package_cache()),
+        None,
+    );
+
+    // Phase 3: 写入 node_projects 索引（短暂获取 DB 锁）。
+    let node_projects = {
+        let mut conn = state
+            .db
+            .lock()
+            .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
         crate::node::discovery::sync_node_projects(&mut conn, workspace_id, &discovery)
-    })()
-    .unwrap_or_default();
+            .unwrap_or_default()
+    };
     for project in node_projects {
         unified.push(UnifiedProjectNode {
             source: "node".into(),

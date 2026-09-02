@@ -1643,6 +1643,15 @@
     "version": "1.2.3",
     "workspaceRoot": "/ws"
   },
+  "NodeScanCandidate": {
+    "executablePath": "/home/user/.nvm/versions/node/v22.14.0/bin/node",
+    "kind": "node",
+    "packageManager": null,
+    "probeOk": true,
+    "registered": false,
+    "source": "nvm",
+    "version": "22.14.0"
+  },
   "OperationLogDetail": {
     "createdAt": "2026-01-01T00:00:00Z",
     "id": 1,

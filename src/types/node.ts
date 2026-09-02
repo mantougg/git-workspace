@@ -42,3 +42,17 @@ export interface NodeInstallRequest {
   packageManager: NodePackageManager
   confirmed?: boolean
 }
+
+/** N-10：本机扫描出的工具链候选（`node_scan_executables` 返回，只读发现）。 */
+export interface NodeScanCandidate {
+  kind: NodeExecutableKind
+  packageManager: NodePackageManager | null
+  executablePath: string
+  /** `-v` 探测版本；探测失败为 null（「未知版本」）。 */
+  version: string | null
+  probeOk: boolean
+  /** 扫描来源标签：system / nvm / nvm-windows / fnm / volta / mise / asdf / n / scoop / homebrew / pnpm-home / yarn-home。 */
+  source: string
+  /** 该路径是否已在注册表中（禁选防重复登记）。 */
+  registered: boolean
+}

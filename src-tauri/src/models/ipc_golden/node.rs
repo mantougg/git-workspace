@@ -6,7 +6,7 @@ use serde_json::{json, Map, Value};
 
 use crate::commands::node::NodeInstallRequest;
 use crate::node::model::{
-    NodeExecutable, NodeExecutableKind, NodeExecutableRequest, PackageManager,
+    NodeExecutable, NodeExecutableKind, NodeExecutableRequest, NodeScanCandidate, PackageManager,
 };
 use crate::node::NodeProjectNode;
 
@@ -56,6 +56,18 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             confirmed: false,
         }),
     );
+    m.insert(
+        "NodeScanCandidate".into(),
+        json!(NodeScanCandidate {
+            kind: NodeExecutableKind::Node,
+            package_manager: None,
+            executable_path: "/home/user/.nvm/versions/node/v22.14.0/bin/node".into(),
+            version: Some("22.14.0".into()),
+            probe_ok: true,
+            source: "nvm".into(),
+            registered: false,
+        }),
+    );
 }
 
 pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
@@ -67,4 +79,5 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "NodeExecutableRequest",
     ),
     ("NodeInstallRequest", "types/node.ts", "NodeInstallRequest"),
+    ("NodeScanCandidate", "types/node.ts", "NodeScanCandidate"),
 ];

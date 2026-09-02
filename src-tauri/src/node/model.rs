@@ -126,6 +126,31 @@ pub struct NodeExecutable {
     pub updated_at: Option<String>,
 }
 
+/// N-10：本机扫描出的一个工具链候选（`node_scan_executables` 返回）。
+/// 只读发现结果：登记与否由用户在 UI 勾选后经 `node_add_executable` 完成，
+/// 扫描本身不写注册表。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeScanCandidate {
+    pub kind: NodeExecutableKind,
+    /// `None` for Node.js; the concrete manager for package-manager candidates.
+    #[serde(default)]
+    pub package_manager: Option<PackageManager>,
+    pub executable_path: String,
+    /// `-v` 探测版本；探测失败降级 `None`（「未知版本」）。
+    #[serde(default)]
+    pub version: Option<String>,
+    /// 探测进程成功退出并解析出版本。
+    #[serde(default)]
+    pub probe_ok: bool,
+    /// 扫描来源标签：system / nvm / nvm-windows / fnm / volta / mise / asdf /
+    /// n / scoop / homebrew / pnpm-home / yarn-home。
+    pub source: String,
+    /// 该路径是否已在注册表中（前端禁选防重复登记）。
+    #[serde(default)]
+    pub registered: bool,
+}
+
 /// Request used by the registry IPC commands. The path is intentionally a
 /// user-provided concrete executable, never a shell command or PATH token.
 #[derive(Debug, Clone, Serialize, Deserialize)]

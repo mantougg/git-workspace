@@ -6,7 +6,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::task::{TaskRequest, TaskType};
 use crate::node::{
     discover_package_jsons, global_package_cache, sync_node_projects, NodeExecutable,
-    NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, PackageManager,
+    NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, NodeScanCandidate, PackageManager,
 };
 use crate::runtime::config::workspace_root;
 use crate::state::AppState;
@@ -152,6 +152,29 @@ pub fn node_prune_executables(state: State<'_, AppState>) -> AppResult<usize> {
         .lock()
         .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
     crate::node::registry::prune_invalid_paths(&mut conn)
+}
+
+/// N-10：扫描本机 node / 包管理器候选（常见位置 + nvm/fnm/volta/mise 等版本
+/// 管理器目录）。只读发现、不写注册表；`registered` 标记已在注册表中的路径，
+/// 前端禁选防重复登记，登记动作由用户勾选后逐条走 `node_add_executable`。
+#[command]
+pub fn node_scan_executables(state: State<'_, AppState>) -> AppResult<Vec<NodeScanCandidate>> {
+    let mut candidates = crate::node::scan::scan_node_toolchain();
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
+    let registered: std::collections::HashSet<String> =
+        crate::node::registry::list_node_executables(&conn)?
+            .into_iter()
+            .map(|entry| crate::node::scan::normalize_path_key(&entry.executable_path))
+            .collect();
+    for candidate in &mut candidates {
+        candidate.registered = registered.contains(&crate::node::scan::normalize_path_key(
+            &candidate.executable_path,
+        ));
+    }
+    Ok(candidates)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
