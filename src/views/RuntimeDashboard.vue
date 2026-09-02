@@ -169,20 +169,17 @@
         </n-button>
       </template>
       <n-spin :show="store.loading">
-        <div class="apps-table-wrap">
-          <n-data-table
-            :columns="configColumns"
-            :data="store.configs"
-            :row-key="(row: RuntimeConfigSummary) => row.id"
-            :row-class-name="configRowClassName"
-            :row-props="configRowProps"
-            :single-line="false"
-            size="small"
-            :max-height="selectedConfig ? appsTableHeightWithDetail : undefined"
-          />
-        </div>
+        <n-data-table
+          :columns="configColumns"
+          :data="store.configs"
+          :row-key="(row: RuntimeConfigSummary) => row.id"
+          :row-class-name="configRowClassName"
+          :row-props="configRowProps"
+          :single-line="false"
+          size="small"
+        />
 
-        <!-- Selected application detail（卡片内展开，不把 Applications 顶出视口） -->
+        <!-- Selected application detail（卡片内自适应展开，内容完整可见） -->
         <div v-if="selectedConfig" class="app-detail-inline">
           <div class="app-detail-head">
             <span class="app-detail-title">应用详情 · {{ selectedConfig.name }}</span>
@@ -190,8 +187,7 @@
               Scope: {{ scopeLabel(configDetail.scope) }}
             </n-tag>
           </div>
-          <div class="detail-scroll">
-            <n-descriptions :column="4" label-placement="left" bordered size="small">
+          <n-descriptions :column="4" label-placement="left" bordered size="small">
               <n-descriptions-item label="JDK">
                 {{ configDetail?.jdk ?? selectedConfig.jdk ?? "—" }}
               </n-descriptions-item>
@@ -252,7 +248,6 @@
                 <span v-else class="muted">—</span>
               </n-descriptions-item>
             </n-descriptions>
-          </div>
         </div>
       </n-spin>
     </Panel>
@@ -400,10 +395,6 @@ const nodeProjects = ref<NodeProjectNode[]>([]);
 function configRowClassName(row: RuntimeConfigSummary): string {
   return String(row.id) === String(selectedConfigKey.value) ? "selected-config-row" : "";
 }
-
-/** 选中详情展开后表格的可视高度：让出空间给卡片内的详情区，同时表格保持
- *  表头固定、内部滚动，整卡不会超高把页面顶走。 */
-const appsTableHeightWithDetail = "calc(100vh - 320px)";
 
 /** naive-ui DataTable 没有 @row-click 事件；官方机制是把 onClick 通过
  *  row-props 挂到每行 <tr> 上（rowProps(row) 的返回合并进 tr 属性）。
@@ -1408,6 +1399,13 @@ onMounted(async () => {
   gap: var(--gw-space-3);
   overflow-y: auto;
 }
+
+/* 关键：flex column 下直接子项默认 flex-shrink:1，内容超高时会把 Panel
+   压缩进容器而非滚动——Panel 自带 overflow:hidden，被压部分直接裁掉，
+   表现为「详情被截断且没有滚动条」。禁止收缩，超高由容器滚动承载。 */
+.runtime-dashboard > * {
+  flex-shrink: 0;
+}
 /* 选中的应用行高亮（Applications 表格；naive tr 无 data-v 需 deep） */
 :deep(.selected-config-row > td) {
   background: var(--gw-bg-selected, rgba(24, 160, 251, 0.12)) !important;
@@ -1530,11 +1528,8 @@ onMounted(async () => {
 .scope-tag {
   margin-left: 8px;
 }
-/* 应用详情（Applications 卡片内展开）：与表格同卡，不把卡片顶出视口；
-   内容限高内部滚动，避免超高截断/遮盖。 */
-.apps-table-wrap {
-  width: 100%;
-}
+/* 应用详情（Applications 卡片内自适应展开）：不设 max-height，内容完整
+   可见，卡片随内容增高、由页面统一滚动——不截断也不需要内滚条。 */
 .app-detail-inline {
   margin-top: var(--gw-space-3);
   border-top: 1px solid var(--gw-border);
@@ -1547,12 +1542,7 @@ onMounted(async () => {
   margin-bottom: var(--gw-space-2);
   font-weight: 600;
 }
-.detail-scroll {
-  max-height: 42vh;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-.detail-scroll .n-descriptions {
+.app-detail-inline .n-descriptions {
   word-break: break-all;
 }
 .scheduler-section {
