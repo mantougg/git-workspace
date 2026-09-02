@@ -928,8 +928,38 @@ CREATE TABLE IF NOT EXISTS symbol_index_files (
 );
 "#;
 
+pub const SCHEMA_V21: &str = r#"
+-- T-32 Automation Platform：脚本动作 + 定时任务。
+CREATE TABLE IF NOT EXISTS plugin_actions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL UNIQUE,
+    command      TEXT NOT NULL,
+    scope        TEXT NOT NULL DEFAULT 'repo',
+    timeout_secs INTEGER NOT NULL DEFAULT 120,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    name             TEXT NOT NULL UNIQUE,
+    kind             TEXT NOT NULL,
+    target_id        TEXT NOT NULL,
+    schedule_kind    TEXT NOT NULL,
+    interval_minutes INTEGER,
+    daily_time       TEXT,
+    payload          TEXT,
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    last_run         TEXT,
+    next_run         TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_due ON scheduled_tasks(enabled, next_run);
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8,
     SCHEMA_V9, SCHEMA_V10, SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14, SCHEMA_V15,
-    SCHEMA_V16, SCHEMA_V17, SCHEMA_V18, SCHEMA_V19, SCHEMA_V20,
+    SCHEMA_V16, SCHEMA_V17, SCHEMA_V18, SCHEMA_V19, SCHEMA_V20, SCHEMA_V21,
 ];

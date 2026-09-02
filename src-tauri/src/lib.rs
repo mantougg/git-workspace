@@ -236,6 +236,14 @@ pub fn run() {
             // AI-12：外部 Agent Adapter 共用的工具执行上下文（必须在 state
             // 被 manage 之前构建），工具唯一来源是 AI-05 注册表。
             let ai_tool_context = crate::ai::ToolContext::from_state(&state);
+
+            // T-32：Scheduled Tasks 调度线程（独立于主任务队列，30s tick；
+            // 在 state 被 manage 移动前取出所需 Arc）。
+            commands::automation::spawn_scheduler(
+                Arc::clone(&db),
+                Arc::clone(&state.task_manager),
+            );
+
             app.manage(state);
 
             // AI-12：启动本地 MCP 端点（仅 127.0.0.1，生命周期随应用启停；
@@ -579,6 +587,17 @@ pub fn run() {
             commands::diagnostics::get_telemetry_config,
             commands::diagnostics::set_telemetry_config,
             commands::diagnostics::track_event,
+            // Automation platform commands (T-32)
+            commands::automation::list_plugin_actions,
+            commands::automation::save_plugin_action,
+            commands::automation::delete_plugin_action,
+            commands::automation::run_plugin_action,
+            commands::automation::list_scheduled_tasks,
+            commands::automation::save_scheduled_task,
+            commands::automation::set_scheduled_task_enabled,
+            commands::automation::delete_scheduled_task,
+            commands::automation::export_pipeline_template,
+            commands::automation::import_pipeline_template,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")

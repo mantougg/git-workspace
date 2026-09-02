@@ -73,6 +73,12 @@ const router = createRouter({
       meta: { group: "Git", title: "仓库工具" },
     },
     {
+      path: "/automation",
+      name: "automation",
+      component: () => import("@/views/AutomationView.vue"),
+      meta: { group: "Git", title: "自动化" },
+    },
+    {
       path: "/reflog",
       name: "reflog-view",
       component: () => import("@/views/Reflog.vue"),

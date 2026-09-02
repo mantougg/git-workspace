@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod app;
+pub mod automation;
 pub mod batch;
 pub mod branch;
 pub mod change_set;

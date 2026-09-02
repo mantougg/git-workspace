@@ -20,8 +20,8 @@
 ## 总体进度
 
 - 任务总数：**35**
-- 已完成：**34** · 进行中：**0** · 未开始：**1**
-- 完成度：**34 / 35（97%）**
+- 已完成：**35** · 进行中：**0** · 未开始：**0**
+- 完成度：**35 / 35（100%）**
 
 ---
 
@@ -86,7 +86,7 @@
 | T-29 | Remote Platform 集成 + Pull Request + CI | P2 | ✅ | T-09, T-11 | [T-29-remote-platform.md](./T-29-remote-platform.md) |
 | T-30 | Submodule / LFS / Hooks | P2 | ✅ | T-02 | [T-30-submodule-lfs-hooks.md](./T-30-submodule-lfs-hooks.md) |
 | T-31 | Command Palette + 快捷键 + IDE/Terminal 集成 | P2 | ✅ | — | [T-31-command-palette.md](./T-31-command-palette.md) |
-| T-32 | 插件系统 / Scheduled Tasks（Automation Platform） | P3 | ⬜ | T-23 | [T-32-plugin-system.md](./T-32-plugin-system.md) |
+| T-32 | 插件系统 / Scheduled Tasks（Automation Platform） | P3 | ✅ | T-23 | [T-32-plugin-system.md](./T-32-plugin-system.md) |
 | T-35 | 发布工程（Updater / 崩溃上报 / 日志闭环 / 遥测） | P2 | ✅ | — | [T-35-release-engineering.md](./T-35-release-engineering.md) |
 
 ---
