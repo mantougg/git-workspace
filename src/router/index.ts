@@ -147,6 +147,12 @@ const router = createRouter({
       meta: { group: "设置", title: "Node 工具链" },
     },
     {
+      path: "/port-tool",
+      name: "port-tool",
+      component: () => import("@/views/PortToolView.vue"),
+      meta: { group: "设置", title: "端口工具" },
+    },
+    {
       path: "/ai-settings",
       name: "ai-settings",
       component: () => import("@/views/AiSettingsView.vue"),

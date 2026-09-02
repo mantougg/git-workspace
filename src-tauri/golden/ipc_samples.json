@@ -1821,6 +1821,7 @@
   "PortCheckResult": {
     "inUse": true,
     "occupier": {
+      "executablePath": "/usr/lib/jvm/java-17/bin/java",
       "pid": 4242,
       "processName": "java"
     },
@@ -1832,6 +1833,7 @@
     "processName": "java"
   },
   "PortOccupier": {
+    "executablePath": "/usr/lib/jvm/java-17/bin/java",
     "pid": 4242,
     "processName": "java"
   },

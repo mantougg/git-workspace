@@ -7,14 +7,18 @@
 //! 解析函数（`parse_netstat_*` / `parse_lsof_*`）保持纯函数，便于单测；
 //! 系统调用仅在运行时（GUI 进程）发生。
 
+use std::path::PathBuf;
 use std::process::Command;
 
-/// 占用方信息。跨 IPC 的结构化字段（§80：占用进程 PID / 进程名）。
+/// 占用方信息。跨 IPC 的结构化字段（§80：占用进程 PID / 进程名 / 可执行路径）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PortOccupier {
     pub pid: Option<u32>,
     pub process_name: Option<String>,
+    /// 占用进程可执行文件绝对路径（sysinfo 探测；权限受限/失败为 None）。
+    #[serde(default)]
+    pub executable_path: Option<String>,
 }
 
 /// 探测端口占用。返回 `None` 表示端口空闲（或探测失败但无法确认占用——
@@ -30,13 +34,42 @@ pub fn detect_port_occupier(port: u16) -> Option<PortOccupier> {
     }
 }
 
+/// 用 sysinfo 查询 pid 的可执行文件绝对路径。归一化 + 文件存在校验
+/// （sysinfo 部分平台路径带尾分隔/损坏则丢弃）。失败返回 None。
+fn executable_path_for_pid(pid: u32) -> Option<String> {
+    use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
+    let mut system = System::new_with_specifics(RefreshKind::new().with_processes(
+        ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet),
+    ));
+    system.refresh_processes();
+    let raw = system
+        .process(Pid::from_u32(pid))
+        .and_then(|process| process.exe())
+        .map(|path| path.to_string_lossy().into_owned())?;
+    let trimmed = raw.trim().trim_end_matches(['/', '\\']).to_string();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(&trimmed);
+    if path.is_file() {
+        Some(trimmed)
+    } else {
+        None
+    }
+}
+
 #[cfg(windows)]
 fn detect_windows(port: u16) -> Option<PortOccupier> {
     let output = Command::new("netstat").arg("-ano").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     let pid = parse_netstat_occupier(&text, port);
     let process_name = pid.and_then(process_name_windows);
-    Some(PortOccupier { pid, process_name })
+    let executable_path = pid.and_then(executable_path_for_pid);
+    Some(PortOccupier {
+        pid,
+        process_name,
+        executable_path,
+    })
 }
 
 #[cfg(not(windows))]
@@ -52,7 +85,12 @@ fn detect_unix(port: u16) -> Option<PortOccupier> {
     let text = String::from_utf8_lossy(&output.stdout);
     let pid = parse_lsof_pid(&text);
     let process_name = pid.and_then(process_name_unix);
-    Some(PortOccupier { pid, process_name })
+    let executable_path = pid.and_then(executable_path_for_pid);
+    Some(PortOccupier {
+        pid,
+        process_name,
+        executable_path,
+    })
 }
 
 /// 从 `netstat -ano` 输出解析监听 `port` 的进程 PID（LISTENING 行尾 token）。

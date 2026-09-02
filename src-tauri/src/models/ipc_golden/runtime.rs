@@ -549,6 +549,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             occupier: Some(crate::process::port::PortOccupier {
                 pid: Some(4242),
                 process_name: Some("java".into()),
+                executable_path: Some("/usr/lib/jvm/java-17/bin/java".into()),
             }),
         }),
     );
@@ -557,6 +558,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         json!(crate::process::port::PortOccupier {
             pid: Some(4242),
             process_name: Some("java".into()),
+            executable_path: Some("/usr/lib/jvm/java-17/bin/java".into()),
         }),
     );
     m.insert(

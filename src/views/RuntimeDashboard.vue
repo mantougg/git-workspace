@@ -145,7 +145,7 @@
       </div>
     </n-spin>
 
-    <!-- Applications -->
+    <!-- Applications（含选中应用详情，卡片内展开，标题恒定） -->
     <Panel>
       <template #header>
         <span>Applications</span>
@@ -156,82 +156,105 @@
           依赖索引为空，请先「解析依赖」后再启动
         </span>
       </template>
-      <n-spin :show="store.loading">
-        <n-data-table
-          :columns="configColumns"
-          :data="store.configs"
-          :row-key="(row: RuntimeConfigSummary) => row.id"
-          :row-class-name="() => ''"
-          :single-line="false"
+      <template #actions>
+        <n-button
+          v-if="selectedConfig"
           size="small"
-          @row-click="onSelectRow"
-        />
-      </n-spin>
-    </Panel>
-
-    <!-- Selected application detail -->
-    <Panel v-if="selectedConfig">
-      <template #header>
-        <span>应用详情 · {{ selectedConfig.name }}</span>
-        <n-tag v-if="configDetail" size="small" class="scope-tag" type="info">
-          Scope: {{ scopeLabel(configDetail.scope) }}
-        </n-tag>
+          text
+          type="primary"
+          @click="clearSelection"
+        >
+          <template #icon><n-icon><ChevronUpOutline /></n-icon></template>
+          收起
+        </n-button>
       </template>
-      <n-descriptions :column="4" label-placement="left" bordered size="small">
-        <n-descriptions-item label="JDK">
-          {{ configDetail?.jdk ?? selectedConfig.jdk ?? "—" }}
-        </n-descriptions-item>
-        <n-descriptions-item label="Profile">
-          {{ configDetail?.profile ?? selectedConfig.profile ?? "—" }}
-        </n-descriptions-item>
-        <n-descriptions-item label="PID">
-          {{ processOf(selectedConfig.name)?.pid ?? "—" }}
-        </n-descriptions-item>
-        <n-descriptions-item label="端口">
-          {{ processOf(selectedConfig.name)?.ports?.join(", ") || "—" }}
-        </n-descriptions-item>
-        <n-descriptions-item label="内存" :span="1">
-          {{
-            processOf(selectedConfig.name)?.memoryBytes
-              ? formatBytes(processOf(selectedConfig.name)!.memoryBytes!)
-              : "—"
-          }}
-        </n-descriptions-item>
-        <n-descriptions-item label="CPU" :span="1">
-          {{
-            processOf(selectedConfig.name)?.cpuPercent != null
-              ? processOf(selectedConfig.name)!.cpuPercent!.toFixed(1) + "%"
-              : "—"
-          }}
-        </n-descriptions-item>
-        <n-descriptions-item label="运行策略" :span="2">
-          {{ processOf(selectedConfig.name)?.runStrategy ?? "—" }}
-        </n-descriptions-item>
-        <n-descriptions-item label="VM Options" :span="4">
-          <span v-if="configDetail?.vmOptions?.length" class="mono">{{
-            configDetail.vmOptions.join(" ")
-          }}</span>
-          <span v-else class="muted">—</span>
-        </n-descriptions-item>
-        <n-descriptions-item label="Program Args" :span="4">
-          <span v-if="configDetail?.programArguments?.length" class="mono">{{
-            configDetail.programArguments.join(" ")
-          }}</span>
-          <span v-else class="muted">—</span>
-        </n-descriptions-item>
-        <n-descriptions-item label="启动命令预览" :span="4">
-          <span v-if="processOf(selectedConfig.name)?.commandPreview" class="mono cmd-preview">
-            {{ processOf(selectedConfig.name)!.commandPreview }}
-          </span>
-          <span v-else class="muted">—</span>
-        </n-descriptions-item>
-        <n-descriptions-item label="环境变量" :span="4">
-          <span v-if="configDetail && envKeys(configDetail).length > 0" class="mono env-summary">
-            {{ envKeys(configDetail).join(", ") }}
-          </span>
-          <span v-else class="muted">—</span>
-        </n-descriptions-item>
-      </n-descriptions>
+      <n-spin :show="store.loading">
+        <div class="apps-table-wrap">
+          <n-data-table
+            :columns="configColumns"
+            :data="store.configs"
+            :row-key="(row: RuntimeConfigSummary) => row.id"
+            :row-class-name="configRowClassName"
+            :row-props="configRowProps"
+            :single-line="false"
+            size="small"
+            :max-height="selectedConfig ? appsTableHeightWithDetail : undefined"
+          />
+        </div>
+
+        <!-- Selected application detail（卡片内展开，不把 Applications 顶出视口） -->
+        <div v-if="selectedConfig" class="app-detail-inline">
+          <div class="app-detail-head">
+            <span class="app-detail-title">应用详情 · {{ selectedConfig.name }}</span>
+            <n-tag v-if="configDetail" size="small" type="info">
+              Scope: {{ scopeLabel(configDetail.scope) }}
+            </n-tag>
+          </div>
+          <div class="detail-scroll">
+            <n-descriptions :column="4" label-placement="left" bordered size="small">
+              <n-descriptions-item label="JDK">
+                {{ configDetail?.jdk ?? selectedConfig.jdk ?? "—" }}
+              </n-descriptions-item>
+              <n-descriptions-item label="Profile">
+                {{ configDetail?.profile ?? selectedConfig.profile ?? "—" }}
+              </n-descriptions-item>
+              <n-descriptions-item label="PID">
+                {{ processOf(selectedConfig.name)?.pid ?? "—" }}
+              </n-descriptions-item>
+              <n-descriptions-item label="端口">
+                {{ processOf(selectedConfig.name)?.ports?.join(", ") || "—" }}
+              </n-descriptions-item>
+              <n-descriptions-item label="内存" :span="1">
+                {{
+                  processOf(selectedConfig.name)?.memoryBytes
+                    ? formatBytes(processOf(selectedConfig.name)!.memoryBytes!)
+                    : "—"
+                }}
+              </n-descriptions-item>
+              <n-descriptions-item label="CPU" :span="1">
+                {{
+                  processOf(selectedConfig.name)?.cpuPercent != null
+                    ? processOf(selectedConfig.name)!.cpuPercent!.toFixed(1) + "%"
+                    : "—"
+                }}
+              </n-descriptions-item>
+              <n-descriptions-item label="运行策略" :span="2">
+                {{ processOf(selectedConfig.name)?.runStrategy ?? "—" }}
+              </n-descriptions-item>
+              <n-descriptions-item label="VM Options" :span="4">
+                <span v-if="configDetail?.vmOptions?.length" class="mono">{{
+                  configDetail.vmOptions.join(" ")
+                }}</span>
+                <span v-else class="muted">—</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="Program Args" :span="4">
+                <span v-if="configDetail?.programArguments?.length" class="mono">{{
+                  configDetail.programArguments.join(" ")
+                }}</span>
+                <span v-else class="muted">—</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="启动命令预览" :span="4">
+                <span
+                  v-if="processOf(selectedConfig.name)?.commandPreview"
+                  class="mono cmd-preview"
+                >
+                  {{ processOf(selectedConfig.name)!.commandPreview }}
+                </span>
+                <span v-else class="muted">—</span>
+              </n-descriptions-item>
+              <n-descriptions-item label="环境变量" :span="4">
+                <span
+                  v-if="configDetail && envKeys(configDetail).length > 0"
+                  class="mono env-summary"
+                >
+                  {{ envKeys(configDetail).join(", ") }}
+                </span>
+                <span v-else class="muted">—</span>
+              </n-descriptions-item>
+            </n-descriptions>
+          </div>
+        </div>
+      </n-spin>
     </Panel>
 
     <!-- Processes -->
@@ -319,9 +342,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref } from "vue";
+import { computed, h, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { NButton, NTag, NIcon, NTooltip, useMessage, useDialog } from "naive-ui";
+import { NButton, NTag, NIcon, NTooltip, NDropdown, useMessage, useDialog, type DropdownOption } from "naive-ui";
 import {
   AddOutline,
   RefreshOutline,
@@ -329,6 +352,7 @@ import {
   StopOutline,
   GitNetworkOutline,
   SparklesOutline,
+  ChevronUpOutline,
 } from "@vicons/ionicons5";
 import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -363,11 +387,46 @@ const { openAssistant } = useAiAssistant();
 
 const resolving = ref(false);
 const selectedConfig = ref<RuntimeConfigSummary | null>(null);
-/** 选中应用的完整配置（按需加载）。 */
+/** 选中行 key（用于表格行高亮）。 */
+const selectedConfigKey = ref<string | number | null>(null);
+/** 完整配置（按需加载）。 */
 const configDetail = ref<RuntimeApplicationConfig | null>(null);
 const scheduler = ref<SchedulerConfig>({ maxConcurrentBuilds: 2, maxConcurrentResolves: 4 });
 const savingScheduler = ref(false);
 const nodeProjects = ref<NodeProjectNode[]>([]);
+
+/** Applications 表格行 class：选中行高亮。naive-ui 的 row-class-name 只拿
+ *  (row, index)，用 rowKeyOf 归一后与选中 key 比对。 */
+function configRowClassName(row: RuntimeConfigSummary): string {
+  return String(row.id) === String(selectedConfigKey.value) ? "selected-config-row" : "";
+}
+
+/** 选中详情展开后表格的可视高度：让出空间给卡片内的详情区，同时表格保持
+ *  表头固定、内部滚动，整卡不会超高把页面顶走。 */
+const appsTableHeightWithDetail = "calc(100vh - 320px)";
+
+/** naive-ui DataTable 没有 @row-click 事件；官方机制是把 onClick 通过
+ *  row-props 挂到每行 <tr> 上（rowProps(row) 的返回合并进 tr 属性）。
+ *  - 点击落在按钮/下拉/链接等交互元素内时不触发选中（操作列按钮独立动作）；
+ *  - 再次点击已选中行 = 收起详情（toggle）。 */
+function configRowProps(row: RuntimeConfigSummary): Record<string, unknown> {
+  return {
+    onClick: (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && target.closest("button, a, input, [role='menuitem'], .n-base-close")) {
+        return;
+      }
+      if (String(selectedConfigKey.value) === String(row.id)) {
+        selectedConfig.value = null;
+        selectedConfigKey.value = null;
+        configDetail.value = null;
+        return;
+      }
+      onSelectRow(row);
+    },
+    style: "cursor:pointer",
+  };
+}
 
 // R-16 §81 端口诊断对话框（选中应用 + 默认端口取其探测端口）。
 const portModalShow = ref(false);
@@ -811,10 +870,11 @@ const configColumns = [
   {
     title: "操作",
     key: "actions",
-    width: 330,
+    width: 260,
     fixed: "right" as const,
     render(row: RuntimeConfigSummary) {
-      return h("div", { style: "display:flex;gap:4px;flex-wrap:wrap" }, [
+      // 核心操作平铺；构建/日志/配置/删除 收进「更多」下拉，避免列过宽误点。
+      const primary = [
         h(
           NButton,
           {
@@ -843,15 +903,6 @@ const configColumns = [
           },
           { default: () => "重启" },
         ),
-        h(
-          NButton,
-          {
-            size: "small",
-            disabled: isBusy(row.name),
-            onClick: () => onBuild(row.name),
-          },
-          { default: () => "构建" },
-        ),
         ...(row.kind === "node"
           ? [
               h(
@@ -865,42 +916,49 @@ const configColumns = [
               ),
             ]
           : []),
+      ];
+      const moreOptions: DropdownOption[] = [
+        { label: "构建", key: "build", disabled: isBusy(row.name) },
+        { label: "日志", key: "logs" },
+        { label: "配置", key: "config" },
+        { type: "divider", key: "d1" },
+        { label: "删除", key: "delete", danger: true },
+      ];
+      const onMore = (key: string | number) => {
+        switch (key) {
+          case "build":
+            onBuild(row.name);
+            break;
+          case "logs":
+            openLogs(row.name);
+            break;
+          case "config":
+            openWizard(row.name);
+            break;
+          case "delete":
+            dialog.error({
+              title: "确认删除",
+              content: "确定删除该 Runtime 配置吗？",
+              positiveText: "删除",
+              negativeText: "取消",
+              onPositiveClick: () => onDelete(row),
+            });
+            break;
+        }
+      };
+      return h("div", { style: "display:flex;gap:4px;align-items:center;flex-wrap:nowrap" }, [
+        ...primary,
         h(
-          NButton,
+          NDropdown,
+          { options: moreOptions, trigger: "click", onSelect: onMore },
           {
-            size: "small",
-            text: true,
-            type: "primary",
-            onClick: () => openLogs(row.name),
+            default: () =>
+              h(
+                NButton,
+                { size: "small", quaternary: true, type: "primary" },
+                { default: () => "更多" },
+              ),
           },
-          { default: () => "日志" },
-        ),
-        h(
-          NButton,
-          {
-            size: "small",
-            text: true,
-            onClick: () => openWizard(row.name),
-          },
-          { default: () => "配置" },
-        ),
-        h(
-          NButton,
-          {
-            size: "small",
-            text: true,
-            type: "error",
-            onClick: () => {
-              dialog.error({
-                title: "确认删除",
-                content: "确定删除该 Runtime 配置吗？",
-                positiveText: "删除",
-                negativeText: "取消",
-                onPositiveClick: () => onDelete(row),
-              });
-            },
-          },
-          { default: () => "删除" },
         ),
       ]);
     },
@@ -1210,8 +1268,7 @@ async function onDelete(row: RuntimeConfigSummary) {
   try {
     await store.removeConfig(row.name);
     if (selectedConfig.value?.name === row.name) {
-      selectedConfig.value = null;
-      configDetail.value = null;
+      clearSelection();
     }
     message.success(`已删除配置：${row.name}`);
   } catch (e) {
@@ -1222,6 +1279,7 @@ async function onDelete(row: RuntimeConfigSummary) {
 function onSelectRow(row: RuntimeConfigSummary) {
   if (!row) return;
   selectedConfig.value = row;
+  selectedConfigKey.value = row.id;
   configDetail.value = null;
   // 按需加载详情（IPC 打开 JSON 文件，勿全量拉取）。
   store
@@ -1230,6 +1288,20 @@ function onSelectRow(row: RuntimeConfigSummary) {
       configDetail.value = c;
     })
     .catch((e) => console.error("R-13: load config detail failed:", e));
+  // 选中后把选中行滚到可视：行在 Applications 表格内部（选中展开时表格
+  // 有限高内滚），用 nearest 只滚最近的滚动容器，不会把整卡/整页顶走。
+  nextTick(() => {
+    document
+      .querySelector(".selected-config-row")
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+}
+
+/** 收起详情（header 按钮 + 再次点击行共用）。 */
+function clearSelection() {
+  selectedConfig.value = null;
+  selectedConfigKey.value = null;
+  configDetail.value = null;
 }
 
 function openLogs(name: string) {
@@ -1335,6 +1407,10 @@ onMounted(async () => {
   padding: var(--gw-space-3) var(--gw-space-4);
   gap: var(--gw-space-3);
   overflow-y: auto;
+}
+/* 选中的应用行高亮（Applications 表格；naive tr 无 data-v 需 deep） */
+:deep(.selected-config-row > td) {
+  background: var(--gw-bg-selected, rgba(24, 160, 251, 0.12)) !important;
 }
 .toolbar {
   display: flex;
@@ -1453,6 +1529,31 @@ onMounted(async () => {
 }
 .scope-tag {
   margin-left: 8px;
+}
+/* 应用详情（Applications 卡片内展开）：与表格同卡，不把卡片顶出视口；
+   内容限高内部滚动，避免超高截断/遮盖。 */
+.apps-table-wrap {
+  width: 100%;
+}
+.app-detail-inline {
+  margin-top: var(--gw-space-3);
+  border-top: 1px solid var(--gw-border);
+  padding-top: var(--gw-space-2);
+}
+.app-detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gw-space-2);
+  margin-bottom: var(--gw-space-2);
+  font-weight: 600;
+}
+.detail-scroll {
+  max-height: 42vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.detail-scroll .n-descriptions {
+  word-break: break-all;
 }
 .scheduler-section {
   margin-bottom: 8px;

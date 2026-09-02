@@ -166,6 +166,8 @@ export interface HealthSnapshot {
 export interface PortOccupier {
   pid: number | null;
   processName: string | null;
+  /** 占用进程可执行文件绝对路径（sysinfo 探测；权限受限/失败为 null）。 */
+  executablePath: string | null;
 }
 
 /** R-16 §81 端口检查结果。 */

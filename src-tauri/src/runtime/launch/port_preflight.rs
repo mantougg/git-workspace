@@ -96,6 +96,7 @@ pub fn preflight(config: &RuntimeApplicationConfig) -> AppResult<()> {
                 .unwrap_or(PortOccupier {
                     pid: None,
                     process_name: None,
+                    executable_path: None,
                 });
             return Err(AppError::PortOccupied {
                 port,
