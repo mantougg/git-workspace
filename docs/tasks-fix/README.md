@@ -21,7 +21,7 @@
 ## 总体进度
 
 - 任务总数：**31**（全部已转为正式任务）
-- 已完成：**26** · 修复中：**2** · 未开始：**2** · 仅讨论：**0**
+- 已完成：**27** · 修复中：**2** · 未开始：**1** · 仅讨论：**0**
 
 ---
 
@@ -54,7 +54,7 @@
 | F-23 | Runtime 总览加「启动方式」列（直接启动 vs 源码启动 ×n） | P1 | ✅ | [F-23-runtime-dashboard-launch-mode.md](./F-23-runtime-dashboard-launch-mode.md) |
 | F-24 | 新建应用切「前端工程」应用永久无响应（RuntimeService 自死锁） | P0 | ✅ | [F-24-wizard-node-unified-project-deadlock.md](./F-24-wizard-node-unified-project-deadlock.md) |
 | F-25 | 端口检测不准确：有端口仍被占用却判定空闲 | P1 | ⬜ | [F-25-port-detection-accuracy.md](./F-25-port-detection-accuracy.md) |
-| F-26 | Node 前端项目启动多端口展示/停止不完整 | P1 | ⬜ | [F-26-node-multi-port-runtime.md](./F-26-node-multi-port-runtime.md) |
+| F-26 | Node 前端项目启动多端口展示/停止不完整 | P1 | ✅ | [F-26-node-multi-port-runtime.md](./F-26-node-multi-port-runtime.md) |
 | F-27 | Node 工具链扫描闪窗且包管理器探测失败 | P1 | ✅ | [F-27-node-toolchain-scan-window.md](./F-27-node-toolchain-scan-window.md) |
 | F-28 | 启动时恢复上次选中的工作区 | P1 | ✅ | [F-28-workspace-restore-last-selection.md](./F-28-workspace-restore-last-selection.md) |
 | F-29 | Runtime 总览脚本确认区默认折叠并提示更新 | P2 | ✅ | [F-29-runtime-script-approvals-collapsed.md](./F-29-runtime-script-approvals-collapsed.md) |

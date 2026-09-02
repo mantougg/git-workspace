@@ -53,7 +53,7 @@ impl BuildOutputSink for BuildLogSink {
 }
 
 /// 检测启动横幅 / 端口（只读日志流，不做端口扫描；端口管理归 R-16）。
-/// Node 没有可靠的 ready banner，只从宽限期内的 localhost URL 采集首个端口。
+/// Node 没有可靠的 ready banner，因此从运行输出中的 localhost URL 逐个收集端口。
 pub(super) fn startup_banner(kind: RuntimeKind, line: &str) -> bool {
     static SPRING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     kind == RuntimeKind::SpringBoot
@@ -63,24 +63,36 @@ pub(super) fn startup_banner(kind: RuntimeKind, line: &str) -> bool {
 }
 
 pub(super) fn startup_port(kind: RuntimeKind, line: &str) -> Option<u16> {
+    startup_ports(kind, line).into_iter().next()
+}
+
+/// 从一行启动输出中提取全部端口。一个 Node dev server 可能同时输出
+/// 应用端口、调试端口或多个本地服务 URL，不能只取首个匹配项。
+pub(super) fn startup_ports(kind: RuntimeKind, line: &str) -> Vec<u16> {
     static SPRING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     static NODE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let regex = match kind {
-        RuntimeKind::SpringBoot => SPRING.get_or_init(|| {
-            regex::Regex::new(r"started on port(?:\(s\))?:?\s+(\d+)").unwrap()
-        }),
+        RuntimeKind::SpringBoot => SPRING
+            .get_or_init(|| regex::Regex::new(r"started on port(?:\(s\))?:?\s+(\d+)").unwrap()),
         RuntimeKind::Node => NODE.get_or_init(|| {
-            regex::Regex::new(
-                r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)",
-            )
-            .unwrap()
+            regex::Regex::new(r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)")
+                .unwrap()
         }),
     };
-    regex
-        .captures(line)
-        .and_then(|captures| captures.get(1))
-        .and_then(|value| value.as_str().parse::<u16>().ok())
-        .filter(|port| *port > 0)
+    let mut ports = Vec::new();
+    for captures in regex.captures_iter(line) {
+        let Some(port) = captures
+            .get(1)
+            .and_then(|value| value.as_str().parse::<u16>().ok())
+            .filter(|port| *port > 0)
+        else {
+            continue;
+        };
+        if !ports.contains(&port) {
+            ports.push(port);
+        }
+    }
+    ports
 }
 
 #[cfg(test)]
@@ -100,7 +112,10 @@ mod tests {
             ),
             Some(8080)
         );
-        assert!(!startup_banner(RuntimeKind::Node, "Started Application in 3.2 seconds"));
+        assert!(!startup_banner(
+            RuntimeKind::Node,
+            "Started Application in 3.2 seconds"
+        ));
     }
 
     #[test]
@@ -117,6 +132,27 @@ mod tests {
             startup_port(RuntimeKind::Node, "Network: http://192.168.1.20:5173/"),
             None
         );
-        assert_eq!(startup_port(RuntimeKind::Node, "compiled successfully"), None);
+        assert_eq!(
+            startup_port(RuntimeKind::Node, "compiled successfully"),
+            None
+        );
+    }
+
+    #[test]
+    fn node_detector_collects_all_localhost_ports_from_one_line() {
+        assert_eq!(
+            startup_ports(
+                RuntimeKind::Node,
+                "Local: http://localhost:5173/ Inspector: http://127.0.0.1:9229/"
+            ),
+            vec![5173, 9229]
+        );
+        assert_eq!(
+            startup_ports(
+                RuntimeKind::Node,
+                "Local: http://localhost:5173/ duplicate: http://localhost:5173/"
+            ),
+            vec![5173]
+        );
     }
 }

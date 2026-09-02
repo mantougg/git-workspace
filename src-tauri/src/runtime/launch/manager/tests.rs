@@ -339,6 +339,10 @@ fn node_start_detects_first_localhost_url_within_grace() {
                 OutputStream::Stdout,
                 "Network: http://192.168.1.20:5173/".into(),
             ),
+            (
+                OutputStream::Stdout,
+                "Inspector: http://127.0.0.1:9229/".into(),
+            ),
         ],
         behavior: FakeBehavior::StayAlive {
             on_terminate: Some(0),
@@ -363,14 +367,14 @@ fn node_start_detects_first_localhost_url_within_grace() {
         )
         .unwrap();
     assert_eq!(info.status, LifecycleStatus::Running);
-    assert_eq!(info.ports, vec![5173]);
+    assert_eq!(info.ports, vec![5173, 9229]);
     assert_eq!(info.run_strategy, Some(RunStrategy::NodeScript));
     assert!(info.command_preview.as_deref().unwrap().contains("npm"));
     manager.stop(info.process_id, None).unwrap();
     assert!(events.collected().iter().any(|event| matches!(
         event,
         RuntimeEvent::Ports { process_id, ports }
-            if *process_id == info.process_id && ports == &vec![5173]
+            if *process_id == info.process_id && ports == &vec![5173, 9229]
     )));
     let _ = std::fs::remove_dir_all(root);
 }

@@ -9,7 +9,7 @@ use crate::runtime::launch::store;
 use crate::runtime::launch::{LifecycleStatus, RuntimeEvent, RuntimeProcessInfo};
 use crate::runtime::logs::LogPhase;
 
-use super::output::{startup_banner, startup_port};
+use super::output::{startup_banner, startup_ports};
 use super::*;
 
 /// adopted（非子进程）监控的轮询间隔。
@@ -26,7 +26,6 @@ impl RuntimeProcessManager {
         mut command: std::process::Command,
         handle: &ActiveProcess,
         kind: crate::runtime::config::RuntimeKind,
-        start_grace: Duration,
     ) {
         let this = Arc::clone(self);
         let handle = handle.clone();
@@ -34,7 +33,6 @@ impl RuntimeProcessManager {
             let log_session = this.deps.logs.session(process_id);
             let mut ports_seen: Vec<u16> = Vec::new();
             let mut running_flagged = false;
-            let monitor_started = Instant::now();
             let result = this.deps.launch_runner.run(
                 &mut command,
                 &handle.force_kill,
@@ -51,25 +49,19 @@ impl RuntimeProcessManager {
                         lock.lock().unwrap().running = true;
                         cv.notify_all();
                     }
-                    let within_grace = monitor_started.elapsed() <= start_grace;
-                    if kind != crate::runtime::config::RuntimeKind::Node || within_grace {
-                        if let Some(port) = startup_port(kind, line) {
-                            if !ports_seen.contains(&port)
-                                && (kind != crate::runtime::config::RuntimeKind::Node
-                                    || ports_seen.is_empty())
-                            {
-                                ports_seen.push(port);
-                                let conn = this.db.lock().unwrap();
-                                if let Err(error) = store::set_ports(&conn, process_id, &ports_seen)
-                                {
-                                    log::warn!("R-10: failed to persist ports: {error}");
-                                } else {
-                                    this.deps.events.emit(RuntimeEvent::Ports {
-                                        process_id,
-                                        ports: ports_seen.clone(),
-                                    });
-                                }
-                            }
+                    for port in startup_ports(kind, line) {
+                        if ports_seen.contains(&port) {
+                            continue;
+                        }
+                        ports_seen.push(port);
+                        let conn = this.db.lock().unwrap();
+                        if let Err(error) = store::set_ports(&conn, process_id, &ports_seen) {
+                            log::warn!("R-10: failed to persist ports: {error}");
+                        } else {
+                            this.deps.events.emit(RuntimeEvent::Ports {
+                                process_id,
+                                ports: ports_seen.clone(),
+                            });
                         }
                     }
                 },

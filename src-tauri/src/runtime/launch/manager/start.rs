@@ -152,7 +152,6 @@ impl RuntimeProcessManager {
             command,
             handle,
             detector_kind,
-            options.start_grace,
         );
 
         // spawn 失败 / 拿到 pid 之前进程就没了 → outcome 先到。
