@@ -497,7 +497,7 @@ onMounted(async () => {
   user-select: none;
 }
 .log-text {
-  color: var(--gw-border);
+  color: var(--gw-text);
 }
 .log-line.lv-error .log-level {
   color: var(--gw-danger);
@@ -517,7 +517,13 @@ onMounted(async () => {
 .log-line.lv-debug .log-level {
   color: var(--gw-text-dim);
 }
+.log-line.lv-debug .log-text {
+  color: var(--gw-text-dim);
+}
 .log-line.lv-trace .log-level {
+  color: var(--gw-text-dim);
+}
+.log-line.lv-trace .log-text {
   color: var(--gw-text-dim);
 }
 .log-line.lv-none .log-level {
