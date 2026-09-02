@@ -10,6 +10,7 @@ pub mod jdk;
 pub mod merge_rebase;
 pub mod operation_log;
 pub mod reflog;
+pub mod remote;
 pub mod stash;
 pub mod spring_boot;
 pub mod git_ops;

@@ -8,6 +8,7 @@ pub mod maven;
 mod models;
 pub mod node;
 pub mod process;
+pub mod remote;
 pub mod runtime;
 mod state;
 pub mod symbols;
@@ -548,6 +549,14 @@ pub fn run() {
             commands::symbols::find_symbol_definitions,
             commands::symbols::find_symbol_references,
             commands::symbols::symbol_call_hierarchy,
+            // Remote platform commands (T-29)
+            commands::remote::detect_remote,
+            commands::remote::remote_open_url,
+            commands::remote::create_pull_request,
+            commands::remote::get_ci_status,
+            commands::remote::resolve_remote_token,
+            commands::remote::save_remote_token,
+            commands::remote::delete_remote_token,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")

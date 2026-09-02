@@ -24,6 +24,27 @@
       <n-button size="small" @click="rebaseDialogVisible = true">
         Rebase
       </n-button>
+      <!-- T-29：远程平台集成（Open Repo/Issues/PR/CI + Create PR） -->
+      <n-dropdown
+        trigger="click"
+        :options="remoteMenuOptions"
+        @select="handleRemoteMenu"
+      >
+        <n-button size="small" :disabled="!remoteInfo">
+          <template #icon><n-icon><GitNetworkOutline /></n-icon></template>
+          {{ remoteInfo ? `远程（${remoteInfo.platform}）` : "远程（未识别）" }}
+        </n-button>
+      </n-dropdown>
+      <n-button
+        size="small"
+        type="primary"
+        ghost
+        :disabled="!remoteInfo"
+        @click="openCreatePr"
+      >
+        <template #icon><n-icon><GitPullRequestOutline /></n-icon></template>
+        Create PR
+      </n-button>
     </div>
 
     <!-- Operation state banners (T-15): resume an interrupted merge/rebase
@@ -217,6 +238,66 @@
         </n-tabs>
       </div>
     </n-modal>
+
+    <!-- T-29：Create Pull Request 对话框（Source/Target/Commits/Files 回填 + AI 描述） -->
+    <n-modal v-model:show="prDialog.show" preset="card" title="Create Pull Request" style="width: 640px">
+      <div class="pr-form">
+        <div class="pr-row">
+          <div class="pr-field">
+            <span class="pr-label">Source 分支</span>
+            <n-select v-model:value="prDialog.source" :options="prBranchOptions" size="small" @update:value="loadPrStats" />
+          </div>
+          <div class="pr-field">
+            <span class="pr-label">Target 分支</span>
+            <n-select v-model:value="prDialog.target" :options="prBranchOptions" size="small" @update:value="loadPrStats" />
+          </div>
+        </div>
+        <div v-if="prDialog.stats" class="pr-stats">
+          {{ prDialog.stats.ahead.length }} 个提交 · {{ prDialog.stats.files.length }} 个文件变更
+          （{{ prDialog.stats.behind.length }} 个落后提交）
+        </div>
+        <div class="pr-field">
+          <span class="pr-label">Title</span>
+          <n-input v-model:value="prDialog.title" size="small" placeholder="PR 标题" />
+        </div>
+        <div class="pr-field">
+          <span class="pr-label">Description</span>
+          <n-input
+            v-model:value="prDialog.body"
+            type="textarea"
+            :rows="8"
+            placeholder="PR 描述（可 AI 生成）"
+          />
+        </div>
+        <div class="pr-actions">
+          <n-button size="small" @click="fillStructuredDescription">生成描述（提交清单）</n-button>
+          <n-button size="small" :loading="prDialog.aiBuilding" @click="aiGenerateDescription">
+            AI 生成
+          </n-button>
+        </div>
+        <n-alert v-if="prDialog.tokenMissing" type="warning" :bordered="false" class="pr-token-alert">
+          未在系统凭据中找到 {{ remoteInfo?.host }} 的 token，匿名创建大概率失败。
+          可在下方填入 token 保存到 OS 凭据库（不落盘明文）。
+          <n-input
+            v-model:value="prDialog.tokenInput"
+            type="password"
+            show-password-on="click"
+            size="small"
+            placeholder="platform token（可选）"
+            style="margin-top: 6px"
+          />
+          <n-button size="tiny" style="margin-top: 6px" @click="saveToken">保存 Token</n-button>
+        </n-alert>
+        <n-alert v-if="prDialog.resultUrl" type="success" :bordered="false" class="pr-token-alert">
+          PR 已创建：{{ prDialog.resultUrl }}
+          <n-button size="tiny" style="margin-left: 8px" @click="openExternal(prDialog.resultUrl)">打开</n-button>
+        </n-alert>
+      </div>
+      <template #footer>
+        <n-button @click="prDialog.show = false">关闭</n-button>
+        <n-button type="primary" :loading="prDialog.submitting" @click="submitPr">创建 PR</n-button>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -225,9 +306,26 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
-import { EllipsisVerticalOutline, AddOutline, RefreshOutline, SwapHorizontalOutline } from "@vicons/ionicons5";
+import { EllipsisVerticalOutline, AddOutline, RefreshOutline, SwapHorizontalOutline, GitNetworkOutline, GitPullRequestOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+import {
+  createPullRequest,
+  detectRemote,
+  getCiStatus,
+  remoteOpenUrl,
+  resolveRemoteToken,
+  saveRemoteToken,
+  type RemoteInfo,
+} from "@/api/remote";
+import {
+  aiApproveRequest,
+  aiBuildContextPreview,
+  aiGetRequestStatus,
+  aiSubmitRequest,
+} from "@/api/ai";
+import type { RequestPhase } from "@/types/ai";
 import { guardRuntimeRunning } from "@/utils/runtimeGuard";
 import {
   checkoutBranch,
@@ -258,6 +356,253 @@ const { resolveCurrentRepo } = useCurrentRepo();
 const dialog = useDialog();
 
 const repoPath = ref("");
+// ── T-29：远程平台集成状态 ───────────────────────────────
+const remoteInfo = ref<RemoteInfo | null>(null);
+const ciStatusText = ref("");
+const prDialog = reactive<{
+  show: boolean;
+  source: string;
+  target: string;
+  title: string;
+  body: string;
+  stats: CompareResult | null;
+  tokenMissing: boolean;
+  tokenInput: string;
+  resultUrl: string;
+  submitting: boolean;
+  aiBuilding: boolean;
+}>({
+  show: false,
+  source: "",
+  target: "",
+  title: "",
+  body: "",
+  stats: null,
+  tokenMissing: false,
+  tokenInput: "",
+  resultUrl: "",
+  submitting: false,
+  aiBuilding: false,
+});
+
+const remoteMenuOptions = [
+  { label: "打开仓库", key: "repo" },
+  { label: "打开 Issues", key: "issues" },
+  { label: "打开 Pull Requests", key: "pulls" },
+  { label: "查看 CI 状态", key: "ci" },
+];
+
+const prBranchOptions = computed(() => {
+  const names: string[] = [];
+  if (overview.value) {
+    names.push(...overview.value.locals.map((b) => b.name));
+    names.push(...overview.value.remotes.map((b) => b.name));
+  }
+  return Array.from(new Set(names)).map((n) => ({ label: n, value: n }));
+});
+
+/** 平台识别：失败静默（无 origin / 无法识别时禁用远程按钮）。 */
+async function detectRemoteSilently() {
+  remoteInfo.value = null;
+  ciStatusText.value = "";
+  try {
+    remoteInfo.value = await detectRemote(repoPath.value);
+  } catch {
+    // 无 origin 或平台不可识别——远程功能禁用即可
+  }
+}
+
+function handleRemoteMenu(key: string) {
+  if (!remoteInfo.value || !repoPath.value) return;
+  if (key === "ci") {
+    void showCiStatus();
+    return;
+  }
+  void remoteOpenUrl(repoPath.value, key)
+    .then((url) => openExternal(url))
+    .catch((e) => message.error("打开远程页面失败: " + errMsg(e)));
+}
+
+async function showCiStatus() {
+  if (!remoteInfo.value) return;
+  const gitRef = overview.value?.current ?? "HEAD";
+  message.loading("查询 CI 状态…");
+  try {
+    const status = await getCiStatus(repoPath.value, gitRef);
+    ciStatusText.value = status.state;
+    message.info(`CI（${gitRef}）：${status.state}${status.url ? " · " + status.url : ""}`);
+    if (status.url) openExternal(status.url);
+  } catch (e) {
+    message.error("CI 状态查询失败: " + errMsg(e));
+  }
+}
+
+async function openCreatePr() {
+  const current = overview.value?.current ?? "";
+  const fallbackTarget = prBranchOptions.value.some((o) => o.value === "main")
+    ? "main"
+    : prBranchOptions.value.some((o) => o.value === "master")
+      ? "master"
+      : (prBranchOptions.value[0]?.value ?? "");
+  prDialog.source = current;
+  prDialog.target = fallbackTarget;
+  prDialog.title = "";
+  prDialog.body = "";
+  prDialog.stats = null;
+  prDialog.resultUrl = "";
+  prDialog.show = true;
+  // 凭据预检（提示但不阻塞——系统 git 凭据助手也可能可用）
+  if (remoteInfo.value) {
+    try {
+      const token = await resolveRemoteToken(remoteInfo.value.platform, remoteInfo.value.host);
+      prDialog.tokenMissing = !token;
+    } catch {
+      prDialog.tokenMissing = true;
+    }
+  }
+  await loadPrStats();
+}
+
+async function loadPrStats() {
+  if (!prDialog.source || !prDialog.target || prDialog.source === prDialog.target) {
+    prDialog.stats = null;
+    return;
+  }
+  try {
+    prDialog.stats = await compareBranches(repoPath.value, prDialog.target, prDialog.source);
+    if (!prDialog.title && prDialog.stats.ahead.length > 0) {
+      prDialog.title = prDialog.stats.ahead[0].message.split("\n")[0] ?? "";
+    }
+  } catch (e) {
+    prDialog.stats = null;
+    message.error("分支比较失败: " + errMsg(e));
+  }
+}
+
+/** 结构化描述：提交清单 + 文件统计（无 AI 时的可编辑底稿）。 */
+function fillStructuredDescription() {
+  const s = prDialog.stats;
+  if (!s) return;
+  const commits = s.ahead
+    .map((c) => `- ${c.oid.slice(0, 7)} ${c.message.split("\n")[0]}`)
+    .join("\n");
+  const files = s.files
+    .slice(0, 50)
+    .map((f) => `- ${f.status} ${f.newPath}`)
+    .join("\n");
+  prDialog.body =
+    `## 变更摘要\n\n${commits || "-（无提交）"}\n\n## 文件（${s.files.length}）\n\n${files}\n`;
+}
+
+/** AI 生成：复用 T-27 上下文预览管线（gitScenario=prDescription）。 */
+async function aiGenerateDescription() {
+  const s = prDialog.stats;
+  if (!s) return;
+  prDialog.aiBuilding = true;
+  try {
+    const preview = await aiBuildContextPreview({
+      taskKind: "commitMessage",
+      gitScenario: "prDescription",
+      providerId: null,
+      modelId: null,
+      workspaceId: null,
+      repoPath: repoPath.value,
+      runtimeName: null,
+      processId: null,
+      project: null,
+      userInstruction:
+        `为从 ${prDialog.target} 到 ${prDialog.source} 的 Pull Request 生成标题与描述。` +
+        `提交清单见补充上下文。`,
+      supplementary: [
+        {
+          role: "history",
+          kind: "log",
+          sourceId: "pr-commits",
+          displayName: `提交（${s.ahead.length}）`,
+          content:
+            s.ahead.map((c) => `${c.oid.slice(0, 7)} ${c.message}`).join("\n") || "（无提交）",
+        },
+        {
+          role: "changeSummary",
+          kind: "diff",
+          sourceId: "pr-files",
+          displayName: `文件（${s.files.length}）`,
+          content: s.files.map((f) => `${f.status} ${f.newPath}`).join("\n") || "（无文件）",
+        },
+      ],
+    });
+    const submitted = await aiSubmitRequest({ ...preview.request, useCache: true });
+    const approved =
+      submitted.phase === "previewRequired" ? await aiApproveRequest(submitted.requestId) : submitted;
+    // 轮询到终态（与 AiGitAssistantDialog 相同节奏）
+    let snapshot = approved;
+    const terminal: RequestPhase[] = ["succeeded", "cancelled", "rejected", "failed"];
+    for (let i = 0; i < 120 && !terminal.includes(snapshot.phase); i++) {
+      await new Promise((r) => setTimeout(r, 350));
+      const next = await aiGetRequestStatus(submitted.requestId);
+      if (!next) break;
+      snapshot = next;
+    }
+    if (snapshot.phase === "succeeded" && snapshot.result?.type === "prDescription") {
+      const payload = snapshot.result.payload;
+      prDialog.title = payload.title;
+      const sections: string[] = [];
+      if (payload.description) sections.push(payload.description);
+      if (payload.summary.length > 0) sections.push("## 摘要\n\n" + payload.summary.map((x) => `- ${x}`).join("\n"));
+      if (payload.testing.length > 0) sections.push("## 测试\n\n" + payload.testing.map((x) => `- ${x}`).join("\n"));
+      if (payload.risks.length > 0) sections.push("## 风险\n\n" + payload.risks.map((x) => `- ${x}`).join("\n"));
+      prDialog.body = sections.join("\n\n");
+      message.success("AI 描述已生成");
+    } else {
+      message.error("AI 请求未完成" + (snapshot.error ? ": " + snapshot.error : ""));
+    }
+  } catch (e) {
+    message.error("AI 生成失败: " + errMsg(e));
+  } finally {
+    prDialog.aiBuilding = false;
+  }
+}
+
+async function saveToken() {
+  if (!remoteInfo.value || !prDialog.tokenInput) return;
+  try {
+    await saveRemoteToken(remoteInfo.value.platform, remoteInfo.value.host, prDialog.tokenInput);
+    prDialog.tokenInput = "";
+    prDialog.tokenMissing = false;
+    message.success("Token 已保存到 OS 凭据库");
+  } catch (e) {
+    message.error("Token 保存失败: " + errMsg(e));
+  }
+}
+
+async function submitPr() {
+  if (!remoteInfo.value) return;
+  if (!prDialog.source || !prDialog.target) {
+    message.warning("请选择 Source / Target 分支");
+    return;
+  }
+  if (!prDialog.title.trim()) {
+    message.warning("请填写 PR 标题");
+    return;
+  }
+  prDialog.submitting = true;
+  try {
+    const result = await createPullRequest({
+      repoPath: repoPath.value,
+      source: prDialog.source,
+      target: prDialog.target,
+      title: prDialog.title.trim(),
+      body: prDialog.body,
+      draft: false,
+    });
+    prDialog.resultUrl = result.url;
+    message.success(`PR #${result.number} 已创建`);
+  } catch (e) {
+    message.error("创建 PR 失败: " + errMsg(e));
+  } finally {
+    prDialog.submitting = false;
+  }
+}
 const overview = ref<BranchOverview | null>(null);
 const loading = ref(false);
 
@@ -375,6 +720,7 @@ async function load() {
   } finally {
     loading.value = false;
   }
+  void detectRemoteSilently();
 }
 
 // F-22：切换仓库后重置视图状态并重载。
@@ -1043,6 +1389,46 @@ async function runCompare() {
 .file-diff {
   flex: 1;
   overflow: hidden;
+}
+
+/* T-29：Create PR 对话框 */
+.pr-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gw-space-3);
+}
+
+.pr-row {
+  display: flex;
+  gap: var(--gw-space-3);
+}
+
+.pr-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pr-label {
+  font-size: 12px;
+  color: var(--gw-text-dim);
+}
+
+.pr-stats {
+  font-size: 12px;
+  color: var(--gw-text-dim);
+  font-family: var(--gw-font-mono);
+}
+
+.pr-actions {
+  display: flex;
+  gap: var(--gw-space-2);
+}
+
+.pr-token-alert {
+  font-size: 12px;
 }
 </style>
 
