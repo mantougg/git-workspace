@@ -137,7 +137,7 @@ fn probe_version(executable: &Path) -> (Option<String>, String, bool) {
 /// 构造 `-v` 探测命令。Windows 下 `.cmd` / `.bat` 经 `cmd /C` 调用
 /// （npm/pnpm/yarn 实体是 `.cmd` shim；§19 同款，`needs_cmd_c` 复用）。
 fn build_probe_command(exe: &Path) -> Command {
-    if cfg!(windows) && needs_cmd_c(exe) {
+    let mut command = if cfg!(windows) && needs_cmd_c(exe) {
         let mut cmd = Command::new("cmd");
         cmd.arg("/C").arg(exe).arg("-v");
         cmd
@@ -145,7 +145,14 @@ fn build_probe_command(exe: &Path) -> Command {
         let mut cmd = Command::new(exe);
         cmd.arg("-v");
         cmd
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW (0x08000000): GUI 扫描不应弹出探测终端。
+        command.creation_flags(0x0800_0000);
     }
+    command
 }
 
 /// 从 `node -v` / `<pm> -v` 输出提取版本串（纯函数）：

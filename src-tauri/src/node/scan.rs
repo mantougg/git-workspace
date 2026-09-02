@@ -15,6 +15,7 @@
 //! - 版本探测复用 `detect.rs::probe_tool`，失败降级「未知版本」不阻断。
 
 use std::collections::HashSet;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use crate::java::detect::find_executable_in_dirs;
@@ -192,8 +193,9 @@ fn dedupe(raw: Vec<RawCandidate>) -> Vec<RawCandidate> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = Vec::new();
     for candidate in raw {
-        let path = std::fs::canonicalize(&candidate.executable_path)
+        let canonical = std::fs::canonicalize(&candidate.executable_path)
             .unwrap_or_else(|_| candidate.executable_path.clone());
+        let path = normalized_candidate_path(&canonical);
         let key = normalize_path_key(&path.to_string_lossy());
         if seen.insert(key) {
             out.push(RawCandidate {
@@ -213,6 +215,29 @@ fn dedupe(raw: Vec<RawCandidate>) -> Vec<RawCandidate> {
             })
     });
     out
+}
+
+// Windows canonical paths can carry a verbatim prefix that cmd.exe cannot
+// consume reliably. Expose the normal Win32 form for probing and IPC.
+fn normalized_candidate_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        return PathBuf::from(strip_windows_verbatim_prefix(&path.to_string_lossy()));
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_path_buf()
+    }
+}
+
+fn strip_windows_verbatim_prefix(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        path.to_string()
+    }
 }
 
 /// 全量扫描：收集 → 去重 → 逐个 `-v` 探测（失败降级「未知版本」）。
@@ -408,7 +433,23 @@ fn scan_roots() -> Vec<ScanRoot> {
             dir: home.join(".yarn").join("bin"),
         });
     }
+    // PATH is the authoritative fallback for shims installed outside the
+    // version-manager layouts above (for example Corepack or a separate bun).
+    roots.extend(path_scan_roots_from(std::env::var_os("PATH")));
     roots
+}
+
+fn path_scan_roots_from(path: Option<OsString>) -> Vec<ScanRoot> {
+    path.map(|value| {
+        std::env::split_paths(&value)
+            .filter(|dir| dir.is_dir())
+            .map(|dir| ScanRoot::BinDir {
+                source: "path",
+                dir,
+            })
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -545,6 +586,43 @@ mod tests {
         );
     }
 
+    #[test]
+    fn strips_windows_verbatim_prefix_without_touching_normal_paths() {
+        assert_eq!(
+            strip_windows_verbatim_prefix(r"\\?\C:\Users\Me\node.exe"),
+            r"C:\Users\Me\node.exe"
+        );
+        assert_eq!(
+            strip_windows_verbatim_prefix(r"\\?\UNC\server\share\node.exe"),
+            r"\\server\share\node.exe"
+        );
+        assert_eq!(
+            strip_windows_verbatim_prefix(r"C:\Users\Me\node.exe"),
+            r"C:\Users\Me\node.exe"
+        );
+    }
+
+    #[test]
+    fn path_directories_are_added_as_scan_roots() {
+        let first = tmp_dir("path-first");
+        let second = tmp_dir("path-second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let joined = std::env::join_paths([first.as_os_str(), second.as_os_str()]).unwrap();
+        let roots = path_scan_roots_from(Some(joined));
+        assert_eq!(roots.len(), 2);
+        assert!(matches!(
+            &roots[0],
+            ScanRoot::BinDir { source: "path", dir } if dir == &first
+        ));
+        assert!(matches!(
+            &roots[1],
+            ScanRoot::BinDir { source: "path", dir } if dir == &second
+        ));
+        let _ = fs::remove_dir_all(&first);
+        let _ = fs::remove_dir_all(&second);
+    }
+
     /// 真实环境冒烟：本机扫描至少命中一个可探测版本的 node（无则 skip）。
     #[test]
     fn scan_finds_node_on_real_machine() {
@@ -562,5 +640,16 @@ mod tests {
             valid_nodes.iter().all(|c| c.version.is_some()),
             "probe_ok candidates must carry a version"
         );
+        let valid_managers: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.kind == NodeExecutableKind::PackageManager && c.probe_ok)
+            .collect();
+        for candidate in &valid_managers {
+            assert!(
+                candidate.version.is_some(),
+                "probe_ok package managers must carry a version: {candidate:?}"
+            );
+        }
+        eprintln!("N-10 valid package-manager candidates: {valid_managers:?}");
     }
 }
