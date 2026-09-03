@@ -2366,7 +2366,7 @@ function viewConflicts() {
 
 .diff-pane-body {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
   padding: 4px 0;
 }
 
