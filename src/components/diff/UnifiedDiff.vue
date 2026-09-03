@@ -232,11 +232,11 @@ function prefix(type: string): string {
 }
 
 .diff-line.add {
-  background: var(--gw-bg-hover);
+  background: color-mix(in srgb, var(--gw-success) 12%, transparent);
 }
 
 .diff-line.delete {
-  background: var(--gw-danger);
+  background: color-mix(in srgb, var(--gw-danger) 12%, transparent);
 }
 
 .diff-line.selectable {
@@ -248,11 +248,11 @@ function prefix(type: string): string {
 }
 
 .diff-line.selected.add {
-  background: color-mix(in srgb, var(--gw-success) 35%, transparent);
+  background: color-mix(in srgb, var(--gw-success) 22%, transparent);
 }
 
 .diff-line.selected.delete {
-  background: var(--gw-danger);
+  background: color-mix(in srgb, var(--gw-danger) 22%, transparent);
 }
 
 .line-num {

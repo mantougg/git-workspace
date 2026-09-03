@@ -274,7 +274,7 @@
       <n-spin :show="store.loading">
         <n-data-table
           :columns="processColumns"
-          :data="sortedProcesses"
+          :data="pagedProcesses"
           size="small"
           :single-line="false"
           :pagination="processPagination"
@@ -376,7 +376,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, h, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NTag, NIcon, NTooltip, NDropdown, useMessage, useDialog, type DropdownOption } from "naive-ui";
 import {
@@ -429,10 +429,26 @@ const configDetail = ref<RuntimeApplicationConfig | null>(null);
 const scheduler = ref<SchedulerConfig>({ maxConcurrentBuilds: 2, maxConcurrentResolves: 4 });
 
 // F-35：Processes 表格分页（默认 5 条/页，最新在前）
-const processPagination = reactive({ page: 1, pageSize: 5, showSizePicker: true, pageSizes: [5, 10, 20] });
+// naive-ui DataTable 内部维护分页状态，用 computed 返回新对象 + onChange
+// 回调双向同步，确保切换页码/每页条数后表格内容即时更新。
+const processPage = ref(1);
+const processPageSize = ref(5);
 const sortedProcesses = computed(() =>
   [...store.processes].sort((a, b) => b.processId - a.processId),
 );
+const pagedProcesses = computed(() => {
+  const start = (processPage.value - 1) * processPageSize.value;
+  return sortedProcesses.value.slice(start, start + processPageSize.value);
+});
+const processPagination = computed(() => ({
+  page: processPage.value,
+  pageSize: processPageSize.value,
+  showSizePicker: true,
+  pageSizes: [5, 10, 20],
+  itemCount: sortedProcesses.value.length,
+  onChange: (page: number) => { processPage.value = page; },
+  onUpdatePageSize: (pageSize: number) => { processPageSize.value = pageSize; processPage.value = 1; },
+}));
 const savingScheduler = ref(false);
 const nodeProjects = ref<NodeProjectNode[]>([]);
 

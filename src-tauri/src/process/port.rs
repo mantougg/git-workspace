@@ -12,6 +12,20 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::process::Command;
 
+/// Windows：GUI 进程 spawn 子进程时抑制终端窗口闪现（AGENTS.md 平台规范）。
+#[cfg(windows)]
+fn hidden_command(program: &str) -> Command {
+    use std::os::windows::process::CommandExt;
+    let mut cmd = Command::new(program);
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    cmd
+}
+
+#[cfg(not(windows))]
+fn hidden_command(program: &str) -> Command {
+    Command::new(program)
+}
+
 /// 占用方信息。跨 IPC 的结构化字段（§80：占用进程 PID / 进程名 / 可执行路径）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -116,7 +130,7 @@ fn executable_path_for_pid(pid: u32) -> Option<String> {
 
 #[cfg(windows)]
 fn detect_windows(port: u16) -> Option<PortOccupier> {
-    let output = Command::new("netstat").arg("-ano").output().ok()?;
+    let output = hidden_command("netstat").arg("-ano").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     let pid = parse_netstat_occupier(&text, port)?;
     let process_name = process_name_windows(pid);
@@ -130,7 +144,7 @@ fn detect_windows(port: u16) -> Option<PortOccupier> {
 
 #[cfg(not(windows))]
 fn detect_unix(port: u16) -> Option<PortOccupier> {
-    let output = Command::new("lsof")
+    let output = hidden_command("lsof")
         .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])
         .output()
         .ok()?;
@@ -151,14 +165,14 @@ fn detect_unix(port: u16) -> Option<PortOccupier> {
 
 #[cfg(windows)]
 fn detect_listening_windows() -> Option<Vec<ListeningPort>> {
-    let output = Command::new("netstat").arg("-ano").output().ok()?;
+    let output = hidden_command("netstat").arg("-ano").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     Some(parse_netstat_listeners(&text))
 }
 
 #[cfg(not(windows))]
 fn detect_listening_unix() -> Option<Vec<ListeningPort>> {
-    let output = Command::new("lsof")
+    let output = hidden_command("lsof")
         .args(["-nP", "-iTCP", "-sTCP:LISTEN"])
         .output()
         .ok()?;
@@ -294,7 +308,7 @@ pub fn parse_lsof_listeners(output: &str) -> Vec<ListeningPort> {
 #[cfg(windows)]
 fn process_name_windows(pid: u32) -> Option<String> {
     let filter = format!("PID eq {pid}");
-    let output = Command::new("tasklist")
+    let output = hidden_command("tasklist")
         .args(["/FI", &filter, "/FO", "CSV", "/NH"])
         .output()
         .ok()?;

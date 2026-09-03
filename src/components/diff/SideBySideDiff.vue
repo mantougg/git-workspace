@@ -136,11 +136,11 @@ const rows = computed<Row[]>(() => {
 }
 
 .diff-cell.delete {
-  background: var(--gw-danger);
+  background: color-mix(in srgb, var(--gw-danger) 12%, transparent);
 }
 
 .diff-cell.add {
-  background: var(--gw-bg-hover);
+  background: color-mix(in srgb, var(--gw-success) 12%, transparent);
 }
 
 .diff-cell.context {

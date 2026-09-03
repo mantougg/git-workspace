@@ -104,7 +104,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import { CheckmarkOutline, EyeOutline } from "@vicons/ionicons5";
 import Panel from "@/components/shell/Panel.vue";
@@ -121,6 +121,17 @@ const { store } = useRuntimeWorkspace();
 
 const selectedApp = ref<string | null>(null);
 const configDetail = ref<RuntimeApplicationConfig | null>(null);
+
+// F-XX：自动选中第一个应用（用户反馈：作用域页面留空体验差）。
+watch(
+  () => store.configs,
+  (configs) => {
+    if (!selectedApp.value && configs.length > 0) {
+      selectedApp.value = configs[0].name;
+    }
+  },
+  { immediate: true },
+);
 const mode = ref<ScopeMode>("auto");
 const checkedIds = ref<Set<number>>(new Set());
 /** Auto 闭包基准（Hybrid 的剔除集合与「全选」参考）。 */
