@@ -15,6 +15,7 @@ import {
   LanguageOutline,
   GlobeOutline,
   CalculatorOutline,
+  CalendarOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -168,6 +169,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["ulid", "nanoid", "uuid", "id", "生成", "随机"],
     icon: markRaw(KeyOutline),
     component: defineAsyncComponent(() => import("./tools/UlidNanoidTool.vue")),
+  },
+  {
+    id: "cron-generator",
+    title: "Cron 表达式生成器",
+    description: "可视化生成 Cron 表达式，预览下次执行时间",
+    category: "时间与生成",
+    keywords: ["cron", "定时", "任务", "表达式", "生成", "调度"],
+    icon: markRaw(CalendarOutline),
+    component: defineAsyncComponent(() => import("./tools/CronGeneratorTool.vue")),
   },
   // ── 速查表 ──
   {
