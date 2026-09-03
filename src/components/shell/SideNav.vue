@@ -23,6 +23,12 @@
       </div>
     </div>
 
+    <!-- F-33：菜单可见性配置入口（折叠按钮上方，不占导航分组） -->
+    <button class="sidenav-collapse-btn" @click="openNavSettings">
+      <n-icon :size="16"><SettingsOutline /></n-icon>
+      <span v-if="!isCollapsed" class="sidenav-collapse-label">菜单配置</span>
+    </button>
+
     <!-- 折叠按钮 -->
     <button class="sidenav-collapse-btn" @click="toggleCollapse">
       <n-icon :size="16">
@@ -31,6 +37,47 @@
       </n-icon>
       <span v-if="!isCollapsed" class="sidenav-collapse-label">折叠</span>
     </button>
+
+    <!-- F-33：菜单可见性设置弹窗（黑名单持久化；命令面板/URL 直达不受影响） -->
+    <n-modal v-model:show="navSettingsShow">
+      <n-card
+        class="nav-settings-card"
+        title="菜单可见性配置"
+        :bordered="false"
+        size="small"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="nav-settings-body">
+          <div v-for="group in allNavGroups" :key="group.label" class="nav-settings-group">
+            <div class="nav-settings-group-head">
+              <span class="nav-settings-group-label">{{ group.label }}</span>
+              <n-button text size="tiny" @click="toggleDraftGroup(group)">
+                {{ isDraftGroupAllVisible(group) ? "全部隐藏" : "全部显示" }}
+              </n-button>
+            </div>
+            <div class="nav-settings-items">
+              <n-checkbox
+                v-for="item in group.items"
+                :key="item.name"
+                :checked="!draftHiddenNav.includes(item.name)"
+                @update:checked="(visible: boolean) => toggleDraftItem(item.name, visible)"
+              >
+                {{ item.title }}
+              </n-checkbox>
+            </div>
+          </div>
+        </div>
+        <template #footer>
+          <div class="nav-settings-footer">
+            <span class="nav-settings-hint">隐藏仅影响侧边栏展示；页面仍可经 URL 与 Ctrl+K 命令面板直达</span>
+            <n-button size="small" @click="resetDraftDefaults">恢复默认</n-button>
+            <n-button size="small" @click="navSettingsShow = false">取消</n-button>
+            <n-button size="small" type="primary" @click="saveNavSettings">保存</n-button>
+          </div>
+        </template>
+      </n-card>
+    </n-modal>
   </nav>
 </template>
 
@@ -63,6 +110,7 @@ import {
   InformationCircleOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
+  SettingsOutline,
 } from "@vicons/ionicons5";
 
 const STORAGE_KEY = "gw-sidenav-collapsed";
@@ -81,6 +129,82 @@ function isActive(routeName: string): boolean {
 function toggleCollapse() {
   isCollapsed.value = !isCollapsed.value;
   localStorage.setItem(STORAGE_KEY, String(isCollapsed.value));
+}
+
+// ------------------------------------------------------------------
+// F-33：菜单可见性（黑名单式持久化——新增菜单默认可见，不被旧配置误伤）
+// ------------------------------------------------------------------
+
+const HIDDEN_NAV_KEY = "gw-sidenav-hidden-nav";
+
+/** 首次使用时的默认隐藏集（用户点名的低频入口）。 */
+const DEFAULT_HIDDEN_NAV = [
+  "symbol-search",
+  "repo-tools",
+  "automation",
+  "reflog-view",
+  "pipeline",
+  "runtime-environments",
+];
+
+function loadHiddenNav(): string[] {
+  const raw = localStorage.getItem(HIDDEN_NAV_KEY);
+  if (raw == null) {
+    localStorage.setItem(HIDDEN_NAV_KEY, JSON.stringify(DEFAULT_HIDDEN_NAV));
+    return [...DEFAULT_HIDDEN_NAV];
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((name): name is string => typeof name === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+const hiddenNav = ref<string[]>(loadHiddenNav());
+
+const navSettingsShow = ref(false);
+/** 弹窗草稿：保存前不生效。 */
+const draftHiddenNav = ref<string[]>([]);
+
+function openNavSettings() {
+  draftHiddenNav.value = [...hiddenNav.value];
+  navSettingsShow.value = true;
+}
+
+function toggleDraftItem(name: string, visible: boolean) {
+  if (visible) {
+    draftHiddenNav.value = draftHiddenNav.value.filter((n) => n !== name);
+  } else if (!draftHiddenNav.value.includes(name)) {
+    draftHiddenNav.value = [...draftHiddenNav.value, name];
+  }
+}
+
+function isDraftGroupAllVisible(group: { items: { name: string }[] }): boolean {
+  return group.items.every((item) => !draftHiddenNav.value.includes(item.name));
+}
+
+function toggleDraftGroup(group: { items: { name: string }[] }) {
+  if (isDraftGroupAllVisible(group)) {
+    draftHiddenNav.value = [
+      ...new Set([...draftHiddenNav.value, ...group.items.map((i) => i.name)]),
+    ];
+  } else {
+    const names = new Set(group.items.map((i) => i.name));
+    draftHiddenNav.value = draftHiddenNav.value.filter((n) => !names.has(n));
+  }
+}
+
+function resetDraftDefaults() {
+  draftHiddenNav.value = [...DEFAULT_HIDDEN_NAV];
+}
+
+function saveNavSettings() {
+  hiddenNav.value = [...draftHiddenNav.value];
+  localStorage.setItem(HIDDEN_NAV_KEY, JSON.stringify(hiddenNav.value));
+  navSettingsShow.value = false;
 }
 
 // 路由 name → 图标映射
@@ -112,8 +236,8 @@ const ICON_MAP: Record<string, any> = {
 // 分组顺序
 const GROUP_ORDER: NavGroup[] = ["工作区", "Git", "Runtime", "设置"];
 
-// 从 router 提取导航条目，按 meta.group 分组
-const navGroups = computed(() => {
+// 从 router 提取导航条目，按 meta.group 分组（全量，弹窗用）
+const allNavGroups = computed(() => {
   const groups = new Map<NavGroup, { name: string; title: string; icon: any }[]>();
 
   for (const r of router.getRoutes()) {
@@ -134,6 +258,16 @@ const navGroups = computed(() => {
     items: groups.get(g)!,
   }));
 });
+
+// F-33：按黑名单过滤展示项（折叠态共用；某组全部隐藏时整组不渲染）
+const navGroups = computed(() =>
+  allNavGroups.value
+    .map((group) => ({
+      label: group.label,
+      items: group.items.filter((item) => !hiddenNav.value.includes(item.name)),
+    }))
+    .filter((group) => group.items.length > 0),
+);
 </script>
 
 <style scoped>
@@ -258,5 +392,49 @@ const navGroups = computed(() => {
 .collapsed .sidenav-collapse-btn {
   justify-content: center;
   padding: 0;
+}
+
+/* F-33 菜单可见性弹窗 */
+.nav-settings-card {
+  width: 420px;
+  max-width: 90vw;
+}
+
+.nav-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gw-space-3);
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.nav-settings-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--gw-space-1);
+}
+
+.nav-settings-group-label {
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+}
+
+.nav-settings-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--gw-space-1) var(--gw-space-3);
+}
+
+.nav-settings-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--gw-space-2);
+}
+
+.nav-settings-hint {
+  flex: 1;
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
 }
 </style>
