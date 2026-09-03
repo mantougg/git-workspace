@@ -55,6 +55,10 @@
             已勾选 {{ selectedRepoCount }} 个仓库 / {{ selectedFileCount }} 个文件
           </span>
           <span class="tree-controls">
+            <n-radio-group v-model:value="treeViewMode" size="small">
+              <n-radio-button value="tree">目录树</n-radio-button>
+              <n-radio-button value="flat">平铺</n-radio-button>
+            </n-radio-group>
             <n-button size="small" @click="expandAll">
               <template #icon><n-icon><ExpandOutline /></n-icon></template>
               展开全部
@@ -89,6 +93,7 @@
               v-if="changes.length > 0"
               ref="changeTreeRef"
               :changes="changes"
+              :view-mode="treeViewMode"
               @selection-change="onTreeSelection"
               @file-dblclick="onFileDblClick"
               @contextmenu="onTreeContextmenu"
@@ -738,7 +743,7 @@ import type {
   WorkspaceStashItemEntry,
   WorkspaceStashSummary,
 } from "@/types/workspaceStash";
-import { getDiff } from "@/api/git";
+import { getDiff, getUnstagedDiff } from "@/api/git";
 import { batchAdd, batchRestore, getWorkspaceChanges, type AddRequest, type RestoreRequest } from "@/api/changes";
 import type { CommitRequest } from "@/types/task";
 import type { RepoChanges } from "@/types/changes";
@@ -775,6 +780,13 @@ const watcherActive = ref(false);
 const searchQuery = ref("");
 const changes = ref<RepoChanges[]>([]);
 const changesLoading = ref(false);
+
+// 树展示模式（localStorage 持久化，默认 tree 目录树模式）。
+const TREE_VIEW_MODE_KEY = "gw-changes-tree-view-mode";
+const treeViewMode = ref<"tree" | "flat">(
+  (localStorage.getItem(TREE_VIEW_MODE_KEY) as "tree" | "flat") ?? "tree",
+);
+watch(treeViewMode, (mode) => localStorage.setItem(TREE_VIEW_MODE_KEY, mode));
 const actionLoading = ref(false);
 const commitPanelOpen = ref(true);
 const commitForm = ref({ message: "", amend: false, thenPush: false });
@@ -1464,10 +1476,18 @@ async function onFileDblClick(node: ChangeNode) {
   if (!node.repoPath || !node.relPath) return;
   diffLoading.value = true;
   try {
-    const files = await getDiff(node.repoPath);
-    const match = files.find(
+    let files = await getDiff(node.repoPath);
+    let match = files.find(
       (f) => f.newPath === node.relPath || f.oldPath === node.relPath,
     );
+    // Untracked files are absent from HEAD-vs-workdir diff; fall back to
+    // index-vs-workdir (getUnstagedDiff) which includes untracked content.
+    if (!match && node.status === "untracked") {
+      files = await getUnstagedDiff(node.repoPath);
+      match = files.find(
+        (f) => f.newPath === node.relPath || f.oldPath === node.relPath,
+      );
+    }
     if (match) {
       selectedDiff.value = {
         repoPath: node.repoPath,

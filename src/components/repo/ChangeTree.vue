@@ -52,6 +52,8 @@ export interface TreeSelection {
 
 const props = defineProps<{
   changes: RepoChanges[];
+  /** 树展示模式："tree" = 按目录层级嵌套（默认）；"flat" = 仓库内文件平铺。 */
+  viewMode?: "tree" | "flat";
 }>();
 
 const emit = defineEmits<{
@@ -62,7 +64,7 @@ const emit = defineEmits<{
 
 const treeRef = ref();
 
-const treeData = computed<ChangeNode[]>(() => buildTree(props.changes));
+const treeData = computed<ChangeNode[]>(() => buildTree(props.changes, props.viewMode ?? "tree"));
 
 const naiveTreeData = computed(() => treeData.value as unknown as TreeOption[]);
 
@@ -119,7 +121,7 @@ function normalizeRel(p: string): string {
  * the dir node carries the repo props (branch / ahead / behind / changeCount)
  * and its children hold both the repo's changed files and its sub-directories.
  */
-function buildTree(changes: RepoChanges[]): ChangeNode[] {
+function buildTree(changes: RepoChanges[], viewMode: "tree" | "flat"): ChangeNode[] {
   const roots: ChangeNode[] = [];
   const dirMap = new Map<string, ChangeNode>();
   const repoByRel = new Map<string, RepoChanges>();
@@ -165,7 +167,11 @@ function buildTree(changes: RepoChanges[]): ChangeNode[] {
 
     // The last segment is this repo's own dir node — build its change-file tree.
     const repoDirNode = dirMap.get(normalizeRel(repo.relativePath))!;
-    buildRepoFileTree(repoDirNode, repo);
+    if (viewMode === "flat") {
+      buildRepoFileTreeFlat(repoDirNode, repo);
+    } else {
+      buildRepoFileTree(repoDirNode, repo);
+    }
   }
 
   sortTree(roots);
@@ -218,6 +224,24 @@ function buildRepoFileTree(repoDirNode: ChangeNode, repo: RepoChanges) {
     parentChildren.push({
       key: `file:${repo.repoPath}:${f.path}`,
       label: parts[parts.length - 1],
+      type: "file",
+      repoPath: repo.repoPath,
+      relPath: f.path,
+      status: f.status,
+    });
+  }
+}
+
+/** Flat mode: add all changed files directly under the repo node (no dir nesting). */
+function buildRepoFileTreeFlat(repoDirNode: ChangeNode, repo: RepoChanges) {
+  for (const f of repo.changes) {
+    // Untracked directory entries ("dir/") are skipped in flat mode — the files
+    // inside them appear individually.
+    if (f.path.endsWith("/")) continue;
+    const displayLabel = f.path.includes("/") ? f.path.split("/").pop()! : f.path;
+    repoDirNode.children!.push({
+      key: `file:${repo.repoPath}:${f.path}`,
+      label: displayLabel,
       type: "file",
       repoPath: repo.repoPath,
       relPath: f.path,
