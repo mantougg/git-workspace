@@ -19,6 +19,7 @@ import {
   InformationCircleOutline,
   DocumentTextOutline,
   ColorPaletteOutline,
+  LogoJavascript,
 } from "@vicons/ionicons5";
 
 /**
@@ -218,6 +219,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["css", "属性", "速查", "cheatsheet", "样式", "布局", "flex", "grid"],
     icon: markRaw(ColorPaletteOutline),
     component: defineAsyncComponent(() => import("./tools/CssCheatSheetTool.vue")),
+  },
+  {
+    id: "js-cheatsheet",
+    title: "JavaScript 速查表",
+    description: "常用 JS 方法和 ES6+ 语法速查，支持搜索和分类",
+    category: "速查表",
+    keywords: ["javascript", "js", "方法", "速查", "cheatsheet", "es6", "数组", "字符串"],
+    icon: markRaw(LogoJavascript),
+    component: defineAsyncComponent(() => import("./tools/JsCheatSheetTool.vue")),
   },
   // ── 计算器 ──
   {
