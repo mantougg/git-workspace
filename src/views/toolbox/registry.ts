@@ -22,6 +22,7 @@ import {
   LogoJavascript,
   TerminalOutline,
   SearchOutline,
+  StatsChartOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -156,6 +157,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["regex", "正则", "表达式", "匹配", "测试", "pattern"],
     icon: markRaw(TextOutline),
     component: defineAsyncComponent(() => import("./tools/RegexTesterTool.vue")),
+  },
+  {
+    id: "text-stats",
+    title: "文本统计分析",
+    description: "统计文本的字符数、单词数、行数、段落数，分析可读性和词频",
+    category: "格式转换",
+    keywords: ["text", "文本", "统计", "分析", "字符", "单词", "词频"],
+    icon: markRaw(StatsChartOutline),
+    component: defineAsyncComponent(() => import("./tools/TextStatsTool.vue")),
   },
   // ── 时间与生成 ──
   {
