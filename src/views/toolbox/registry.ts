@@ -20,6 +20,7 @@ import {
   DocumentTextOutline,
   ColorPaletteOutline,
   LogoJavascript,
+  TerminalOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -228,6 +229,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["javascript", "js", "方法", "速查", "cheatsheet", "es6", "数组", "字符串"],
     icon: markRaw(LogoJavascript),
     component: defineAsyncComponent(() => import("./tools/JsCheatSheetTool.vue")),
+  },
+  {
+    id: "linux-cheatsheet",
+    title: "Linux 命令速查表",
+    description: "常用 Linux 命令速查，支持搜索和分类，包含组合命令示例",
+    category: "速查表",
+    keywords: ["linux", "命令", "速查", "cheatsheet", "bash", "shell", "终端"],
+    icon: markRaw(TerminalOutline),
+    component: defineAsyncComponent(() => import("./tools/LinuxCheatSheetTool.vue")),
   },
   // ── 计算器 ──
   {
