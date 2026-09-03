@@ -25,6 +25,7 @@ import {
   StatsChartOutline,
   ServerOutline,
   EyeOutline,
+  CreateOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -168,6 +169,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["text", "文本", "统计", "分析", "字符", "单词", "词频"],
     icon: markRaw(StatsChartOutline),
     component: defineAsyncComponent(() => import("./tools/TextStatsTool.vue")),
+  },
+  {
+    id: "ascii-art",
+    title: "ASCII 艺术生成器",
+    description: "将文本转换为 ASCII 艺术字，包含常用 ASCII 图案",
+    category: "格式转换",
+    keywords: ["ascii", "艺术", "生成", "图案", "文本", "转换"],
+    icon: markRaw(CreateOutline),
+    component: defineAsyncComponent(() => import("./tools/AsciiArtTool.vue")),
   },
   // ── 时间与生成 ──
   {
