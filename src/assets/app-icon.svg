@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="100%" height="100%">
+  <defs>
+    <!-- Facet 1 (Left descent light facet) -->
+    <linearGradient id="facetGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF6F4E" />
+      <stop offset="100%" stop-color="#F05133" />
+    </linearGradient>
+    <!-- Facet 2 (Left-center ascent shadow facet) -->
+    <linearGradient id="facetGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E23E1E" />
+      <stop offset="100%" stop-color="#B9250B" />
+    </linearGradient>
+    <!-- Facet 3 (Right-center descent light facet) -->
+    <linearGradient id="facetGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7A5C" />
+      <stop offset="100%" stop-color="#F05133" />
+    </linearGradient>
+    <!-- Facet 4 (Right ascent shadow facet) -->
+    <linearGradient id="facetGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#DE3B1E" />
+      <stop offset="100%" stop-color="#A51E07" />
+    </linearGradient>
+
+    <!-- Enhanced Luminous Warm-Tinted Frosted Acrylic Panels -->
+    <!-- Rear Panel 1: Warm Champagne & Coral Mist Tint (Depth 3) -->
+    <linearGradient id="origamiGlass1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.94" />
+      <stop offset="35%" stop-color="#FFE7DF" stop-opacity="0.86" />
+      <stop offset="70%" stop-color="#FED5CA" stop-opacity="0.74" />
+      <stop offset="100%" stop-color="#CBD5E1" stop-opacity="0.58" />
+    </linearGradient>
+
+    <!-- Middle Panel 2: Intermediate Translucent Frosted Peach-Pearl (Depth 2) -->
+    <linearGradient id="origamiGlass2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.96" />
+      <stop offset="40%" stop-color="#FFF0EB" stop-opacity="0.90" />
+      <stop offset="75%" stop-color="#FCE6DF" stop-opacity="0.78" />
+      <stop offset="100%" stop-color="#E2E8F0" stop-opacity="0.66" />
+    </linearGradient>
+
+    <!-- Forefront Panel 3: Active Workspace Frosted Glass with Luminous Top (Depth 1) -->
+    <linearGradient id="origamiGlass3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.99" />
+      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0.95" />
+      <stop offset="80%" stop-color="#FFF5F2" stop-opacity="0.90" />
+      <stop offset="100%" stop-color="#F1F5F9" stop-opacity="0.82" />
+    </linearGradient>
+
+    <!-- Chromatic Refraction Specular Hairline Borders -->
+    <linearGradient id="origamiBorder1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.98" />
+      <stop offset="30%" stop-color="#FFA38E" stop-opacity="0.88" />
+      <stop offset="70%" stop-color="#CBD5E1" stop-opacity="0.78" />
+      <stop offset="100%" stop-color="#94A3B8" stop-opacity="0.62" />
+    </linearGradient>
+    <linearGradient id="origamiBorder2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.98" />
+      <stop offset="30%" stop-color="#FFB5A3" stop-opacity="0.88" />
+      <stop offset="70%" stop-color="#CBD5E1" stop-opacity="0.82" />
+      <stop offset="100%" stop-color="#94A3B8" stop-opacity="0.68" />
+    </linearGradient>
+    <linearGradient id="origamiBorder3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F05133" stop-opacity="0.95" />
+      <stop offset="25%" stop-color="#FFFFFF" stop-opacity="0.98" />
+      <stop offset="70%" stop-color="#CBD5E1" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#94A3B8" stop-opacity="0.70" />
+    </linearGradient>
+
+    <!-- Frosted Glass Specular Sheen Ribbon Overlay -->
+    <linearGradient id="glassGlossSheen" x1="0%" y1="0%" x2="100%" y2="60%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.45" />
+      <stop offset="25%" stop-color="#FFFFFF" stop-opacity="0.20" />
+      <stop offset="60%" stop-color="#FFECE6" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+
+    <filter id="origamiShadow1" x="-20%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="-2" dy="6" stdDeviation="8" flood-color="#0F172A" flood-opacity="0.10" />
+      <feDropShadow dx="-6" dy="16" stdDeviation="16" flood-color="#0F172A" flood-opacity="0.14" />
+    </filter>
+    <filter id="origamiShadow2" x="-20%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="-3" dy="8" stdDeviation="10" flood-color="#0F172A" flood-opacity="0.12" />
+      <feDropShadow dx="-8" dy="22" stdDeviation="22" flood-color="#0F172A" flood-opacity="0.16" />
+    </filter>
+    <filter id="origamiShadow3" x="-20%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="-4" dy="10" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.14" />
+      <feDropShadow dx="-10" dy="28" stdDeviation="28" flood-color="#0F172A" flood-opacity="0.20" />
+    </filter>
+
+    <filter id="origamiShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#DE3B1E" flood-opacity="0.35" />
+      <feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#0F172A" flood-opacity="0.20" />
+    </filter>
+  </defs>
+
+  <!-- 3 Staggered Panels with Warm-Tinted Frosted Glass Sheen -->
+  <g filter="url(#origamiShadow1)">
+    <rect x="110" y="110" width="660" height="660" rx="60" fill="url(#origamiGlass1)" stroke="url(#origamiBorder1)" stroke-width="2.5" />
+    <!-- Glass Specular Gloss Sheen -->
+    <path d="M 110 170 C 110 136.86 136.86 110 170 110 L 520 110 L 110 520 Z" fill="url(#glassGlossSheen)" />
+    <line x1="150" y1="155" x2="245" y2="155" stroke="#F05133" stroke-opacity="0.60" stroke-width="2.5" stroke-linecap="round" />
+  </g>
+  <g filter="url(#origamiShadow2)">
+    <rect x="182" y="178" width="660" height="660" rx="60" fill="url(#origamiGlass2)" stroke="url(#origamiBorder2)" stroke-width="3" />
+    <path d="M 182 238 C 182 204.86 208.86 178 242 178 L 592 178 L 182 588 Z" fill="url(#glassGlossSheen)" />
+    <line x1="225" y1="225" x2="330" y2="225" stroke="#64748B" stroke-opacity="0.60" stroke-width="2.5" stroke-linecap="round" />
+  </g>
+  <g filter="url(#origamiShadow3)">
+    <rect x="254" y="246" width="660" height="660" rx="60" fill="url(#origamiGlass3)" stroke="url(#origamiBorder3)" stroke-width="3.5" />
+    <path d="M 254 306 C 254 272.86 280.86 246 314 246 L 664 246 L 254 656 Z" fill="url(#glassGlossSheen)" />
+    <circle cx="310" cy="305" r="6.5" fill="#F05133" fill-opacity="0.95" />
+    <circle cx="335" cy="305" r="6.5" fill="#F59E0B" fill-opacity="0.85" />
+    <circle cx="360" cy="305" r="6.5" fill="#10B981" fill-opacity="0.85" />
+    <line x1="395" y1="305" x2="530" y2="305" stroke="#64748B" stroke-opacity="0.55" stroke-width="2.5" stroke-linecap="round" />
+  </g>
+
+  <!-- ORIGAMI FACETED 'W' -->
+  <g filter="url(#origamiShadow)">
+    <!-- Segment 1: Left Down Stroke -->
+    <path d="M 330 400 L 400 395 L 495 730 L 440 765 Z" fill="url(#facetGrad1)" />
+    <!-- Segment 2: Left-Center Up Stroke -->
+    <path d="M 440 765 L 495 730 L 590 480 L 545 465 Z" fill="url(#facetGrad2)" />
+    <!-- Segment 3: Right-Center Down Stroke -->
+    <path d="M 545 465 L 590 480 L 685 730 L 630 765 Z" fill="url(#facetGrad3)" />
+    <!-- Segment 4: Right Up Stroke -->
+    <path d="M 630 765 L 685 730 L 835 395 L 775 400 Z" fill="url(#facetGrad4)" />
+    
+    <!-- Precise Geometric Bevel Lines -->
+    <line x1="440" y1="765" x2="495" y2="730" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="2" />
+    <line x1="545" y1="465" x2="590" y2="480" stroke="#FFFFFF" stroke-opacity="0.8" stroke-width="2" />
+    <line x1="630" y1="765" x2="685" y2="730" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="2" />
+  </g>
+</svg>
