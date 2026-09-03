@@ -114,7 +114,7 @@ impl super::GitOps {
             (Some(name), Some(email)) => Some(git2::Signature::now(name, email)?),
             _ => None,
         };
-        let default_sig = repo.signature()?;
+        let default_sig = crate::core::signature_or_default(&repo)?;
 
         // 5. Amend or create.
         let oid = if opts.amend {

@@ -300,7 +300,7 @@ fn run_remaining(repo_path: &Path) -> AppResult<RebaseOutcome> {
 /// parent". The branch ref is moved explicitly afterwards (works for
 /// detached HEAD too).
 fn commit_op(repo: &git2::Repository, state: &RebaseState, op: &RebaseOp, tree: &git2::Tree) -> AppResult<String> {
-    let sig = repo.signature()?;
+    let sig = crate::core::signature_or_default(&repo)?;
     let orig = repo.find_commit(git2::Oid::from_str(&op.oid)?)?;
     let prev_commit = repo.find_commit(git2::Oid::from_str(&state.prev_commit)?)?;
 

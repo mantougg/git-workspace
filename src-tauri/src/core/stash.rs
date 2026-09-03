@@ -27,7 +27,7 @@ pub struct StashEntry {
 /// untracked files are stashed too. Returns the stash commit oid.
 pub fn stash_save(repo_path: &Path, message: Option<&str>, include_untracked: bool) -> AppResult<String> {
     let mut repo = git2::Repository::open(repo_path)?;
-    let sig = repo.signature()?;
+    let sig = crate::core::signature_or_default(&repo)?;
     let flags = if include_untracked {
         git2::StashFlags::INCLUDE_UNTRACKED
     } else {

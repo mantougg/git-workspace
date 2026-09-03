@@ -48,13 +48,23 @@ impl BuildOutputSink for BuildLogSink {
 }
 
 /// 检测启动横幅 / 端口（只读日志流，不做端口扫描；端口管理归 R-16）。
-/// Node 没有可靠的 ready banner，因此从运行输出中的 localhost URL 逐个收集端口。
+/// Node 横幅 / 端口检测：从运行输出中检测 dev server 就绪横幅与 localhost URL 端口。
 pub(super) fn startup_banner(kind: RuntimeKind, line: &str) -> bool {
     static SPRING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    kind == RuntimeKind::SpringBoot
-        && SPRING
+    static NODE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    match kind {
+        RuntimeKind::SpringBoot => SPRING
             .get_or_init(|| regex::Regex::new(r"Started \S+ in [\d.]+ seconds").unwrap())
-            .is_match(line)
+            .is_match(line),
+        // Node dev servers: vite prints "VITE vX.x  ready", webpack prints
+        // "compiled successfully", Next prints "Ready in"; match broadly so
+        // the process is flagged Running as soon as the dev server is ready.
+        RuntimeKind::Node => NODE
+            .get_or_init(|| {
+                regex::Regex::new(r"(?i)(?:VITE\b.*ready|ready in \d|compiled successfully|listening on)").unwrap()
+            })
+            .is_match(line),
+    }
 }
 
 #[allow(dead_code)]
@@ -106,6 +116,14 @@ mod tests {
             Some(8080)
         );
         assert!(!startup_banner(RuntimeKind::Node, "Started Application in 3.2 seconds"));
+    }
+
+    #[test]
+    fn node_startup_banner_detects_dev_server_ready() {
+        assert!(startup_banner(RuntimeKind::Node, "  VITE v5.4.10  ready in 456 ms"));
+        assert!(startup_banner(RuntimeKind::Node, "Ready in 1.2s"));
+        assert!(startup_banner(RuntimeKind::Node, "compiled successfully"));
+        assert!(!startup_banner(RuntimeKind::Node, "Installing dependencies..."));
     }
 
     #[test]

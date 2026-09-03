@@ -91,7 +91,7 @@ pub fn merge(repo_path: &Path, branch: &str, mode: &str) -> AppResult<MergeOutco
         return Ok(MergeOutcome::Squashed);
     }
 
-    let sig = repo.signature()?;
+    let sig = crate::core::signature_or_default(&repo)?;
     let head_commit = repo.head()?.peel_to_commit()?;
     let message = format!("Merge branch '{}'", branch);
     let oid = repo.commit(
@@ -132,7 +132,7 @@ pub fn merge_continue(repo_path: &Path, message: Option<&str>) -> AppResult<Stri
 
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
-    let sig = repo.signature()?;
+    let sig = crate::core::signature_or_default(&repo)?;
     let head_commit = repo.head()?.peel_to_commit()?;
     let merge_commit = repo.find_commit(merge_head_oid)?;
 

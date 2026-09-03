@@ -54,6 +54,14 @@ impl RuntimeProcessManager {
                             continue;
                         }
                         ports_seen.push(port);
+                        // Node: a detected localhost URL is a reliable
+                        // readiness signal — flag Running immediately.
+                        if !running_flagged && kind == RuntimeKind::Node {
+                            running_flagged = true;
+                            let (lock, cv) = &*handle.progress;
+                            lock.lock().unwrap().running = true;
+                            cv.notify_all();
+                        }
                         let conn = this.db.lock().unwrap();
                         if let Err(error) = store::set_ports(&conn, process_id, &ports_seen) {
                             log::warn!("R-10: failed to persist ports: {error}");

@@ -73,7 +73,7 @@ pub fn cherry_pick(repo_path: &Path, oids: &[String]) -> AppResult<PickOutcome> 
         // No conflicts: commit immediately, mirroring `git cherry-pick`.
         let tree_oid = index.write_tree()?;
         let tree = repo.find_tree(tree_oid)?;
-        let sig = repo.signature()?;
+        let sig = crate::core::signature_or_default(&repo)?;
         let parent = repo.head()?.peel_to_commit()?;
         repo.commit(
             Some("HEAD"),
@@ -112,7 +112,7 @@ pub fn revert(repo_path: &Path, oid_str: &str) -> AppResult<PickOutcome> {
 
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
-    let sig = repo.signature()?;
+    let sig = crate::core::signature_or_default(&repo)?;
     let parent = repo.head()?.peel_to_commit()?;
     let message = format!(
         "Revert \"{}\"\n\nThis reverts commit {}.\n",
@@ -204,7 +204,7 @@ pub fn pick_continue(repo_path: &Path) -> AppResult<String> {
 
     let tree_oid = index.write_tree()?;
     let tree = repo.find_tree(tree_oid)?;
-    let sig = repo.signature()?;
+    let sig = crate::core::signature_or_default(&repo)?;
     let parent = repo.head()?.peel_to_commit()?;
     let default_msg = std::fs::read_to_string(repo.path().join("MERGE_MSG"))
         .ok()
