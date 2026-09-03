@@ -16,6 +16,7 @@ import {
   GlobeOutline,
   CalculatorOutline,
   CalendarOutline,
+  InformationCircleOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -207,5 +208,14 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["chmod", "权限", "755", "rwx", "linux", "octal"],
     icon: markRaw(LockClosedOutline),
     component: defineAsyncComponent(() => import("./tools/ChmodTool.vue")),
+  },
+  {
+    id: "system-info",
+    title: "系统信息",
+    description: "查看浏览器、操作系统、硬件、网络等系统信息",
+    category: "计算器",
+    keywords: ["system", "系统", "信息", "浏览器", "硬件", "网络", "os"],
+    icon: markRaw(InformationCircleOutline),
+    component: defineAsyncComponent(() => import("./tools/SystemInfoTool.vue")),
   },
 ];
