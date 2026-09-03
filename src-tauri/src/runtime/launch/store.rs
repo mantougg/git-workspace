@@ -24,6 +24,8 @@ pub struct RuntimeProcessRow {
     pub command_preview: Option<String>,
     pub working_dir: Option<String>,
     pub ports: Vec<u16>,
+    /// F-34 端口归属确权：端口 → 树内监听 PID（仅含确认为本进程树监听的端口）。
+    pub port_pids: std::collections::BTreeMap<u16, u32>,
     pub exit_code: Option<i32>,
     pub cpu_percent: Option<f32>,
     pub memory_bytes: Option<u64>,
@@ -36,7 +38,8 @@ pub struct RuntimeProcessRow {
 
 const COLUMNS: &str = "id, workspace_id, runtime_name, pid, pid_start_time, status,
      run_strategy, command_preview, working_dir, ports_json, exit_code,
-     cpu_percent, memory_bytes, adopted, started_at, stopped_at, last_seen_at, updated_at";
+     cpu_percent, memory_bytes, adopted, started_at, stopped_at, last_seen_at, updated_at,
+     port_pids_json";
 
 fn now() -> String {
     Utc::now().to_rfc3339()
@@ -136,6 +139,25 @@ pub fn set_ports(conn: &Connection, id: i64, ports: &[u16]) -> AppResult<()> {
     Ok(())
 }
 
+/// F-34 端口归属确权结果整体覆盖：`port_pids` 是「端口 → 树内监听 PID」
+/// 的最终事实，`ports_json` 同步收敛到确权集合（误收端口被剔除）。
+pub fn set_port_attribution(
+    conn: &Connection,
+    id: i64,
+    port_pids: &std::collections::BTreeMap<u16, u32>,
+) -> AppResult<()> {
+    let confirmed: Vec<u16> = port_pids.keys().copied().collect();
+    let pids_json = serde_json::to_string(port_pids)?;
+    let ports_json = serde_json::to_string(&confirmed)?;
+    conn.execute(
+        "UPDATE runtime_processes
+         SET ports_json = ?2, port_pids_json = ?3, updated_at = ?4
+         WHERE id = ?1",
+        params![id, ports_json, pids_json, now()],
+    )?;
+    Ok(())
+}
+
 /// 标记该行为「重启后接管的孤儿进程」。
 pub fn set_adopted(conn: &Connection, id: i64) -> AppResult<()> {
     conn.execute(
@@ -215,6 +237,13 @@ pub fn row_to_info(row: &RuntimeProcessRow) -> RuntimeProcessInfo {
         command_preview: row.command_preview.clone(),
         working_dir: row.working_dir.clone(),
         ports: row.ports.clone(),
+        port_pids: row.port_pids.clone(),
+        pids: {
+            let mut pids: Vec<u32> = row.port_pids.values().copied().collect();
+            pids.sort_unstable();
+            pids.dedup();
+            pids
+        },
         exit_code: row.exit_code,
         adopted: row.adopted,
         started_at: row.started_at.clone(),
@@ -248,6 +277,10 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RuntimeProcessRow> {
         command_preview: row.get(7)?,
         working_dir: row.get(8)?,
         ports: serde_json::from_str(&ports_json).unwrap_or_default(),
+        port_pids: row
+            .get::<_, Option<String>>(18)?
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default(),
         exit_code: row.get(10)?,
         cpu_percent: row.get(11)?,
         memory_bytes: row.get::<_, Option<i64>>(12)?.map(|m| m as u64),

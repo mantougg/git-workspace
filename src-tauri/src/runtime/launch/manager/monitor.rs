@@ -31,50 +31,58 @@ impl RuntimeProcessManager {
         let this = Arc::clone(self);
         let handle = handle.clone();
         std::thread::spawn(move || {
-            let log_session = this.deps.logs.session(process_id);
-            let mut ports_seen: Vec<u16> = Vec::new();
-            let mut running_flagged = false;
-            let result = this.deps.launch_runner.run(
-                &mut command,
-                &handle.force_kill,
-                &handle.pid_slot,
-                &mut |stream: OutputStream, line: &str| {
-                    // R-11：原始行进日志会话（脱敏在会话内部、落盘前完成）；
-                    // 横幅/端口探测保持在原始行上进行，行为与 R-10 一致。
-                    if let Some(session) = &log_session {
-                        session.log(LogPhase::Run, stream, line);
-                    }
-                    if !running_flagged && startup_banner(kind, line) {
-                        running_flagged = true;
-                        let (lock, cv) = &*handle.progress;
-                        lock.lock().unwrap().running = true;
-                        cv.notify_all();
-                    }
-                    for port in startup_ports(kind, line) {
-                        if ports_seen.contains(&port) {
-                            continue;
-                        }
-                        ports_seen.push(port);
-                        // Node: a detected localhost URL is a reliable
-                        // readiness signal — flag Running immediately.
-                        if !running_flagged && kind == RuntimeKind::Node {
+        let log_session = this.deps.logs.session(process_id);
+        // F-34 端口归属确权：日志正则输出的端口只是候选，attribution 线程
+        // 用 OS 监听表验证哪些端口真正被进程树监听（后端端口被剔除）。
+        let attribution = super::ports::PortAttribution::spawn(
+            Arc::clone(&this),
+            process_id,
+            runtime_name.clone(),
+            handle.clone(),
+        );
+        let mut running_flagged = false;
+        let result = this.deps.launch_runner.run(
+            &mut command,
+            &handle.force_kill,
+            &handle.pid_slot,
+            &mut |stream: OutputStream, line: &str| {
+                // R-11：原始行进日志会话（脱敏在会话内部、落盘前完成）；
+                // 横幅/端口探测保持在原始行上进行，行为与 R-10 一致。
+                if let Some(session) = &log_session {
+                    session.log(LogPhase::Run, stream, line);
+                }
+                if !running_flagged && startup_banner(kind, line) {
+                    running_flagged = true;
+                    let (lock, cv) = &*handle.progress;
+                    lock.lock().unwrap().running = true;
+                    cv.notify_all();
+                }
+                // F-34：候选端口交给 attribution（首次出现时立即持久化 + 发
+                // Ports 事件，确权后由 attribution 线程发更正事件）。
+                for port in startup_ports(kind, line) {
+                    if let Some((ports, is_new)) = attribution.on_port_detected(port) {
+                        // Node: 检测到 localhost URL 是可靠的就绪信号。
+                        if is_new && !running_flagged && kind == RuntimeKind::Node {
                             running_flagged = true;
                             let (lock, cv) = &*handle.progress;
                             lock.lock().unwrap().running = true;
                             cv.notify_all();
                         }
                         let conn = this.db.lock().unwrap();
-                        if let Err(error) = store::set_ports(&conn, process_id, &ports_seen) {
-                            log::warn!("R-10: failed to persist ports: {error}");
+                        if let Err(e) = store::set_ports(&conn, process_id, &ports) {
+                            log::warn!("R-10: failed to persist ports: {e}");
                         } else {
                             this.deps.events.emit(RuntimeEvent::Ports {
                                 process_id,
-                                ports: ports_seen.clone(),
+                                ports,
                             });
                         }
                     }
-                },
-            );
+                }
+            },
+        );
+        // 通知 attribution 线程停止（线程退出前会做最终 flush）。
+        attribution.stop();
             // 先收口日志会话（worker drain + 完整落盘），再发布终态——
             // 终态可观测时日志已可完整回查（R-11 验收标准）。
             this.deps.logs.finish_session(process_id);

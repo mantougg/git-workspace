@@ -426,6 +426,8 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             command_preview: Some("java -cp ... com.example.Application".into()),
             working_dir: Some("/ws/repo/app".into()),
             ports: vec![8080],
+            port_pids: std::collections::BTreeMap::from([(8080u16, 4242u32)]),
+            pids: vec![4242],
             exit_code: None,
             adopted: false,
             started_at: "2026-08-25T00:00:00Z".into(),

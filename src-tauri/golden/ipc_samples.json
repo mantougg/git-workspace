@@ -2314,6 +2314,12 @@
     "exitCode": null,
     "memoryBytes": 268435456,
     "pid": 4242,
+    "pids": [
+      4242
+    ],
+    "portPids": {
+      "8080": 4242
+    },
     "ports": [
       8080
     ],

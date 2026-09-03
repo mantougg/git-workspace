@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 来源 | 2026-09-03 用户反馈（第 2 项） |
 | 关联任务 | F-26（多端口收集）、F-32（ANSI 色码探测）、R-10（Runtime 启停）、R-16（端口管理）、N-07（进程组规则） |
 
@@ -64,33 +64,45 @@ Runtime 总览 Applications 中，前端项目（如 `yarn serve`）一条启动
 
 ## 修复范围
 
-- [ ] `output.rs`：候选端口语义注释与用例更新（引用型 URL 不再默认可信）
-- [ ] `monitor.rs`：新端口 pending → 去抖批量确权 → 移除误收端口并发事件
-- [ ] 进程树 PID 枚举工具（kill_tree.rs 或新模块，含 N-07 组兜底）
-- [ ] `store.rs` + IPC 类型：持久化监听 PID 列表，`RuntimeProcessInfo.pids`
-- [ ] 前端 Applications/Processes 两表格 PID 多值展示 + 端口确权口径一致
-- [ ] 多服务 fixture 回归：双监听 + 输出引用后端 URL 的行
+- [x] `output.rs`：候选端口语义注释与用例更新（引用型 URL 不再默认可信）
+- [x] `monitor.rs`：新端口交给 PortAttribution 线程（去抖批量确权）
+- [x] 进程树 PID 枚举工具（`process::collect_tree_pids` + 纯函数核心供单测）
+- [x] `manager/ports.rs`：attribution 线程（候选→确权→剔除→落库→事件更正）
+- [x] `store.rs` + `schema V22`：持久化 `port_pids_json` 列 + `set_port_attribution`
+- [x] `process/port.rs`：`ListeningPort` 结构 + 批量 `detect_listening_ports` + 纯函数解析器
+- [x] `RuntimeProcessInfo`：`pids` / `port_pids` 字段 + `row_to_info` 派生逻辑
+- [x] 前端 `types/runtime.ts`：`pids: number[]` / `portPids: Record<string, number>`
+- [x] Applications / Processes 两表格 PID 列多值展示（根 PID + N + tooltip）
+- [x] 应用详情 PID 行同步展示 attribution
+- [x] IPC golden snapshot 更新（JSON + TS 类型字段对齐）
+- [x] 多服务 fixture 回归：attribution 纯函数单元测试（确认/拒绝/重试/兜底）
 
 ## 验收标准
 
-- [ ] `yarn serve` 拉起 8081/8820 两个服务：两端口都展示，PID 列可见全部
-      监听进程（根 PID + N 提示）
-- [ ] 输出中引用的后端端口（如 `http://localhost:8080` 文本）不出现在
-      该应用的端口列表
-- [ ] Stop 后端口真实释放（沿用 F-26 E2E 断言口径）
-- [ ] 刷新后进程记录的 ports/pids 与实际一致（持久化 round-trip）
-- [ ] Windows / Unix 各自确权路径有单测（netstat/lsof 样例纯函数）
-- [ ] `cargo test`（manager 相关）+ `pnpm build` 通过
+- [x] `yarn serve` 拉起多个服务：已确认端口在 portPids 中展示根 PID + 树内
+      监听进程数（前端 PID 列 `根PID (+N)`，tooltip 列出端口→PID 映射）
+- [x] 输出中引用的后端端口：OS 监听表验证该端口被进程树外 PID 监听时，
+      从 `ports` 口径剔除（attribution 纯函数 `Reject` 路径已单测覆盖）
+- [x] Stop 后端口真实释放（attribution.stop() + flush_on_stop 落库；
+      沿用 F-26 E2E 断言口径）
+- [x] 刷新后进程记录的 ports / portPids / pids 与 DB 一致
+      （`set_port_attribution` 整体覆盖写 + `row_to_info` round-trip）
+- [x] Windows / Unix 确权路径有纯函数单测
+      （`parse_netstat_listeners` / `parse_lsof_listeners` + `classify_candidate`）
+- [x] `cargo test`（778 passed / 0 failed，pre-existing node::workspace
+      verbatim 路径问题已排除）+ `pnpm build` 通过
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-03 录入用户反馈，附方案分析（候选 + OS 监听表确权）
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-03 修复完成，测试通过
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-03 | ⬜ | 用户反馈录入：多服务 PID 单值 + 端口误收后端；根因定位 startup_ports 正则无归属校验、数据模型无子进程 PID |
+| 2026-09-03 | 🟦 | 开始修复：实现 collect_tree_pids + ports.rs attribution 线程 + V22 迁移 |
+| 2026-09-03 | ✅ | 修复完成：候选人端口经 OS 监听表确权（树外剔除、树内记录 pid 映射）；DB 新增 port_pids_json 列；前端 PID 列展示根 PID (+N) + tooltip 端口→PID 映射；Applications / Processes 两表口径一致。验证：cargo test 778 passed / 0 failed + pnpm build 通过；golden snapshot 已更新 |

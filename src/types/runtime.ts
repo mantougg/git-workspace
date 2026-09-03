@@ -281,6 +281,10 @@ export interface RuntimeProcessInfo {
   commandPreview: string | null;
   workingDir: string | null;
   ports: number[];
+  /** F-34：端口 → 树内监听 PID 归属映射（Applications tooltip 展示用）。 */
+  portPids: Record<string, number>;
+  /** F-34：进程树内实际监听服务的 PID 去重列表。 */
+  pids: number[];
   exitCode: number | null;
   /** 是否为 GitWorkspace 重启后接管的孤儿进程。 */
   adopted: boolean;

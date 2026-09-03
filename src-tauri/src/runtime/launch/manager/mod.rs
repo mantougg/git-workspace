@@ -65,6 +65,7 @@ mod control;
 mod metrics;
 mod monitor;
 mod output;
+mod ports;
 mod start;
 mod types;
 

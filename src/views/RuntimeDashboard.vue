@@ -195,7 +195,13 @@
                 {{ configDetail?.profile ?? selectedConfig.profile ?? "—" }}
               </n-descriptions-item>
               <n-descriptions-item label="PID">
-                {{ processOf(selectedConfig.name)?.pid ?? "—" }}
+                <n-tooltip trigger="hover" v-if="selectedPortPidsLines">
+                  <template #trigger>
+                    <span class="mono">{{ selectedPidDisplay }}</span>
+                  </template>
+                  <span style="white-space:pre-line">{{ selectedPortPidsLines }}</span>
+                </n-tooltip>
+                <span v-else class="mono">{{ selectedPidDisplay }}</span>
               </n-descriptions-item>
               <n-descriptions-item label="端口">
                 {{ processOf(selectedConfig.name)?.ports?.join(", ") || "—" }}
@@ -619,6 +625,26 @@ function processOf(name: string): RuntimeProcessInfo | undefined {
   return store.processes.find((p) => p.runtimeName === name);
 }
 
+// F-34：应用详情 PID 行 attribution（computed 随选中应用联动）
+const selectedPidDisplay = computed(() => {
+  const p = processOf(selectedConfig.value?.name ?? "");
+  if (!p?.pid) return "—";
+  const rootPid = p.pid;
+  const extraPids = (p.pids ?? []).filter((pid) => pid !== rootPid);
+  return extraPids.length > 0 ? `${rootPid} (+${extraPids.length})` : String(rootPid);
+});
+
+const selectedPortPidsLines = computed(() => {
+  const p = processOf(selectedConfig.value?.name ?? "");
+  if (!p) return "";
+  const portPids = p.portPids ?? {};
+  const lines: string[] = [];
+  for (const [port, pid] of Object.entries(portPids)) {
+    lines.push(`端口 ${port} → PID ${pid}`);
+  }
+  return lines.join("\n");
+});
+
 function isBusy(name: string): boolean {
   const p = processOf(name);
   if (!p) return false;
@@ -862,12 +888,33 @@ const configColumns = [
   {
     title: "PID",
     key: "pid",
-    width: 80,
+    width: 120,
     render(row: RuntimeConfigSummary) {
       const p = processOf(row.name);
-      return p?.pid
-        ? h("span", { class: "mono" }, String(p.pid))
-        : h("span", { class: "muted" }, "—");
+      if (!p?.pid) return h("span", { class: "muted" }, "—");
+      const rootPid = p.pid;
+      const extraPids = (p.pids ?? []).filter((pid) => pid !== rootPid);
+      const portPids = p.portPids ?? {};
+      const hasAttribution = Object.keys(portPids).length > 0 || extraPids.length > 0;
+      if (!hasAttribution) {
+        return h("span", { class: "mono" }, String(rootPid));
+      }
+      const label = extraPids.length > 0 ? `${rootPid} (+${extraPids.length})` : String(rootPid);
+      const lines: string[] = [];
+      for (const [port, pid] of Object.entries(portPids)) {
+        lines.push(`端口 ${port} → PID ${pid}`);
+      }
+      return h(
+        NTooltip,
+        { trigger: "hover" },
+        {
+          trigger: () => h("span", { class: "mono" }, label),
+          default: () =>
+            lines.length
+              ? h("span", { style: "white-space:pre-line" }, lines.join("\n"))
+              : h("span", { class: "muted" }, "端口归属待确认"),
+        },
+      );
     },
   },
   {
@@ -993,9 +1040,32 @@ const processColumns = [
   {
     title: "PID",
     key: "pid",
-    width: 90,
+    width: 120,
     render(row: RuntimeProcessInfo) {
-      return h("span", { class: "mono" }, row.pid != null ? String(row.pid) : "—");
+      if (row.pid == null) return h("span", { class: "muted" }, "—");
+      const rootPid = row.pid;
+      const extraPids = (row.pids ?? []).filter((pid) => pid !== rootPid);
+      const portPids = row.portPids ?? {};
+      const hasAttribution = Object.keys(portPids).length > 0 || extraPids.length > 0;
+      if (!hasAttribution) {
+        return h("span", { class: "mono" }, String(rootPid));
+      }
+      const label = extraPids.length > 0 ? `${rootPid} (+${extraPids.length})` : String(rootPid);
+      const lines: string[] = [];
+      for (const [port, pid] of Object.entries(portPids)) {
+        lines.push(`端口 ${port} → PID ${pid}`);
+      }
+      return h(
+        NTooltip,
+        { trigger: "hover" },
+        {
+          trigger: () => h("span", { class: "mono" }, label),
+          default: () =>
+            lines.length
+              ? h("span", { style: "white-space:pre-line" }, lines.join("\n"))
+              : h("span", { class: "muted" }, "端口归属待确认"),
+        },
+      );
     },
   },
   {

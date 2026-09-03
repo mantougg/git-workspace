@@ -55,6 +55,12 @@ pub struct RuntimeProcessInfo {
     pub working_dir: Option<String>,
     /// 启动日志探测到的端口（不做端口扫描）。
     pub ports: Vec<u16>,
+    /// F-34 端口归属确权：`端口 → 树内监听 PID` 映射（key 与 `ports`
+    /// 一致——确权后整体覆盖写入）。
+    pub port_pids: std::collections::BTreeMap<u16, u32>,
+    /// F-34：进程树内实际监听服务的 PID 去重列表（`port_pids` 的值域，
+    /// 前端 PID 多值展示用）。根 spawn PID 一定包含在内。
+    pub pids: Vec<u32>,
     pub exit_code: Option<i32>,
     /// 是否为 GitWorkspace 重启后接管的孤儿进程。
     pub adopted: bool,

@@ -119,6 +119,45 @@ pub fn process_start_time(pid: u32) -> Option<u64> {
     system.process(Pid::from_u32(pid)).map(|process| process.start_time())
 }
 
+/// 枚举 `root_pid` 与其全部后代进程（F-34 端口归属确权用）。
+///
+/// 现场快照一遍全系统进程，沿 parent 链 DFS 收集（与
+/// [`kill_process_tree`] 同一算法，只收集不终止）。Windows 无进程组
+/// 语义，parent 链枚举两平台行为一致；unix 上 root 若为组长（launch
+/// 链路 `process_group(0)` 产物），被 reparent 的孙子进程 parent 链
+/// 不可达——确权场景下这属「信息缺失」而非误判（少认端口不会误收
+/// 后端端口），由调用方的重试轮次兜底。
+pub fn collect_tree_pids(root_pid: u32) -> Vec<u32> {
+    let mut system = System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+    system.refresh_processes();
+    let snapshot: std::collections::BTreeMap<Pid, &sysinfo::Process> =
+        system.processes().iter().map(|(pid, process)| (*pid, process)).collect();
+    collect_tree_from_snapshot(root_pid, &snapshot)
+}
+
+/// `collect_tree_pids` 的纯函数核心：给定进程快照（pid → 进程），返回
+/// root 与其全部后代（含 root 本身）。单测用：不发起系统调用。
+pub fn collect_tree_from_snapshot(root_pid: u32, processes: &std::collections::BTreeMap<Pid, &sysinfo::Process>) -> Vec<u32> {
+    let root = Pid::from_u32(root_pid);
+    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+    for process in processes.values() {
+        if let Some(parent) = process.parent() {
+            children.entry(parent).or_default().push(process.pid());
+        }
+    }
+    let mut seen = HashSet::new();
+    let mut stack = vec![root];
+    while let Some(pid) = stack.pop() {
+        if !seen.insert(pid) {
+            continue;
+        }
+        if let Some(kids) = children.get(&pid) {
+            stack.extend(kids.iter().copied());
+        }
+    }
+    seen.into_iter().map(|pid| pid.as_u32()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]

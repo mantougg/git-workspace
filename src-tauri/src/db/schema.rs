@@ -958,8 +958,15 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
 CREATE INDEX IF NOT EXISTS idx_scheduled_due ON scheduled_tasks(enabled, next_run);
 "#;
 
+/// v22 (F-34)：端口归属确权结果。`ports_json` 的端口可能来自日志文本
+/// 引用（vite proxy 目标 / API base URL），v22 起以 OS 监听表核对后的
+/// `port_pids_json`（端口 → 树内监听 PID 映射）为准展示；旧行默认空。
+pub const SCHEMA_V22: &str = r#"
+ALTER TABLE runtime_processes ADD COLUMN port_pids_json TEXT NOT NULL DEFAULT '{}';
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10,
     SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14, SCHEMA_V15, SCHEMA_V16, SCHEMA_V17, SCHEMA_V18, SCHEMA_V19,
-    SCHEMA_V20, SCHEMA_V21,
+    SCHEMA_V20, SCHEMA_V21, SCHEMA_V22,
 ];

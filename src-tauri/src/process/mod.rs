@@ -12,6 +12,9 @@ pub mod kill_tree;
 pub mod port;
 pub mod streaming;
 
-pub use kill_tree::{kill_process_tree, process_alive, process_start_time, terminate_process};
-pub use port::{detect_port_occupier, is_port_in_use, PortOccupier};
+pub use kill_tree::{
+    collect_tree_from_snapshot, collect_tree_pids, kill_process_tree, process_alive, process_start_time,
+    terminate_process,
+};
+pub use port::{detect_port_occupier, is_port_in_use, ListeningPort, PortOccupier};
 pub use streaming::{spawn_streaming, spawn_streaming_ext, OutputStream, StreamingExit};
