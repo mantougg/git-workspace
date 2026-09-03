@@ -40,9 +40,7 @@ pub fn kill_process_tree(root_pid: u32) {
         if round > 0 {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        let mut system = System::new_with_specifics(
-            RefreshKind::new().with_processes(ProcessRefreshKind::new()),
-        );
+        let mut system = System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
         system.refresh_processes();
 
         let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
@@ -91,9 +89,7 @@ pub fn terminate_process(pid: u32) -> bool {
         if signal_process_group(pid, libc::SIGTERM) {
             return true;
         }
-        let system = System::new_with_specifics(
-            RefreshKind::new().with_processes(ProcessRefreshKind::new()),
-        );
+        let system = System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
         system
             .process(Pid::from_u32(pid))
             .and_then(|process| process.kill_with(sysinfo::Signal::Term))
@@ -118,12 +114,9 @@ pub fn process_alive(pid: u32, expected_start_time: Option<u64>) -> bool {
 /// 读取进程的 `start_time`（epoch 秒）；进程不存在返回 `None`。
 /// spawn 后记录该值，后续存活核对可防 PID 复用误判。
 pub fn process_start_time(pid: u32) -> Option<u64> {
-    let mut system =
-        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+    let mut system = System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
     system.refresh_processes();
-    system
-        .process(Pid::from_u32(pid))
-        .map(|process| process.start_time())
+    system.process(Pid::from_u32(pid)).map(|process| process.start_time())
 }
 
 #[cfg(test)]
@@ -158,10 +151,7 @@ mod tests {
             .values()
             .filter(|p| p.name() == "sleep" && p.cmd().iter().any(|arg| arg == "300"))
             .collect();
-        assert!(
-            survivors.is_empty(),
-            "sleep 300 should be killed: {survivors:?}"
-        );
+        assert!(survivors.is_empty(), "sleep 300 should be killed: {survivors:?}");
     }
 
     #[cfg(unix)]
@@ -189,13 +179,7 @@ mod tests {
         assert_eq!(status.code(), Some(0), "trap must turn SIGTERM into exit 0");
 
         std::thread::sleep(std::time::Duration::from_millis(100));
-        assert!(
-            !super::process_alive(pid, Some(start)),
-            "exited process is gone"
-        );
-        assert!(
-            !super::terminate_process(pid),
-            "no signal target after exit"
-        );
+        assert!(!super::process_alive(pid, Some(start)), "exited process is gone");
+        assert!(!super::terminate_process(pid), "no signal target after exit");
     }
 }

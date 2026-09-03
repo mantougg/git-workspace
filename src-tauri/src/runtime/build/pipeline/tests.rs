@@ -67,8 +67,7 @@ fn setup_fixture(name: &str) -> Fixture {
 
     let discovery = crate::maven::discover_poms(&root, 5, None, None);
     assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
-        .unwrap();
+    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2")).unwrap();
     Fixture {
         root,
         db: Arc::new(Mutex::new(conn)),
@@ -78,10 +77,7 @@ fn setup_fixture(name: &str) -> Fixture {
 
 impl Fixture {
     fn app_pom_path(&self) -> String {
-        self.root
-            .join("repo/app/pom.xml")
-            .to_string_lossy()
-            .to_string()
+        self.root.join("repo/app/pom.xml").to_string_lossy().to_string()
     }
 
     fn create_runtime(&mut self, name: &str, mutate: impl FnOnce(&mut RuntimeApplicationConfig)) {
@@ -142,10 +138,7 @@ fn build_with(
 }
 
 fn classpath_content(entries: &[PathBuf]) -> String {
-    std::env::join_paths(entries)
-        .unwrap()
-        .to_string_lossy()
-        .into_owned()
+    std::env::join_paths(entries).unwrap().to_string_lossy().into_owned()
 }
 
 #[test]
@@ -165,14 +158,7 @@ fn classpath_run_full_pipeline_with_fake_maven() {
     ]);
     let mut sink = VecSink(Vec::new());
 
-    let outcome = build_with(
-        &mut fixture,
-        &runner,
-        BuildOptions::default(),
-        &mut sink,
-        None,
-    )
-    .unwrap();
+    let outcome = build_with(&mut fixture, &runner, BuildOptions::default(), &mut sink, None).unwrap();
 
     assert_eq!(outcome.strategy, RunStrategy::ClasspathRun);
     assert_eq!(
@@ -190,16 +176,11 @@ fn classpath_run_full_pipeline_with_fake_maven() {
     // 两次 Maven 调用：compile + process-classes/dependency:build-classpath。
     let requests = runner.requests();
     assert_eq!(requests.len(), 2);
-    assert_eq!(
-        requests[1].goals,
-        ["process-classes", "dependency:build-classpath"]
-    );
+    assert_eq!(requests[1].goals, ["process-classes", "dependency:build-classpath"]);
 
     // LaunchPlan：target/classes 在首元素，依赖 jar 随后。
     let LaunchPlan::JavaClasspath {
-        classpath,
-        main_class,
-        ..
+        classpath, main_class, ..
     } = &outcome.launch
     else {
         panic!("expected JavaClasspath");
@@ -214,14 +195,7 @@ fn classpath_run_full_pipeline_with_fake_maven() {
 
     // 第二次构建：classpath 缓存命中，只有 compile 一次调用。
     let mut sink = VecSink(Vec::new());
-    let outcome = build_with(
-        &mut fixture,
-        &runner,
-        BuildOptions::default(),
-        &mut sink,
-        None,
-    )
-    .unwrap();
+    let outcome = build_with(&mut fixture, &runner, BuildOptions::default(), &mut sink, None).unwrap();
     assert_eq!(runner.request_count(), 3, "cache hit must skip maven");
     assert!(matches!(outcome.launch, LaunchPlan::JavaClasspath { .. }));
     let _ = fs::remove_dir_all(fixture.root);
@@ -246,10 +220,7 @@ fn maven_run_preview_scopes_to_app_without_am() {
     )
     .unwrap();
 
-    let LaunchPlan::MavenGoal {
-        request, preview, ..
-    } = &outcome.launch
-    else {
+    let LaunchPlan::MavenGoal { request, preview, .. } = &outcome.launch else {
         panic!("expected MavenGoal");
     };
     assert_eq!(request.goals, ["spring-boot:run"]);
@@ -272,24 +243,13 @@ fn package_run_launch_uses_packaged_jar() {
     let mut sink = VecSink(Vec::new());
 
     // prod profile → 不显式指定时默认 PackageRun。
-    let outcome = build_with(
-        &mut fixture,
-        &runner,
-        BuildOptions::default(),
-        &mut sink,
-        None,
-    )
-    .unwrap();
+    let outcome = build_with(&mut fixture, &runner, BuildOptions::default(), &mut sink, None).unwrap();
 
     assert_eq!(outcome.strategy, RunStrategy::PackageRun);
     // package 构建带 -DskipTests（默认 skip_tests = true）。
-    assert!(runner.requests()[0]
-        .extra_args
-        .contains(&"-DskipTests".to_string()));
+    assert!(runner.requests()[0].extra_args.contains(&"-DskipTests".to_string()));
     let LaunchPlan::JavaJar {
-        jar_path,
-        vm_options,
-        ..
+        jar_path, vm_options, ..
     } = &outcome.launch
     else {
         panic!("expected JavaJar");
@@ -316,14 +276,7 @@ fn failed_build_returns_structured_build_failed() {
     }]);
     let mut sink = VecSink(Vec::new());
 
-    let error = build_with(
-        &mut fixture,
-        &runner,
-        BuildOptions::default(),
-        &mut sink,
-        None,
-    )
-    .unwrap_err();
+    let error = build_with(&mut fixture, &runner, BuildOptions::default(), &mut sink, None).unwrap_err();
 
     let AppError::BuildFailed {
         module,
@@ -333,10 +286,7 @@ fn failed_build_returns_structured_build_failed() {
     else {
         panic!("expected BuildFailed, got {error:?}");
     };
-    assert_eq!(
-        module, "com.example:app",
-        "reactor summary names the module"
-    );
+    assert_eq!(module, "com.example:app", "reactor summary names the module");
     assert_eq!(*exit_code, Some(1));
     assert!(log_tail.contains("COMPILATION ERROR"));
     assert_eq!(error.code(), "BuildFailed");
@@ -360,14 +310,7 @@ fn cancelled_build_maps_to_task_error() {
     let mut sink = VecSink(Vec::new());
     let start = Instant::now();
 
-    let error = build_with(
-        &mut fixture,
-        &runner,
-        BuildOptions::default(),
-        &mut sink,
-        Some(&cancel),
-    )
-    .unwrap_err();
+    let error = build_with(&mut fixture, &runner, BuildOptions::default(), &mut sink, Some(&cancel)).unwrap_err();
 
     assert_eq!(error.code(), "TaskError");
     assert!(error.to_string().contains("cancelled"));
@@ -383,10 +326,7 @@ fn sensitive_environment_values_are_masked_in_stream() {
     });
     let runner = FakeMavenRunner::new(vec![
         FakeRun {
-            lines: vec![(
-                OutputStream::Stdout,
-                "connecting with supersecret-value now".into(),
-            )],
+            lines: vec![(OutputStream::Stdout, "connecting with supersecret-value now".into())],
             ..Default::default()
         },
         FakeRun {
@@ -396,14 +336,7 @@ fn sensitive_environment_values_are_masked_in_stream() {
     ]);
     let mut sink = VecSink(Vec::new());
 
-    build_with(
-        &mut fixture,
-        &runner,
-        BuildOptions::default(),
-        &mut sink,
-        None,
-    )
-    .unwrap();
+    build_with(&mut fixture, &runner, BuildOptions::default(), &mut sink, None).unwrap();
 
     let forwarded = sink
         .0
@@ -420,10 +353,8 @@ fn sensitive_environment_values_are_masked_in_stream() {
 fn configured_jdk_injects_java_home_and_unknown_jdk_fails_fast() {
     let mut fixture = setup_fixture("jdk");
     crate::java::registry::upsert_jdk(&fixture.db.lock().unwrap(), &{
-        let mut jdk = crate::java::model::JdkInstallation::new(
-            "/jdk-21",
-            crate::java::model::JdkDiscoverySource::System,
-        );
+        let mut jdk =
+            crate::java::model::JdkInstallation::new("/jdk-21", crate::java::model::JdkDiscoverySource::System);
         jdk.major_version = Some(21);
         jdk.is_valid = true;
         jdk
@@ -600,9 +531,7 @@ fn unapproved_script_blocks_with_confirmation_error_and_does_not_run() {
 fn approved_script_executes_forwarding_marked_output_and_records() {
     let (store, dir) = temp_approvals("approved");
     let hash = crate::runtime::script_approval::script_hash("echo pre-build-ran");
-    store
-        .approve(1, "app", "pre", &hash, "echo pre-build-ran")
-        .unwrap();
+    store.approve(1, "app", "pre", &hash, "echo pre-build-ran").unwrap();
     let mut sink = VecSink(Vec::new());
     run_script_via(
         "echo pre-build-ran",
@@ -626,10 +555,7 @@ fn approved_script_executes_forwarding_marked_output_and_records() {
         .into_iter()
         .find(|a| a.script_hash == hash)
         .expect("approval entry exists");
-    assert!(
-        entry.last_executed_at.is_some(),
-        "execution must be recorded"
-    );
+    assert!(entry.last_executed_at.is_some(), "execution must be recorded");
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -639,15 +565,7 @@ fn failing_script_maps_to_script_failed() {
     let hash = crate::runtime::script_approval::script_hash("exit 3");
     store.approve(1, "app", "post", &hash, "exit 3").unwrap();
     let mut sink = VecSink(Vec::new());
-    let error = run_script_via(
-        "exit 3",
-        "post",
-        &dir,
-        &store,
-        &dummy_request(1, "app"),
-        &mut sink,
-    )
-    .unwrap_err();
+    let error = run_script_via("exit 3", "post", &dir, &store, &dummy_request(1, "app"), &mut sink).unwrap_err();
     assert_eq!(error.code(), "ScriptFailed");
     let _ = fs::remove_dir_all(dir);
 }
@@ -680,10 +598,7 @@ const INTEGRATION_TIMEOUT: Duration = Duration::from_secs(600);
 
 fn maven_available() -> bool {
     let maven = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
-    std::process::Command::new(maven)
-        .arg("-version")
-        .output()
-        .is_ok()
+    std::process::Command::new(maven).arg("-version").output().is_ok()
 }
 
 /// 统计 Maven 调用次数的 sink（每次 mvn 启动都会打印该横幅）。
@@ -851,10 +766,7 @@ fn lib_pom_in_repo() -> String {
 }
 
 fn write_java(dir: &Path, package_path: &str, class: &str, content: &str) {
-    write(
-        &dir.join("src/main/java").join(package_path).join(class),
-        content,
-    );
+    write(&dir.join("src/main/java").join(package_path).join(class), content);
 }
 
 fn lib_source(dir: &Path) {
@@ -896,8 +808,7 @@ fn register_workspace(root: &Path, repos: &[&str]) -> (Connection, i64) {
     crate::db::dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned).unwrap();
     let discovery = crate::maven::discover_poms(root, 6, None, None);
     assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
-        .unwrap();
+    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2")).unwrap();
     (conn, workspace_id)
 }
 
@@ -1007,10 +918,7 @@ fn package_run_builds_spring_boot_app_with_real_maven() {
     let LaunchPlan::JavaJar { jar_path, .. } = &outcome.launch else {
         panic!("expected JavaJar");
     };
-    assert!(
-        jar_path.is_file(),
-        "repackaged jar must exist: {jar_path:?}"
-    );
+    assert!(jar_path.is_file(), "repackaged jar must exist: {jar_path:?}");
     let _ = fs::remove_dir_all(fixture.root);
 }
 
@@ -1128,10 +1036,12 @@ fn dependency_cache_skips_unchanged_modules_with_real_maven() {
     );
 
     // 修改 lib 源码 → 只重建 lib + app（-pl 子集，一次 Maven 调用）。
-    let lib_java = fixture
-        .root
-        .join("repo/lib/src/main/java/com/r09/lib/Lib.java");
-    std::fs::write(&lib_java, "package com.r09.lib;\n\npublic final class Lib {\n    public static String greet() { return \"hi v2\"; }\n}\n").unwrap();
+    let lib_java = fixture.root.join("repo/lib/src/main/java/com/r09/lib/Lib.java");
+    std::fs::write(
+        &lib_java,
+        "package com.r09.lib;\n\npublic final class Lib {\n    public static String greet() { return \"hi v2\"; }\n}\n",
+    )
+    .unwrap();
     real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
         .unwrap_or_else(|error| panic!("incremental build failed: {error}\n{}", sink.tail.tail()));
     assert_eq!(
@@ -1145,9 +1055,8 @@ fn dependency_cache_skips_unchanged_modules_with_real_maven() {
         sink.tail.tail()
     );
     // 第三次：增量构建后全部未变 → 再次跳过。
-    real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None).unwrap_or_else(|error| {
-        panic!("post-increment build failed: {error}\n{}", sink.tail.tail())
-    });
+    real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
+        .unwrap_or_else(|error| panic!("post-increment build failed: {error}\n{}", sink.tail.tail()));
     assert_eq!(sink.invocations, after_first + 1);
     let _ = fs::remove_dir_all(fixture.root);
 }
@@ -1219,10 +1128,7 @@ fn maven_run_builds_and_previews_spring_boot_run_with_real_maven() {
     // 只断言 build 成功 + preview；不真跑 spring-boot:run。
     let outcome = real_build(&mut fixture, RunStrategy::MavenRun, &mut sink, None)
         .unwrap_or_else(|error| panic!("maven-run build failed: {error}\n{}", sink.tail.tail()));
-    let LaunchPlan::MavenGoal {
-        preview, request, ..
-    } = &outcome.launch
-    else {
+    let LaunchPlan::MavenGoal { preview, request, .. } = &outcome.launch else {
         panic!("expected MavenGoal");
     };
     assert!(preview.contains("spring-boot:run"));
@@ -1239,11 +1145,7 @@ fn cross_repo_synthetic_reactor_builds_with_real_maven() {
         return;
     }
     let mut fixture = setup_cross_repo_boot("xrepo");
-    let app_pom = fixture
-        .root
-        .join("repo-app/pom.xml")
-        .to_string_lossy()
-        .to_string();
+    let app_pom = fixture.root.join("repo-app/pom.xml").to_string_lossy().to_string();
     fixture.create_boot_runtime(&app_pom);
     let mut sink = MavenCountingSink {
         invocations: 0,
@@ -1251,12 +1153,7 @@ fn cross_repo_synthetic_reactor_builds_with_real_maven() {
     };
 
     let outcome = real_build(&mut fixture, RunStrategy::PackageRun, &mut sink, None)
-        .unwrap_or_else(|error| {
-            panic!(
-                "synthetic reactor build failed: {error}\n{}",
-                sink.tail.tail()
-            )
-        });
+        .unwrap_or_else(|error| panic!("synthetic reactor build failed: {error}\n{}", sink.tail.tail()));
     assert_eq!(
         outcome.reactor_kind,
         crate::maven::reactor::RuntimeReactorKind::Synthetic
@@ -1292,19 +1189,9 @@ fn cancelling_real_maven_build_kills_process_tree() {
     };
     let start = Instant::now();
 
-    let error = real_build(
-        &mut fixture,
-        RunStrategy::PackageRun,
-        &mut sink,
-        Some(&cancel),
-    )
-    .unwrap_err();
+    let error = real_build(&mut fixture, RunStrategy::PackageRun, &mut sink, Some(&cancel)).unwrap_err();
 
-    assert_eq!(
-        error.code(),
-        "TaskError",
-        "cancel must map to Task error: {error}"
-    );
+    assert_eq!(error.code(), "TaskError", "cancel must map to Task error: {error}");
     assert!(
         start.elapsed() < INTEGRATION_TIMEOUT,
         "cancel must interrupt the build, not wait for completion"
@@ -1322,9 +1209,6 @@ fn cancelling_real_maven_build_kills_process_tree() {
         .filter(|process| process.cmd().iter().any(|arg| arg.contains(&marker)))
         .map(|process| format!("{:?} {:?}", process.pid(), process.cmd()))
         .collect();
-    assert!(
-        survivors.is_empty(),
-        "build process tree must be gone: {survivors:?}"
-    );
+    assert!(survivors.is_empty(), "build process tree must be gone: {survivors:?}");
     let _ = fs::remove_dir_all(fixture.root);
 }

@@ -58,9 +58,7 @@ fn collected_lines(events: &VecEventSink, process_id: i64) -> Vec<LogLine> {
         .into_iter()
         .flat_map(|event| match event {
             RuntimeEvent::Logs {
-                process_id: id,
-                lines,
-                ..
+                process_id: id, lines, ..
             } if id == process_id => lines,
             _ => Vec::new(),
         })
@@ -75,11 +73,7 @@ fn capture_masks_secrets_before_persisting() {
     let engine = RuntimeLogEngine::with_limits(test_limits());
     let session = open(&engine, &root, 1, vec!["s3cret-value".into()], &events);
     session.log(LogPhase::Run, OutputStream::Stdout, "password=123456");
-    session.log(
-        LogPhase::Run,
-        OutputStream::Stdout,
-        "connecting with s3cret-value",
-    );
+    session.log(LogPhase::Run, OutputStream::Stdout, "connecting with s3cret-value");
     session.log(
         LogPhase::Run,
         OutputStream::Stdout,
@@ -110,11 +104,7 @@ fn flood_is_aggregated_and_ring_stays_bounded() {
     let engine = RuntimeLogEngine::with_limits(test_limits());
     let session = open(&engine, &root, 2, vec![], &events);
     for i in 0..5000 {
-        session.log(
-            LogPhase::Run,
-            OutputStream::Stdout,
-            &format!("flood line {i}"),
-        );
+        session.log(LogPhase::Run, OutputStream::Stdout, &format!("flood line {i}"));
     }
     engine.finish_session(2);
 
@@ -172,11 +162,7 @@ fn rotation_splits_and_caps_segments() {
     let engine = RuntimeLogEngine::with_limits(limits);
     let session = open(&engine, &root, 4, vec![], &events);
     for i in 0..20 {
-        session.log(
-            LogPhase::Run,
-            OutputStream::Stdout,
-            &format!("line-{i:02}-abcdefghij"),
-        );
+        session.log(LogPhase::Run, OutputStream::Stdout, &format!("line-{i:02}-abcdefghij"));
     }
     engine.finish_session(4);
 
@@ -212,9 +198,7 @@ fn search_filters_by_query_and_min_level() {
     }
     engine.finish_session(5);
 
-    let all = engine
-        .search(&root, "app", 5, &LogFilter::default())
-        .unwrap();
+    let all = engine.search(&root, "app", 5, &LogFilter::default()).unwrap();
     assert_eq!(all.len(), 4);
     assert_eq!(all[0].level, Some(LogLevel::Info));
     assert_eq!(all[1].level, Some(LogLevel::Warn));
@@ -236,11 +220,7 @@ fn search_filters_by_query_and_min_level() {
     let texts: Vec<&str> = filtered.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(
         texts,
-        [
-            "[WARN] disk low",
-            "[ERROR] boom happened",
-            "    at com.example.Trace"
-        ],
+        ["[WARN] disk low", "[ERROR] boom happened", "    at com.example.Trace"],
         "级别过滤不淘汰，无级别行（stack trace 续行）保持可见"
     );
 
@@ -318,13 +298,7 @@ fn logs_remain_queryable_after_process_ends() {
     let tail = engine.tail(&root, "app", 7, 2).unwrap();
     let texts: Vec<&str> = tail.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(texts, ["line 3", "line 4"]);
-    assert_eq!(
-        engine
-            .search(&root, "app", 7, &LogFilter::default())
-            .unwrap()
-            .len(),
-        5
-    );
+    assert_eq!(engine.search(&root, "app", 7, &LogFilter::default()).unwrap().len(), 5);
 
     engine.clear(&root, "app", 7).unwrap();
     assert!(
@@ -419,9 +393,7 @@ fn registered_analyzer_receives_masked_lines() {
 fn query_without_log_files_is_actionable_not_found() {
     let root = temp_root("none");
     let engine = RuntimeLogEngine::with_limits(test_limits());
-    let error = engine
-        .search(&root, "app", 404, &LogFilter::default())
-        .unwrap_err();
+    let error = engine.search(&root, "app", 404, &LogFilter::default()).unwrap_err();
     assert!(matches!(error, AppError::NotFound(_)));
     assert!(error.to_string().contains("暂无日志文件"));
     let _ = std::fs::remove_dir_all(&root);
@@ -434,10 +406,7 @@ fn runtime_name_path_escape_is_rejected() {
     let events = Arc::new(VecEventSink::default());
     let engine = RuntimeLogEngine::with_limits(test_limits());
     let result = engine.open_session(&root, "../escape", 1, vec![], events);
-    assert!(
-        matches!(result, Err(AppError::RuntimeConfig(_))),
-        "路径逃逸必须被拒绝"
-    );
+    assert!(matches!(result, Err(AppError::RuntimeConfig(_))), "路径逃逸必须被拒绝");
     assert!(!root.join(".gitworkspace/logs").exists());
     let _ = std::fs::remove_dir_all(&root);
 }

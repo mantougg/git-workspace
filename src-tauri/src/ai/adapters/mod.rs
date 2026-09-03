@@ -30,8 +30,7 @@ use super::provider::ApiType;
 use super::provider::ANTHROPIC_API_VERSION;
 use super::request::{AiMessage, AiTokenUsage};
 use super::transport::{
-    BoxFuture, ByteStream, CancelToken, HttpMethod, HttpTransport, TransportError,
-    TransportRequest, TransportResponse,
+    BoxFuture, ByteStream, CancelToken, HttpMethod, HttpTransport, TransportError, TransportRequest, TransportResponse,
 };
 
 /// 归一化流式输出项。
@@ -134,10 +133,9 @@ pub fn adapter_for(api_type: ApiType) -> &'static dyn AiProviderAdapter {
 /// baseUrl + 相对端点路径的结构化拼接（全局约束 §11：不手写字符串拼 URL）。
 /// baseUrl 约定含版本段（如 `https://api.openai.com/v1`），补齐尾斜杠后 join。
 pub(super) fn endpoint_url(base_url: &str, path: &str) -> Result<reqwest::Url, AiError> {
-    let mut url = reqwest::Url::parse(base_url)
-        .map_err(|_| AiError::NotConfigured {
-            message: format!("baseUrl 不是合法 URL: {}", base_url),
-        })?;
+    let mut url = reqwest::Url::parse(base_url).map_err(|_| AiError::NotConfigured {
+        message: format!("baseUrl 不是合法 URL: {}", base_url),
+    })?;
     if !url.path().ends_with('/') {
         url.set_path(&format!("{}/", url.path()));
     }
@@ -154,10 +152,15 @@ pub(super) async fn send_json(
     endpoint: &ProviderEndpoint,
     model_id: &str,
 ) -> Result<TransportResponse, AiError> {
-    let response =
-        send_request(ctx, HttpMethod::Post, url, Some(body.to_string().into_bytes()), endpoint)
-            .await
-            .map_err(transport_error)?;
+    let response = send_request(
+        ctx,
+        HttpMethod::Post,
+        url,
+        Some(body.to_string().into_bytes()),
+        endpoint,
+    )
+    .await
+    .map_err(transport_error)?;
     classify_status(response, &endpoint.provider_id, model_id).await
 }
 
@@ -169,8 +172,7 @@ async fn send_request(
     body: Option<Vec<u8>>,
     endpoint: &ProviderEndpoint,
 ) -> Result<TransportResponse, TransportError> {
-    let mut headers: Vec<(String, String)> =
-        vec![("Content-Type".into(), "application/json".into())];
+    let mut headers: Vec<(String, String)> = vec![("Content-Type".into(), "application/json".into())];
     if let Some(key) = &endpoint.api_key {
         match endpoint.api_type {
             ApiType::AnthropicMessages => {
@@ -276,10 +278,7 @@ pub(super) const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
 pub(super) const MAX_RESPONSE_BODY_BYTES: usize = 16 * 1024 * 1024;
 
 /// 读取 body 至多 `cap` 字节；超出上限报错（防 Provider 异常响应撑爆内存）。
-pub(super) async fn read_body_limited(
-    mut body: Box<dyn ByteStream>,
-    cap: usize,
-) -> Vec<u8> {
+pub(super) async fn read_body_limited(mut body: Box<dyn ByteStream>, cap: usize) -> Vec<u8> {
     let mut out = Vec::new();
     loop {
         match body.next_chunk().await {
@@ -416,12 +415,7 @@ where
                 }
             }
             if done {
-                let _ = tx
-                    .send(Ok(StreamItem::End {
-                        finish_reason,
-                        usage,
-                    }))
-                    .await;
+                let _ = tx.send(Ok(StreamItem::End { finish_reason, usage })).await;
                 return;
             }
         }

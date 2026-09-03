@@ -9,11 +9,7 @@ use crate::error::{AppError, AppResult};
 /// Output is redirected to temp files instead of pipes: a child writing more
 /// than the OS pipe buffer would block forever while we poll `try_wait`
 /// without reading. Only the tail (256 KB) of each stream is kept.
-pub(super) fn run_shell_command(
-    cwd: &Path,
-    command: &str,
-    timeout_secs: Option<u64>,
-) -> AppResult<String> {
+pub(super) fn run_shell_command(cwd: &Path, command: &str, timeout_secs: Option<u64>) -> AppResult<String> {
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(600));
     let stamp = format!(
         "gw_shell_{}_{}",

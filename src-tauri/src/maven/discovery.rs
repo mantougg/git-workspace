@@ -18,9 +18,7 @@ use walkdir::WalkDir;
 use crate::core::scanner::{is_skip_dir, IgnoreRules, RepoScanner};
 use crate::maven::cache::PomCache;
 use crate::maven::effective::{build_effective, build_index, EffectiveProject};
-use crate::maven::model::{
-    MavenProject, MavenProjectType, MavenReactor, MavenReactorModule, PomCoordinates,
-};
+use crate::maven::model::{MavenProject, MavenProjectType, MavenReactor, MavenReactorModule, PomCoordinates};
 use crate::maven::parser::{parse_pom_file, PomParseError};
 
 /// 单个发现到的 POM 条目（解析后的 model + 所在仓库相对路径）。
@@ -209,11 +207,7 @@ pub fn discover_poms_in_repos<T: AsRef<str> + Sync>(
         .collect()
 }
 
-fn collect_pom_paths(
-    repo: &Path,
-    workspace_root: &Path,
-    cancel: Option<&AtomicBool>,
-) -> Option<Vec<PathBuf>> {
+fn collect_pom_paths(repo: &Path, workspace_root: &Path, cancel: Option<&AtomicBool>) -> Option<Vec<PathBuf>> {
     let workspace_ignore = IgnoreRules::load(workspace_root);
     let repo_ignore = IgnoreRules::load(repo);
     let mut walker = WalkDir::new(repo).follow_links(false).into_iter();
@@ -228,8 +222,7 @@ fn collect_pom_paths(
                 if entry.file_type().is_dir() {
                     let name = entry.file_name();
                     if entry.path() != repo
-                        && (entry.path().join(".git").is_dir()
-                            || entry.path().join(".git").is_file())
+                        && (entry.path().join(".git").is_dir() || entry.path().join(".git").is_file())
                     {
                         // T-01 会把嵌套 repo 单独列入 inventory；父 repo 不跨边界重复扫描。
                         walker.skip_current_dir();
@@ -247,8 +240,7 @@ fn collect_pom_paths(
                     {
                         walker.skip_current_dir();
                     }
-                } else if entry.file_type().is_file() && entry.file_name() == OsStr::new("pom.xml")
-                {
+                } else if entry.file_type().is_file() && entry.file_name() == OsStr::new("pom.xml") {
                     pom_paths.push(entry.path().to_path_buf());
                 }
             }
@@ -325,10 +317,7 @@ fn build_reactors(projects: &[MavenProject], effective: &[EffectiveProject]) -> 
         .collect();
 
     let mut reactors = Vec::new();
-    for project in projects
-        .iter()
-        .filter(|project| !project.modules.is_empty())
-    {
+    for project in projects.iter().filter(|project| !project.modules.is_empty()) {
         let parent_path = canonical_or_original(&project.path);
         let parent = effective
             .iter()
@@ -456,37 +445,18 @@ mod tests {
         let result = discover_poms(&ws, 8, None, None);
         assert_eq!(result.projects.len(), 2, "target/ pom must be ignored");
 
-        let root = result
-            .projects
-            .iter()
-            .find(|p| p.artifact_id == "root")
-            .unwrap();
-        let mod_a = result
-            .projects
-            .iter()
-            .find(|p| p.artifact_id == "mod-a")
-            .unwrap();
+        let root = result.projects.iter().find(|p| p.artifact_id == "root").unwrap();
+        let mod_a = result.projects.iter().find(|p| p.artifact_id == "mod-a").unwrap();
         assert_eq!(root.project_type(false), MavenProjectType::Parent);
         assert_eq!(mod_a.project_type(true), MavenProjectType::MultiModule);
 
         // effective model：mod-a 继承自 workspace 内 root。
-        let eff_mod_a = result
-            .effective
-            .iter()
-            .find(|e| e.artifact_id == "mod-a")
-            .unwrap();
-        assert!(
-            eff_mod_a.has_workspace_parent,
-            "mod-a parent resolved in workspace"
-        );
+        let eff_mod_a = result.effective.iter().find(|e| e.artifact_id == "mod-a").unwrap();
+        assert!(eff_mod_a.has_workspace_parent, "mod-a parent resolved in workspace");
         assert_eq!(eff_mod_a.group_id, "com.example", "groupId inherited");
         assert_eq!(eff_mod_a.version, "1.0.0", "version inherited");
 
-        let eff_root = result
-            .effective
-            .iter()
-            .find(|e| e.artifact_id == "root")
-            .unwrap();
+        let eff_root = result.effective.iter().find(|e| e.artifact_id == "root").unwrap();
         assert_eq!(eff_root.project_type, MavenProjectType::Parent);
         assert_eq!(result.reactors.len(), 1);
         assert_eq!(result.reactors[0].modules.len(), 1);
@@ -744,10 +714,7 @@ mod tests {
             3,
             "repo poms and plain-dir pom are all discovered (R-27)"
         );
-        assert!(result
-            .projects
-            .iter()
-            .any(|project| project.artifact_id == "outside"));
+        assert!(result.projects.iter().any(|project| project.artifact_id == "outside"));
         assert_eq!(
             result
                 .effective
@@ -825,10 +792,7 @@ mod tests {
             first.elapsed_ms, second.elapsed_ms, single_hit_us, second.stats.hits
         );
         assert!(first.elapsed_ms < 500, "discovery budget exceeded");
-        assert!(
-            single_hit_us < 50_000,
-            "single POM cache-hit budget exceeded"
-        );
+        assert!(single_hit_us < 50_000, "single POM cache-hit budget exceeded");
         // R-27 补扫会让每个 pom 在单次发现内二次命中缓存，这里只锁定「全部来自缓存」。
         assert!(
             second.stats.hits >= 100,

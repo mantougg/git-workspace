@@ -78,11 +78,7 @@ impl BuildScheduler {
             if cancel.load(Ordering::Relaxed) {
                 return None;
             }
-            let (guard, _timeout) = self
-                .shared
-                .condvar
-                .wait_timeout(state, CANCEL_POLL_INTERVAL)
-                .unwrap();
+            let (guard, _timeout) = self.shared.condvar.wait_timeout(state, CANCEL_POLL_INTERVAL).unwrap();
             state = guard;
         }
     }

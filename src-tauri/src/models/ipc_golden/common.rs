@@ -280,9 +280,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 crate::ai::ModelCapability::StructuredOutput,
             ],
             max_context_tokens: 128000,
-            defaults: crate::ai::AiModelDefaults {
-                temperature: Some(0.2),
-            },
+            defaults: crate::ai::AiModelDefaults { temperature: Some(0.2) },
             enabled: true,
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
@@ -290,9 +288,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     );
     m.insert(
         "AiModelDefaults".into(),
-        json!(crate::ai::AiModelDefaults {
-            temperature: Some(0.2),
-        }),
+        json!(crate::ai::AiModelDefaults { temperature: Some(0.2) }),
     );
     m.insert(
         "SaveAiModelRequest".into(),
@@ -302,9 +298,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             display_name: "GPT-4o mini".into(),
             capabilities: vec![crate::ai::ModelCapability::Chat],
             max_context_tokens: 128000,
-            defaults: crate::ai::AiModelDefaults {
-                temperature: Some(0.2),
-            },
+            defaults: crate::ai::AiModelDefaults { temperature: Some(0.2) },
             enabled: true,
         }),
     );
@@ -518,9 +512,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     m.insert(
         "AiStreamChunk".into(),
         json!([
-            crate::ai::events::AiStreamChunk::TextDelta {
-                text: "启动".into(),
-            },
+            crate::ai::events::AiStreamChunk::TextDelta { text: "启动".into() },
             crate::ai::events::AiStreamChunk::End {
                 finish_reason: Some("stop".into()),
             },
@@ -531,9 +523,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         json!(crate::ai::events::AiRequestEvent {
             request_id: "req-1".into(),
             phase: crate::ai::RequestPhase::Streaming,
-            chunk: Some(crate::ai::events::AiStreamChunk::TextDelta {
-                text: "启动".into(),
-            }),
+            chunk: Some(crate::ai::events::AiStreamChunk::TextDelta { text: "启动".into() }),
             output_chars: 42,
         }),
     );
@@ -964,15 +954,10 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     );
 
     // error.rs — AppError serializes as the structured ErrorResponse.
-    m.insert(
-        "ErrorResponse".into(),
-        json!(AppError::NotFound("thing".into())),
-    );
+    m.insert("ErrorResponse".into(), json!(AppError::NotFound("thing".into())));
     m.insert(
         "DependencyResolveFailedError".into(),
-        json!(AppError::DependencyResolve(
-            "missing effective model".into()
-        )),
+        json!(AppError::DependencyResolve("missing effective model".into())),
     );
     m.insert(
         "SourceMappingFailedError".into(),
@@ -1049,46 +1034,26 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
 pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("Repository", "types/repository.ts", "Repository"),
     ("RepoStatus", "types/repository.ts", "RepoStatus"),
-    (
-        "RepositoryWithStatus",
-        "types/repository.ts",
-        "RepositoryWithStatus",
-    ),
+    ("RepositoryWithStatus", "types/repository.ts", "RepositoryWithStatus"),
     ("ScanProgress", "types/events.ts", "ScanProgress"),
     ("RepoStatusUpdate", "types/events.ts", "RepoStatusUpdate"),
     // T-33 manifest
     ("ManifestRepo", "types/manifest.ts", "ManifestRepo"),
-    (
-        "WorkspaceManifest",
-        "types/manifest.ts",
-        "WorkspaceManifest",
-    ),
+    ("WorkspaceManifest", "types/manifest.ts", "WorkspaceManifest"),
     ("ClonePlanItem", "types/manifest.ts", "ClonePlanItem"),
     ("ClonePlan", "types/manifest.ts", "ClonePlan"),
     // AI（types/ai.ts：本文件注册的每个 interface 都必须有 Rust 样本）
     ("ReviewResult", "types/ai.ts", "ReviewResult"),
     ("ReviewIssue", "types/ai.ts", "ReviewIssue"),
     ("CommitSuggestion", "types/ai.ts", "CommitSuggestion"),
-    (
-        "CommitSummaryRepository",
-        "types/ai.ts",
-        "CommitSummaryRepository",
-    ),
+    ("CommitSummaryRepository", "types/ai.ts", "CommitSummaryRepository"),
     ("CommitSummary", "types/ai.ts", "CommitSummary"),
     ("PrDescription", "types/ai.ts", "PrDescription"),
     ("ExplanationResult", "types/ai.ts", "ExplanationResult"),
     ("SearchResult", "types/ai.ts", "SearchResult"),
     ("AiProvider", "types/ai.ts", "AiProvider"),
-    (
-        "SaveAiProviderRequest",
-        "types/ai.ts",
-        "SaveAiProviderRequest",
-    ),
-    (
-        "AiProviderTestResult",
-        "types/ai.ts",
-        "AiProviderTestResult",
-    ),
+    ("SaveAiProviderRequest", "types/ai.ts", "SaveAiProviderRequest"),
+    ("AiProviderTestResult", "types/ai.ts", "AiProviderTestResult"),
     ("AiModel", "types/ai.ts", "AiModel"),
     ("AiModelDefaults", "types/ai.ts", "AiModelDefaults"),
     ("SaveAiModelRequest", "types/ai.ts", "SaveAiModelRequest"),
@@ -1098,11 +1063,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     // AI-02 Gateway（§7 / §8.4 / 事件契约）
     ("AiMessage", "types/ai.ts", "AiMessage"),
     ("ContextItem", "types/ai.ts", "ContextItem"),
-    (
-        "DiffRepositorySelection",
-        "types/ai.ts",
-        "DiffRepositorySelection",
-    ),
+    ("DiffRepositorySelection", "types/ai.ts", "DiffRepositorySelection"),
     ("GitDiffSelection", "types/ai.ts", "GitDiffSelection"),
     ("AiTokenUsage", "types/ai.ts", "AiTokenUsage"),
     ("AiRequest", "types/ai.ts", "AiRequest"),
@@ -1115,58 +1076,26 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("ToolInvocation", "types/ai.ts", "ToolInvocation"),
     ("ActionProposal", "types/ai.ts", "ActionProposal"),
     // AI-03 Context Builder / Preview（§8 / §10.1 / §10.2）
-    (
-        "SupplementaryContext",
-        "types/ai.ts",
-        "SupplementaryContext",
-    ),
-    (
-        "ConflictPreviewTarget",
-        "types/ai.ts",
-        "ConflictPreviewTarget",
-    ),
+    ("SupplementaryContext", "types/ai.ts", "SupplementaryContext"),
+    ("ConflictPreviewTarget", "types/ai.ts", "ConflictPreviewTarget"),
     ("ConflictProposal", "types/ai.ts", "ConflictProposal"),
-    (
-        "ContextPreviewRequest",
-        "types/ai.ts",
-        "ContextPreviewRequest",
-    ),
-    (
-        "DiagnosticErrorInput",
-        "types/ai.ts",
-        "DiagnosticErrorInput",
-    ),
-    (
-        "RuntimeDiagnosticRequest",
-        "types/ai.ts",
-        "RuntimeDiagnosticRequest",
-    ),
+    ("ContextPreviewRequest", "types/ai.ts", "ContextPreviewRequest"),
+    ("DiagnosticErrorInput", "types/ai.ts", "DiagnosticErrorInput"),
+    ("RuntimeDiagnosticRequest", "types/ai.ts", "RuntimeDiagnosticRequest"),
     ("DiagnosticReport", "types/ai.ts", "DiagnosticReport"),
     ("PreviewTarget", "types/ai.ts", "PreviewTarget"),
-    (
-        "SecretFindingSummary",
-        "types/ai.ts",
-        "SecretFindingSummary",
-    ),
+    ("SecretFindingSummary", "types/ai.ts", "SecretFindingSummary"),
     ("SecretPolicyChoice", "types/ai.ts", "SecretPolicyChoice"),
     ("SecretReport", "types/ai.ts", "SecretReport"),
     ("AiContextPreview", "types/ai.ts", "AiContextPreview"),
     // AI-04 会话 / 消息 / 审计（§10.4 / §11.2 / §16.1）
     ("AiSession", "types/ai.ts", "AiSession"),
-    (
-        "CreateAiSessionRequest",
-        "types/ai.ts",
-        "CreateAiSessionRequest",
-    ),
+    ("CreateAiSessionRequest", "types/ai.ts", "CreateAiSessionRequest"),
     ("AiSessionListQuery", "types/ai.ts", "AiSessionListQuery"),
     ("AiSessionList", "types/ai.ts", "AiSessionList"),
     ("AiSessionMessage", "types/ai.ts", "AiSessionMessage"),
     ("AiSessionDetail", "types/ai.ts", "AiSessionDetail"),
-    (
-        "AiSessionPersistence",
-        "types/ai.ts",
-        "AiSessionPersistence",
-    ),
+    ("AiSessionPersistence", "types/ai.ts", "AiSessionPersistence"),
     ("AiSessionExport", "types/ai.ts", "AiSessionExport"),
     ("AiRequestAudit", "types/ai.ts", "AiRequestAudit"),
 ];

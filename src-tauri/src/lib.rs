@@ -118,8 +118,7 @@ fn set_windows_taskbar_icon(app: &tauri::App) {
 pub fn run() {
     // Initialize the module-segregating logger (app/git/task/ai/performance.log,
     // secrets redacted) before anything else logs.
-    crate::core::logger::init_logger(&crate::core::logger::logs_dir())
-        .expect("failed to initialize logger");
+    crate::core::logger::init_logger(&crate::core::logger::logs_dir()).expect("failed to initialize logger");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -159,8 +158,7 @@ pub fn run() {
                 Arc::clone(&db),
                 Arc::clone(&pom_cache),
             );
-            let runtime_handler: Arc<dyn crate::task::runtime::RuntimeTaskHandler> =
-                runtime_service.clone();
+            let runtime_handler: Arc<dyn crate::task::runtime::RuntimeTaskHandler> = runtime_service.clone();
 
             // Create TaskManager with 8 workers (Runtime tasks dispatched to
             // the RuntimeService handler, R-12).
@@ -175,38 +173,30 @@ pub fn run() {
             // R-17 File Watch 引擎：只监听「autoRestart 开启且进程活跃」应用的
             // 闭包模块目录；变化 → 防抖 → 影响分析 → RebuildRestart 任务。
             // 与 RuntimeService 共享同一批进程管理器 / 图 / 闭包缓存实例。
-            let (watch_processes, watch_graph_cache, watch_closure_cache) =
-                runtime_service.watch_shared_parts();
+            let (watch_processes, watch_graph_cache, watch_closure_cache) = runtime_service.watch_shared_parts();
             let watch_engine = crate::runtime::watch::RuntimeWatchEngine::spawn(
                 Arc::clone(&db),
                 watch_graph_cache,
                 watch_closure_cache,
-                Arc::new(crate::runtime::events::TauriRuntimeEmitter::new(
-                    app.handle().clone(),
-                )),
+                Arc::new(crate::runtime::events::TauriRuntimeEmitter::new(app.handle().clone())),
                 watch_processes,
             );
             watch_engine.attach_task_manager({
-                let submitter: Arc<dyn crate::runtime::watch::WatchTaskSubmitter> =
-                    task_manager.clone();
+                let submitter: Arc<dyn crate::runtime::watch::WatchTaskSubmitter> = task_manager.clone();
                 submitter
             });
 
             // R-21 Git 联动引擎：§47 Status 提示 / §48 分支切换复核，
             // 与 RuntimeService 共享同一批图 / 闭包缓存实例。
-            let (_processes, link_graph_cache, link_closure_cache) =
-                runtime_service.watch_shared_parts();
+            let (_processes, link_graph_cache, link_closure_cache) = runtime_service.watch_shared_parts();
             let git_link = crate::runtime::git_link::GitLinkEngine::spawn(
                 Arc::clone(&db),
                 link_graph_cache,
                 link_closure_cache,
-                Arc::new(crate::runtime::events::TauriRuntimeEmitter::new(
-                    app.handle().clone(),
-                )),
+                Arc::new(crate::runtime::events::TauriRuntimeEmitter::new(app.handle().clone())),
             );
             git_link.attach_task_manager({
-                let submitter: Arc<dyn crate::runtime::watch::WatchTaskSubmitter> =
-                    task_manager.clone();
+                let submitter: Arc<dyn crate::runtime::watch::WatchTaskSubmitter> = task_manager.clone();
                 submitter
             });
 
@@ -223,12 +213,8 @@ pub fn run() {
             state.ai_gateway = Arc::new(
                 crate::ai::AiGateway::new(
                     crate::ai::GatewayConfig::default(),
-                    std::sync::Arc::new(
-                        crate::ai::transport::ReqwestTransport::new().expect("reqwest transport"),
-                    ),
-                    std::sync::Arc::new(crate::ai::events::TauriAiEventSink::new(
-                        app.handle().clone(),
-                    )),
+                    std::sync::Arc::new(crate::ai::transport::ReqwestTransport::new().expect("reqwest transport")),
+                    std::sync::Arc::new(crate::ai::events::TauriAiEventSink::new(app.handle().clone())),
                 )
                 .with_store(Arc::clone(&db))
                 .with_cache(Arc::clone(&state.ai_result_cache)),
@@ -239,10 +225,7 @@ pub fn run() {
 
             // T-32：Scheduled Tasks 调度线程（独立于主任务队列，30s tick；
             // 在 state 被 manage 移动前取出所需 Arc）。
-            commands::automation::spawn_scheduler(
-                Arc::clone(&db),
-                Arc::clone(&state.task_manager),
-            );
+            commands::automation::spawn_scheduler(Arc::clone(&db), Arc::clone(&state.task_manager));
 
             app.manage(state);
 

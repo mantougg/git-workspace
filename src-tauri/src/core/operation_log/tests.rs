@@ -44,8 +44,7 @@ fn commit_file(repo: &git2::Repository, dir: &Path, name: &str, content: &str, m
         .and_then(|h| h.target())
         .map(|oid| repo.find_commit(oid).unwrap());
     let parents: Vec<&git2::Commit> = parent.iter().collect();
-    repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
-        .unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents).unwrap();
 }
 
 fn init_repo(dir: &Path) -> git2::Repository {
@@ -110,8 +109,7 @@ fn log_insert_and_query_roundtrip() {
             detail: None,
         },
     ];
-    let log_id =
-        insert_operation_log(&mut conn, Some(ws_id), OP_RESET, "reset --hard", &items).unwrap();
+    let log_id = insert_operation_log(&mut conn, Some(ws_id), OP_RESET, "reset --hard", &items).unwrap();
 
     // Unfiltered page.
     let page = query_operation_logs(&conn, &LogFilter::default(), 50, 0).unwrap();
@@ -278,11 +276,7 @@ fn undo_delete_recreates_branch_at_tip() {
     // the safety check refuses to clobber it.
     let results = run_undo(&get_operation_log(&conn, log_id).unwrap());
     assert!(!results[0].success);
-    assert!(
-        results[0].message.contains("已存在"),
-        "{}",
-        results[0].message
-    );
+    assert!(results[0].message.contains("已存在"), "{}", results[0].message);
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -356,19 +350,12 @@ fn undo_refuses_when_state_moved_on() {
     let detail = get_operation_log(&conn, log_id).unwrap();
     let preview = preview_undo(&detail);
     assert!(!preview[0].ok);
-    assert!(
-        preview[0].message.contains("后续变更"),
-        "{}",
-        preview[0].message
-    );
+    assert!(preview[0].message.contains("后续变更"), "{}", preview[0].message);
     let results = run_undo(&detail);
     assert!(!results[0].success);
     let fully = persist_undo_results(&mut conn, log_id, &results).unwrap();
     assert!(!fully, "failed items keep the log un-undone");
-    assert!(get_operation_log(&conn, log_id)
-        .unwrap()
-        .undone_at
-        .is_none());
+    assert!(get_operation_log(&conn, log_id).unwrap().undone_at.is_none());
 
     // Case 2: back at the after-oid but with a dirty worktree (hard undo
     // would lose those edits) -> refuse.
@@ -377,11 +364,7 @@ fn undo_refuses_when_state_moved_on() {
     let detail = get_operation_log(&conn, log_id).unwrap();
     let preview = preview_undo(&detail);
     assert!(!preview[0].ok);
-    assert!(
-        preview[0].message.contains("未提交变更"),
-        "{}",
-        preview[0].message
-    );
+    assert!(preview[0].message.contains("未提交变更"), "{}", preview[0].message);
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -403,26 +386,17 @@ fn undo_rebase_rolls_back_and_respects_in_progress() {
     let mut conn = open_db();
     let mut it = item(&dir, "master", &c1, Some(&c2));
     it.detail = Some("onto:upstream".into());
-    let log_id =
-        insert_operation_log(&mut conn, None, OP_REBASE, "rebase → upstream", &[it]).unwrap();
+    let log_id = insert_operation_log(&mut conn, None, OP_REBASE, "rebase → upstream", &[it]).unwrap();
 
     // In-progress rebase state blocks the undo (rebase_abort owns recovery).
     let state = serde_json::json!({
         "originalHead": c1, "onto": "upstream", "ops": [], "position": 0, "prevCommit": c1
     });
-    std::fs::write(
-        dir.join(".git").join("gitworkspace-rebase.json"),
-        state.to_string(),
-    )
-    .unwrap();
+    std::fs::write(dir.join(".git").join("gitworkspace-rebase.json"), state.to_string()).unwrap();
     let detail = get_operation_log(&conn, log_id).unwrap();
     let preview = preview_undo(&detail);
     assert!(!preview[0].ok);
-    assert!(
-        preview[0].message.contains("rebase"),
-        "{}",
-        preview[0].message
-    );
+    assert!(preview[0].message.contains("rebase"), "{}", preview[0].message);
     std::fs::remove_file(dir.join(".git").join("gitworkspace-rebase.json")).unwrap();
 
     // Clean state at the after-oid: rollback to c1 succeeds.
@@ -445,10 +419,7 @@ fn snapshots_capture_ref_and_oid() {
         drop(repo);
         tip
     };
-    assert_eq!(
-        snapshot_head(&dir),
-        Some(("master".to_string(), tip.clone()))
-    );
+    assert_eq!(snapshot_head(&dir), Some(("master".to_string(), tip.clone())));
     assert_eq!(
         snapshot_branch(&dir, "master"),
         Some(("master".to_string(), tip.clone()))

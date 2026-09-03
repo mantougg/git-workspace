@@ -168,11 +168,7 @@ pub fn repo_id_for_path(conn: &Connection, repo_path: &str) -> AppResult<i64> {
 
 /// 全量走查 + 按 hash 增量重建一个仓库（未变更文件直接跳过）。
 /// 磁盘上已删除的文件从索引移除。
-pub fn reindex_repo(
-    conn: &mut Connection,
-    repo_root: &Path,
-    repo_id: i64,
-) -> AppResult<IndexStats> {
+pub fn reindex_repo(conn: &mut Connection, repo_root: &Path, repo_id: i64) -> AppResult<IndexStats> {
     let mut stats = IndexStats {
         files_scanned: 0,
         files_reindexed: 0,
@@ -219,8 +215,7 @@ pub fn reindex_repo(
 
     // 移除磁盘上已不存在的文件索引
     let stored: Vec<String> = {
-        let mut stmt =
-            conn.prepare("SELECT file_path FROM symbol_index_files WHERE repo_id = ?1")?;
+        let mut stmt = conn.prepare("SELECT file_path FROM symbol_index_files WHERE repo_id = ?1")?;
         let rows = stmt.query_map(params![repo_id], |row| row.get::<_, String>(0))?;
         rows.filter_map(|r| r.ok()).collect()
     };
@@ -230,26 +225,13 @@ pub fn reindex_repo(
         }
     }
 
-    stats.symbols = count(
-        conn,
-        "SELECT COUNT(*) FROM symbols WHERE repo_id = ?1",
-        repo_id,
-    )?;
-    stats.refs = count(
-        conn,
-        "SELECT COUNT(*) FROM symbol_refs WHERE repo_id = ?1",
-        repo_id,
-    )?;
+    stats.symbols = count(conn, "SELECT COUNT(*) FROM symbols WHERE repo_id = ?1", repo_id)?;
+    stats.refs = count(conn, "SELECT COUNT(*) FROM symbol_refs WHERE repo_id = ?1", repo_id)?;
     Ok(stats)
 }
 
 /// 增量入口：仅处理显式给定的相对路径文件（watcher / 单文件重解析）。
-pub fn reindex_files(
-    conn: &mut Connection,
-    repo_root: &Path,
-    repo_id: i64,
-    files: &[String],
-) -> AppResult<IndexStats> {
+pub fn reindex_files(conn: &mut Connection, repo_root: &Path, repo_id: i64, files: &[String]) -> AppResult<IndexStats> {
     let mut stats = IndexStats {
         files_scanned: files.len(),
         files_reindexed: 0,
@@ -271,32 +253,14 @@ pub fn reindex_files(
             stats.files_skipped += 1;
         }
     }
-    stats.symbols = count(
-        conn,
-        "SELECT COUNT(*) FROM symbols WHERE repo_id = ?1",
-        repo_id,
-    )?;
-    stats.refs = count(
-        conn,
-        "SELECT COUNT(*) FROM symbol_refs WHERE repo_id = ?1",
-        repo_id,
-    )?;
+    stats.symbols = count(conn, "SELECT COUNT(*) FROM symbols WHERE repo_id = ?1", repo_id)?;
+    stats.refs = count(conn, "SELECT COUNT(*) FROM symbol_refs WHERE repo_id = ?1", repo_id)?;
     Ok(stats)
 }
 
 /// 处理单文件：hash 未变返回 false（跳过）；变更则事务内替换。
-fn process_file(
-    conn: &mut Connection,
-    repo_id: i64,
-    _repo_root: &Path,
-    rel: &str,
-    abs: &Path,
-) -> AppResult<bool> {
-    let lang = match abs
-        .extension()
-        .and_then(|e| e.to_str())
-        .and_then(detect_language)
-    {
+fn process_file(conn: &mut Connection, repo_id: i64, _repo_root: &Path, rel: &str, abs: &Path) -> AppResult<bool> {
+    let lang = match abs.extension().and_then(|e| e.to_str()).and_then(detect_language) {
         Some(l) => l,
         None => return Ok(false),
     };
@@ -365,14 +329,7 @@ fn process_file(
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )?;
         for r in &ext.refs {
-            ref_stmt.execute(params![
-                repo_id,
-                r.name,
-                rel,
-                r.line as i64,
-                r.is_call as i64,
-                now
-            ])?;
+            ref_stmt.execute(params![repo_id, r.name, rel, r.line as i64, r.is_call as i64, now])?;
         }
     }
     tx.execute(
@@ -654,8 +611,7 @@ mod tests {
 
     #[test]
     fn parse_filters_splits_tokens() {
-        let (f, tokens) =
-            parse_filters("handler @ext:rs,ts @path:src/api @status:dirty @repo:core");
+        let (f, tokens) = parse_filters("handler @ext:rs,ts @path:src/api @status:dirty @repo:core");
         assert_eq!(f.exts, vec!["rs", "ts"]);
         assert_eq!(f.paths, vec!["src/api"]);
         assert_eq!(f.statuses, vec!["dirty"]);
@@ -689,11 +645,9 @@ mod tests {
         assert_eq!(stats.files_skipped, 1);
         let defs = find_definitions(&conn, "beta2", &RepoScope::default(), &[], &[]).unwrap();
         assert_eq!(defs.len(), 1);
-        assert!(
-            find_definitions(&conn, "beta", &RepoScope::default(), &[], &[])
-                .unwrap()
-                .is_empty()
-        );
+        assert!(find_definitions(&conn, "beta", &RepoScope::default(), &[], &[])
+            .unwrap()
+            .is_empty());
 
         // 磁盘删除文件 → 索引同步清理
         std::fs::remove_file(root.join("src/other.py")).unwrap();
@@ -737,19 +691,14 @@ pub fn boss() -> u32 { worker(3) }
         assert!(refs.iter().all(|r| r.is_call));
 
         // Callers of worker：最深容器 inner（2 次）、boss（1 次）；不误报 outer
-        let callers =
-            call_hierarchy(&conn, "worker", "callers", &RepoScope::default(), &[], &[]).unwrap();
-        let names: Vec<(&str, i64)> = callers
-            .iter()
-            .map(|c| (c.name.as_str(), c.call_count))
-            .collect();
+        let callers = call_hierarchy(&conn, "worker", "callers", &RepoScope::default(), &[], &[]).unwrap();
+        let names: Vec<(&str, i64)> = callers.iter().map(|c| (c.name.as_str(), c.call_count)).collect();
         assert!(names.contains(&("inner", 2)), "{names:?}");
         assert!(names.contains(&("boss", 1)), "{names:?}");
         assert!(!names.iter().any(|(n, _)| *n == "outer"), "{names:?}");
 
         // Callees of boss：只调 worker
-        let callees =
-            call_hierarchy(&conn, "boss", "callees", &RepoScope::default(), &[], &[]).unwrap();
+        let callees = call_hierarchy(&conn, "boss", "callees", &RepoScope::default(), &[], &[]).unwrap();
         assert_eq!(callees.len(), 1);
         assert_eq!(callees[0].name, "worker");
         assert_eq!(callees[0].call_count, 1);
@@ -768,14 +717,7 @@ pub fn boss() -> u32 { worker(3) }
         reindex_repo(&mut conn, &root, repo_id).unwrap();
 
         // @ext:rs 只命中 Rust 定义
-        let hits = search_symbols(
-            &conn,
-            &RepoScope::default(),
-            &["rs".into()],
-            &[],
-            &["target_fn".into()],
-        )
-        .unwrap();
+        let hits = search_symbols(&conn, &RepoScope::default(), &["rs".into()], &[], &["target_fn".into()]).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].kind, "function");
         assert!(hits[0].file_path.ends_with("a.rs"));
@@ -832,8 +774,7 @@ pub fn boss() -> u32 { worker(3) }
         tx.commit().unwrap();
 
         let start = std::time::Instant::now();
-        let hits =
-            search_symbols(&conn, &RepoScope::default(), &[], &[], &["sym_0999".into()]).unwrap();
+        let hits = search_symbols(&conn, &RepoScope::default(), &[], &[], &["sym_0999".into()]).unwrap();
         let elapsed = start.elapsed();
         assert!(!hits.is_empty());
         assert!(

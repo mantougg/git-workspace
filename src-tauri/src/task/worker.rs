@@ -105,10 +105,7 @@ pub fn spawn_worker_pool(
 
 /// Whether a task's cancellation flag has been set.
 fn is_cancelled(flags: &DashMap<String, Arc<AtomicBool>>, task_id: &str) -> bool {
-    flags
-        .get(task_id)
-        .map(|f| f.load(Ordering::Relaxed))
-        .unwrap_or(false)
+    flags.get(task_id).map(|f| f.load(Ordering::Relaxed)).unwrap_or(false)
 }
 
 /// Execute a single task: update status, run the Git operation (with timeout +
@@ -180,109 +177,105 @@ async fn execute_task(
         // 并使用更长的硬超时（git 的 5 分钟上限对构建不适用）。
         let is_runtime = matches!(
             task_type_for_exec,
-            TaskType::Runtime { .. }
-                | TaskType::RuntimeUpdateConfig { .. }
-                | TaskType::NodeInstall { .. }
+            TaskType::Runtime { .. } | TaskType::RuntimeUpdateConfig { .. } | TaskType::NodeInstall { .. }
         );
         let runtime_handler = runtime_handler.clone();
         let cancel_flag = cancel_flags.get(&task.id).map(|f| Arc::clone(&f));
         let db_for_exec = Arc::clone(db);
         let app_for_exec = app.clone();
         let task_id_for_exec = task.id.clone();
-        let hard_timeout = if is_runtime {
-            RUNTIME_TASK_TIMEOUT
-        } else {
-            TASK_TIMEOUT
-        };
+        let hard_timeout = if is_runtime { RUNTIME_TASK_TIMEOUT } else { TASK_TIMEOUT };
 
         let result = tokio::time::timeout(
             hard_timeout,
-            tokio::task::spawn_blocking(move || {
-                match &task_type_for_exec {
-                    TaskType::Runtime { .. } => {
-                        let Some(handler) = runtime_handler else {
-                            return Err(AppError::Task(
-                                "Runtime 任务处理器未装配（应用启动未完成），请稍后重试".into(),
-                            ));
-                        };
-                        let cancel = cancel_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
-                        handler.execute(&task_type_for_exec, cancel)
-                    }
-                    TaskType::RuntimeUpdateConfig { workspace_id, name, config_json } => {
-                        let config: crate::runtime::UpdateRuntimeConfigRequest =
-                            serde_json::from_str(config_json)
-                                .map_err(|e| AppError::Task(format!("Runtime 配置提案无效: {e}")))?;
-                        let conn = db_for_exec
-                            .lock()
-                            .map_err(|e| AppError::Other(format!("DB lock error: {e}")))?;
-                        if config.workspace_id != *workspace_id || config.name != *name {
-                            return Err(AppError::Task("Runtime 配置提案作用域不匹配".into()));
-                        }
-                        crate::runtime::config::update_config(&conn, &config).map(|_| None)
-                    }
-                    TaskType::NodeInstall {
-                        project_dir,
-                        package_manager,
-                    } => {
-                        let conn = db_for_exec
-                            .lock()
-                            .map_err(|e| AppError::Other(format!("DB lock error: {e}")))?;
-                        let decision = crate::node::PackageManagerDecision {
-                            manager: *package_manager,
-                            source: crate::node::DecisionSource::Configured,
-                            reason: format!("node_install 显式指定 {}", package_manager.name()),
-                        };
-                        let detection = crate::node::resolve_package_manager_with_registry(
-                            &conn,
-                            &decision,
-                        )?;
-                        drop(conn);
-                        let cancel = cancel_flag.as_deref();
-                        let summary = crate::node::install::execute_install(
-                            detection,
-                            *package_manager,
-                            std::path::Path::new(project_dir),
-                            cancel,
-                            |stream, line| {
-                                let _ = app_for_exec.emit(
-                                    "node_install_output",
-                                    serde_json::json!({
-                                    "taskId": task_id_for_exec.clone(),
-                                        "stream": stream,
-                                        "line": line,
-                                    }),
-                                );
-                            },
-                        )?;
-                        Ok(Some(summary))
-                    }
-                    TaskType::ConflictApply { path, strategy, content } => {
-                        let repo = std::path::Path::new(&repo_path);
-                        let before = crate::core::operation_log::snapshot_head(repo);
-                        if let Some(content) = content.as_deref() {
-                            crate::core::conflict::resolve_conflict_with_content(repo, path, Some(content))?;
-                        } else {
-                            crate::core::conflict::resolve_conflict(repo, path, strategy)?;
-                        }
-                        if let Some((ref_name, before_oid)) = before {
-                            crate::core::operation_log::record_operation_best_effort(
-                                &db_for_exec,
-                                &repo_path,
-                                crate::core::operation_log::OP_CONFLICT_RESOLUTION,
-                                &format!("resolve conflict: {path}"),
-                                vec![crate::core::operation_log::NewOperationLogItem {
-                                    repo_path: repo_path.clone(),
-                                    ref_name,
-                                    before_oid,
-                                    after_oid: crate::core::operation_log::snapshot_head(repo).map(|(_, oid)| oid),
-                                    detail: Some(format!("path:{path}")),
-                                }],
-                            );
-                        }
-                        Ok(None)
-                    }
-                    _ => ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path)),
+            tokio::task::spawn_blocking(move || match &task_type_for_exec {
+                TaskType::Runtime { .. } => {
+                    let Some(handler) = runtime_handler else {
+                        return Err(AppError::Task(
+                            "Runtime 任务处理器未装配（应用启动未完成），请稍后重试".into(),
+                        ));
+                    };
+                    let cancel = cancel_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+                    handler.execute(&task_type_for_exec, cancel)
                 }
+                TaskType::RuntimeUpdateConfig {
+                    workspace_id,
+                    name,
+                    config_json,
+                } => {
+                    let config: crate::runtime::UpdateRuntimeConfigRequest = serde_json::from_str(config_json)
+                        .map_err(|e| AppError::Task(format!("Runtime 配置提案无效: {e}")))?;
+                    let conn = db_for_exec
+                        .lock()
+                        .map_err(|e| AppError::Other(format!("DB lock error: {e}")))?;
+                    if config.workspace_id != *workspace_id || config.name != *name {
+                        return Err(AppError::Task("Runtime 配置提案作用域不匹配".into()));
+                    }
+                    crate::runtime::config::update_config(&conn, &config).map(|_| None)
+                }
+                TaskType::NodeInstall {
+                    project_dir,
+                    package_manager,
+                } => {
+                    let conn = db_for_exec
+                        .lock()
+                        .map_err(|e| AppError::Other(format!("DB lock error: {e}")))?;
+                    let decision = crate::node::PackageManagerDecision {
+                        manager: *package_manager,
+                        source: crate::node::DecisionSource::Configured,
+                        reason: format!("node_install 显式指定 {}", package_manager.name()),
+                    };
+                    let detection = crate::node::resolve_package_manager_with_registry(&conn, &decision)?;
+                    drop(conn);
+                    let cancel = cancel_flag.as_deref();
+                    let summary = crate::node::install::execute_install(
+                        detection,
+                        *package_manager,
+                        std::path::Path::new(project_dir),
+                        cancel,
+                        |stream, line| {
+                            let _ = app_for_exec.emit(
+                                "node_install_output",
+                                serde_json::json!({
+                                "taskId": task_id_for_exec.clone(),
+                                    "stream": stream,
+                                    "line": line,
+                                }),
+                            );
+                        },
+                    )?;
+                    Ok(Some(summary))
+                }
+                TaskType::ConflictApply {
+                    path,
+                    strategy,
+                    content,
+                } => {
+                    let repo = std::path::Path::new(&repo_path);
+                    let before = crate::core::operation_log::snapshot_head(repo);
+                    if let Some(content) = content.as_deref() {
+                        crate::core::conflict::resolve_conflict_with_content(repo, path, Some(content))?;
+                    } else {
+                        crate::core::conflict::resolve_conflict(repo, path, strategy)?;
+                    }
+                    if let Some((ref_name, before_oid)) = before {
+                        crate::core::operation_log::record_operation_best_effort(
+                            &db_for_exec,
+                            &repo_path,
+                            crate::core::operation_log::OP_CONFLICT_RESOLUTION,
+                            &format!("resolve conflict: {path}"),
+                            vec![crate::core::operation_log::NewOperationLogItem {
+                                repo_path: repo_path.clone(),
+                                ref_name,
+                                before_oid,
+                                after_oid: crate::core::operation_log::snapshot_head(repo).map(|(_, oid)| oid),
+                                detail: Some(format!("path:{path}")),
+                            }],
+                        );
+                    }
+                    Ok(None)
+                }
+                _ => ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path)),
             }),
         )
         .await;
@@ -358,9 +351,7 @@ async fn execute_task(
             project_dir,
             package_manager,
         } => Some(format!("{} install (cwd {})", package_manager.name(), project_dir)),
-        TaskType::Commit {
-            then_push: true, ..
-        } => Some("git commit && git push".to_string()),
+        TaskType::Commit { then_push: true, .. } => Some("git commit && git push".to_string()),
         _ => None,
     };
     if let Some(command) = console_command {
@@ -391,9 +382,7 @@ async fn execute_task(
     // AI commit proposals are logged after the task succeeds. The log stores
     // only ref snapshots and metadata, so T-34 can safely offer Undo without
     // retaining commit contents or proposal prompt text.
-    if matches!(&task.task_type, TaskType::Commit { .. })
-        && matches!(task.status, TaskStatus::Success)
-    {
+    if matches!(&task.task_type, TaskType::Commit { .. }) && matches!(task.status, TaskStatus::Success) {
         if let Some((ref_name, before_oid)) = ai_commit_before {
             crate::core::operation_log::record_operation_best_effort(
                 db,
@@ -404,10 +393,8 @@ async fn execute_task(
                     repo_path: task.repo_path.clone(),
                     ref_name,
                     before_oid,
-                    after_oid: crate::core::operation_log::snapshot_head(
-                        std::path::Path::new(&task.repo_path),
-                    )
-                    .map(|(_, oid)| oid),
+                    after_oid: crate::core::operation_log::snapshot_head(std::path::Path::new(&task.repo_path))
+                        .map(|(_, oid)| oid),
                     detail: Some("source:ai_action_proposal".into()),
                 }],
             );
@@ -423,17 +410,7 @@ async fn execute_task(
     // T-24: evolve the DAG this node belongs to (release dependents,
     // propagate failure/cancellation). A retried node must not be accounted
     // into the batch aggregate yet, nor cleaned up.
-    let retried = finish_dag_node(
-        dags,
-        dag_sender,
-        tasks,
-        cancel_flags,
-        db,
-        app,
-        batches,
-        &task,
-        output,
-    );
+    let retried = finish_dag_node(dags, dag_sender, tasks, cancel_flags, db, app, batches, &task, output);
 
     if !retried {
         // Aggregate into the parent batch (T-20): evolves the synthetic batch
@@ -556,9 +533,7 @@ pub(crate) fn update_batch(
     if done {
         if let Ok(conn) = db.lock() {
             let now = chrono::Utc::now().to_rfc3339();
-            if let Err(e) =
-                dao::update_task_status(&conn, &batch_id, batch_task.status.key(), Some(&now))
-            {
+            if let Err(e) = dao::update_task_status(&conn, &batch_id, batch_task.status.key(), Some(&now)) {
                 log::warn!("Failed to persist batch {} status: {}", batch_id, e);
             }
         }

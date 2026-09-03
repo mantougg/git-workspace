@@ -127,14 +127,8 @@ pub fn anomalies_of(status: &RepoStatus) -> Vec<&'static str> {
 /// Health score for one repo: 100 minus the summed weights of the anomalies
 /// present, clamped to [0, 100]. (The frontend re-uses the same formula when
 /// merging async heavy-check results — keep the two in sync.)
-pub fn score_of<'a>(
-    anomalies: impl IntoIterator<Item = &'a str>,
-    weights: &HealthWeights,
-) -> u32 {
-    let deduction: u32 = anomalies
-        .into_iter()
-        .map(|a| weights.weight_of(a))
-        .sum();
+pub fn score_of<'a>(anomalies: impl IntoIterator<Item = &'a str>, weights: &HealthWeights) -> u32 {
+    let deduction: u32 = anomalies.into_iter().map(|a| weights.weight_of(a)).sum();
     100u32.saturating_sub(deduction)
 }
 
@@ -352,10 +346,7 @@ mod tests {
     fn score_deducts_weights_and_clamps_at_zero() {
         let w = HealthWeights::default();
         assert_eq!(score_of([ANOMALY_CONFLICT], &w), 70);
-        assert_eq!(
-            score_of([ANOMALY_CONFLICT, ANOMALY_DIRTY, ANOMALY_UNTRACKED], &w),
-            57
-        );
+        assert_eq!(score_of([ANOMALY_CONFLICT, ANOMALY_DIRTY, ANOMALY_UNTRACKED], &w), 57);
         // Everything wrong at once must clamp at 0, not underflow.
         let all = anomalies_of(&{
             let mut s = status();
@@ -394,11 +385,7 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("health-weights.json"),
-            r#"{ "conflict": 50, "dirty": 1 }"#,
-        )
-        .unwrap();
+        std::fs::write(dir.join("health-weights.json"), r#"{ "conflict": 50, "dirty": 1 }"#).unwrap();
         let w = load_health_weights(&dir);
         assert_eq!(w.conflict, 50);
         assert_eq!(w.dirty, 1);

@@ -45,13 +45,9 @@ use crate::maven::{DependencyGraphCache, MavenProjectNode, PomCache, RuntimeClos
 use crate::runtime::build::runner::{MavenRunner, SpawningMavenRunner};
 use crate::runtime::build::scheduler::BuildScheduler;
 use crate::runtime::config;
-use crate::runtime::events::{
-    RuntimeEmission, RuntimeEventEmitter, TauriRuntimeBridge, TauriRuntimeEmitter,
-};
+use crate::runtime::events::{RuntimeEmission, RuntimeEventEmitter, TauriRuntimeBridge, TauriRuntimeEmitter};
 use crate::runtime::launch::launcher::{LaunchRunner, SystemLaunchRunner};
-use crate::runtime::launch::manager::{
-    RuntimeProcessDeps, RuntimeProcessManager, DEFAULT_SAMPLE_INTERVAL,
-};
+use crate::runtime::launch::manager::{RuntimeProcessDeps, RuntimeProcessManager, DEFAULT_SAMPLE_INTERVAL};
 use crate::runtime::logs::RuntimeLogEngine;
 use crate::runtime::script_approval::{self, ScriptApprovalStore};
 
@@ -82,10 +78,7 @@ const DEFAULT_MAX_GRAPH_EDGES: usize = 5000;
 ///
 /// 路径匹配对 Windows 分隔符不敏感（R-14 修复：R-02 索引路径统一为正斜杠，
 /// 配置/查询参数可能是反斜杠）。
-fn find_project<'a>(
-    projects: &'a [MavenProjectNode],
-    project: &str,
-) -> Option<&'a MavenProjectNode> {
+fn find_project<'a>(projects: &'a [MavenProjectNode], project: &str) -> Option<&'a MavenProjectNode> {
     let needle = project.replace('\\', "/");
     projects.iter().find(|p| {
         let path = p.path.to_string_lossy().replace('\\', "/");
@@ -166,19 +159,13 @@ impl RuntimeService {
         overrides: RuntimeServiceOverrides,
     ) -> Arc<Self> {
         let build_scheduler = Arc::new(BuildScheduler::new(scheduler_config.max_concurrent_builds));
-        let resolve_scheduler = Arc::new(BuildScheduler::new(
-            scheduler_config.max_concurrent_resolves,
-        ));
+        let resolve_scheduler = Arc::new(BuildScheduler::new(scheduler_config.max_concurrent_resolves));
         let graph_cache = Arc::new(DependencyGraphCache::new());
         let closure_cache = Arc::new(RuntimeClosureCache::new());
-        let bridge = Arc::new(TauriRuntimeBridge::new(
-            Arc::clone(&emitter),
-            Arc::clone(&db),
-        ));
+        let bridge = Arc::new(TauriRuntimeBridge::new(Arc::clone(&emitter), Arc::clone(&db)));
 
         // R-16：健康检查引擎与进程管理器共享同一 emitter / DB。
-        let health =
-            crate::runtime::health::HealthEngine::new(Arc::clone(&db), Arc::clone(&emitter));
+        let health = crate::runtime::health::HealthEngine::new(Arc::clone(&db), Arc::clone(&emitter));
 
         let processes = Arc::new(RuntimeProcessManager::with_deps(
             Arc::clone(&db),
@@ -290,10 +277,7 @@ impl RuntimeService {
                     );
                 }
                 Ok(_) => {}
-                Err(e) => log::warn!(
-                    "R-12: startup reconcile failed for workspace '{}': {e}",
-                    path
-                ),
+                Err(e) => log::warn!("R-12: startup reconcile failed for workspace '{}': {e}", path),
             });
         }
     }

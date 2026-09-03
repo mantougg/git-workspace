@@ -112,17 +112,12 @@ pub fn install_dir_for(project_dir: &Path) -> PathBuf {
 /// （pnpm），且 project 相对路径命中任一模式。project 自身是根时返回 `None`
 /// （安装本就在正确位置）。
 pub fn find_workspace_root(project_dir: &Path, max_depth: usize) -> Option<PathBuf> {
-    let canonical =
-        std::fs::canonicalize(project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
+    let canonical = std::fs::canonicalize(project_dir).unwrap_or_else(|_| project_dir.to_path_buf());
     let mut current = canonical.as_path();
     for _ in 0..max_depth {
         let parent = current.parent()?;
         current = parent;
-        let relative = canonical
-            .strip_prefix(current)
-            .ok()?
-            .to_string_lossy()
-            .to_string();
+        let relative = canonical.strip_prefix(current).ok()?.to_string_lossy().to_string();
         if let Some(patterns) = root_workspaces_of(current) {
             if patterns
                 .iter()
@@ -178,18 +173,9 @@ mod tests {
     #[test]
     fn matches_single_segment_and_double_star_patterns() {
         assert!(path_matches_workspace_pattern("packages/web", "packages/*"));
-        assert!(path_matches_workspace_pattern(
-            "packages\\web",
-            "packages/*"
-        ));
-        assert!(!path_matches_workspace_pattern(
-            "packages/web/inner",
-            "packages/*"
-        ));
-        assert!(path_matches_workspace_pattern(
-            "packages/web/inner",
-            "packages/**"
-        ));
+        assert!(path_matches_workspace_pattern("packages\\web", "packages/*"));
+        assert!(!path_matches_workspace_pattern("packages/web/inner", "packages/*"));
+        assert!(path_matches_workspace_pattern("packages/web/inner", "packages/**"));
         assert!(path_matches_workspace_pattern("apps/web", "*/*"));
         assert!(path_matches_workspace_pattern("web", "*"));
         assert!(!path_matches_workspace_pattern("a/b", "a"));
@@ -214,11 +200,7 @@ mod tests {
         );
         // pnpm 形态：去掉 package.json workspaces，改用 pnpm-workspace.yaml。
         std::fs::write(root.join("package.json"), r#"{"name":"root"}"#).unwrap();
-        std::fs::write(
-            root.join("pnpm-workspace.yaml"),
-            "packages:\n  - packages/*\n",
-        )
-        .unwrap();
+        std::fs::write(root.join("pnpm-workspace.yaml"), "packages:\n  - packages/*\n").unwrap();
         assert_eq!(find_workspace_root(&packages, 4), Some(root.clone()));
         // 根自身不作为 workspace root（装依赖本就在正确位置）。
         assert_eq!(find_workspace_root(&root, 4), None);
@@ -239,19 +221,11 @@ mod tests {
             r#"{"name":"root","workspaces":["packages/*"]}"#,
         )
         .unwrap();
-        assert_eq!(
-            install_dir_for(&packages),
-            root,
-            "subpackage installs at root"
-        );
+        assert_eq!(install_dir_for(&packages), root, "subpackage installs at root");
         let standalone = root.join("standalone");
         std::fs::create_dir_all(&standalone).unwrap();
         std::fs::write(standalone.join("package.json"), r#"{"name":"s"}"#).unwrap();
-        assert_eq!(
-            install_dir_for(&standalone),
-            standalone,
-            "standalone installs in place"
-        );
+        assert_eq!(install_dir_for(&standalone), standalone, "standalone installs in place");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -8,9 +8,7 @@ use std::sync::atomic::AtomicBool;
 
 use crate::error::AppResult;
 use crate::runtime::build::pipeline::execute_node_build;
-use crate::runtime::build::{
-    BuildContext, BuildEngine, BuildOutcome, BuildOutputSink, BuildRequest,
-};
+use crate::runtime::build::{BuildContext, BuildEngine, BuildOutcome, BuildOutputSink, BuildRequest};
 
 pub struct NodeBuildEngine;
 
@@ -26,14 +24,7 @@ impl BuildEngine for NodeBuildEngine {
         sink: &mut dyn BuildOutputSink,
         cancel: Option<&AtomicBool>,
     ) -> AppResult<BuildOutcome> {
-        execute_node_build(
-            cx.db,
-            cx.workspace_root,
-            cx.script_approvals,
-            request,
-            sink,
-            cancel,
-        )
+        execute_node_build(cx.db, cx.workspace_root, cx.script_approvals, request, sink, cancel)
     }
 }
 
@@ -50,9 +41,7 @@ mod tests {
     use crate::runtime::build::runner::fake::FakeMavenRunner;
     use crate::runtime::build::scheduler::BuildScheduler;
     use crate::runtime::build::{BuildOutputSink, BuildRequest, LaunchPlan, RunStrategy};
-    use crate::runtime::config::{
-        create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeKind,
-    };
+    use crate::runtime::config::{create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeKind};
     use crate::runtime::script_approval::ScriptApprovalStore;
 
     struct Sink(Vec<String>);
@@ -100,10 +89,7 @@ mod tests {
         config.node_package_manager = Some("npm".into());
         create_config(
             &db.lock().unwrap(),
-            &CreateRuntimeConfigRequest {
-                workspace_id,
-                config,
-            },
+            &CreateRuntimeConfigRequest { workspace_id, config },
         )
         .unwrap();
         let request = BuildRequest {
@@ -173,10 +159,7 @@ mod tests {
     /// `build_run_args` 决定（两者均无 `--` 分隔），启动复用同一 spawn 链。
     fn node_engine_launch_loopback(manager: PackageManager, manager_name: &str, marker: &str) {
         if detect_node().is_err() || detect_package_manager(manager).is_err() {
-            eprintln!(
-                "N-08: node/{} unavailable; skipping real launch loopback",
-                manager_name
-            );
+            eprintln!("N-08: node/{} unavailable; skipping real launch loopback", manager_name);
             return;
         }
         let (root, db, workspace_id) = fixture();

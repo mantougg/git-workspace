@@ -37,12 +37,7 @@ pub fn unstage_hunk(repo_path: &Path, file_path: &str, hunk_index: usize) -> App
 
 /// Stage only the selected lines (indices into the hunk's line list) of one
 /// hunk of a file's unstaged changes.
-pub fn stage_lines(
-    repo_path: &Path,
-    file_path: &str,
-    hunk_index: usize,
-    line_indices: &[u32],
-) -> AppResult<()> {
+pub fn stage_lines(repo_path: &Path, file_path: &str, hunk_index: usize, line_indices: &[u32]) -> AppResult<()> {
     let repo = git2::Repository::open(repo_path)?;
     let diff = workdir_file_diff(&repo, file_path)?;
     let patch = build_single_hunk_patch(&diff, hunk_index, Some(line_indices), false)?;
@@ -50,12 +45,7 @@ pub fn stage_lines(
 }
 
 /// Unstage only the selected lines of one hunk of a file's staged changes.
-pub fn unstage_lines(
-    repo_path: &Path,
-    file_path: &str,
-    hunk_index: usize,
-    line_indices: &[u32],
-) -> AppResult<()> {
+pub fn unstage_lines(repo_path: &Path, file_path: &str, hunk_index: usize, line_indices: &[u32]) -> AppResult<()> {
     let repo = git2::Repository::open(repo_path)?;
     let diff = staged_file_diff(&repo, file_path)?;
     let patch = build_single_hunk_patch(&diff, hunk_index, Some(line_indices), true)?;
@@ -79,12 +69,7 @@ fn staged_file_diff<'r>(repo: &'r git2::Repository, file_path: &str) -> AppResul
 
 /// Apply exactly one hunk of a single-file diff to the index (forward
 /// direction), using libgit2's apply-time hunk filter.
-fn apply_hunk_forward(
-    repo: &git2::Repository,
-    diff: &git2::Diff,
-    file_path: &str,
-    hunk_index: usize,
-) -> AppResult<()> {
+fn apply_hunk_forward(repo: &git2::Repository, diff: &git2::Diff, file_path: &str, hunk_index: usize) -> AppResult<()> {
     let num_hunks = count_hunks(diff)?;
     if num_hunks == 0 {
         return Err(AppError::Other(format!(
@@ -262,9 +247,7 @@ fn build_single_hunk_patch(
     }
 
     if !lines.iter().any(RawLine::is_change) {
-        return Err(AppError::Other(
-            "选中的行不包含任何变更（无 +/- 行）".to_string(),
-        ));
+        return Err(AppError::Other("选中的行不包含任何变更（无 +/- 行）".to_string()));
     }
 
     let old_lines = lines.iter().filter(|l| l.kind != RawKind::Add).count();
@@ -288,10 +271,7 @@ fn build_single_hunk_patch(
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let status = delta.status();
-    let (old_mode, new_mode) = (
-        i32::from(delta.old_file().mode()),
-        i32::from(delta.new_file().mode()),
-    );
+    let (old_mode, new_mode) = (i32::from(delta.old_file().mode()), i32::from(delta.new_file().mode()));
 
     let (hdr_old, hdr_new, hdr_status) = if reverse {
         (new_path.clone(), old_path.clone(), reverse_status(status))
@@ -327,9 +307,7 @@ fn build_single_hunk_patch(
         format!("b/{hdr_new}")
     };
     out.extend_from_slice(format!("--- {minus}\n+++ {plus}\n").as_bytes());
-    out.extend_from_slice(
-        format!("@@ -{old_start},{old_lines} +{new_start},{new_lines} @@\n").as_bytes(),
-    );
+    out.extend_from_slice(format!("@@ -{old_start},{old_lines} +{new_start},{new_lines} @@\n").as_bytes());
 
     for line in &lines {
         let origin = match line.kind {
@@ -384,8 +362,7 @@ mod tests {
         let tree_oid = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
         let sig = git2::Signature::now("tester", "t@example.com").unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
-            .unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
         drop(tree);
         repo
     }
@@ -420,26 +397,18 @@ mod tests {
         let repo = git2::Repository::open(&dir).unwrap();
         let staged = index_content(&repo, "a.txt").unwrap();
         assert!(staged.contains("line 2 changed"), "hunk 0 must be staged");
-        assert!(
-            !staged.contains("line 28 changed"),
-            "hunk 1 must stay unstaged"
-        );
+        assert!(!staged.contains("line 28 changed"), "hunk 1 must stay unstaged");
 
         // The remaining unstaged diff has exactly one hunk.
-        let unstaged = crate::core::diff::get_unstaged_diff_with_config(
-            &dir,
-            &crate::core::diff::DiffConfig::default(),
-        )
-        .unwrap();
+        let unstaged =
+            crate::core::diff::get_unstaged_diff_with_config(&dir, &crate::core::diff::DiffConfig::default()).unwrap();
         assert_eq!(unstaged.len(), 1);
         assert_eq!(unstaged[0].hunks.len(), 1);
-        assert!(
-            unstaged[0]
-                .hunks
-                .iter()
-                .flat_map(|h| h.lines.iter())
-                .any(|l| l.line_type == "add" && l.content == "line 28 changed")
-        );
+        assert!(unstaged[0]
+            .hunks
+            .iter()
+            .flat_map(|h| h.lines.iter())
+            .any(|l| l.line_type == "add" && l.content == "line 28 changed"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -466,10 +435,7 @@ mod tests {
 
         let repo = git2::Repository::open(&dir).unwrap();
         let staged = index_content(&repo, "a.txt").unwrap();
-        assert!(
-            !staged.contains("line 2 changed"),
-            "hunk 0 must be unstaged"
-        );
+        assert!(!staged.contains("line 2 changed"), "hunk 0 must be unstaged");
         assert!(staged.contains("line 28 changed"), "hunk 1 stays staged");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -483,8 +449,7 @@ mod tests {
         let dir = tmpdir("lines");
         let repo = init_repo(&dir, "a.txt", "one\ntwo\nthree\nfour\nfive\n");
         drop(repo);
-        std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\nFOUR\nfive\n")
-            .unwrap();
+        std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\nFOUR\nfive\n").unwrap();
 
         // Single hunk; line list: " one","-two","+TWO"," three","-four","+FOUR"," five"
         // Stage only the first change (delete idx 1 + add idx 2).
@@ -495,11 +460,8 @@ mod tests {
         assert_eq!(staged, "one\nTWO\nthree\nfour\nfive\n");
 
         // Remaining unstaged change: only the FOUR line.
-        let unstaged = crate::core::diff::get_unstaged_diff_with_config(
-            &dir,
-            &crate::core::diff::DiffConfig::default(),
-        )
-        .unwrap();
+        let unstaged =
+            crate::core::diff::get_unstaged_diff_with_config(&dir, &crate::core::diff::DiffConfig::default()).unwrap();
         let adds: Vec<_> = unstaged[0]
             .hunks
             .iter()
@@ -537,8 +499,7 @@ mod tests {
         let dir = tmpdir("unlines");
         let repo = init_repo(&dir, "a.txt", "one\ntwo\nthree\nfour\nfive\n");
         drop(repo);
-        std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\nFOUR\nfive\n")
-            .unwrap();
+        std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\nFOUR\nfive\n").unwrap();
         {
             let repo = git2::Repository::open(&dir).unwrap();
             let mut index = repo.index().unwrap();
@@ -585,10 +546,7 @@ mod tests {
         std::fs::write(dir.join("new.txt"), "hello\n").unwrap();
 
         let err = stage_hunk(&dir, "new.txt", 0).unwrap_err();
-        assert!(
-            err.to_string().contains("没有可暂存的 hunk"),
-            "unexpected error: {err}"
-        );
+        assert!(err.to_string().contains("没有可暂存的 hunk"), "unexpected error: {err}");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

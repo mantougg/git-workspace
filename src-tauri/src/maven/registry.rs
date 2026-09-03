@@ -80,12 +80,7 @@ pub fn remove_maven_executable(conn: &Connection, id: i64) -> AppResult<()> {
 }
 
 /// 更新单条的有效性与校验时间。
-pub fn mark_validity(
-    conn: &Connection,
-    id: i64,
-    is_valid: bool,
-    last_checked: &str,
-) -> AppResult<()> {
+pub fn mark_validity(conn: &Connection, id: i64, is_valid: bool, last_checked: &str) -> AppResult<()> {
     conn.execute(
         "UPDATE maven_executables SET is_valid = ?2, last_checked = ?3, updated_at = ?3 WHERE id = ?1",
         params![id, is_valid as i64, last_checked],
@@ -94,12 +89,7 @@ pub fn mark_validity(
 }
 
 /// 用探测得到的版本信息更新单条全部字段（强制复检用）。
-pub fn apply_version(
-    conn: &Connection,
-    id: i64,
-    exe: &MavenExecutable,
-    last_checked: &str,
-) -> AppResult<()> {
+pub fn apply_version(conn: &Connection, id: i64, exe: &MavenExecutable, last_checked: &str) -> AppResult<()> {
     conn.execute(
         "UPDATE maven_executables SET
             major_version = ?2, full_version = ?3, is_valid = ?4,
@@ -121,12 +111,8 @@ pub fn apply_version(
 /// 返回被标记失效的条数（与 R-04 `prune_invalid_homes` 同策略）。
 pub fn prune_invalid_paths(conn: &mut Connection) -> AppResult<usize> {
     let now = chrono::Utc::now().to_rfc3339();
-    let mut stmt = conn.prepare(
-        "SELECT id, executable_path FROM maven_executables WHERE is_valid = 1",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-    })?;
+    let mut stmt = conn.prepare("SELECT id, executable_path FROM maven_executables WHERE is_valid = 1")?;
+    let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
     let stale: Vec<i64> = rows
         .filter_map(Result::ok)
         .filter(|(_, path)| !std::path::Path::new(path).is_file())

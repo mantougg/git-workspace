@@ -9,12 +9,12 @@
 use serde_json::json;
 
 use super::super::error::AiError;
-use super::SseAction;
 use super::super::request::{AiTokenUsage, MessageRole};
 use super::super::transport::BoxFuture;
+use super::SseAction;
 use super::{
-    endpoint_url, parse_json_body, read_body_limited, send_json, AdapterCall, AdapterContext,
-    AiProviderAdapter, MAX_RESPONSE_BODY_BYTES, ProviderRequest, ProviderResponse, ProviderStream,
+    endpoint_url, parse_json_body, read_body_limited, send_json, AdapterCall, AdapterContext, AiProviderAdapter,
+    ProviderRequest, ProviderResponse, ProviderStream, MAX_RESPONSE_BODY_BYTES,
 };
 use crate::ai::provider::ApiType;
 use crate::error::AppResult;
@@ -130,10 +130,7 @@ fn parse_completion(value: &serde_json::Value) -> Result<ProviderResponse, AiErr
             }
         }
     }
-    let finish_reason = value
-        .get("status")
-        .and_then(|s| s.as_str())
-        .map(String::from);
+    let finish_reason = value.get("status").and_then(|s| s.as_str()).map(String::from);
     Ok(ProviderResponse {
         text,
         finish_reason,
@@ -167,10 +164,7 @@ fn map_responses_event(event: &super::sse::SseEvent) -> super::SseAction {
             }
         }
         "response.completed" | "response.incomplete" => SseAction::End {
-            finish_reason: v
-                .pointer("/response/status")
-                .and_then(|s| s.as_str())
-                .map(String::from),
+            finish_reason: v.pointer("/response/status").and_then(|s| s.as_str()).map(String::from),
             usage: v.pointer("/response/usage").and_then(parse_usage),
         },
         "response.failed" => SseAction::Invalid,
@@ -183,8 +177,8 @@ fn map_responses_event(event: &super::sse::SseEvent) -> super::SseAction {
 #[cfg(test)]
 mod tests {
     use super::super::SseAction;
-    use crate::ai::request::AiMessage;
     use super::*;
+    use crate::ai::request::AiMessage;
 
     #[test]
     fn body_uses_instructions_and_input_text() {
@@ -249,18 +243,12 @@ mod tests {
             event: Some("response.completed".into()),
             data: r#"{"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":5,"output_tokens":2}}}"#.into(),
         };
-        assert!(matches!(
-            map_responses_event(&completed),
-            SseAction::End { .. }
-        ));
+        assert!(matches!(map_responses_event(&completed), SseAction::End { .. }));
 
         let failed = super::super::sse::SseEvent {
             event: Some("response.failed".into()),
             data: r#"{"type":"response.failed"}"#.into(),
         };
-        assert!(matches!(
-            map_responses_event(&failed),
-            SseAction::Invalid
-        ));
+        assert!(matches!(map_responses_event(&failed), SseAction::Invalid));
     }
 }

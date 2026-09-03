@@ -73,8 +73,7 @@ pub fn prepare_runtime_reactor(
 }
 
 fn validate_closure(graph: &DependencyGraph, closure: &RuntimeClosure) -> AppResult<()> {
-    if graph.workspace_id != closure.workspace_id || graph.fingerprint != closure.graph_fingerprint
-    {
+    if graph.workspace_id != closure.workspace_id || graph.fingerprint != closure.graph_fingerprint {
         return Err(AppError::DependencyResolve(
             "Runtime Closure is stale; recompute it from the current dependency graph".into(),
         ));
@@ -139,15 +138,8 @@ fn existing_plan(
     }
 }
 
-fn find_existing_reactor(
-    graph: &DependencyGraph,
-    closure: &RuntimeClosure,
-) -> AppResult<Option<i64>> {
-    let repository_id = match closure
-        .projects
-        .first()
-        .and_then(|project| project.repository_id)
-    {
+fn find_existing_reactor(graph: &DependencyGraph, closure: &RuntimeClosure) -> AppResult<Option<i64>> {
+    let repository_id = match closure.projects.first().and_then(|project| project.repository_id) {
         Some(repository_id)
             if closure
                 .projects
@@ -159,17 +151,15 @@ fn find_existing_reactor(
         _ => return Ok(None),
     };
 
-    let closure_ids: HashSet<i64> = closure
-        .projects
-        .iter()
-        .map(|project| project.project_id)
-        .collect();
+    let closure_ids: HashSet<i64> = closure.projects.iter().map(|project| project.project_id).collect();
     let links = module_links_by_parent(&graph.modules);
     let mut candidates = Vec::new();
 
-    for project in graph.projects.iter().filter(|project| {
-        project.repository_id == Some(repository_id) && project.packaging == "pom"
-    }) {
+    for project in graph
+        .projects
+        .iter()
+        .filter(|project| project.repository_id == Some(repository_id) && project.packaging == "pom")
+    {
         let reachable = known_reactor_projects(project.project_id, &links);
         if closure_ids.is_subset(&reachable) {
             candidates.push((
@@ -186,10 +176,7 @@ fn find_existing_reactor(
 fn module_links_by_parent(modules: &[MavenModuleLink]) -> HashMap<i64, Vec<&MavenModuleLink>> {
     let mut links: HashMap<i64, Vec<&MavenModuleLink>> = HashMap::new();
     for module in modules {
-        links
-            .entry(module.parent_project_id)
-            .or_default()
-            .push(module);
+        links.entry(module.parent_project_id).or_default().push(module);
     }
     for children in links.values_mut() {
         children.sort_by(|left, right| left.declared_path.cmp(&right.declared_path));
@@ -197,10 +184,7 @@ fn module_links_by_parent(modules: &[MavenModuleLink]) -> HashMap<i64, Vec<&Mave
     links
 }
 
-fn known_reactor_projects(
-    root_project_id: i64,
-    links: &HashMap<i64, Vec<&MavenModuleLink>>,
-) -> HashSet<i64> {
+fn known_reactor_projects(root_project_id: i64, links: &HashMap<i64, Vec<&MavenModuleLink>>) -> HashSet<i64> {
     let mut projects = HashSet::new();
     let mut pending = vec![root_project_id];
     while let Some(project_id) = pending.pop() {
@@ -208,11 +192,7 @@ fn known_reactor_projects(
             continue;
         }
         if let Some(children) = links.get(&project_id) {
-            pending.extend(
-                children
-                    .iter()
-                    .filter_map(|module| module.module_project_id),
-            );
+            pending.extend(children.iter().filter_map(|module| module.module_project_id));
         }
     }
     projects
@@ -270,16 +250,17 @@ fn generate_synthetic_reactor(
             workspace_root.display()
         ))
     })?;
-    let reactor_dir = workspace_root
-        .join(".gitworkspace")
-        .join("runtime")
-        .join(runtime_name);
+    let reactor_dir = workspace_root.join(".gitworkspace").join("runtime").join(runtime_name);
     // R-14 §78 只读护栏：运行时生成物只落 workspace/.gitworkspace（含
     // 符号链接解析后的逃逸检查，替换原 starts_with 弱校验）。
     crate::runtime::guard::assert_workspace_write_path(&reactor_dir, &workspace_root, "Synthetic Reactor 生成")?;
     fs::create_dir_all(&reactor_dir)?;
     let reactor_dir = fs::canonicalize(&reactor_dir)?;
-    crate::runtime::guard::assert_workspace_write_path(&reactor_dir, &workspace_root, "Synthetic Reactor 生成（canonical）")?;
+    crate::runtime::guard::assert_workspace_write_path(
+        &reactor_dir,
+        &workspace_root,
+        "Synthetic Reactor 生成（canonical）",
+    )?;
 
     let mut module_paths = Vec::with_capacity(closure.projects.len());
     let mut module_entries = Vec::with_capacity(closure.projects.len());
@@ -342,11 +323,7 @@ fn validate_runtime_name(runtime_name: &str) -> AppResult<()> {
 }
 
 fn project_directory(project: &MavenProjectNode) -> PathBuf {
-    project
-        .path
-        .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .to_path_buf()
+    project.path.parent().unwrap_or_else(|| Path::new("")).to_path_buf()
 }
 
 fn relative_path(from: &Path, to: &Path) -> AppResult<PathBuf> {
@@ -406,8 +383,7 @@ fn split_absolute_path(path: &Path) -> AppResult<(OsString, Vec<OsString>)> {
 
 #[cfg(windows)]
 fn anchors_equal(left: &OsStr, right: &OsStr) -> bool {
-    left.to_string_lossy()
-        .eq_ignore_ascii_case(&right.to_string_lossy())
+    left.to_string_lossy().eq_ignore_ascii_case(&right.to_string_lossy())
 }
 
 #[cfg(not(windows))]
@@ -417,8 +393,7 @@ fn anchors_equal(left: &OsStr, right: &OsStr) -> bool {
 
 #[cfg(windows)]
 fn components_equal(left: &OsStr, right: &OsStr) -> bool {
-    left.to_string_lossy()
-        .eq_ignore_ascii_case(&right.to_string_lossy())
+    left.to_string_lossy().eq_ignore_ascii_case(&right.to_string_lossy())
 }
 
 #[cfg(not(windows))]
@@ -429,12 +404,7 @@ fn components_equal(left: &OsStr, right: &OsStr) -> bool {
 fn path_for_maven(path: &Path) -> AppResult<String> {
     path.to_str()
         .map(|value| value.replace('\\', "/"))
-        .ok_or_else(|| {
-            AppError::SourceMapping(format!(
-                "Maven module path is not valid Unicode: {}",
-                path.display()
-            ))
-        })
+        .ok_or_else(|| AppError::SourceMapping(format!("Maven module path is not valid Unicode: {}", path.display())))
 }
 
 fn synthetic_pom(runtime_name: &str, modules: &[String]) -> String {
@@ -490,11 +460,7 @@ pub fn ensure_gitworkspace_ignored(workspace_root: &Path) -> AppResult<bool> {
         return Ok(false);
     }
 
-    let newline = if existing.contains("\r\n") {
-        "\r\n"
-    } else {
-        "\n"
-    };
+    let newline = if existing.contains("\r\n") { "\r\n" } else { "\n" };
     let mut updated = existing;
     if !updated.is_empty() && !updated.ends_with('\n') && !updated.ends_with('\r') {
         updated.push_str(newline);
@@ -561,20 +527,13 @@ mod tests {
         index.write().unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repository.find_tree(tree_id).unwrap();
-        let signature =
-            git2::Signature::now("GitWorkspace Test", "test@gitworkspace.local").unwrap();
+        let signature = git2::Signature::now("GitWorkspace Test", "test@gitworkspace.local").unwrap();
         repository
             .commit(Some("HEAD"), &signature, &signature, "fixture", &tree, &[])
             .unwrap();
     }
 
-    fn project(
-        id: i64,
-        repository_id: i64,
-        path: PathBuf,
-        artifact: &str,
-        packaging: &str,
-    ) -> MavenProjectNode {
+    fn project(id: i64, repository_id: i64, path: PathBuf, artifact: &str, packaging: &str) -> MavenProjectNode {
         MavenProjectNode {
             project_id: id,
             repository_id: Some(repository_id),
@@ -712,10 +671,7 @@ mod tests {
             let repository = git2::Repository::open(repository_root).unwrap();
             assert!(repository.statuses(None).unwrap().is_empty());
         }
-        assert_eq!(
-            fs::read_to_string(root.join(".gitignore")).unwrap(),
-            ".gitworkspace/\n"
-        );
+        assert_eq!(fs::read_to_string(root.join(".gitignore")).unwrap(), ".gitworkspace/\n");
         let _ = fs::remove_dir_all(root);
     }
 
@@ -726,14 +682,8 @@ mod tests {
             &root.join("repo/pom.xml"),
             "<project><modelVersion>4.0.0</modelVersion><groupId>com.example</groupId><artifactId>parent</artifactId><version>1.0.0</version><packaging>pom</packaging><modules><module>common</module><module>app</module><module>missing</module></modules></project>",
         );
-        write(
-            &root.join("repo/common/pom.xml"),
-            &simple_pom("common", None),
-        );
-        write(
-            &root.join("repo/app/pom.xml"),
-            &simple_pom("app", Some("common")),
-        );
+        write(&root.join("repo/common/pom.xml"), &simple_pom("common", None));
+        write(&root.join("repo/app/pom.xml"), &simple_pom("app", Some("common")));
         let graph = graph(
             vec![
                 project(1, 1, root.join("repo/pom.xml"), "parent", "pom"),
@@ -836,8 +786,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn cross_volume_paths_return_source_mapping_error() {
-        let error =
-            relative_path(Path::new(r"C:\workspace\runtime"), Path::new(r"D:\repo")).unwrap_err();
+        let error = relative_path(Path::new(r"C:\workspace\runtime"), Path::new(r"D:\repo")).unwrap_err();
         assert_eq!(error.code(), "SourceMappingFailed");
     }
 }

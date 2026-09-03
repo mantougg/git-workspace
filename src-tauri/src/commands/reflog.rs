@@ -9,14 +9,6 @@ use crate::error::AppResult;
 /// Read a reflog (default HEAD), newest first. `reference` accepts "HEAD",
 /// a full ref ("refs/heads/main"), or a shorthand ("main" / "origin/main").
 #[tauri::command]
-pub fn get_reflog(
-    repo_path: String,
-    reference: Option<String>,
-    max: Option<usize>,
-) -> AppResult<Vec<ReflogEntry>> {
-    reflog::read_reflog(
-        Path::new(&repo_path),
-        reference.as_deref(),
-        max.unwrap_or(200),
-    )
+pub fn get_reflog(repo_path: String, reference: Option<String>, max: Option<usize>) -> AppResult<Vec<ReflogEntry>> {
+    reflog::read_reflog(Path::new(&repo_path), reference.as_deref(), max.unwrap_or(200))
 }

@@ -13,9 +13,7 @@ use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
 
-use super::{
-    registry_tool_name, ExternalCallRequest, ExternalSource, ExternalToolDescriptor,
-};
+use super::{registry_tool_name, ExternalCallRequest, ExternalSource, ExternalToolDescriptor};
 
 pub const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 /// `_meta` 键遵循 MCP 的 vendor 前缀约定。
@@ -28,11 +26,7 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 
 /// 处理一个 JSON-RPC 请求体。返回 `None` 表示 Notification（无需响应）。
-pub async fn handle_jsonrpc<F, Fut>(
-    body: &str,
-    tools: &[ExternalToolDescriptor],
-    execute: &F,
-) -> Option<String>
+pub async fn handle_jsonrpc<F, Fut>(body: &str, tools: &[ExternalToolDescriptor], execute: &F) -> Option<String>
 where
     F: Fn(ExternalCallRequest) -> Fut,
     Fut: Future<Output = AppResult<Value>>,
@@ -51,12 +45,7 @@ where
     }
     let id = request.get("id").cloned();
     let Some(method) = request.get("method").and_then(Value::as_str) else {
-        return Some(error_response(
-            Value::Null,
-            INVALID_REQUEST,
-            "missing method",
-            None,
-        ));
+        return Some(error_response(Value::Null, INVALID_REQUEST, "missing method", None));
     };
     // Notification（无 id）：按 JSON-RPC 不产生响应。
     let Some(id) = id else {
@@ -119,10 +108,7 @@ fn build_call(params: &Value) -> Result<ExternalCallRequest, String> {
         .and_then(Value::as_bool)
         .unwrap_or(false);
     // CLI 经本地 MCP 端口中继时自带 client 标签，仅作审计来源标识。
-    let source = match meta
-        .and_then(|m| m.get(META_CLIENT))
-        .and_then(Value::as_str)
-    {
+    let source = match meta.and_then(|m| m.get(META_CLIENT)).and_then(Value::as_str) {
         Some("cli") => ExternalSource::Cli,
         _ => ExternalSource::Mcp,
     };
@@ -134,10 +120,7 @@ fn build_call(params: &Value) -> Result<ExternalCallRequest, String> {
     })
 }
 
-async fn tool_call_result<F, Fut>(
-    call: ExternalCallRequest,
-    execute: &F,
-) -> Result<Value, (i64, String, Option<Value>)>
+async fn tool_call_result<F, Fut>(call: ExternalCallRequest, execute: &F) -> Result<Value, (i64, String, Option<Value>)>
 where
     F: Fn(ExternalCallRequest) -> Fut,
     Fut: Future<Output = AppResult<Value>>,
@@ -211,8 +194,12 @@ mod tests {
     async fn tools_list_exposes_every_registry_tool() {
         let registry = ToolRegistry::default();
         let response = parse(
-            handle_jsonrpc(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#, &tools(), &ok_executor)
-                .await,
+            handle_jsonrpc(
+                r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+                &tools(),
+                &ok_executor,
+            )
+            .await,
         );
         let listed = response["result"]["tools"].as_array().unwrap();
         assert_eq!(listed.len(), registry.definitions().len());
@@ -290,8 +277,12 @@ mod tests {
     #[tokio::test]
     async fn unknown_method_and_bad_json_are_protocol_errors() {
         let response = parse(
-            handle_jsonrpc(r#"{"jsonrpc":"2.0","id":5,"method":"resources/list"}"#, &tools(), &ok_executor)
-                .await,
+            handle_jsonrpc(
+                r#"{"jsonrpc":"2.0","id":5,"method":"resources/list"}"#,
+                &tools(),
+                &ok_executor,
+            )
+            .await,
         );
         assert_eq!(response["error"]["code"], METHOD_NOT_FOUND);
 
@@ -300,8 +291,12 @@ mod tests {
         assert!(response["id"].is_null());
 
         let response = parse(
-            handle_jsonrpc(r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{}}"#, &tools(), &ok_executor)
-                .await,
+            handle_jsonrpc(
+                r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{}}"#,
+                &tools(),
+                &ok_executor,
+            )
+            .await,
         );
         assert_eq!(response["error"]["code"], INVALID_PARAMS);
     }

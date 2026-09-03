@@ -71,14 +71,8 @@ pub fn spawn_streaming_ext(
         *slot.lock().unwrap() = Some(child.id());
     }
 
-    let stdout = child
-        .stdout
-        .take()
-        .expect("stdout was piped before spawn");
-    let stderr = child
-        .stderr
-        .take()
-        .expect("stderr was piped before spawn");
+    let stdout = child.stdout.take().expect("stdout was piped before spawn");
+    let stderr = child.stderr.take().expect("stderr was piped before spawn");
     let (tx, rx) = mpsc::channel::<(OutputStream, String)>();
     let stdout_reader = spawn_reader(stdout, OutputStream::Stdout, tx.clone());
     let stderr_reader = spawn_reader(stderr, OutputStream::Stderr, tx);
@@ -259,12 +253,9 @@ mod tests {
         let mut cmd = sh_command("echo before; sleep 300");
         let mut lines = Vec::new();
         let start = Instant::now();
-        let exit = spawn_streaming(
-            &mut cmd,
-            None,
-            Some(Duration::from_millis(400)),
-            &mut |_, line| lines.push(line.to_string()),
-        )
+        let exit = spawn_streaming(&mut cmd, None, Some(Duration::from_millis(400)), &mut |_, line| {
+            lines.push(line.to_string())
+        })
         .unwrap();
 
         assert!(exit.timed_out);
@@ -331,13 +322,7 @@ mod tests {
             let cancel = Arc::clone(&cancel);
             let pid_slot = Arc::clone(&pid_slot);
             std::thread::spawn(move || {
-                let exit = spawn_streaming_ext(
-                    &mut cmd,
-                    Some(&cancel),
-                    None,
-                    Some(&pid_slot),
-                    &mut |_, _| {},
-                );
+                let exit = spawn_streaming_ext(&mut cmd, Some(&cancel), None, Some(&pid_slot), &mut |_, _| {});
                 let _ = done_tx.send(exit);
             });
         }

@@ -38,9 +38,7 @@ impl RuntimeProcessManager {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter_map(|(id, handle)| {
-                    handle.pid().map(|pid| (*id, pid, handle.started_instant))
-                })
+                .filter_map(|(id, handle)| handle.pid().map(|pid| (*id, pid, handle.started_instant)))
                 .collect();
             if targets.is_empty() {
                 continue;

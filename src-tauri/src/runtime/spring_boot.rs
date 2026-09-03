@@ -82,9 +82,7 @@ impl SpringBootDetectionCache {
 
     pub fn invalidate_project(&self, project_path: &Path) {
         let prefix = path_key(project_path);
-        let _ = self
-            .inner
-            .invalidate_entries_if(move |key, _| key.starts_with(&prefix));
+        let _ = self.inner.invalidate_entries_if(move |key, _| key.starts_with(&prefix));
     }
 
     pub fn invalidate_all(&self) {
@@ -127,9 +125,7 @@ pub fn detect_spring_boot_workspace_cancellable(
             if is_cancelled(cancel) {
                 return None;
             }
-            let effective = effective_by_path
-                .get(&canonical_or_original(&project.path))
-                .copied();
+            let effective = effective_by_path.get(&canonical_or_original(&project.path)).copied();
             Some(detect_project(project, effective, &by_gav, cache))
         })
         .collect();
@@ -155,17 +151,11 @@ fn detect_project(
         .any(is_spring_boot_plugin)
         || chain.iter().any(|pom| {
             pom.parent.as_ref().is_some_and(|parent| {
-                parent.group_id == "org.springframework.boot"
-                    && parent.artifact_id == "spring-boot-starter-parent"
+                parent.group_id == "org.springframework.boot" && parent.artifact_id == "spring-boot-starter-parent"
             })
         });
     let spring_boot_dependency = effective
-        .map(|model| {
-            model
-                .effective_dependencies
-                .iter()
-                .any(is_spring_boot_dependency)
-        })
+        .map(|model| model.effective_dependencies.iter().any(is_spring_boot_dependency))
         .unwrap_or_else(|| project.dependencies.iter().any(is_spring_boot_dependency));
     let is_spring_boot = spring_boot_plugin || spring_boot_dependency;
 
@@ -221,11 +211,8 @@ fn detect_project(
     });
     candidates.dedup_by(|left, right| left.class_name == right.class_name);
 
-    let default_main_class = infer_default_main_class(
-        &candidates,
-        &module,
-        effective.map(|model| &model.effective_properties),
-    );
+    let default_main_class =
+        infer_default_main_class(&candidates, &module, effective.map(|model| &model.effective_properties));
     let result = SpringBootProject {
         project_path: project.path.clone(),
         module,
@@ -268,18 +255,12 @@ fn build_project_index<'a>(
     index
 }
 
-fn parent_chain<'a>(
-    project: &'a MavenProject,
-    by_gav: &HashMap<String, &'a MavenProject>,
-) -> Vec<&'a MavenProject> {
+fn parent_chain<'a>(project: &'a MavenProject, by_gav: &HashMap<String, &'a MavenProject>) -> Vec<&'a MavenProject> {
     let mut chain = vec![project];
     let mut current = project.parent.as_ref();
     let mut visited = HashSet::from([project.coordinates().gav()]);
     while let Some(parent) = current {
-        let key = format!(
-            "{}:{}:{}",
-            parent.group_id, parent.artifact_id, parent.version
-        );
+        let key = format!("{}:{}:{}", parent.group_id, parent.artifact_id, parent.version);
         if !visited.insert(key.clone()) {
             break;
         }
@@ -298,8 +279,7 @@ fn is_spring_boot_plugin(plugin: &MavenPlugin) -> bool {
 }
 
 fn is_spring_boot_dependency(dependency: &MavenDependency) -> bool {
-    dependency.group_id == "org.springframework.boot"
-        && dependency.artifact_id.starts_with("spring-boot")
+    dependency.group_id == "org.springframework.boot" && dependency.artifact_id.starts_with("spring-boot")
 }
 
 fn module_name(project: &MavenProject) -> String {
@@ -320,11 +300,7 @@ fn infer_default_main_class(
     properties: Option<&std::collections::BTreeMap<String, String>>,
 ) -> Option<String> {
     if let Some(properties) = properties {
-        for key in [
-            "start-class",
-            "spring-boot.run.main-class",
-            "spring.boot.mainclass",
-        ] {
+        for key in ["start-class", "spring-boot.run.main-class", "spring.boot.mainclass"] {
             if let Some(value) = properties.get(key).filter(|value| !value.trim().is_empty()) {
                 return Some(value.trim().to_string());
             }
@@ -380,18 +356,12 @@ fn collect_java_files(root: &Path) -> JavaFiles {
     let mut walker = walkdir::WalkDir::new(root).follow_links(false).into_iter();
     while let Some(entry) = walker.next() {
         let Ok(entry) = entry else { continue };
-        if entry.file_type().is_dir()
-            && matches!(
-                entry.file_name().to_str(),
-                Some("target" | ".git" | "node_modules")
-            )
+        if entry.file_type().is_dir() && matches!(entry.file_name().to_str(), Some("target" | ".git" | "node_modules"))
         {
             walker.skip_current_dir();
             continue;
         }
-        if entry.file_type().is_file()
-            && entry.path().extension().and_then(|value| value.to_str()) == Some("java")
-        {
+        if entry.file_type().is_file() && entry.path().extension().and_then(|value| value.to_str()) == Some("java") {
             files.push(entry.path().to_path_buf());
             if files.len() >= MAX_SOURCE_FILES {
                 break;
@@ -417,21 +387,16 @@ fn fingerprint_sources(files: &JavaFiles) -> String {
         }
         input.push(0);
     }
-    input.extend_from_slice(if files.truncated {
-        b"truncated"
-    } else {
-        b"complete"
-    });
+    input.extend_from_slice(if files.truncated { b"truncated" } else { b"complete" });
     hex_hash(&input)
 }
 
 fn scan_java_source(content: &str, source_path: &Path, module: &str) -> Vec<SpringBootCandidate> {
     let cleaned = strip_java_comments_and_strings(content);
-    let package =
-        Regex::new(r"(?m)^\s*package\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*;")
-            .expect("package regex is valid")
-            .captures(&cleaned)
-            .map(|capture| capture[1].to_string());
+    let package = Regex::new(r"(?m)^\s*package\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*;")
+        .expect("package regex is valid")
+        .captures(&cleaned)
+        .map(|capture| capture[1].to_string());
     let class_regex = Regex::new(
         r"\b(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+)?(?:class|record)\s+([A-Za-z_][A-Za-z0-9_]*)",
     )
@@ -564,9 +529,7 @@ fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
 }
 
 fn path_key(path: &Path) -> String {
-    canonical_or_original(path)
-        .to_string_lossy()
-        .replace('\\', "/")
+    canonical_or_original(path).to_string_lossy().replace('\\', "/")
 }
 
 fn canonical_or_original(path: &Path) -> PathBuf {
@@ -599,10 +562,7 @@ mod tests {
         }
     }
 
-    fn detect(
-        projects: &[MavenProject],
-        cache: Option<&SpringBootDetectionCache>,
-    ) -> SpringBootWorkspaceResult {
+    fn detect(projects: &[MavenProject], cache: Option<&SpringBootDetectionCache>) -> SpringBootWorkspaceResult {
         let index = crate::maven::effective::build_index(projects);
         let effective: Vec<_> = projects
             .iter()
@@ -637,10 +597,7 @@ mod tests {
         assert!(app.is_spring_boot);
         assert!(app.spring_boot_dependency);
         assert_eq!(app.candidates.len(), 2);
-        assert_eq!(
-            app.default_main_class.as_deref(),
-            Some("com.example.AdminApplication")
-        );
+        assert_eq!(app.default_main_class.as_deref(), Some("com.example.AdminApplication"));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -715,11 +672,7 @@ mod tests {
 
     #[test]
     fn plain_library_does_not_trigger_source_scan() {
-        let project = project(
-            PathBuf::from("/tmp/library/pom.xml"),
-            "library",
-            "library-hash",
-        );
+        let project = project(PathBuf::from("/tmp/library/pom.xml"), "library", "library-hash");
         let result = detect(std::slice::from_ref(&project), None);
         let library = &result.projects[0];
         assert!(!library.is_spring_boot);

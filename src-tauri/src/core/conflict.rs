@@ -199,11 +199,7 @@ pub fn resolve_conflict(repo_path: &Path, path: &str, strategy: &str) -> AppResu
 }
 
 /// Resolve one conflicted file with manually edited content (None = delete).
-pub fn resolve_conflict_with_content(
-    repo_path: &Path,
-    path: &str,
-    content: Option<&str>,
-) -> AppResult<()> {
+pub fn resolve_conflict_with_content(repo_path: &Path, path: &str, content: Option<&str>) -> AppResult<()> {
     apply_resolution(repo_path, path, content.map(String::from))
 }
 
@@ -245,13 +241,7 @@ mod tests {
         dir
     }
 
-    fn commit_file(
-        repo: &git2::Repository,
-        dir: &Path,
-        name: &str,
-        content: &str,
-        msg: &str,
-    ) -> String {
+    fn commit_file(repo: &git2::Repository, dir: &Path, name: &str, content: &str, msg: &str) -> String {
         std::fs::write(dir.join(name), content).unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(Path::new(name)).unwrap();
@@ -291,10 +281,7 @@ mod tests {
         crate::core::branch::checkout_branch(dir, "master").unwrap();
 
         let outcome = crate::core::merge::merge(dir, "side", "normal").unwrap();
-        assert!(matches!(
-            outcome,
-            crate::core::merge::MergeOutcome::Conflict { .. }
-        ));
+        assert!(matches!(outcome, crate::core::merge::MergeOutcome::Conflict { .. }));
     }
 
     /// Detection: operation_state reports the merge + the conflicted file.
@@ -323,10 +310,7 @@ mod tests {
         let content = conflict_content(&dir, "a.txt").unwrap();
         assert_eq!(content.base.as_deref().map(|s| s.trim_end()), Some("base"));
         assert_eq!(content.ours.as_deref().map(|s| s.trim_end()), Some("ours"));
-        assert_eq!(
-            content.theirs.as_deref().map(|s| s.trim_end()),
-            Some("theirs")
-        );
+        assert_eq!(content.theirs.as_deref().map(|s| s.trim_end()), Some("theirs"));
         let wt = content.worktree.unwrap_or_default();
         assert!(wt.contains("<<<<<<<") && wt.contains(">>>>>>>"));
         assert!(!content.truncated);
@@ -338,11 +322,7 @@ mod tests {
     /// conflict entry cleared, chosen content in worktree + staged.
     #[test]
     fn resolve_strategies_match_git_add() {
-        for (strategy, expected) in [
-            ("ours", "ours\n"),
-            ("theirs", "theirs\n"),
-            ("both", "ours\ntheirs\n"),
-        ] {
+        for (strategy, expected) in [("ours", "ours\n"), ("theirs", "theirs\n"), ("both", "ours\ntheirs\n")] {
             let dir = tmpdir(&format!("resolve_{}", strategy));
             setup_conflict(&dir);
 
@@ -403,14 +383,9 @@ mod tests {
         setup_conflict(&dir);
         let before = std::fs::read_to_string(dir.join("a.txt")).unwrap();
 
-        let items = crate::ai::context::collect_conflict_hunk(&dir, "a.txt", 0, 1)
-            .expect("read-only hunk context");
-        assert!(items
-            .iter()
-            .any(|item| item.source_id.contains("conflict:ours:")));
-        assert!(items
-            .iter()
-            .any(|item| item.source_id.contains("conflict:theirs:")));
+        let items = crate::ai::context::collect_conflict_hunk(&dir, "a.txt", 0, 1).expect("read-only hunk context");
+        assert!(items.iter().any(|item| item.source_id.contains("conflict:ours:")));
+        assert!(items.iter().any(|item| item.source_id.contains("conflict:theirs:")));
 
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), before);
         assert_eq!(operation_state(&dir).unwrap().conflicts.len(), 1);

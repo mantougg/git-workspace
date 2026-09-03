@@ -120,16 +120,14 @@ pub fn merge_continue(repo_path: &Path, message: Option<&str>) -> AppResult<Stri
     let repo = git2::Repository::open(repo_path)?;
 
     let merge_head_file = repo.path().join("MERGE_HEAD");
-    let merge_head_raw = std::fs::read_to_string(&merge_head_file)
-        .map_err(|_| AppError::Conflict("no merge in progress".into()))?;
-    let merge_head_oid = git2::Oid::from_str(merge_head_raw.trim())
-        .map_err(|_| AppError::Other("invalid MERGE_HEAD".into()))?;
+    let merge_head_raw =
+        std::fs::read_to_string(&merge_head_file).map_err(|_| AppError::Conflict("no merge in progress".into()))?;
+    let merge_head_oid =
+        git2::Oid::from_str(merge_head_raw.trim()).map_err(|_| AppError::Other("invalid MERGE_HEAD".into()))?;
 
     let mut index = repo.index()?;
     if index.has_conflicts() {
-        return Err(AppError::Conflict(
-            "仍有未解决的冲突，请先解决后再继续".into(),
-        ));
+        return Err(AppError::Conflict("仍有未解决的冲突，请先解决后再继续".into()));
     }
 
     let tree_oid = index.write_tree()?;
@@ -144,14 +142,7 @@ pub fn merge_continue(repo_path: &Path, message: Option<&str>) -> AppResult<Stri
         .unwrap_or_else(|| "Merge".to_string());
     let msg = message.unwrap_or(&default_msg);
 
-    let oid = repo.commit(
-        Some("HEAD"),
-        &sig,
-        &sig,
-        msg,
-        &tree,
-        &[&head_commit, &merge_commit],
-    )?;
+    let oid = repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &[&head_commit, &merge_commit])?;
     repo.cleanup_state()?;
     Ok(oid.to_string())
 }
@@ -184,13 +175,7 @@ mod tests {
         dir
     }
 
-    fn commit_file(
-        repo: &git2::Repository,
-        dir: &Path,
-        name: &str,
-        content: &str,
-        msg: &str,
-    ) -> String {
+    fn commit_file(repo: &git2::Repository, dir: &Path, name: &str, content: &str, msg: &str) -> String {
         std::fs::write(dir.join(name), content).unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(Path::new(name)).unwrap();
@@ -225,12 +210,7 @@ mod tests {
     fn head_summary(repo_path: &Path) -> String {
         let repo = git2::Repository::open(repo_path).unwrap();
         let head = repo.head().unwrap();
-        let summary = head
-            .peel_to_commit()
-            .unwrap()
-            .summary()
-            .unwrap_or_default()
-            .to_string();
+        let summary = head.peel_to_commit().unwrap().summary().unwrap_or_default().to_string();
         summary
     }
 
@@ -355,7 +335,9 @@ mod tests {
         merge_abort(&dir).unwrap();
         assert!(!merge_in_progress(&dir).unwrap());
         assert_eq!(
-            std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+            std::fs::read_to_string(dir.join("a.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "master line\n"
         );
 
@@ -375,7 +357,9 @@ mod tests {
         let c = repo.find_commit(git2::Oid::from_str(&oid).unwrap()).unwrap();
         assert_eq!(c.parent_count(), 2);
         assert_eq!(
-            std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+            std::fs::read_to_string(dir.join("a.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "resolved\n"
         );
 

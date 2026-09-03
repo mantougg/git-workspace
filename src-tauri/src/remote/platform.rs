@@ -70,10 +70,7 @@ impl OpenTarget {
 /// 已知主机映射平台；未知主机按 Gitea 处理（自建实例的常见形态）。
 pub fn parse_remote_url(url: &str) -> Option<RemoteRepo> {
     let url = url.trim();
-    let (host, path) = if let Some(rest) = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
-    {
+    let (host, path) = if let Some(rest) = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")) {
         let (h, p) = rest.split_once('/')?;
         (h.to_string(), p.to_string())
     } else if let Some(rest) = url.strip_prefix("git@") {
@@ -87,10 +84,7 @@ pub fn parse_remote_url(url: &str) -> Option<RemoteRepo> {
     };
 
     let host = host.split('@').next_back().unwrap_or(&host).to_string();
-    let path = path
-        .trim_end_matches('/')
-        .trim_end_matches(".git")
-        .to_string();
+    let path = path.trim_end_matches('/').trim_end_matches(".git").to_string();
     // SSH 形态可能带端口：host:port/path 已被切在冒号处，https 带端口需剥离
     let host = host.split(':').next().unwrap_or(&host).to_string();
 
@@ -196,23 +190,14 @@ impl RemoteRepo {
     /// 平台 API 根。
     pub fn api_base(&self) -> String {
         match self.platform {
-            Platform::GitHub => format!(
-                "https://api.{}/repos/{}/{}",
-                self.host, self.owner, self.repo
-            ),
+            Platform::GitHub => format!("https://api.{}/repos/{}/{}", self.host, self.owner, self.repo),
             Platform::GitLab => format!(
                 "https://{}/api/v4/projects/{}",
                 self.host,
                 urlencoding(&format!("{}/{}", self.owner, self.repo))
             ),
-            Platform::Gitea => format!(
-                "https://{}/api/v1/repos/{}/{}",
-                self.host, self.owner, self.repo
-            ),
-            Platform::Gitee => format!(
-                "https://{}/api/v5/repos/{}/{}",
-                self.host, self.owner, self.repo
-            ),
+            Platform::Gitea => format!("https://{}/api/v1/repos/{}/{}", self.host, self.owner, self.repo),
+            Platform::Gitee => format!("https://{}/api/v5/repos/{}/{}", self.host, self.owner, self.repo),
             Platform::Bitbucket => format!(
                 "https://api.bitbucket.org/2.0/repositories/{}/{}",
                 self.owner, self.repo
@@ -258,18 +243,9 @@ mod tests {
     fn github_urls() {
         let r = parse_remote_url("https://github.com/o/r.git").unwrap();
         assert_eq!(r.open_url(&OpenTarget::Repo), "https://github.com/o/r");
-        assert_eq!(
-            r.open_url(&OpenTarget::Issues),
-            "https://github.com/o/r/issues"
-        );
-        assert_eq!(
-            r.open_url(&OpenTarget::Pulls),
-            "https://github.com/o/r/pulls"
-        );
-        assert_eq!(
-            r.open_url(&OpenTarget::Ci),
-            "https://github.com/o/r/actions"
-        );
+        assert_eq!(r.open_url(&OpenTarget::Issues), "https://github.com/o/r/issues");
+        assert_eq!(r.open_url(&OpenTarget::Pulls), "https://github.com/o/r/pulls");
+        assert_eq!(r.open_url(&OpenTarget::Ci), "https://github.com/o/r/actions");
         assert_eq!(
             r.open_url(&OpenTarget::NewPullRequest {
                 source: "feat".into(),
@@ -277,14 +253,8 @@ mod tests {
             }),
             "https://github.com/o/r/compare/main...feat"
         );
-        assert_eq!(
-            r.open_url(&OpenTarget::Pull(7)),
-            "https://github.com/o/r/pull/7"
-        );
-        assert_eq!(
-            r.open_url(&OpenTarget::Issue(3)),
-            "https://github.com/o/r/issues/3"
-        );
+        assert_eq!(r.open_url(&OpenTarget::Pull(7)), "https://github.com/o/r/pull/7");
+        assert_eq!(r.open_url(&OpenTarget::Issue(3)), "https://github.com/o/r/issues/3");
     }
 
     #[test]
@@ -304,35 +274,23 @@ mod tests {
                 target: "m".into()
             })
             .contains("merge_requests/new"));
-        assert_eq!(
-            r.api_base(),
-            "https://gitlab.com/api/v4/projects/group%2Fsub%2Frepo"
-        );
+        assert_eq!(r.api_base(), "https://gitlab.com/api/v4/projects/group%2Fsub%2Frepo");
     }
 
     #[test]
     fn gitea_gitee_bitbucket_urls() {
         let g = parse_remote_url("https://git.self.host/o/r.git").unwrap();
-        assert_eq!(
-            g.open_url(&OpenTarget::Pulls),
-            "https://git.self.host/o/r/pulls"
-        );
+        assert_eq!(g.open_url(&OpenTarget::Pulls), "https://git.self.host/o/r/pulls");
         assert_eq!(g.api_base(), "https://git.self.host/api/v1/repos/o/r");
 
         let e = parse_remote_url("https://gitee.com/o/r.git").unwrap();
-        assert_eq!(
-            e.open_url(&OpenTarget::Ci),
-            "https://gitee.com/o/r/pipeline"
-        );
+        assert_eq!(e.open_url(&OpenTarget::Ci), "https://gitee.com/o/r/pipeline");
 
         let b = parse_remote_url("https://bitbucket.org/o/r.git").unwrap();
         assert_eq!(
             b.open_url(&OpenTarget::Pulls),
             "https://bitbucket.org/o/r/pull-requests"
         );
-        assert_eq!(
-            b.api_base(),
-            "https://api.bitbucket.org/2.0/repositories/o/r"
-        );
+        assert_eq!(b.api_base(), "https://api.bitbucket.org/2.0/repositories/o/r");
     }
 }

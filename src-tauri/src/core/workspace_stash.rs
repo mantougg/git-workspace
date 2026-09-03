@@ -244,16 +244,12 @@ fn check_item(item: &WorkspaceStashItemEntry) -> WorkspaceStashCheckItem {
 /// stack). Repos whose check fails are skipped (a branch mismatch applies
 /// only with `allow_branch_mismatch`); one repo's failure never blocks the
 /// rest.
-pub fn restore_items(
-    items: &[WorkspaceStashItemEntry],
-    allow_branch_mismatch: bool,
-) -> Vec<WorkspaceStashRepoOutcome> {
+pub fn restore_items(items: &[WorkspaceStashItemEntry], allow_branch_mismatch: bool) -> Vec<WorkspaceStashRepoOutcome> {
     items
         .iter()
         .map(|item| {
             let check = check_item(item);
-            let applicable = check.status == "ok"
-                || (check.status == "branch_mismatch" && allow_branch_mismatch);
+            let applicable = check.status == "ok" || (check.status == "branch_mismatch" && allow_branch_mismatch);
             if !applicable {
                 return WorkspaceStashRepoOutcome {
                     repo_path: item.repo_path.clone(),
@@ -301,10 +297,7 @@ fn apply_item(item: &WorkspaceStashItemEntry) -> WorkspaceStashRepoOutcome {
 
 /// Next display name for the workspace (`Workspace Stash #N`, N = max id + 1
 /// so numbering survives deletions).
-pub(crate) fn next_workspace_stash_name(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<String> {
+pub(crate) fn next_workspace_stash_name(conn: &Connection, workspace_id: i64) -> AppResult<String> {
     let next: i64 = conn.query_row(
         "SELECT COALESCE(MAX(id), 0) + 1 FROM workspace_stashes WHERE workspace_id = ?1",
         rusqlite::params![workspace_id],
@@ -348,10 +341,7 @@ pub(crate) fn insert_workspace_stash(
 }
 
 /// List the records of a workspace, newest first, with item counts.
-pub(crate) fn list_workspace_stashes(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<Vec<WorkspaceStashSummary>> {
+pub(crate) fn list_workspace_stashes(conn: &Connection, workspace_id: i64) -> AppResult<Vec<WorkspaceStashSummary>> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.name, s.message, s.created_at, COUNT(i.id)
          FROM workspace_stashes s
@@ -395,15 +385,9 @@ pub(crate) fn list_workspace_stash_items(
 /// each repo's stack — they remain manageable in the single-repo Stash view
 /// (T-10).
 pub(crate) fn delete_workspace_stash(conn: &Connection, id: i64) -> AppResult<()> {
-    let n = conn.execute(
-        "DELETE FROM workspace_stashes WHERE id = ?1",
-        rusqlite::params![id],
-    )?;
+    let n = conn.execute("DELETE FROM workspace_stashes WHERE id = ?1", rusqlite::params![id])?;
     if n == 0 {
-        return Err(AppError::NotFound(format!(
-            "workspace stash {} not found",
-            id
-        )));
+        return Err(AppError::NotFound(format!("workspace stash {} not found", id)));
     }
     Ok(())
 }
@@ -434,17 +418,10 @@ mod tests {
         let tree_oid = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
         let sig = git2::Signature::now("tester", "t@example.com").unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
-            .unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
         // stash_save needs a stasher signature from repo config.
-        repo.config()
-            .unwrap()
-            .set_str("user.name", "tester")
-            .unwrap();
-        repo.config()
-            .unwrap()
-            .set_str("user.email", "t@example.com")
-            .unwrap();
+        repo.config().unwrap().set_str("user.name", "tester").unwrap();
+        repo.config().unwrap().set_str("user.email", "t@example.com").unwrap();
     }
 
     fn mem_db() -> Connection {
@@ -473,12 +450,8 @@ mod tests {
         init_repo(&b);
         std::fs::write(a.join("a.txt"), "one\nwork\n").unwrap();
 
-        let paths = vec![
-            a.to_string_lossy().to_string(),
-            b.to_string_lossy().to_string(),
-        ];
-        let (outcomes, stashed) =
-            stash_repos(&paths, "Workspace Stash #1", Some("sprint work"), true);
+        let paths = vec![a.to_string_lossy().to_string(), b.to_string_lossy().to_string()];
+        let (outcomes, stashed) = stash_repos(&paths, "Workspace Stash #1", Some("sprint work"), true);
         assert_eq!(outcomes.len(), 2);
         assert_eq!(outcomes[0].status, "stashed");
         assert_eq!(outcomes[1].status, "skipped_clean");

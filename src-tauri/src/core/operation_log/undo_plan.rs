@@ -9,8 +9,8 @@ use std::path::Path;
 use rayon::prelude::*;
 
 use super::{
-    OperationLogDetail, OperationLogItem, UndoPreviewItem, OP_CHECKOUT_ALL, OP_DELETE_BRANCH_ALL,
-    OP_AI_COMMIT, OP_REBASE, OP_RESET,
+    OperationLogDetail, OperationLogItem, UndoPreviewItem, OP_AI_COMMIT, OP_CHECKOUT_ALL, OP_DELETE_BRANCH_ALL,
+    OP_REBASE, OP_RESET,
 };
 
 pub(super) fn repo_name_of(repo_path: &str) -> String {
@@ -78,19 +78,13 @@ fn plan_checkout_undo(item: &OperationLogItem) -> UndoPlan {
     let action = if item.ref_name.is_empty() {
         format!("恢复分离 HEAD 到 {}", short_oid(&item.before_oid))
     } else {
-        format!(
-            "切回分支 '{}'（{}）",
-            item.ref_name,
-            short_oid(&item.before_oid)
-        )
+        format!("切回分支 '{}'（{}）", item.ref_name, short_oid(&item.before_oid))
     };
     let check = (|| -> Result<(), String> {
-        let repo =
-            git2::Repository::open(path).map_err(|e| format!("仓库无法打开：{}", e.message()))?;
+        let repo = git2::Repository::open(path).map_err(|e| format!("仓库无法打开：{}", e.message()))?;
         if item.ref_name.is_empty() {
             // Detached-before case: the commit must still exist.
-            let oid =
-                git2::Oid::from_str(&item.before_oid).map_err(|_| "记录的 oid 无效".to_string())?;
+            let oid = git2::Oid::from_str(&item.before_oid).map_err(|_| "记录的 oid 无效".to_string())?;
             repo.find_commit(oid)
                 .map_err(|_| "操作前提交已不存在（可能已被 GC）".to_string())?;
             let head_oid = repo.head().ok().and_then(|h| h.target());
@@ -117,22 +111,13 @@ fn plan_checkout_undo(item: &OperationLogItem) -> UndoPlan {
 /// Delete Branch All undo: recreate the branch at its recorded tip.
 fn plan_delete_undo(item: &OperationLogItem) -> UndoPlan {
     let path = Path::new(&item.repo_path);
-    let action = format!(
-        "重建分支 '{}' → {}",
-        item.ref_name,
-        short_oid(&item.before_oid)
-    );
+    let action = format!("重建分支 '{}' → {}", item.ref_name, short_oid(&item.before_oid));
     let check = (|| -> Result<(), String> {
-        let repo =
-            git2::Repository::open(path).map_err(|e| format!("仓库无法打开：{}", e.message()))?;
-        if repo
-            .find_branch(&item.ref_name, git2::BranchType::Local)
-            .is_ok()
-        {
+        let repo = git2::Repository::open(path).map_err(|e| format!("仓库无法打开：{}", e.message()))?;
+        if repo.find_branch(&item.ref_name, git2::BranchType::Local).is_ok() {
             return Err(format!("分支 '{}' 已存在（可能已人工重建）", item.ref_name));
         }
-        let oid =
-            git2::Oid::from_str(&item.before_oid).map_err(|_| "记录的 oid 无效".to_string())?;
+        let oid = git2::Oid::from_str(&item.before_oid).map_err(|_| "记录的 oid 无效".to_string())?;
         repo.find_commit(oid)
             .map_err(|_| "删除前的分支提交已不存在（可能已被 GC）".to_string())?;
         Ok(())
@@ -171,20 +156,13 @@ fn plan_ref_rollback(item: &OperationLogItem, is_rebase: bool) -> UndoPlan {
             .after_oid
             .as_deref()
             .ok_or_else(|| "缺少操作后快照，无法校验当前状态，拒绝撤销".to_string())?;
-        let repo =
-            git2::Repository::open(path).map_err(|e| format!("仓库无法打开：{}", e.message()))?;
+        let repo = git2::Repository::open(path).map_err(|e| format!("仓库无法打开：{}", e.message()))?;
         // An in-progress rebase has its own recovery (rebase_abort); rolling
         // refs underneath it would corrupt that state.
-        if crate::core::rebase::get_rebase_state(path)
-            .ok()
-            .flatten()
-            .is_some()
-        {
+        if crate::core::rebase::get_rebase_state(path).ok().flatten().is_some() {
             return Err("仓库存在进行中的 rebase，请先 continue / abort".to_string());
         }
-        let head = repo
-            .head()
-            .map_err(|e| format!("HEAD 异常：{}", e.message()))?;
+        let head = repo.head().map_err(|e| format!("HEAD 异常：{}", e.message()))?;
         if !item.ref_name.is_empty() {
             let current = if head.is_branch() {
                 head.shorthand().unwrap_or_default()
@@ -198,10 +176,7 @@ fn plan_ref_rollback(item: &OperationLogItem, is_rebase: bool) -> UndoPlan {
                 ));
             }
         }
-        let tip = head
-            .target()
-            .ok_or_else(|| "HEAD 未指向提交".to_string())?
-            .to_string();
+        let tip = head.target().ok_or_else(|| "HEAD 未指向提交".to_string())?.to_string();
         if tip != after {
             return Err(format!(
                 "已有后续变更（当前 {} ≠ 操作后 {}），拒绝自动撤销",
@@ -209,8 +184,7 @@ fn plan_ref_rollback(item: &OperationLogItem, is_rebase: bool) -> UndoPlan {
                 short_oid(after)
             ));
         }
-        let before =
-            git2::Oid::from_str(&item.before_oid).map_err(|_| "记录的 oid 无效".to_string())?;
+        let before = git2::Oid::from_str(&item.before_oid).map_err(|_| "记录的 oid 无效".to_string())?;
         repo.find_commit(before)
             .map_err(|_| "操作前提交已不存在（可能已被 GC）".to_string())?;
         if tip == item.before_oid {
@@ -239,7 +213,5 @@ pub(super) fn reset_mode(detail: Option<&str>) -> String {
 fn worktree_dirty(repo: &git2::Repository) -> bool {
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(true);
-    repo.statuses(Some(&mut opts))
-        .map(|s| !s.is_empty())
-        .unwrap_or(true)
+    repo.statuses(Some(&mut opts)).map(|s| !s.is_empty()).unwrap_or(true)
 }

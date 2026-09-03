@@ -29,9 +29,7 @@ use tokio::sync::Semaphore;
 
 use crate::error::{AppError, AppResult};
 
-use super::adapters::{
-    adapter_for, AdapterCall, AdapterContext, ProviderEndpoint, ProviderRequest, StreamItem,
-};
+use super::adapters::{adapter_for, AdapterCall, AdapterContext, ProviderEndpoint, ProviderRequest, StreamItem};
 use super::audit::{self, AuditFinish, AuditStart};
 use super::cache::{self, AiResultCache, CacheEntryInput, CacheKeyParts};
 use super::credentials::CredentialManager;
@@ -41,8 +39,7 @@ use super::lifecycle::{invalid_transition_error, Lifecycle, RequestPhase};
 use super::model::{ensure_task_capability, resolve_model, AiModel, ModelCapability};
 use super::provider::AiProvider;
 use super::request::{
-    estimate_tokens, parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, MessageRole,
-    ResponseFormat,
+    estimate_tokens, parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, MessageRole, ResponseFormat,
 };
 use super::session;
 use super::transport::HttpTransport;
@@ -171,11 +168,7 @@ pub struct AiGateway {
 }
 
 impl AiGateway {
-    pub fn new(
-        config: GatewayConfig,
-        transport: Arc<dyn HttpTransport>,
-        sink: Arc<dyn AiEventSink>,
-    ) -> Self {
+    pub fn new(config: GatewayConfig, transport: Arc<dyn HttpTransport>, sink: Arc<dyn AiEventSink>) -> Self {
         let max_concurrent_requests = config.max_concurrent_requests.max(1);
         Self {
             semaphore: Arc::new(Semaphore::new(max_concurrent_requests)),
@@ -214,11 +207,7 @@ impl AiGateway {
         match f(&conn) {
             Ok(value) => Some(value),
             Err(e) => {
-                log::warn!(
-                    "ai {what} failed: code={} message={}",
-                    e.code(),
-                    e
-                );
+                log::warn!("ai {what} failed: code={} message={}", e.code(), e);
                 None
             }
         }
@@ -233,11 +222,7 @@ impl AiGateway {
     ///
     /// Preview 内容的构建（上下文清单展示、排除项编辑、二次扫描）由
     /// AI-03 的 Context Builder/Preview 流程承载；本方法是该流程的闸门。
-    pub fn submit(
-        &self,
-        conn: &Connection,
-        request: AiRequest,
-    ) -> AppResult<AiRequestSnapshot> {
+    pub fn submit(&self, conn: &Connection, request: AiRequest) -> AppResult<AiRequestSnapshot> {
         let mut request = request;
         if request.request_id.trim().is_empty() {
             request.request_id = uuid::Uuid::new_v4().to_string();
@@ -261,8 +246,7 @@ impl AiGateway {
             (None, None) => None,
             _ => {
                 return Err(AppError::Ai(AiError::NotConfigured {
-                    message: "providerId 与 modelId 必须成对提供，或都为空（走任务默认链）"
-                        .to_string(),
+                    message: "providerId 与 modelId 必须成对提供，或都为空（走任务默认链）".to_string(),
                 }))
             }
         };
@@ -315,11 +299,7 @@ impl AiGateway {
         for item in request.context_manifest.iter().filter(|i| !i.excluded) {
             estimated += item.estimated_tokens.max(0);
         }
-        let ctx_item_count = request
-            .context_manifest
-            .iter()
-            .filter(|i| !i.excluded)
-            .count();
+        let ctx_item_count = request.context_manifest.iter().filter(|i| !i.excluded).count();
         let redacted_count = request.context_manifest.iter().filter(|i| i.redacted).count();
         let budget = if request.token_budget > 0 {
             request.token_budget
@@ -338,8 +318,7 @@ impl AiGateway {
         // 4. AI-04：缓存维度（§11.3）与审计起始行（§10.4）。
         //    注意：本方法在调用方持 DB 锁的上下文执行，所有 DB 写入必须走
         //    传入的 `conn`，不得再取 `self.store`（std::sync::Mutex 不可重入）。
-        let cache_key =
-            CacheKeyParts::for_request(&request, &resolved.provider.id, &resolved.model.id);
+        let cache_key = CacheKeyParts::for_request(&request, &resolved.provider.id, &resolved.model.id);
         self.audit_start(
             conn,
             AuditStart {
@@ -440,13 +419,10 @@ impl AiGateway {
         );
 
         // 凭证在执行开始时读取（Key 只经内存流经，不进日志/快照）。
-        tokio::spawn(self.clone().execute(
-            request_id.to_string(),
-            request,
-            provider,
-            model,
-            credentials,
-        ));
+        tokio::spawn(
+            self.clone()
+                .execute(request_id.to_string(), request, provider, model, credentials),
+        );
         Ok(self.status(request_id).expect("record exists"))
     }
 
@@ -486,12 +462,7 @@ impl AiGateway {
                 if let Some(hit) = self
                     .cache
                     .as_ref()
-                    .and_then(|cache| {
-                        self.with_db("cache get", |conn| {
-                            Ok(cache.get(conn, &parts))
-                        })
-                        .flatten()
-                    })
+                    .and_then(|cache| self.with_db("cache get", |conn| Ok(cache.get(conn, &parts))).flatten())
                 {
                     self.transition_by_id(&request_id, RequestPhase::Sending, None);
                     self.transition_by_id(&request_id, RequestPhase::Parsing, None);
@@ -519,13 +490,9 @@ impl AiGateway {
             .credential_ref
             .as_deref()
             .and_then(|cref| credentials.get(cref));
-        if provider.network_policy == super::provider::NetworkPolicy::OnlineOnly && api_key.is_none()
-        {
+        if provider.network_policy == super::provider::NetworkPolicy::OnlineOnly && api_key.is_none() {
             let error = AiError::CredentialUnavailable {
-                message: format!(
-                    "Provider「{}」未配置 API Key：请在 AI 设置-凭证中录入",
-                    provider.name
-                ),
+                message: format!("Provider「{}」未配置 API Key：请在 AI 设置-凭证中录入", provider.name),
             };
             self.fail_with_audit(&request_id, &error, started);
             return;
@@ -574,22 +541,14 @@ impl AiGateway {
             let outcome = if request.stream {
                 self.run_stream(&request_id, adapter, call, ctx).await
             } else {
-                adapter
-                    .complete(call, ctx)
-                    .await
-                    .map(|r| (r.text, r.usage))
+                adapter.complete(call, ctx).await.map(|r| (r.text, r.usage))
             };
 
             match outcome {
                 Ok((text, usage)) => {
                     // Parsing → Succeeded（§8.4：非法 JSON 降级 Answer）。
                     self.transition_by_id(&request_id, RequestPhase::Parsing, None);
-                    let result = parse_result(
-                        request.task_kind,
-                        request.git_scenario,
-                        request.response_format,
-                        &text,
-                    );
+                    let result = parse_result(request.task_kind, request.git_scenario, request.response_format, &text);
                     if let Some(u) = usage {
                         self.record_usage(&request_id, u);
                     }
@@ -711,9 +670,7 @@ impl AiGateway {
                     self.emit_event(
                         request_id,
                         RequestPhase::Streaming,
-                        Some(AiStreamChunk::End {
-                            finish_reason: None,
-                        }),
+                        Some(AiStreamChunk::End { finish_reason: None }),
                         text.chars().count() as i64,
                     );
                     break;
@@ -868,10 +825,7 @@ impl AiGateway {
     }
 
     fn output_chars(&self, request_id: &str) -> i64 {
-        self.lock_records()
-            .get(request_id)
-            .map(|r| r.output_chars)
-            .unwrap_or(0)
+        self.lock_records().get(request_id).map(|r| r.output_chars).unwrap_or(0)
     }
 
     fn record_attempts(&self, request_id: &str, attempts: u32) {
@@ -905,9 +859,7 @@ impl AiGateway {
     }
 
     fn cache_key(&self, request_id: &str) -> Option<CacheKeyParts> {
-        self.lock_records()
-            .get(request_id)
-            .and_then(|r| r.cache_key.clone())
+        self.lock_records().get(request_id).and_then(|r| r.cache_key.clone())
     }
 
     // -----------------------------------------------------------------
@@ -917,11 +869,7 @@ impl AiGateway {
     /// 写审计起始行（失败只告警，不阻断请求，§16.1）。
     fn audit_start(&self, conn: &Connection, start: AuditStart<'_>) {
         if let Err(e) = audit::record_start(conn, &start) {
-            log::warn!(
-                "ai audit start failed: id={} error={}",
-                start.request_id,
-                e
-            );
+            log::warn!("ai audit start failed: id={} error={}", start.request_id, e);
         }
     }
 
@@ -955,13 +903,7 @@ impl AiGateway {
     }
 
     /// 成功后写入结果缓存（§11.3）。`session_id` 用于删除会话时级联清理。
-    fn cache_put(
-        &self,
-        conn: &Connection,
-        parts: &CacheKeyParts,
-        result: &AiResult,
-        session_id: Option<&str>,
-    ) {
+    fn cache_put(&self, conn: &Connection, parts: &CacheKeyParts, result: &AiResult, session_id: Option<&str>) {
         let Some(cache) = self.cache.as_ref() else {
             return;
         };
@@ -977,12 +919,7 @@ impl AiGateway {
     }
 
     /// 成功后把本轮对话追加到会话（§10.4：**持久化开关开启时才写正文**）。
-    fn persist_session_exchange(
-        &self,
-        conn: &Connection,
-        request: &AiRequest,
-        result: &AiResult,
-    ) {
+    fn persist_session_exchange(&self, conn: &Connection, request: &AiRequest, result: &AiResult) {
         let Some(session_id) = request.session_id.as_deref() else {
             return;
         };
@@ -1071,12 +1008,9 @@ impl AiGateway {
         );
 
         let mut lc = Lifecycle::new();
-        lc.transition(RequestPhase::ContextBuilding)
-            .expect("validated");
-        lc.transition(RequestPhase::SecretScanning)
-            .expect("validated");
-        lc.transition(RequestPhase::Rejected)
-            .expect("validated");
+        lc.transition(RequestPhase::ContextBuilding).expect("validated");
+        lc.transition(RequestPhase::SecretScanning).expect("validated");
+        lc.transition(RequestPhase::Rejected).expect("validated");
         let message = error.to_string();
         self.lock_records().insert(
             request_id.to_string(),
@@ -1193,13 +1127,7 @@ impl AiGateway {
         self.transition_by_id(request_id, phase, chunk);
     }
 
-    fn emit_event(
-        &self,
-        request_id: &str,
-        phase: RequestPhase,
-        chunk: Option<AiStreamChunk>,
-        output_chars: i64,
-    ) {
+    fn emit_event(&self, request_id: &str, phase: RequestPhase, chunk: Option<AiStreamChunk>, output_chars: i64) {
         self.emit_event_with(request_id, phase, chunk, output_chars, None);
     }
 

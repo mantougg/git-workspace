@@ -16,10 +16,7 @@ use crate::state::AppState;
 /// (defaults when absent) and are returned so the UI can re-score after
 /// merging async heavy-check results.
 #[tauri::command]
-pub fn get_workspace_health(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<health::WorkspaceHealth> {
+pub fn get_workspace_health(workspace_id: i64, state: State<'_, AppState>) -> AppResult<health::WorkspaceHealth> {
     let repos = {
         let conn = state
             .db
@@ -48,10 +45,7 @@ pub fn get_workspace_health(
                     }
                 },
             };
-            let anomalies: Vec<String> = health::anomalies_of(&status)
-                .into_iter()
-                .map(String::from)
-                .collect();
+            let anomalies: Vec<String> = health::anomalies_of(&status).into_iter().map(String::from).collect();
             let score = health::score_of(anomalies.iter().map(String::as_str), &weights);
             Some(health::RepoHealth {
                 repo_path: repo.path,

@@ -8,8 +8,8 @@ use rusqlite::Connection;
 use tauri::State;
 
 use crate::core::workspace_stash::{
-    self, SaveWorkspaceStashResult, WorkspaceStashCheckItem, WorkspaceStashItemEntry,
-    WorkspaceStashRepoOutcome, WorkspaceStashSummary,
+    self, SaveWorkspaceStashResult, WorkspaceStashCheckItem, WorkspaceStashItemEntry, WorkspaceStashRepoOutcome,
+    WorkspaceStashSummary,
 };
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -44,8 +44,7 @@ pub fn save_workspace_stash(
     let include_untracked = include_untracked.unwrap_or(true);
 
     // Git phase without holding the DB lock.
-    let (outcomes, stashed) =
-        workspace_stash::stash_repos(&repo_paths, &name, message.as_deref(), include_untracked);
+    let (outcomes, stashed) = workspace_stash::stash_repos(&repo_paths, &name, message.as_deref(), include_untracked);
 
     if stashed.is_empty() {
         return Ok(SaveWorkspaceStashResult {
@@ -72,10 +71,7 @@ pub fn save_workspace_stash(
 
 /// List the workspace stash records of a workspace, newest first.
 #[tauri::command]
-pub fn list_workspace_stashes(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<WorkspaceStashSummary>> {
+pub fn list_workspace_stashes(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<WorkspaceStashSummary>> {
     let conn = lock_db(&state)?;
     workspace_stash::list_workspace_stashes(&conn, workspace_id)
 }
@@ -103,9 +99,7 @@ pub fn check_workspace_stash(
         workspace_stash::list_workspace_stash_items(&conn, workspace_stash_id)?
     };
     if items.is_empty() {
-        return Err(AppError::NotFound(
-            "该 Workspace Stash 没有仓库项".into(),
-        ));
+        return Err(AppError::NotFound("该 Workspace Stash 没有仓库项".into()));
     }
     Ok(workspace_stash::check_restore(&items))
 }
@@ -125,9 +119,7 @@ pub fn restore_workspace_stash(
         workspace_stash::list_workspace_stash_items(&conn, workspace_stash_id)?
     };
     if items.is_empty() {
-        return Err(AppError::NotFound(
-            "该 Workspace Stash 没有仓库项".into(),
-        ));
+        return Err(AppError::NotFound("该 Workspace Stash 没有仓库项".into()));
     }
     Ok(workspace_stash::restore_items(
         &items,
@@ -138,10 +130,7 @@ pub fn restore_workspace_stash(
 /// Delete a workspace stash record (items cascade). The per-repo stashes
 /// stay on each repo's stack and remain manageable in the T-10 Stash view.
 #[tauri::command]
-pub fn delete_workspace_stash(
-    workspace_stash_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn delete_workspace_stash(workspace_stash_id: i64, state: State<'_, AppState>) -> AppResult<()> {
     let conn = lock_db(&state)?;
     workspace_stash::delete_workspace_stash(&conn, workspace_stash_id)
 }

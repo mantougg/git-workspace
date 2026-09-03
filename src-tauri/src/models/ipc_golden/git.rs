@@ -3,9 +3,9 @@
 
 use crate::commands::{batch as batch_cmd, diff as diff_cmd, git_ops};
 use crate::core::{
-    branch as branch_core, change_set, conflict as conflict_core, diff, graph,
-    health as health_core, history as history_core, merge as merge_core, rebase as rebase_core,
-    reflog as reflog_core, stash as stash_core, workspace_stash, worktree as worktree_core,
+    branch as branch_core, change_set, conflict as conflict_core, diff, graph, health as health_core,
+    history as history_core, merge as merge_core, rebase as rebase_core, reflog as reflog_core, stash as stash_core,
+    workspace_stash, worktree as worktree_core,
 };
 use crate::models::commit;
 use serde_json::{json, Map, Value};
@@ -212,9 +212,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         "MergeOutcome".into(),
         json!([
             merge_core::MergeOutcome::UpToDate,
-            merge_core::MergeOutcome::FastForward {
-                to: "abc123".into(),
-            },
+            merge_core::MergeOutcome::FastForward { to: "abc123".into() },
             merge_core::MergeOutcome::Merged {
                 commit_oid: "abc123".into(),
             },
@@ -324,10 +322,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     );
 
     // core/health.rs (T-19)
-    m.insert(
-        "HealthWeights".into(),
-        json!(health_core::HealthWeights::default()),
-    );
+    m.insert("HealthWeights".into(), json!(health_core::HealthWeights::default()));
     m.insert(
         "RepoHealth".into(),
         json!(health_core::RepoHealth {
@@ -555,25 +550,9 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     // T-22 change set
     ("ChangeSet", "types/changeSet.ts", "ChangeSet"),
     ("ChangeSetRepo", "types/changeSet.ts", "ChangeSetRepo"),
-    (
-        "ChangeSetRepoInput",
-        "types/changeSet.ts",
-        "ChangeSetRepoInput",
-    ),
-    (
-        "CreateChangeSetRequest",
-        "types/changeSet.ts",
-        "CreateChangeSetRequest",
-    ),
-    (
-        "UpdateChangeSetRequest",
-        "types/changeSet.ts",
-        "UpdateChangeSetRequest",
-    ),
-    (
-        "ChangeSetRepoSummary",
-        "types/changeSet.ts",
-        "ChangeSetRepoSummary",
-    ),
+    ("ChangeSetRepoInput", "types/changeSet.ts", "ChangeSetRepoInput"),
+    ("CreateChangeSetRequest", "types/changeSet.ts", "CreateChangeSetRequest"),
+    ("UpdateChangeSetRequest", "types/changeSet.ts", "UpdateChangeSetRequest"),
+    ("ChangeSetRepoSummary", "types/changeSet.ts", "ChangeSetRepoSummary"),
     ("ChangeSetSummary", "types/changeSet.ts", "ChangeSetSummary"),
 ];

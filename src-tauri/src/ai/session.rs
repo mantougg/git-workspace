@@ -192,10 +192,7 @@ pub fn create_session(conn: &Connection, input: &CreateAiSessionRequest) -> AppR
     let now = now_rfc3339();
     let role = input.role.unwrap_or(AiSessionRole::WorkspaceAssistant);
     let repository_scope = serde_json::to_string(&input.repository_scope)?;
-    let runtime_scope = input
-        .runtime_scope
-        .clone()
-        .unwrap_or_else(|| serde_json::json!({}));
+    let runtime_scope = input.runtime_scope.clone().unwrap_or_else(|| serde_json::json!({}));
     conn.execute(
         "INSERT INTO ai_sessions
          (id, title, role, workspace_id, repository_scope_json, runtime_scope_json, created_at, updated_at)
@@ -213,7 +210,8 @@ pub fn create_session(conn: &Connection, input: &CreateAiSessionRequest) -> AppR
     Ok(get_session(conn, &id)?.expect("just inserted"))
 }
 
-const SESSION_COLS: &str = "id, title, role, workspace_id, repository_scope_json, runtime_scope_json, created_at, updated_at, archived_at";
+const SESSION_COLS: &str =
+    "id, title, role, workspace_id, repository_scope_json, runtime_scope_json, created_at, updated_at, archived_at";
 
 fn row_to_session(row: &rusqlite::Row) -> rusqlite::Result<AiSession> {
     let role_str: String = row.get("role")?;
@@ -268,10 +266,7 @@ pub fn list_sessions(conn: &Connection, query: &AiSessionListQuery) -> AppResult
     }
 
     let total: i64 = {
-        let sql = format!(
-            "SELECT COUNT(*) FROM ai_sessions s {}",
-            where_clause
-        );
+        let sql = format!("SELECT COUNT(*) FROM ai_sessions s {}", where_clause);
         let mut stmt = conn.prepare(&sql)?;
         match query.workspace_id {
             Some(ws) => stmt.query_row(params![ws], |r| r.get(0)),
@@ -335,11 +330,7 @@ pub fn set_archived(conn: &Connection, id: &str, archived: bool) -> AppResult<Ai
     let now = now_rfc3339();
     let updated = conn.execute(
         "UPDATE ai_sessions SET archived_at = ?2, updated_at = ?3 WHERE id = ?1",
-        params![
-            id,
-            if archived { Some(now.clone()) } else { None },
-            now
-        ],
+        params![id, if archived { Some(now.clone()) } else { None }, now],
     )?;
     if updated == 0 {
         return Err(not_found(id));
@@ -353,10 +344,7 @@ pub fn set_archived(conn: &Connection, id: &str, archived: bool) -> AppResult<Ai
 /// `PRAGMA foreign_keys` 也不残留完整 Prompt。返回是否确实删除了会话。
 pub fn delete_session(conn: &Connection, id: &str) -> AppResult<bool> {
     conn.execute("DELETE FROM ai_messages WHERE session_id = ?1", params![id])?;
-    conn.execute(
-        "DELETE FROM ai_result_cache WHERE session_id = ?1",
-        params![id],
-    )?;
+    conn.execute("DELETE FROM ai_result_cache WHERE session_id = ?1", params![id])?;
     // ai_requests 保留审计（session_id 经 FK 置空）：审计只含 hash 与计量，
     // 不含 Prompt 原文（§10.4）。
     let removed = conn.execute("DELETE FROM ai_sessions WHERE id = ?1", params![id])?;
@@ -392,8 +380,7 @@ pub fn get_session_detail(
                  ORDER BY sequence DESC LIMIT ?3",
             )?;
             let rows = stmt.query_map(params![id, cursor, limit], row_to_message)?;
-            let mut messages: Vec<AiSessionMessage> =
-                rows.collect::<rusqlite::Result<Vec<_>>>()?;
+            let mut messages: Vec<AiSessionMessage> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
             messages.reverse();
             messages
         }
@@ -404,8 +391,7 @@ pub fn get_session_detail(
                  ORDER BY sequence DESC LIMIT ?2",
             )?;
             let rows = stmt.query_map(params![id, limit], row_to_message)?;
-            let mut messages: Vec<AiSessionMessage> =
-                rows.collect::<rusqlite::Result<Vec<_>>>()?;
+            let mut messages: Vec<AiSessionMessage> = rows.collect::<rusqlite::Result<Vec<_>>>()?;
             messages.reverse();
             messages
         }
@@ -425,8 +411,7 @@ fn row_to_message(row: &rusqlite::Row) -> rusqlite::Result<AiSessionMessage> {
         id: row.get("id")?,
         session_id: row.get("session_id")?,
         role: MessageRole::parse(&role_str).unwrap_or(MessageRole::User),
-        content: serde_json::from_str(&content_json)
-            .unwrap_or_else(|_| serde_json::Value::String(String::new())),
+        content: serde_json::from_str(&content_json).unwrap_or_else(|_| serde_json::Value::String(String::new())),
         sequence: row.get("sequence")?,
         created_at: row.get("created_at")?,
     })
@@ -552,14 +537,10 @@ fn render_assistant_markdown(content: &serde_json::Value) -> String {
                     let bullets: Vec<String> = items
                         .iter()
                         .filter_map(|item| match item {
-                            serde_json::Value::String(s) if !s.trim().is_empty() => {
-                                Some(format!("- {}", s.trim()))
-                            }
+                            serde_json::Value::String(s) if !s.trim().is_empty() => Some(format!("- {}", s.trim())),
                             serde_json::Value::Object(obj) => {
                                 // 列表对象取首个字符串字段作为摘要行。
-                                obj.values()
-                                    .find_map(|v| v.as_str())
-                                    .map(|s| format!("- {}", s.trim()))
+                                obj.values().find_map(|v| v.as_str()).map(|s| format!("- {}", s.trim()))
                             }
                             _ => None,
                         })
@@ -683,8 +664,7 @@ mod tests {
     }
 
     fn text_message(conn: &Connection, session_id: &str, role: MessageRole, text: &str) {
-        append_message_unchecked(conn, session_id, role, &serde_json::json!({ "text": text }))
-            .unwrap();
+        append_message_unchecked(conn, session_id, role, &serde_json::json!({ "text": text })).unwrap();
     }
 
     #[test]
@@ -947,13 +927,7 @@ mod tests {
     fn append_to_missing_session_errors() {
         let conn = open_db();
         set_persistence(&conn, true).unwrap();
-        let err = append_message(
-            &conn,
-            "missing",
-            MessageRole::User,
-            &serde_json::json!({"text": "x"}),
-        )
-        .unwrap_err();
+        let err = append_message(&conn, "missing", MessageRole::User, &serde_json::json!({"text": "x"})).unwrap_err();
         assert_eq!(err.code(), "AiNotConfigured");
     }
 
@@ -982,10 +956,7 @@ mod tests {
             AiSessionRole::parse("assistant"),
             Some(AiSessionRole::WorkspaceAssistant)
         );
-        assert_eq!(
-            AiSessionRole::parse("gitAssistant"),
-            Some(AiSessionRole::GitReviewer)
-        );
+        assert_eq!(AiSessionRole::parse("gitAssistant"), Some(AiSessionRole::GitReviewer));
         assert_eq!(AiSessionRole::parse("unknown"), None);
     }
 

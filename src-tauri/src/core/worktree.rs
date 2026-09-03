@@ -65,10 +65,7 @@ pub fn list_worktrees(repo_path: &Path) -> AppResult<Vec<WorktreeInfo>> {
         } else {
             (None, false)
         };
-        let is_locked = matches!(
-            wt.is_locked(),
-            Ok(git2::WorktreeLockStatus::Locked(_))
-        );
+        let is_locked = matches!(wt.is_locked(), Ok(git2::WorktreeLockStatus::Locked(_)));
         out.push(WorktreeInfo {
             name: name.to_string(),
             path: path.to_string_lossy().to_string(),
@@ -88,19 +85,11 @@ pub fn list_worktrees(repo_path: &Path) -> AppResult<Vec<WorktreeInfo>> {
 /// - `branch`: check out an existing branch (fails if it is checked out
 ///   elsewhere — git forbids double checkout).
 /// - neither: detached HEAD.
-pub fn add_worktree(
-    repo_path: &Path,
-    path: &Path,
-    branch: Option<&str>,
-    new_branch: Option<&str>,
-) -> AppResult<()> {
+pub fn add_worktree(repo_path: &Path, path: &Path, branch: Option<&str>, new_branch: Option<&str>) -> AppResult<()> {
     let repo = git2::Repository::open(repo_path)?;
 
     if path.exists() && path.read_dir()?.next().is_some() {
-        return Err(AppError::Other(format!(
-            "目标目录已存在且非空：{}",
-            path.display()
-        )));
+        return Err(AppError::Other(format!("目标目录已存在且非空：{}", path.display())));
     }
     let name = path
         .file_name()
@@ -111,20 +100,14 @@ pub fn add_worktree(
     // The reference must outlive the `repo.worktree()` call (git2 stores the
     // raw pointer), so it is bound outside the branch-selection blocks.
     let reference: Option<git2::Reference> = if let Some(nb) = new_branch {
-        if repo
-            .find_branch(nb, git2::BranchType::Local)
-            .is_ok()
-        {
+        if repo.find_branch(nb, git2::BranchType::Local).is_ok() {
             return Err(AppError::Other(format!("分支已存在：{nb}")));
         }
         let head = repo.head()?.peel_to_commit()?;
         let b = repo.branch(nb, &head, false)?;
         Some(b.into_reference())
     } else if let Some(br) = branch {
-        Some(
-            repo.find_branch(br, git2::BranchType::Local)?
-                .into_reference(),
-        )
+        Some(repo.find_branch(br, git2::BranchType::Local)?.into_reference())
     } else {
         None
     };
@@ -176,9 +159,7 @@ fn head_branch(repo: &git2::Repository) -> Option<String> {
     if repo.head_detached().unwrap_or(false) {
         return None;
     }
-    repo.head()
-        .ok()
-        .and_then(|h| h.shorthand().map(str::to_string))
+    repo.head().ok().and_then(|h| h.shorthand().map(str::to_string))
 }
 
 /// Whether a working directory has uncommitted changes.
@@ -188,9 +169,7 @@ fn worktree_is_dirty(path: &Path) -> bool {
     };
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(true);
-    repo.statuses(Some(&mut opts))
-        .map(|s| !s.is_empty())
-        .unwrap_or(false)
+    repo.statuses(Some(&mut opts)).map(|s| !s.is_empty()).unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -220,8 +199,7 @@ mod tests {
         let tree_oid = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
         let sig = git2::Signature::now("tester", "t@example.com").unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
-            .unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
         // Ensure a named branch exists for checkout-based tests.
         let head = repo.head().unwrap().peel_to_commit().unwrap();
         repo.branch("feature", &head, false).unwrap();
@@ -233,10 +211,10 @@ mod tests {
     fn add_and_list_worktrees() {
         let dir = tmpdir("list");
         init_repo(&dir);
-        let wt_path = dir.parent().unwrap().join(format!(
-            "{}-wt",
-            dir.file_name().unwrap().to_string_lossy()
-        ));
+        let wt_path = dir
+            .parent()
+            .unwrap()
+            .join(format!("{}-wt", dir.file_name().unwrap().to_string_lossy()));
 
         add_worktree(&dir, &wt_path, None, Some("wt-branch")).unwrap();
         assert!(wt_path.join(".git").is_file(), "linked worktree uses a .git file");
@@ -259,10 +237,10 @@ mod tests {
     fn remove_dirty_worktree_requires_force() {
         let dir = tmpdir("dirty");
         init_repo(&dir);
-        let wt_path = dir.parent().unwrap().join(format!(
-            "{}-wtd",
-            dir.file_name().unwrap().to_string_lossy()
-        ));
+        let wt_path = dir
+            .parent()
+            .unwrap()
+            .join(format!("{}-wtd", dir.file_name().unwrap().to_string_lossy()));
         add_worktree(&dir, &wt_path, Some("feature"), None).unwrap();
 
         // Make the worktree dirty.
@@ -285,10 +263,10 @@ mod tests {
     fn remove_prunes_externally_deleted_worktree() {
         let dir = tmpdir("gone");
         init_repo(&dir);
-        let wt_path = dir.parent().unwrap().join(format!(
-            "{}-wtg",
-            dir.file_name().unwrap().to_string_lossy()
-        ));
+        let wt_path = dir
+            .parent()
+            .unwrap()
+            .join(format!("{}-wtg", dir.file_name().unwrap().to_string_lossy()));
         add_worktree(&dir, &wt_path, None, Some("gone-branch")).unwrap();
         std::fs::remove_dir_all(&wt_path).unwrap();
 

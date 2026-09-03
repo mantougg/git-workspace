@@ -433,12 +433,8 @@ mod tests {
         let payload = serde_json::to_value(&error).unwrap();
         assert_eq!(payload["code"], "BuildFailed");
         assert_eq!(payload["recoverable"], true);
-        assert!(payload["message"]
-            .as_str()
-            .unwrap()
-            .contains("com.example:app"));
-        let details: serde_json::Value =
-            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        assert!(payload["message"].as_str().unwrap().contains("com.example:app"));
+        let details: serde_json::Value = serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
         assert_eq!(details["module"], "com.example:app");
         assert_eq!(details["exitCode"], 1);
         assert_eq!(details["logTail"], "[ERROR] COMPILATION ERROR");
@@ -453,8 +449,7 @@ mod tests {
         assert_eq!(start.code(), "ProcessStartFailed");
         assert!(start.recoverable());
         let payload = serde_json::to_value(&start).unwrap();
-        let details: serde_json::Value =
-            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        let details: serde_json::Value = serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
         assert_eq!(details["runtime"], "app");
         assert!(details["reason"].as_str().unwrap().contains("java"));
 
@@ -465,8 +460,7 @@ mod tests {
         };
         assert_eq!(crash.code(), "ProcessCrashed");
         let payload = serde_json::to_value(&crash).unwrap();
-        let details: serde_json::Value =
-            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        let details: serde_json::Value = serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
         assert_eq!(details["pid"], 4321);
         assert_eq!(details["exitCode"], 137);
     }
@@ -482,16 +476,8 @@ mod tests {
                 "ProjectNotFound",
                 true,
             ),
-            (
-                AppError::MavenNotFound("mvn 不在 PATH".into()),
-                "MavenNotFound",
-                true,
-            ),
-            (
-                AppError::NodeNotFound("node 不在 PATH".into()),
-                "NodeNotFound",
-                true,
-            ),
+            (AppError::MavenNotFound("mvn 不在 PATH".into()), "MavenNotFound", true),
+            (AppError::NodeNotFound("node 不在 PATH".into()), "NodeNotFound", true),
             (
                 AppError::PackageManagerNotFound("pnpm 未安装".into()),
                 "PackageManagerNotFound",
@@ -506,11 +492,7 @@ mod tests {
                 "ScriptNotFound",
                 true,
             ),
-            (
-                AppError::JdkNotFound("JDK 21 未安装".into()),
-                "JdkNotFound",
-                true,
-            ),
+            (AppError::JdkNotFound("JDK 21 未安装".into()), "JdkNotFound", true),
             (
                 AppError::InvalidPom {
                     path: "/ws/repo/pom.xml".into(),
@@ -524,11 +506,7 @@ mod tests {
                 "DependencyResolveFailed",
                 true,
             ),
-            (
-                AppError::SourceMapping("坐标歧义".into()),
-                "SourceMappingFailed",
-                true,
-            ),
+            (AppError::SourceMapping("坐标歧义".into()), "SourceMappingFailed", true),
             (
                 AppError::BuildFailed {
                     module: "com.example:app".into(),
@@ -575,12 +553,7 @@ mod tests {
         ];
         for (error, expected_code, expected_recoverable) in cases {
             assert_eq!(error.code(), expected_code);
-            assert_eq!(
-                error.recoverable(),
-                expected_recoverable,
-                "code {}",
-                expected_code
-            );
+            assert_eq!(error.recoverable(), expected_recoverable, "code {}", expected_code);
             let payload = serde_json::to_value(&error).unwrap();
             assert_eq!(payload["code"], expected_code);
             assert_eq!(payload["recoverable"], expected_recoverable);
@@ -661,8 +634,7 @@ mod tests {
             process_name: Some("java.exe".into()),
         };
         let payload = serde_json::to_value(&error).unwrap();
-        let details: serde_json::Value =
-            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        let details: serde_json::Value = serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
         assert_eq!(details["port"], 8080);
         assert_eq!(details["pid"], 4242);
         assert_eq!(details["processName"], "java.exe");
@@ -681,8 +653,7 @@ mod tests {
         assert_eq!(error.code(), "ScriptConfirmationRequired");
         assert!(error.recoverable());
         let payload = serde_json::to_value(&error).unwrap();
-        let details: serde_json::Value =
-            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        let details: serde_json::Value = serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
         assert_eq!(details["workspaceId"], 2);
         assert_eq!(details["runtimeName"], "app");
         assert_eq!(details["scriptType"], "pre");
@@ -698,8 +669,7 @@ mod tests {
         assert_eq!(failed.code(), "ScriptFailed");
         assert!(failed.recoverable());
         let payload = serde_json::to_value(&failed).unwrap();
-        let details: serde_json::Value =
-            serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        let details: serde_json::Value = serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
         assert_eq!(details["exitCode"], 2);
         assert_eq!(details["logTail"], "boom");
     }

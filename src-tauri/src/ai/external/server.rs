@@ -24,9 +24,7 @@ use tokio::net::{TcpListener, TcpStream};
 use crate::error::AppResult;
 
 use super::tools::{self, ToolContext};
-use super::{
-    external_tool_manifest, mcp, run_external_call, ExternalCallRequest, ExternalToolDescriptor,
-};
+use super::{external_tool_manifest, mcp, run_external_call, ExternalCallRequest, ExternalToolDescriptor};
 
 pub const DEFAULT_PORT: u16 = 39117;
 const DISCOVERY_FILE: &str = "ai-external-endpoint.json";
@@ -147,9 +145,7 @@ where
         return write_response(&mut stream, 405, None).await;
     }
     match mcp::handle_jsonrpc(&request.body, &tools, &execute).await {
-        Some(payload) => {
-            write_response(&mut stream, 200, Some(("application/json", payload.as_bytes()))).await
-        }
+        Some(payload) => write_response(&mut stream, 200, Some(("application/json", payload.as_bytes()))).await,
         // Notification：202 Accepted，无响应体。
         None => write_response(&mut stream, 202, None).await,
     }
@@ -199,11 +195,7 @@ async fn read_request(stream: &mut TcpStream) -> Result<HttpRequest, u16> {
 fn parse_head(head: &str) -> Result<(String, usize), u16> {
     let mut lines = head.lines();
     let request_line = lines.next().ok_or(400u16)?;
-    let method = request_line
-        .split_whitespace()
-        .next()
-        .ok_or(400u16)?
-        .to_string();
+    let method = request_line.split_whitespace().next().ok_or(400u16)?.to_string();
     let mut content_length = 0usize;
     for line in lines {
         if let Some((name, value)) = line.split_once(':') {
@@ -216,16 +208,10 @@ fn parse_head(head: &str) -> Result<(String, usize), u16> {
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
+    haystack.windows(needle.len()).position(|window| window == needle)
 }
 
-async fn write_response(
-    stream: &mut TcpStream,
-    status: u16,
-    body: Option<(&str, &[u8])>,
-) -> io::Result<()> {
+async fn write_response(stream: &mut TcpStream, status: u16, body: Option<(&str, &[u8])>) -> io::Result<()> {
     let reason = match status {
         200 => "OK",
         202 => "Accepted",
@@ -265,8 +251,7 @@ pub fn write_discovery(dir: &Path, info: &ExternalEndpointInfo) -> io::Result<()
     if !dir.exists() {
         std::fs::create_dir_all(dir)?;
     }
-    let payload = serde_json::to_string_pretty(info)
-        .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+    let payload = serde_json::to_string_pretty(info).map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
     std::fs::write(dir.join(DISCOVERY_FILE), payload)
 }
 
@@ -286,8 +271,7 @@ mod tests {
 
     #[test]
     fn parse_head_extracts_method_and_content_length_case_insensitively() {
-        let (method, len) =
-            parse_head("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 42\r\n").unwrap();
+        let (method, len) = parse_head("POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 42\r\n").unwrap();
         assert_eq!(method, "POST");
         assert_eq!(len, 42);
         let (_, len) = parse_head("POST / HTTP/1.1\r\ncontent-length: 7").unwrap();
@@ -353,10 +337,7 @@ mod tests {
                 let (stream, _) = listener.accept().await.unwrap();
                 let tools = Arc::clone(&tools);
                 tokio::spawn(async move {
-                    let _ = handle_connection(stream, tools, |_| {
-                        std::future::ready(Ok(json!({})))
-                    })
-                    .await;
+                    let _ = handle_connection(stream, tools, |_| std::future::ready(Ok(json!({})))).await;
                 });
             }
         });
@@ -368,11 +349,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(notification.status(), 202);
-        let get = client
-            .get(format!("http://127.0.0.1:{port}/"))
-            .send()
-            .await
-            .unwrap();
+        let get = client.get(format!("http://127.0.0.1:{port}/")).send().await.unwrap();
         assert_eq!(get.status(), 405);
         let _ = server.await;
     }

@@ -28,8 +28,7 @@ fn init_repo(dir: &Path, name: &str, content: &str) {
     let tree_oid = index.write_tree().unwrap();
     let tree = repo.find_tree(tree_oid).unwrap();
     let sig = git2::Signature::now("tester", "t@example.com").unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
-        .unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
 }
 
 fn head_commit(dir: &Path) -> git2::Commit<'static> {
@@ -131,11 +130,8 @@ fn index_only_commit_preserves_partial_staging() {
         "only the staged line may be committed"
     );
     // The remaining change is still unstaged afterwards.
-    let unstaged = crate::core::diff::get_unstaged_diff_with_config(
-        &dir,
-        &crate::core::diff::DiffConfig::default(),
-    )
-    .unwrap();
+    let unstaged =
+        crate::core::diff::get_unstaged_diff_with_config(&dir, &crate::core::diff::DiffConfig::default()).unwrap();
     let adds: Vec<_> = unstaged[0]
         .hunks
         .iter()
@@ -180,14 +176,9 @@ fn safety_scan_blocks_and_override_allows() {
     std::fs::write(dir.join("key.txt"), "const k = \"AKIAIOSFODNN7EXAMPLE\";\n").unwrap();
 
     // Pre-flight scan sees both the forbidden file and the secret.
-    let findings =
-        pre_commit_scan(&dir, &[".env".to_string(), "key.txt".to_string()], false).unwrap();
-    assert!(findings
-        .iter()
-        .any(|f| f.kind == "forbidden" && f.path == ".env"));
-    assert!(findings
-        .iter()
-        .any(|f| f.kind == "secret" && f.path == "key.txt"));
+    let findings = pre_commit_scan(&dir, &[".env".to_string(), "key.txt".to_string()], false).unwrap();
+    assert!(findings.iter().any(|f| f.kind == "forbidden" && f.path == ".env"));
+    assert!(findings.iter().any(|f| f.kind == "secret" && f.path == "key.txt"));
 
     let ops = GitOps::with_default_ssh();
     let err = ops
@@ -226,9 +217,7 @@ fn safety_scan_flags_large_files() {
 
     let findings = pre_commit_scan(&dir, &["big.bin".to_string()], false).unwrap();
     assert!(
-        findings
-            .iter()
-            .any(|f| f.kind == "large_file" && f.path == "big.bin"),
+        findings.iter().any(|f| f.kind == "large_file" && f.path == "big.bin"),
         "large file must be flagged: {findings:?}"
     );
 
@@ -271,8 +260,7 @@ fn commit_then_push_failure_keeps_commit_and_marks_state() {
     // An unreachable remote makes the push phase fail.
     {
         let repo = git2::Repository::open(&dir).unwrap();
-        repo.remote("origin", "file:///nonexistent/nowhere.git")
-            .unwrap();
+        repo.remote("origin", "file:///nonexistent/nowhere.git").unwrap();
     }
     std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
 
@@ -314,8 +302,7 @@ fn branch_op_task_create_checkout_delete() {
         force,
     };
 
-    ops.execute(&mk(BranchOpKind::Create, "feature", false), &dir)
-        .unwrap();
+    ops.execute(&mk(BranchOpKind::Create, "feature", false), &dir).unwrap();
     {
         let repo = git2::Repository::open(&dir).unwrap();
         assert!(
@@ -336,13 +323,10 @@ fn branch_op_task_create_checkout_delete() {
     ops.execute(&mk(BranchOpKind::Checkout, "master", false), &dir)
         .or_else(|_| ops.execute(&mk(BranchOpKind::Checkout, "main", false), &dir))
         .unwrap();
-    ops.execute(&mk(BranchOpKind::Delete, "feature", false), &dir)
-        .unwrap();
+    ops.execute(&mk(BranchOpKind::Delete, "feature", false), &dir).unwrap();
     {
         let repo = git2::Repository::open(&dir).unwrap();
-        assert!(repo
-            .find_branch("feature", git2::BranchType::Local)
-            .is_err());
+        assert!(repo.find_branch("feature", git2::BranchType::Local).is_err());
     }
 
     let _ = std::fs::remove_dir_all(&dir);

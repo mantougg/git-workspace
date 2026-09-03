@@ -158,10 +158,7 @@ impl Default for ToolRegistry {
 
 impl ToolRegistry {
     pub fn new(call_limit: u32) -> Self {
-        let definitions = definitions()
-            .into_iter()
-            .map(|d| (d.name.clone(), d))
-            .collect();
+        let definitions = definitions().into_iter().map(|d| (d.name.clone(), d)).collect();
         Self {
             definitions,
             call_limit: call_limit.max(1),
@@ -183,11 +180,7 @@ impl ToolRegistry {
         self.calls.lock().unwrap().remove(request_id);
     }
 
-    pub async fn invoke(
-        &self,
-        call: ToolCallRequest,
-        context: ToolContext,
-    ) -> AppResult<ToolInvocation> {
+    pub async fn invoke(&self, call: ToolCallRequest, context: ToolContext) -> AppResult<ToolInvocation> {
         let definition = self.validate(&call)?;
         self.reserve_call(&call.request_id)?;
 
@@ -198,23 +191,19 @@ impl ToolRegistry {
         let started = Instant::now();
         let timeout_ms = definition.timeout_ms;
         let max_result_bytes = definition.max_result_bytes;
-        let task = tokio::task::spawn_blocking(move || {
-            execute_sync(&definition, &call.arguments, &context)
-        });
-        let value =
-            match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), task).await {
-                Ok(Ok(result)) => result?,
-                Ok(Err(join_error)) => return Err(AppError::Other(join_error.to_string())),
-                Err(_) => {
-                    return Err(AppError::Ai(AiError::ToolTimeout {
-                        tool: tool_name,
-                        timeout_ms,
-                    }))
-                }
-            };
+        let task = tokio::task::spawn_blocking(move || execute_sync(&definition, &call.arguments, &context));
+        let value = match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), task).await {
+            Ok(Ok(result)) => result?,
+            Ok(Err(join_error)) => return Err(AppError::Other(join_error.to_string())),
+            Err(_) => {
+                return Err(AppError::Ai(AiError::ToolTimeout {
+                    tool: tool_name,
+                    timeout_ms,
+                }))
+            }
+        };
 
-        let (result, truncated, result_bytes, total_result_bytes) =
-            limit_result(value, max_result_bytes);
+        let (result, truncated, result_bytes, total_result_bytes) = limit_result(value, max_result_bytes);
         let duration_ms = started.elapsed().as_millis() as u64;
         log::info!(
             "ai tool audit: tool={} role={} request_id={} parameter_hash={} duration_ms={} result_bytes={} truncated={}",
@@ -279,9 +268,7 @@ impl ToolRegistry {
         let mut calls = self.calls.lock().unwrap();
         let count = calls.entry(request_id.to_string()).or_default();
         if *count >= self.call_limit {
-            return Err(AppError::Ai(AiError::ToolCallLimitExceeded {
-                max: self.call_limit,
-            }));
+            return Err(AppError::Ai(AiError::ToolCallLimitExceeded { max: self.call_limit }));
         }
         *count += 1;
         Ok(())
@@ -322,8 +309,7 @@ fn execute_sync(definition: &ToolDefinition, args: &Value, ctx: &ToolContext) ->
         "repository.diff" => {
             let path = repo_path.ok_or_else(|| input_error(&definition.name, "repoPath"))?;
             let options = args.get("options").cloned().unwrap_or_else(|| json!({}));
-            let opt: crate::commands::diff::DiffOptionsParam =
-                parse_input(&options, &definition.name)?;
+            let opt: crate::commands::diff::DiffOptionsParam = parse_input(&options, &definition.name)?;
             let config = diff::DiffConfig {
                 ignore_whitespace: opt.ignore_whitespace,
                 ignore_whitespace_eol: opt.ignore_whitespace_eol,
@@ -360,10 +346,7 @@ fn execute_sync(definition: &ToolDefinition, args: &Value, ctx: &ToolContext) ->
         }
         "runtime.getClosure" => {
             let project = required_string(args, "project", &definition.name)?;
-            let scope = args
-                .get("scope")
-                .cloned()
-                .unwrap_or_else(|| json!(RuntimeScope::Auto));
+            let scope = args.get("scope").cloned().unwrap_or_else(|| json!(RuntimeScope::Auto));
             let scope: RuntimeScope = parse_input(&scope, &definition.name)?;
             Ok(json!(ctx.runtime.closure_preview(
                 workspace_id.unwrap(),
@@ -386,26 +369,16 @@ fn execute_sync(definition: &ToolDefinition, args: &Value, ctx: &ToolContext) ->
         }
         "jdk.list" => Ok(json!(list_jdks(&ctx.db.lock().unwrap())?)),
         "maven.detect" => {
-            let project_dir = args
-                .get("projectDir")
-                .and_then(Value::as_str)
-                .map(std::path::Path::new);
+            let project_dir = args.get("projectDir").and_then(Value::as_str).map(std::path::Path::new);
             let configured = args.get("configuredPath").and_then(Value::as_str);
-            Ok(json!(maven::detect_maven_candidates(
-                project_dir,
-                configured
-            )))
+            Ok(json!(maven::detect_maven_candidates(project_dir, configured)))
         }
         "task.getStatus" => {
             let ids = args
                 .get("taskIds")
                 .and_then(Value::as_array)
                 .ok_or_else(|| input_error(&definition.name, "taskIds"))?;
-            let ids: Vec<String> = ids
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToOwned::to_owned)
-                .collect();
+            let ids: Vec<String> = ids.iter().filter_map(Value::as_str).map(ToOwned::to_owned).collect();
             Ok(json!(ctx.task_manager.get_status(&ids)))
         }
         "git.createCommitProposal" => {
@@ -414,7 +387,13 @@ fn execute_sync(definition: &ToolDefinition, args: &Value, ctx: &ToolContext) ->
             let files = args
                 .get("files")
                 .and_then(Value::as_array)
-                .map(|items| items.iter().filter_map(Value::as_str).map(ToOwned::to_owned).collect::<Vec<_>>())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
             if files.iter().any(|file| !is_safe_relative_path(file)) {
                 return Err(AppError::Ai(AiError::ToolScopeViolation {
@@ -440,7 +419,13 @@ fn execute_sync(definition: &ToolDefinition, args: &Value, ctx: &ToolContext) ->
                 RiskLevel::Medium,
                 json!({"workspaceId": workspace_id, "repoPath": path.to_string_lossy()}),
                 vec![path.to_string_lossy().to_string()],
-                payload["files"].as_array().cloned().unwrap_or_default().into_iter().filter_map(|v| v.as_str().map(ToOwned::to_owned)).collect(),
+                payload["files"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                    .collect(),
                 "当前工作区变更将保持不变",
                 format!("创建提交：{}", message),
                 None,
@@ -518,7 +503,10 @@ fn execute_sync(definition: &ToolDefinition, args: &Value, ctx: &ToolContext) ->
         }
         "runtime.updateConfigProposal" => {
             let runtime_name = required_string(args, "runtimeName", &definition.name)?;
-            let config = args.get("config").cloned().ok_or_else(|| input_error(&definition.name, "config"))?;
+            let config = args
+                .get("config")
+                .cloned()
+                .ok_or_else(|| input_error(&definition.name, "config"))?;
             if !config.is_object() {
                 return Err(input_error(&definition.name, "config"));
             }
@@ -555,10 +543,7 @@ fn reject_proposal_secrets(payload: &Value) -> AppResult<()> {
     if findings.is_empty() {
         return Ok(());
     }
-    let mut kinds = findings
-        .iter()
-        .map(|finding| finding.kind.label())
-        .collect::<Vec<_>>();
+    let mut kinds = findings.iter().map(|finding| finding.kind.label()).collect::<Vec<_>>();
     kinds.sort_unstable();
     kinds.dedup();
     Err(AppError::Ai(AiError::SecretDetected {
@@ -672,8 +657,7 @@ fn limit_result(value: Value, max_bytes: usize) -> (Value, bool, usize, usize) {
     }
     let mut preview_budget = max_bytes.saturating_sub(96);
     let (result, bytes) = loop {
-        let preview =
-            String::from_utf8_lossy(&encoded[..encoded.len().min(preview_budget)]).to_string();
+        let preview = String::from_utf8_lossy(&encoded[..encoded.len().min(preview_budget)]).to_string();
         let result = json!({"truncated": true, "totalBytes": total, "preview": preview});
         let bytes = serde_json::to_vec(&result).map(|v| v.len()).unwrap_or(0);
         if bytes <= max_bytes || preview_budget == 0 {
@@ -721,23 +705,13 @@ fn definition(
     }
 }
 
-fn proposal_definition(
-    name: &str,
-    scope: ToolScope,
-    properties: Value,
-    fields: &[&str],
-) -> ToolDefinition {
+fn proposal_definition(name: &str, scope: ToolScope, properties: Value, fields: &[&str]) -> ToolDefinition {
     let mut definition = definition(name, scope, true, false, properties, fields, &[ToolRole::ActionPlanner]);
     definition.read_only = false;
     definition
 }
 
-fn secret_proposal_definition(
-    name: &str,
-    scope: ToolScope,
-    properties: Value,
-    fields: &[&str],
-) -> ToolDefinition {
+fn secret_proposal_definition(name: &str, scope: ToolScope, properties: Value, fields: &[&str]) -> ToolDefinition {
     let mut definition = proposal_definition(name, scope, properties, fields);
     definition.may_contain_secrets = true;
     definition
@@ -762,12 +736,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
             false,
             json!({"workspaceId":{"type":"integer"}}),
             &["workspaceId"],
-            &[
-                WorkspaceAssistant,
-                GitReviewer,
-                CommitAssistant,
-                ConflictAssistant,
-            ],
+            &[WorkspaceAssistant, GitReviewer, CommitAssistant, ConflictAssistant],
         ),
         definition(
             "repository.status",
@@ -776,12 +745,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
             false,
             json!({"workspaceId":{"type":"integer"},"repoPath":{"type":"string"}}),
             &["workspaceId", "repoPath"],
-            &[
-                WorkspaceAssistant,
-                GitReviewer,
-                CommitAssistant,
-                ConflictAssistant,
-            ],
+            &[WorkspaceAssistant, GitReviewer, CommitAssistant, ConflictAssistant],
         ),
         definition(
             "repository.diff",
@@ -925,9 +889,7 @@ mod tests {
     #[test]
     fn registry_contains_all_first_phase_tools() {
         assert_eq!(definitions().len(), 19);
-        assert!(definitions()
-            .iter()
-            .all(|d| d.version == TOOL_SCHEMA_VERSION));
+        assert!(definitions().iter().all(|d| d.version == TOOL_SCHEMA_VERSION));
         assert_eq!(definitions().iter().filter(|d| !d.read_only).count(), 4);
     }
 
@@ -966,14 +928,8 @@ mod tests {
 
     #[test]
     fn parameter_hash_is_stable_without_logging_values() {
-        assert_eq!(
-            hash_parameters(&json!({"a":1})),
-            hash_parameters(&json!({"a":1}))
-        );
-        assert_ne!(
-            hash_parameters(&json!({"a":1})),
-            hash_parameters(&json!({"a":2}))
-        );
+        assert_eq!(hash_parameters(&json!({"a":1})), hash_parameters(&json!({"a":1})));
+        assert_ne!(hash_parameters(&json!({"a":1})), hash_parameters(&json!({"a":2})));
     }
 
     #[test]
@@ -983,10 +939,7 @@ mod tests {
             registry.reserve_call("req-1").unwrap();
         }
         let error = registry.reserve_call("req-1").unwrap_err();
-        assert!(matches!(
-            error,
-            AppError::Ai(AiError::ToolCallLimitExceeded { max: 8 })
-        ));
+        assert!(matches!(error, AppError::Ai(AiError::ToolCallLimitExceeded { max: 8 })));
         registry.reset_request("req-1");
         registry.reserve_call("req-1").unwrap();
     }
@@ -994,8 +947,7 @@ mod tests {
     #[test]
     fn schema_snapshot_is_stable() {
         let actual = serde_json::to_string_pretty(&definitions()).unwrap() + "\n";
-        let path =
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("golden/ai_tools.json");
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("golden/ai_tools.json");
         if std::env::var("GW_UPDATE_GOLDEN").is_ok() {
             std::fs::write(path, actual).unwrap();
             return;

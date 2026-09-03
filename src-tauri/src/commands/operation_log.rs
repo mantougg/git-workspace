@@ -25,10 +25,7 @@ fn load_undoable_detail(state: &AppState, log_id: i64) -> AppResult<OperationLog
     let conn = lock_db(state)?;
     let detail = operation_log::get_operation_log(&conn, log_id)?;
     if detail.undone_at.is_some() {
-        return Err(AppError::Conflict(format!(
-            "操作日志 {} 已整体撤销",
-            log_id
-        )));
+        return Err(AppError::Conflict(format!("操作日志 {} 已整体撤销", log_id)));
     }
     Ok(detail)
 }
@@ -62,10 +59,7 @@ pub fn list_operation_logs(
 /// Full detail of one logged operation, including every per-repo ref
 /// snapshot (before → after oid).
 #[tauri::command]
-pub fn get_operation_log_detail(
-    log_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<OperationLogDetail> {
+pub fn get_operation_log_detail(log_id: i64, state: State<'_, AppState>) -> AppResult<OperationLogDetail> {
     let conn = lock_db(&state)?;
     operation_log::get_operation_log(&conn, log_id)
 }
@@ -73,10 +67,7 @@ pub fn get_operation_log_detail(
 /// Per-repo undo plan with live safety checks — the impact list for the
 /// §46 Dangerous confirmation dialog shown before undoing.
 #[tauri::command]
-pub fn preview_undo_operation(
-    log_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<UndoPreviewItem>> {
+pub fn preview_undo_operation(log_id: i64, state: State<'_, AppState>) -> AppResult<Vec<UndoPreviewItem>> {
     let detail = load_undoable_detail(&state, log_id)?;
     // Repo IO happens here, after the DB guard is dropped (lock not held).
     Ok(operation_log::preview_undo(&detail))

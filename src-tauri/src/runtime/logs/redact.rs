@@ -12,9 +12,7 @@ use crate::runtime::config::MASKED_VALUE;
 /// 收集需要掩码的敏感环境变量值（T-08 共享 key 规则；空值无掩码意义）。
 pub fn sensitive_env_values(env: &[(String, String)]) -> Vec<String> {
     env.iter()
-        .filter(|(key, value)| {
-            crate::core::secret::is_sensitive_environment_key(key) && !value.is_empty()
-        })
+        .filter(|(key, value)| crate::core::secret::is_sensitive_environment_key(key) && !value.is_empty())
         .map(|(_, value)| value.clone())
         .collect()
 }
@@ -89,10 +87,7 @@ mod tests {
 
     #[test]
     fn clean_lines_pass_through_untouched() {
-        let redactor = LogRedactor::from_env(&[(
-            "API_KEY".to_string(),
-            "abcd-1234".to_string(),
-        )]);
+        let redactor = LogRedactor::from_env(&[("API_KEY".to_string(), "abcd-1234".to_string())]);
         let line = "2026-08-23 12:00:00.123  INFO 1 --- [main] c.e.App : ok";
         assert_eq!(redactor.mask(line), line);
     }

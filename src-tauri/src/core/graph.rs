@@ -59,8 +59,7 @@ impl<'r> CommitWalk<'r> {
     fn push(&mut self, oid: git2::Oid, time: i64) {
         if self.seen.insert(oid) {
             self.seq += 1;
-            self.heap
-                .push((time, std::cmp::Reverse(self.seq), oid));
+            self.heap.push((time, std::cmp::Reverse(self.seq), oid));
         }
     }
 
@@ -70,10 +69,7 @@ impl<'r> CommitWalk<'r> {
             return Ok(None);
         };
         let commit = self.repo.find_commit(oid)?;
-        let parents: Vec<git2::Oid> = commit
-            .parent_ids()
-            .filter(|pid| !self.seen.contains(pid))
-            .collect();
+        let parents: Vec<git2::Oid> = commit.parent_ids().filter(|pid| !self.seen.contains(pid)).collect();
         for pid in parents {
             let time = self.repo.find_commit(pid)?.time().seconds();
             self.push(pid, time);
@@ -162,11 +158,7 @@ pub fn commit_record_from_oid(repo: &git2::Repository, oid: &git2::Oid) -> Optio
     Some(CommitRecord {
         oid: oid.to_string(),
         message: commit.message().unwrap_or("").trim_end().to_string(),
-        author: format!(
-            "{} <{}>",
-            author.name().unwrap_or(""),
-            author.email().unwrap_or("")
-        ),
+        author: format!("{} <{}>", author.name().unwrap_or(""), author.email().unwrap_or("")),
         committer: format!(
             "{} <{}>",
             committer.name().unwrap_or(""),
@@ -237,9 +229,7 @@ pub fn ref_map(repo: &git2::Repository) -> HashMap<String, Vec<String>> {
             let (branch_ref, _bt) = branch;
             if let Some(name) = branch_ref.name().ok().flatten() {
                 if let Some(oid) = branch_ref.get().target() {
-                    map.entry(oid.to_string())
-                        .or_default()
-                        .push(name.to_string());
+                    map.entry(oid.to_string()).or_default().push(name.to_string());
                 }
             }
         }
@@ -256,9 +246,7 @@ pub fn ref_map(repo: &git2::Repository) -> HashMap<String, Vec<String>> {
                         map.entry(oid).or_default().push(name.to_string());
                     } else if let Some(oid) = ref_ref.target() {
                         // Lightweight tag
-                        map.entry(oid.to_string())
-                            .or_default()
-                            .push(name.to_string());
+                        map.entry(oid.to_string()).or_default().push(name.to_string());
                     }
                 }
             }
@@ -271,9 +259,7 @@ pub fn ref_map(repo: &git2::Repository) -> HashMap<String, Vec<String>> {
             let (branch_ref, _bt) = branch;
             if let Some(name) = branch_ref.name().ok().flatten() {
                 if let Some(oid) = branch_ref.get().target() {
-                    map.entry(oid.to_string())
-                        .or_default()
-                        .push(name.to_string());
+                    map.entry(oid.to_string()).or_default().push(name.to_string());
                 }
             }
         }
@@ -296,10 +282,7 @@ pub struct BranchInfo {
 pub fn get_branches(repo_path: &Path) -> AppResult<Vec<BranchInfo>> {
     let repo = git2::Repository::open(repo_path)?;
 
-    let current_branch: Option<String> = repo
-        .head()
-        .ok()
-        .and_then(|h| h.shorthand().map(|s| s.to_string()));
+    let current_branch: Option<String> = repo.head().ok().and_then(|h| h.shorthand().map(|s| s.to_string()));
 
     let mut branches = Vec::new();
 
@@ -445,7 +428,13 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let repo = git2::Repository::init(&dir).unwrap();
 
-        let t = |i: i64| if equal_times { base_secs } else { base_secs + i };
+        let t = |i: i64| {
+            if equal_times {
+                base_secs
+            } else {
+                base_secs + i
+            }
+        };
         let c0 = commit_at(&repo, &dir, "f", "0", "c0", t(0), &[]);
         let c0c = repo.find_commit(c0).unwrap();
         let side = commit_at(&repo, &dir, "s", "s", "side", t(1), &[&c0c]);
@@ -478,9 +467,7 @@ mod tests {
         let oids = revwalk_oids(&dir, 10).unwrap();
         assert_eq!(oids.len(), 4);
 
-        let pos = |oid: &git2::Oid| {
-            oids.iter().position(|o| o == &oid.to_string()).unwrap()
-        };
+        let pos = |oid: &git2::Oid| oids.iter().position(|o| o == &oid.to_string()).unwrap();
         let (merge, main, side, c0) = (&order[0], &order[1], &order[2], &order[3]);
         assert!(pos(merge) < pos(main), "merge must precede main parent");
         assert!(pos(merge) < pos(side), "merge must precede side parent");

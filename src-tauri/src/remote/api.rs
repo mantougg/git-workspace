@@ -119,8 +119,8 @@ pub fn auth_header(r: &RemoteRepo, token: &str) -> (String, String) {
 
 /// 从 Create PR 响应提取 (number, html_url)。各平台字段名不同。
 pub fn parse_create_pr_response(platform: Platform, body: &str) -> AppResult<PrResult> {
-    let v: serde_json::Value = serde_json::from_str(body)
-        .map_err(|e| AppError::Other(format!("{platform:?} 响应解析失败：{e}")))?;
+    let v: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| AppError::Other(format!("{platform:?} 响应解析失败：{e}")))?;
     let number = match platform {
         // GitLab 的 MR 用 iid 作为页面编号
         Platform::GitLab => v.get("iid").and_then(|x| x.as_i64()),
@@ -139,16 +139,12 @@ pub fn parse_create_pr_response(platform: Platform, body: &str) -> AppResult<PrR
 
 /// 从 CI 状态响应提取 (state, url)。
 pub fn parse_ci_status(platform: Platform, body: &str) -> AppResult<CiStatus> {
-    let v: serde_json::Value = serde_json::from_str(body)
-        .map_err(|e| AppError::Other(format!("{platform:?} 响应解析失败：{e}")))?;
+    let v: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| AppError::Other(format!("{platform:?} 响应解析失败：{e}")))?;
     let (state, url) = match platform {
         // GitHub commit status：state + statuses[].target_url（取最新）
         Platform::GitHub | Platform::Gitee => {
-            let state = v
-                .get("state")
-                .and_then(|x| x.as_str())
-                .unwrap_or("unknown")
-                .to_string();
+            let state = v.get("state").and_then(|x| x.as_str()).unwrap_or("unknown").to_string();
             let url = v
                 .get("statuses")
                 .and_then(|x| x.as_array())
@@ -204,11 +200,7 @@ pub fn build_ci_url(r: &RemoteRepo, git_ref: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// Create PR（异步，单次调用）。
-pub async fn create_pull_request(
-    r: &RemoteRepo,
-    token: Option<&str>,
-    input: &CreatePrInput,
-) -> AppResult<PrResult> {
+pub async fn create_pull_request(r: &RemoteRepo, token: Option<&str>, input: &CreatePrInput) -> AppResult<PrResult> {
     let (url, body) = build_create_pr_request(r, input);
     let client = reqwest::Client::new();
     let mut req = client
@@ -233,11 +225,7 @@ pub async fn create_pull_request(
 }
 
 /// CI 状态（异步，单次调用）。
-pub async fn fetch_ci_status(
-    r: &RemoteRepo,
-    git_ref: &str,
-    token: Option<&str>,
-) -> AppResult<CiStatus> {
+pub async fn fetch_ci_status(r: &RemoteRepo, git_ref: &str, token: Option<&str>) -> AppResult<CiStatus> {
     let url = build_ci_url(r, git_ref);
     let client = reqwest::Client::new();
     let mut req = client
@@ -288,10 +276,7 @@ mod tests {
 
         let gl = parse_remote_url("https://gitlab.com/g/r.git").unwrap();
         let (url, body) = build_create_pr_request(&gl, &input);
-        assert_eq!(
-            url,
-            "https://gitlab.com/api/v4/projects/g%2Fr/merge_requests"
-        );
+        assert_eq!(url, "https://gitlab.com/api/v4/projects/g%2Fr/merge_requests");
         assert!(body.contains("source_branch"));
 
         let bb = parse_remote_url("https://bitbucket.org/o/r.git").unwrap();

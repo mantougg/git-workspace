@@ -113,10 +113,7 @@ mod tests {
         assert_eq!(page.logs[0].summary, "resolve conflict: src/config.rs");
 
         let detail = get_operation_log(&conn, page.logs[0].id).unwrap();
-        assert_eq!(
-            detail.items[0].detail.as_deref(),
-            Some("path:src/config.rs")
-        );
+        assert_eq!(detail.items[0].detail.as_deref(), Some("path:src/config.rs"));
         assert_eq!(detail.items[0].after_oid, None);
     }
 }

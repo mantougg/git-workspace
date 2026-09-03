@@ -66,10 +66,7 @@ impl AppLogger {
 }
 
 fn open(dir: &Path, name: &str) -> std::io::Result<File> {
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.join(name))
+    OpenOptions::new().create(true).append(true).open(dir.join(name))
 }
 
 impl Log for AppLogger {
@@ -108,8 +105,7 @@ pub fn init_logger(dir: &Path) -> std::io::Result<()> {
     let logger = AppLogger::new(dir)?;
     // Leak the logger so it lives for the whole process (set_logger needs 'static).
     let logger: &'static AppLogger = Box::leak(Box::new(logger));
-    log::set_logger(logger)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+    log::set_logger(logger).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
     log::set_max_level(log::LevelFilter::Info);
     Ok(())
 }

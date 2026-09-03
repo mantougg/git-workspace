@@ -1,0 +1,38 @@
+# rustfmt 配置 — 跨机器/跨平台格式化一致性
+#
+# 所有值显式锁定，不依赖 rustfmt 版本默认值。
+# 配合根目录 .gitattributes（* text=auto eol=lf）确保行尾一致。
+
+# 与 Cargo.toml edition 保持一致；不指定时 rustfmt 默认 2015，
+# 无法解析 async fn 等语法。
+edition = "2021"
+
+# 行宽上限。设为 120 以减少不必要拆行，同时多数编辑器无需横滚。
+max_width = 120
+
+# 用空格而非 Tab 缩进（跨平台一致，Tab 宽度因编辑器而异）。
+hard_tabs = false
+
+# 每级缩进 4 空格（与现有代码一致）。
+tab_spaces = 4
+
+# 强制 LF 行尾。Windows 上 git checkout 可能引入 CRLF，
+# 此设置确保 rustfmt 产出始终为 LF（配合 .gitattributes 双保险）。
+newline_style = "Unix"
+
+# 使用字段初始化简写：Struct { x } 而非 Struct { x: x }。
+use_field_init_shorthand = true
+
+# 使用 ? 运算符而非 try!() 宏。
+use_try_shorthand = true
+
+# 函数参数布局：每个参数独占一行（当超出 max_width 时）。
+# "Tall" 是 rustfmt 默认值，显式锁定。
+# rustfmt 1.9+ 已将 fn_args_layout 重命名为 fn_params_layout。
+fn_params_layout = "Tall"
+
+# 自动重排 use 语句顺序（按字母序）。
+reorder_imports = true
+
+# 自动重排 mod 声明顺序（按字母序）。
+reorder_modules = true

@@ -83,12 +83,7 @@ pub fn generate_maven_workspace(
     })
 }
 
-fn write_repo(
-    repo_dir: &Path,
-    repo: usize,
-    repositories: usize,
-    modules: usize,
-) -> std::io::Result<()> {
+fn write_repo(repo_dir: &Path, repo: usize, repositories: usize, modules: usize) -> std::io::Result<()> {
     std::fs::create_dir_all(repo_dir)?;
     std::fs::write(repo_dir.join("pom.xml"), parent_pom(repo, modules))?;
     for module in 0..modules {
@@ -276,10 +271,7 @@ mod tests {
             assert!(repo_dir.join(".git").is_dir());
             assert!(repo_dir.join("pom.xml").is_file());
             for module in 0..10 {
-                assert!(repo_dir
-                    .join(module_dir(module))
-                    .join("pom.xml")
-                    .is_file());
+                assert!(repo_dir.join(module_dir(module)).join("pom.xml").is_file());
             }
         }
         let _ = std::fs::remove_dir_all(&root);
@@ -324,8 +316,7 @@ mod tests {
         crate::db::dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned).unwrap();
 
         let local_repo = root.join("m2");
-        let sync = crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &local_repo)
-            .unwrap();
+        let sync = crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &local_repo).unwrap();
         assert_eq!(sync.inserted, spec.project_count);
 
         let graph = crate::maven::query_dependency_graph(&conn, workspace_id).unwrap();

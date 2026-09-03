@@ -35,9 +35,7 @@ use serde_json::Value;
 use crate::error::{AppError, AppResult};
 
 use super::error::AiError;
-use super::tools::{
-    self, ToolCallRequest, ToolContext, ToolDefinition, ToolInvocation, ToolRegistry,
-};
+use super::tools::{self, ToolCallRequest, ToolContext, ToolDefinition, ToolInvocation, ToolRegistry};
 
 /// 外部调用来源（传输适配层），仅用于审计标识。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,10 +121,7 @@ fn describe(definition: &ToolDefinition) -> String {
 /// 纯授权步骤：注册表成员判定 + 外部确认标记规则。通过后的调用改以上限
 /// 角色 `ActionPlanner` 交给注册表复检（白名单 / Schema / 范围 / Secret /
 /// 预算全部由注册表重新执行，§15「重新执行权限、范围与安全校验」）。
-pub fn authorize_external_call(
-    registry: &ToolRegistry,
-    request: &ExternalCallRequest,
-) -> AppResult<ToolCallRequest> {
+pub fn authorize_external_call(registry: &ToolRegistry, request: &ExternalCallRequest) -> AppResult<ToolCallRequest> {
     let Some(definition) = registry.get(&request.tool_name) else {
         return Err(AppError::Ai(AiError::ToolNotFound {
             name: request.tool_name.clone(),
@@ -256,12 +251,8 @@ mod tests {
     /// 验收：越权调用被拒——工具不在注册表（能力之外）。
     #[test]
     fn authorize_rejects_tool_outside_registry() {
-        let error = authorize_external_call(&registry(), &request("shell.exec", false))
-            .unwrap_err();
-        assert!(matches!(
-            error,
-            AppError::Ai(AiError::ToolNotFound { .. })
-        ));
+        let error = authorize_external_call(&registry(), &request("shell.exec", false)).unwrap_err();
+        assert!(matches!(error, AppError::Ai(AiError::ToolNotFound { .. })));
     }
 
     #[test]
@@ -275,9 +266,7 @@ mod tests {
     /// 验收：写操作缺确认标记被拒。
     #[test]
     fn authorize_rejects_proposal_without_confirmation_marker() {
-        let error =
-            authorize_external_call(&registry(), &request("runtime.startProposal", false))
-                .unwrap_err();
+        let error = authorize_external_call(&registry(), &request("runtime.startProposal", false)).unwrap_err();
         match error {
             AppError::Ai(AiError::ExternalConfirmationRequired { tool }) => {
                 assert_eq!(tool, "runtime.startProposal")

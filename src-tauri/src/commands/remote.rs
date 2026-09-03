@@ -44,8 +44,7 @@ fn origin_url(repo_path: &str) -> AppResult<String> {
 
 fn detect(repo_path: &str) -> AppResult<RemoteRepo> {
     let url = origin_url(repo_path)?;
-    parse_remote_url(&url)
-        .ok_or_else(|| AppError::NotFound(format!("无法识别 origin 远程平台：{url}")))
+    parse_remote_url(&url).ok_or_else(|| AppError::NotFound(format!("无法识别 origin 远程平台：{url}")))
 }
 
 /// 平台识别。
@@ -75,15 +74,9 @@ pub fn remote_open_url(repo_path: String, target: String) -> AppResult<String> {
             target: target_branch.to_string(),
         }
     } else if let Some(n) = target.strip_prefix("pull:") {
-        OpenTarget::Pull(
-            n.parse()
-                .map_err(|_| AppError::Other("PR 编号不合法".to_string()))?,
-        )
+        OpenTarget::Pull(n.parse().map_err(|_| AppError::Other("PR 编号不合法".to_string()))?)
     } else if let Some(n) = target.strip_prefix("issue:") {
-        OpenTarget::Issue(
-            n.parse()
-                .map_err(|_| AppError::Other("Issue 编号不合法".to_string()))?,
-        )
+        OpenTarget::Issue(n.parse().map_err(|_| AppError::Other("Issue 编号不合法".to_string()))?)
     } else {
         match target.as_str() {
             "repo" => OpenTarget::Repo,
@@ -189,11 +182,9 @@ pub async fn create_pull_request(
         let platform = r.platform.id().to_string();
         let host = r.host.clone();
         // spawn_blocking：git credential fill 可能拉起系统助手
-        let token = tauri::async_runtime::spawn_blocking(move || {
-            resolve_remote_token_inner(&platform, &host)
-        })
-        .await
-        .map_err(|e| AppError::Other(format!("凭据解析任务失败：{e}")))??;
+        let token = tauri::async_runtime::spawn_blocking(move || resolve_remote_token_inner(&platform, &host))
+            .await
+            .map_err(|e| AppError::Other(format!("凭据解析任务失败：{e}")))??;
         (r, token)
     };
     api::create_pull_request(
@@ -225,9 +216,8 @@ pub async fn get_ci_status(repo_path: String, git_ref: String) -> AppResult<CiSt
     let remote = detect(&repo_path)?;
     let platform = remote.platform.id().to_string();
     let host = remote.host.clone();
-    let token =
-        tauri::async_runtime::spawn_blocking(move || resolve_remote_token_inner(&platform, &host))
-            .await
-            .map_err(|e| AppError::Other(format!("凭据解析任务失败：{e}")))??;
+    let token = tauri::async_runtime::spawn_blocking(move || resolve_remote_token_inner(&platform, &host))
+        .await
+        .map_err(|e| AppError::Other(format!("凭据解析任务失败：{e}")))??;
     api::fetch_ci_status(&remote, &git_ref, token.as_deref()).await
 }

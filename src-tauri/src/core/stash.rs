@@ -25,11 +25,7 @@ pub struct StashEntry {
 
 /// Save the working-tree changes as a stash. When `include_untracked`,
 /// untracked files are stashed too. Returns the stash commit oid.
-pub fn stash_save(
-    repo_path: &Path,
-    message: Option<&str>,
-    include_untracked: bool,
-) -> AppResult<String> {
+pub fn stash_save(repo_path: &Path, message: Option<&str>, include_untracked: bool) -> AppResult<String> {
     let mut repo = git2::Repository::open(repo_path)?;
     let sig = repo.signature()?;
     let flags = if include_untracked {
@@ -175,8 +171,7 @@ mod tests {
             .and_then(|h| h.target())
             .map(|oid| repo.find_commit(oid).unwrap());
         let parents: Vec<&git2::Commit> = parent.iter().collect();
-        repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
-            .unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents).unwrap();
     }
 
     fn init_repo(dir: &Path) -> git2::Repository {
@@ -184,14 +179,8 @@ mod tests {
         commit_file(&repo, dir, "a.txt", "one\n", "init");
         // Test commits never set a user identity; libgit2 stash_save needs a
         // stasher signature, which falls back to repo config — provide one.
-        repo.config()
-            .unwrap()
-            .set_str("user.name", "tester")
-            .unwrap();
-        repo.config()
-            .unwrap()
-            .set_str("user.email", "t@example.com")
-            .unwrap();
+        repo.config().unwrap().set_str("user.name", "tester").unwrap();
+        repo.config().unwrap().set_str("user.email", "t@example.com").unwrap();
         repo
     }
 
@@ -209,7 +198,9 @@ mod tests {
         assert!(!oid.is_empty());
         // Tracked modification stashed: worktree restored.
         assert_eq!(
-            std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+            std::fs::read_to_string(dir.join("a.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "one\n"
         );
 
@@ -314,7 +305,9 @@ mod tests {
         let repo = git2::Repository::open(&dir).unwrap();
         assert_eq!(repo.head().unwrap().shorthand(), Some("rescue"));
         drop(repo);
-        assert!(std::fs::read_to_string(dir.join("a.txt")).unwrap().contains("stash work"));
+        assert!(std::fs::read_to_string(dir.join("a.txt"))
+            .unwrap()
+            .contains("stash work"));
         assert_eq!(list_stashes(&dir).unwrap().len(), 0);
 
         let _ = std::fs::remove_dir_all(&dir);

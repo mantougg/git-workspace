@@ -131,11 +131,7 @@ Spring / Spring Boot 版本与 JDK 信息，在 suggestedActions 中追加 VM Op
 
 /// 解析该 Runtime 最近的一条进程记录：**失败记录优先**（「最近一次失败
 /// 请求诊断」，§13.3），无失败记录时取最近一条（「当前应用诊断」）。
-pub fn latest_process(
-    service: &RuntimeService,
-    workspace_id: i64,
-    runtime_name: &str,
-) -> Option<RuntimeProcessInfo> {
+pub fn latest_process(service: &RuntimeService, workspace_id: i64, runtime_name: &str) -> Option<RuntimeProcessInfo> {
     let processes = service.list_processes(workspace_id).ok()?;
     latest_from_processes(processes, runtime_name)
 }
@@ -146,16 +142,11 @@ fn latest_process_with_connection(
     workspace_id: i64,
     runtime_name: &str,
 ) -> Option<RuntimeProcessInfo> {
-    let processes = service
-        .list_processes_with_connection(conn, workspace_id)
-        .ok()?;
+    let processes = service.list_processes_with_connection(conn, workspace_id).ok()?;
     latest_from_processes(processes, runtime_name)
 }
 
-fn latest_from_processes(
-    processes: Vec<RuntimeProcessInfo>,
-    runtime_name: &str,
-) -> Option<RuntimeProcessInfo> {
+fn latest_from_processes(processes: Vec<RuntimeProcessInfo>, runtime_name: &str) -> Option<RuntimeProcessInfo> {
     let mut relevant: Vec<RuntimeProcessInfo> = processes
         .into_iter()
         .filter(|p| p.runtime_name == runtime_name)
@@ -178,15 +169,12 @@ fn resolve_process(
 ) -> AppResult<Option<RuntimeProcessInfo>> {
     match req.process_id {
         Some(id) => {
-            let process = service
-                .process_status_with_connection(conn, id)?
-                .ok_or_else(|| {
-                    AppError::Ai(AiError::NotConfigured {
-                        message: format!("进程 #{id} 不存在（记录可能已被清理）"),
-                    })
-                })?;
-            if process.workspace_id != req.workspace_id || process.runtime_name != req.runtime_name
-            {
+            let process = service.process_status_with_connection(conn, id)?.ok_or_else(|| {
+                AppError::Ai(AiError::NotConfigured {
+                    message: format!("进程 #{id} 不存在（记录可能已被清理）"),
+                })
+            })?;
+            if process.workspace_id != req.workspace_id || process.runtime_name != req.runtime_name {
                 return Err(AppError::Ai(AiError::NotConfigured {
                     message: format!(
                         "进程 #{id} 不属于 Workspace #{} 的 Runtime「{}」",
@@ -215,8 +203,7 @@ fn resolve_process(
 fn structured_error_item(error: &DiagnosticErrorInput) -> SupplementaryContext {
     let mut content = format!("code: {}\nmessage: {}", error.code, error.message);
     if let Some(details) = error.details.as_ref().filter(|d| !d.is_null()) {
-        let rendered =
-            serde_json::to_string_pretty(details).unwrap_or_else(|_| details.to_string());
+        let rendered = serde_json::to_string_pretty(details).unwrap_or_else(|_| details.to_string());
         content.push_str("\ndetails: ");
         content.push_str(&rendered);
     }
@@ -244,10 +231,7 @@ fn build_command_item(
     Some(SupplementaryContext {
         role: ContextRole::ProcessInfo,
         kind: ContextKind::Runtime,
-        source_id: format!(
-            "runtime:{workspace_id}:{runtime_name}:{}:command",
-            process.process_id
-        ),
+        source_id: format!("runtime:{workspace_id}:{runtime_name}:{}:command", process.process_id),
         display_name: format!("启动命令摘要（进程 #{}）", process.process_id),
         content: format!("command: {command}"),
         redacted: false,
@@ -474,12 +458,7 @@ mod tests {
     }
 
     /// 播种一条进程记录并写日志文件；返回 process_id。
-    fn seed_process(
-        fx: &Fixture,
-        status: LifecycleStatus,
-        exit_code: Option<i32>,
-        log_lines: &[&str],
-    ) -> i64 {
+    fn seed_process(fx: &Fixture, status: LifecycleStatus, exit_code: Option<i32>, log_lines: &[&str]) -> i64 {
         let id = with_conn(fx, |conn| {
             let id = process_store::insert_process(conn, fx.workspace_id, "app").unwrap();
             if exit_code.is_some() {
@@ -659,24 +638,12 @@ mod tests {
         req.want_config_advice = true;
         req.user_instruction = "顺便看看内存参数".into();
         let preview = build(&fx, req).unwrap();
-        let last = preview
-            .request
-            .messages
-            .last()
-            .expect("user message")
-            .content
-            .clone();
+        let last = preview.request.messages.last().expect("user message").content.clone();
         assert!(last.contains("顺便看看内存参数"), "用户指令保留: {last}");
         assert!(last.contains("VM Options"), "配置建议指令追加: {last}");
+        assert!(last.contains("请勿声称已应用"), "建议必须标注待确认: {last}");
         assert!(
-            last.contains("请勿声称已应用"),
-            "建议必须标注待确认: {last}"
-        );
-        assert!(
-            !preview
-                .request
-                .system_instruction
-                .contains("顺便看看内存参数"),
+            !preview.request.system_instruction.contains("顺便看看内存参数"),
             "用户内容不得进入 system 层"
         );
         assert!(
@@ -711,10 +678,7 @@ mod tests {
         req.selected_log = Some("Exception: selected stack\n at App.run(App.java:1)".into());
         let preview = build(&fx, req).unwrap();
         let sources = manifest_sources(&preview);
-        assert!(
-            sources.iter().any(|s| s.ends_with(":selected-log")),
-            "{sources:?}"
-        );
+        assert!(sources.iter().any(|s| s.ends_with(":selected-log")), "{sources:?}");
         assert!(!sources.iter().any(|s| s.ends_with(":tail")), "{sources:?}");
         assert!(!sent_text(&preview).contains("ERROR unselected"));
         assert!(sent_text(&preview).contains("Exception: selected stack"));
@@ -747,8 +711,7 @@ mod tests {
                 code,
                 serde_json::json!({"runtime": "app", "module": "app", "reason": log_line}),
             ));
-            let preview =
-                build(&fx, req).unwrap_or_else(|e| panic!("{} preview 构建失败: {e}", code));
+            let preview = build(&fx, req).unwrap_or_else(|e| panic!("{} preview 构建失败: {e}", code));
             assert!(!preview.blocked, "{code} 不应被 Secret 阻断");
             let sources = manifest_sources(&preview);
             assert!(
@@ -796,10 +759,7 @@ mod tests {
         let err = build(&fx, req).unwrap_err();
         assert!(err.to_string().contains("runtimeName"), "{err}");
 
-        let err = with_conn(&fx, |conn| {
-            build_diagnostic_preview(conn, None, request(&fx))
-        })
-        .unwrap_err();
+        let err = with_conn(&fx, |conn| build_diagnostic_preview(conn, None, request(&fx))).unwrap_err();
         assert!(err.to_string().contains("Runtime 服务"), "{err}");
         let _ = std::fs::remove_dir_all(&fx.root);
     }

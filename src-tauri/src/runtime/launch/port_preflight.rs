@@ -21,11 +21,7 @@ pub fn explicit_ports(config: &RuntimeApplicationConfig) -> Vec<u16> {
         return explicit_node_ports(config);
     }
     let mut ports: Vec<u16> = Vec::new();
-    for arg in config
-        .vm_options
-        .iter()
-        .chain(config.program_arguments.iter())
-    {
+    for arg in config.vm_options.iter().chain(config.program_arguments.iter()) {
         let value = arg
             .strip_prefix("-Dserver.port=")
             .or_else(|| arg.strip_prefix("--server.port="))
@@ -48,9 +44,7 @@ fn explicit_node_ports(config: &RuntimeApplicationConfig) -> Vec<u16> {
     let mut index = 0;
     while index < args.len() {
         let arg = args[index].as_str();
-        let inline = arg
-            .strip_prefix("--port=")
-            .or_else(|| arg.strip_prefix("-p="));
+        let inline = arg.strip_prefix("--port=").or_else(|| arg.strip_prefix("-p="));
         let value = inline.or_else(|| {
             if arg == "--port" || arg == "-p" {
                 args.get(index + 1).map(String::as_str)
@@ -138,10 +132,7 @@ mod tests {
 
     #[test]
     fn ignores_random_and_invalid_ports() {
-        let config = config_with((
-            "args",
-            vec!["--server.port=0", "--port=99999", "--port=abc"],
-        ));
+        let config = config_with(("args", vec!["--server.port=0", "--port=99999", "--port=abc"]));
         assert!(explicit_ports(&config).is_empty());
         let config = config_with(("args", vec!["--port"]));
         assert!(explicit_ports(&config).is_empty());
@@ -198,12 +189,7 @@ mod tests {
     fn parses_node_cli_and_environment_ports() {
         let mut config = RuntimeApplicationConfig::default();
         config.kind = RuntimeKind::Node;
-        config.program_arguments = vec![
-            "--port".into(),
-            "3000".into(),
-            "-p=5173".into(),
-            "--port=8080".into(),
-        ];
+        config.program_arguments = vec!["--port".into(), "3000".into(), "-p=5173".into(), "--port=8080".into()];
         config.environment.insert("PORT".into(), "4000".into());
         assert_eq!(explicit_ports(&config), vec![3000, 4000, 5173, 8080]);
     }

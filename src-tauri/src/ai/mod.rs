@@ -58,33 +58,30 @@ pub use cache::{AiResultCache, CacheKeyParts, CachedResult};
 pub use context::{DiffRepositorySelection, GitDiffSelection};
 pub use credentials::CredentialManager;
 pub use diagnose::{
-    build_diagnostic_preview, latest_process, DiagnosticErrorInput, DiagnosticSessionScope,
-    RuntimeDiagnosticRequest,
+    build_diagnostic_preview, latest_process, DiagnosticErrorInput, DiagnosticSessionScope, RuntimeDiagnosticRequest,
 };
 pub use error::AiError;
 pub use events::AiRequestEvent;
 pub use gateway::{AiGateway, AiRequestSnapshot, GatewayConfig};
 pub use lifecycle::RequestPhase;
 pub use model::{
-    ensure_task_capability, list_models, list_task_defaults, resolve_model, AiModel,
-    AiModelDefaults, AiTaskDefault, AiTaskKind, ModelCapability, ModelResolutionSource,
-    ResolvedModel, SaveAiModelRequest,
-};
-pub use provider::{
-    delete_provider, get_provider, list_providers, save_provider, test_connection, AiProvider,
-    AiProviderTestResult, ApiType, NetworkPolicy, SaveAiProviderRequest,
+    ensure_task_capability, list_models, list_task_defaults, resolve_model, AiModel, AiModelDefaults, AiTaskDefault,
+    AiTaskKind, ModelCapability, ModelResolutionSource, ResolvedModel, SaveAiModelRequest,
 };
 pub use proposal::{ActionKind, ActionProposal, ProposalStatus, RiskLevel};
+pub use provider::{
+    delete_provider, get_provider, list_providers, save_provider, test_connection, AiProvider, AiProviderTestResult,
+    ApiType, NetworkPolicy, SaveAiProviderRequest,
+};
 pub use request::{
-    parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, ConflictConfidence,
-    ConflictProposal, ContextItem, ContextKind, ExclusionReason, GitAssistantScenario, MessageRole,
-    ResponseFormat, ToolPolicy,
+    parse_result, AiMessage, AiRequest, AiResult, AiTokenUsage, ConflictConfidence, ConflictProposal, ContextItem,
+    ContextKind, ExclusionReason, GitAssistantScenario, MessageRole, ResponseFormat, ToolPolicy,
 };
 pub use session::{
-    create_session, delete_session, get_session_detail, list_sessions, AiSession, AiSessionDetail,
-    AiSessionList, AiSessionListQuery, AiSessionMessage, AiSessionRole, CreateAiSessionRequest,
+    create_session, delete_session, get_session_detail, list_sessions, AiSession, AiSessionDetail, AiSessionList,
+    AiSessionListQuery, AiSessionMessage, AiSessionRole, CreateAiSessionRequest,
 };
 pub use tools::{
-    definitions as tool_definitions, registry as tool_registry, ToolCallRequest, ToolContext,
-    ToolDefinition, ToolInvocation, ToolRegistry, ToolRole, ToolScope,
+    definitions as tool_definitions, registry as tool_registry, ToolCallRequest, ToolContext, ToolDefinition,
+    ToolInvocation, ToolRegistry, ToolRole, ToolScope,
 };

@@ -114,8 +114,7 @@ struct TsFileTypes {
 fn strip_ts_comments(content: &str) -> String {
     let block = regex::Regex::new(r"(?s)/\*.*?\*/").unwrap();
     let line = regex::Regex::new(r"//[^\n]*").unwrap();
-    line.replace_all(&block.replace_all(content, ""), "")
-        .to_string()
+    line.replace_all(&block.replace_all(content, ""), "").to_string()
 }
 
 /// Parse the exported interfaces and tagged-union type aliases of a TS file.
@@ -204,10 +203,7 @@ fn parse_ts_file(content: &str) -> TsFileTypes {
                     '}' => {
                         depth -= 1;
                         if depth == 0 {
-                            let tag = tag_re
-                                .captures(&current)
-                                .map(|c| c[1].to_string())
-                                .unwrap_or_default();
+                            let tag = tag_re.captures(&current).map(|c| c[1].to_string()).unwrap_or_default();
                             let fields: BTreeSet<String> = variant_field_re
                                 .captures_iter(&current)
                                 .map(|c| c[1].to_string())
@@ -261,8 +257,8 @@ fn ts_types_match_rust_samples() {
             continue;
         }
         let path = root.join(file);
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
         parsed.insert(file, parse_ts_file(&content));
     }
 
@@ -283,11 +279,7 @@ fn ts_types_match_rust_samples() {
             });
             let rust_tags: BTreeSet<String> = variants.iter().map(variant_tag).collect();
             let ts_tags: BTreeSet<String> = union.keys().cloned().collect();
-            assert_eq!(
-                rust_tags, ts_tags,
-                "`{}` variant tags drifted (src/{})",
-                ts_name, file
-            );
+            assert_eq!(rust_tags, ts_tags, "`{}` variant tags drifted (src/{})", ts_name, file);
             for v in variants {
                 let tag = variant_tag(v);
                 assert_eq!(
@@ -300,12 +292,10 @@ fn ts_types_match_rust_samples() {
                 );
             }
         } else {
-            let fields = types.interfaces.get(*ts_name).unwrap_or_else(|| {
-                panic!(
-                    "TS interface `{}` not found in src/{} — drift or rename",
-                    ts_name, file
-                )
-            });
+            let fields = types
+                .interfaces
+                .get(*ts_name)
+                .unwrap_or_else(|| panic!("TS interface `{}` not found in src/{} — drift or rename", ts_name, file));
             assert_eq!(
                 &rust_keys(sample),
                 fields,

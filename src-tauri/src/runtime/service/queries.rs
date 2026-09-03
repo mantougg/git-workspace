@@ -18,11 +18,7 @@ impl RuntimeService {
 
     /// `runtime_inspect_project`：按 path / artifactId / groupId:artifactId
     /// 三级匹配定位项目（与 R-09 `find_root_project` 同口径）。
-    pub fn inspect_project(
-        &self,
-        workspace_id: i64,
-        project: &str,
-    ) -> AppResult<ProjectInspection> {
+    pub fn inspect_project(&self, workspace_id: i64, project: &str) -> AppResult<ProjectInspection> {
         let conn = self.db.lock().unwrap();
         self.inspect_project_with_connection(&conn, workspace_id, project)
     }
@@ -109,12 +105,7 @@ impl RuntimeService {
 
     /// `runtime_get_closure`（R-13）：按给定 Scope 计算闭包预览，供
     /// Runtime Scope 视图使用（R-03 fingerprint 缓存热路径）。
-    pub fn closure_preview(
-        &self,
-        workspace_id: i64,
-        project: &str,
-        scope: &RuntimeScope,
-    ) -> AppResult<ClosurePreview> {
+    pub fn closure_preview(&self, workspace_id: i64, project: &str, scope: &RuntimeScope) -> AppResult<ClosurePreview> {
         let conn = self.db.lock().unwrap();
         let graph = self.graph_cache.get_or_load(&conn, workspace_id)?.graph;
         let node = find_project(&graph.projects, project).ok_or_else(|| {
@@ -123,9 +114,7 @@ impl RuntimeService {
                  请先执行依赖解析（runtime.resolve_dependencies）"
             ))
         })?;
-        let lookup = self
-            .closure_cache
-            .get_or_compute(&graph, node.project_id, scope)?;
+        let lookup = self.closure_cache.get_or_compute(&graph, node.project_id, scope)?;
         Ok(ClosurePreview {
             closure: lookup.closure,
             cache_hit: lookup.cache_hit,
@@ -202,8 +191,7 @@ impl RuntimeService {
     /// AI 上下文（AI-03「日志尾部」）等需要最近 N 行的场景用。
     pub fn tail_logs(&self, query: &RuntimeLogQuery, n: usize) -> AppResult<Vec<LogEntry>> {
         let root = self.workspace_root(query.workspace_id)?;
-        self.logs
-            .tail(&root, &query.runtime_name, query.process_id, n)
+        self.logs.tail(&root, &query.runtime_name, query.process_id, n)
     }
 
     pub(crate) fn tail_logs_with_connection(
@@ -213,20 +201,14 @@ impl RuntimeService {
         n: usize,
     ) -> AppResult<Vec<LogEntry>> {
         let root = config::workspace_root(conn, query.workspace_id)?;
-        self.logs
-            .tail(&root, &query.runtime_name, query.process_id, n)
+        self.logs.tail(&root, &query.runtime_name, query.process_id, n)
     }
 
     /// 过滤 + tail：最近 n 行匹配项（如「最近错误日志」，AI-03 错误诊断上下文）。
     pub fn search_logs_tail(&self, query: &RuntimeLogQuery, n: usize) -> AppResult<Vec<LogEntry>> {
         let root = self.workspace_root(query.workspace_id)?;
-        self.logs.search_tail(
-            &root,
-            &query.runtime_name,
-            query.process_id,
-            &query.filter,
-            n,
-        )
+        self.logs
+            .search_tail(&root, &query.runtime_name, query.process_id, &query.filter, n)
     }
 
     pub(crate) fn search_logs_tail_with_connection(
@@ -236,20 +218,14 @@ impl RuntimeService {
         n: usize,
     ) -> AppResult<Vec<LogEntry>> {
         let root = config::workspace_root(conn, query.workspace_id)?;
-        self.logs.search_tail(
-            &root,
-            &query.runtime_name,
-            query.process_id,
-            &query.filter,
-            n,
-        )
+        self.logs
+            .search_tail(&root, &query.runtime_name, query.process_id, &query.filter, n)
     }
 
     /// `runtime_clear_logs`。
     pub fn clear_logs(&self, query: &RuntimeLogQuery) -> AppResult<()> {
         let root = self.workspace_root(query.workspace_id)?;
-        self.logs
-            .clear(&root, &query.runtime_name, query.process_id)
+        self.logs.clear(&root, &query.runtime_name, query.process_id)
     }
 
     /// R-13 `runtime_export_logs`：导出到用户选择的目标文件（R-11 §36，

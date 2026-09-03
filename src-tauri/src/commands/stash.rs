@@ -40,11 +40,7 @@ pub fn list_stashes(repo_path: String, state: State<'_, AppState>) -> AppResult<
 /// Stash the working-tree changes (optionally including untracked files).
 /// Returns the stash commit oid.
 #[tauri::command]
-pub fn stash_changes(
-    repo_path: String,
-    message: Option<String>,
-    include_untracked: Option<bool>,
-) -> AppResult<String> {
+pub fn stash_changes(repo_path: String, message: Option<String>, include_untracked: Option<bool>) -> AppResult<String> {
     stash::stash_save(
         Path::new(&repo_path),
         message.as_deref(),

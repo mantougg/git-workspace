@@ -178,13 +178,7 @@ pub static LANGS: LazyLock<Vec<LangConfig>> = LazyLock::new(|| {
             PY_REFS,
             PY_CALLS
         ),
-        lang!(
-            "go",
-            tree_sitter_go::LANGUAGE.into(),
-            GO_SYMBOLS,
-            GO_REFS,
-            GO_CALLS
-        ),
+        lang!("go", tree_sitter_go::LANGUAGE.into(), GO_SYMBOLS, GO_REFS, GO_CALLS),
         lang!(
             "java",
             tree_sitter_java::LANGUAGE.into(),

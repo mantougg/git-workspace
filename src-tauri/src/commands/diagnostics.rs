@@ -41,13 +41,7 @@ fn crash_dir(app: &tauri::AppHandle) -> PathBuf {
 // ---------------------------------------------------------------------------
 
 /// 崩溃报告文本（纯函数，可单测）。
-pub fn format_crash_report(
-    payload: &str,
-    location: &str,
-    thread: &str,
-    version: &str,
-    timestamp: &str,
-) -> String {
+pub fn format_crash_report(payload: &str, location: &str, thread: &str, version: &str, timestamp: &str) -> String {
     // 崩溃报告本身也可能带出敏感信息（如 panic 消息内含 URL / token 片段）
     let payload = mask_secrets(payload);
     format!(
@@ -77,10 +71,7 @@ pub fn install_panic_hook(app: tauri::AppHandle, version: &'static str) {
             .location()
             .map(|l| format!(" {}:{}:{}", l.file(), l.line(), l.column()))
             .unwrap_or_default();
-        let thread = std::thread::current()
-            .name()
-            .unwrap_or("<unnamed>")
-            .to_string();
+        let thread = std::thread::current().name().unwrap_or("<unnamed>").to_string();
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let report = format_crash_report(message, &location, &thread, version, &timestamp);
 
@@ -251,11 +242,7 @@ static TELEMETRY_BUFFER: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// 记录一个遥测事件（opt-in；关闭时零开销 no-op）。
 #[tauri::command]
-pub fn track_event(
-    app: tauri::AppHandle,
-    name: String,
-    props: Option<serde_json::Value>,
-) -> AppResult<()> {
+pub fn track_event(app: tauri::AppHandle, name: String, props: Option<serde_json::Value>) -> AppResult<()> {
     let config = load_telemetry(&app);
     if !config.enabled {
         return Ok(());
@@ -294,9 +281,7 @@ fn append_telemetry_file(app: &tauri::AppHandle, lines: &[String]) {
 /// 上报端点：仅当环境变量显式配置才启用（默认空 = 本地留存）。
 #[allow(dead_code)]
 fn telemetry_endpoint() -> Option<String> {
-    std::env::var("GW_TELEMETRY_ENDPOINT")
-        .ok()
-        .filter(|s| !s.is_empty())
+    std::env::var("GW_TELEMETRY_ENDPOINT").ok().filter(|s| !s.is_empty())
 }
 
 #[cfg(test)]

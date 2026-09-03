@@ -149,11 +149,14 @@ mod tests {
 
     #[test]
     fn empty_query_matches_everything() {
-        let facets = vec![facet(), RepoFacet {
-            path: "/ws/api".into(),
-            name: "api".into(),
-            ..Default::default()
-        }];
+        let facets = vec![
+            facet(),
+            RepoFacet {
+                path: "/ws/api".into(),
+                name: "api".into(),
+                ..Default::default()
+            },
+        ];
         assert_eq!(select_paths("", &facets).len(), 2);
         assert_eq!(
             select_paths("@status:favorite", &facets),

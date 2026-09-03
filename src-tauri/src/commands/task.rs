@@ -16,19 +16,13 @@ pub fn submit_tasks(
 
 /// Query the status of multiple tasks by ID.
 #[tauri::command]
-pub fn get_task_status(
-    task_ids: Vec<String>,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<Task>> {
+pub fn get_task_status(task_ids: Vec<String>, state: State<'_, AppState>) -> AppResult<Vec<Task>> {
     Ok(state.task_manager.get_status(&task_ids))
 }
 
 /// Cancel a queued task. Running tasks cannot be cancelled.
 #[tauri::command]
-pub fn cancel_task(
-    task_id: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn cancel_task(task_id: String, state: State<'_, AppState>) -> AppResult<()> {
     state.task_manager.cancel(&task_id)
 }
 

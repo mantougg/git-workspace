@@ -164,9 +164,9 @@ fn validate_template_name(name: &str) -> AppResult<()> {
         || trimmed == ".."
         || trimmed != name
         || name.len() > 128
-        || name.chars().any(|c| {
-            c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
-        })
+        || name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
     {
         return Err(AppError::RuntimeConfig(format!(
             "模板名称 '{}' 不能用作配置文件名；请移除首尾空格、路径分隔符或 Windows 保留字符",
@@ -195,16 +195,12 @@ pub fn list_templates(workspace_root: &Path) -> Vec<RuntimeTemplate> {
                     templates.push(template);
                 }
                 Err(e) => {
-                    log::warn!(
-                        "R-19: skipping invalid template file {}: {e}",
-                        path.display()
-                    )
+                    log::warn!("R-19: skipping invalid template file {}: {e}", path.display())
                 }
             }
         }
     }
-    let user_names: std::collections::BTreeSet<String> =
-        templates.iter().map(|t| t.name.clone()).collect();
+    let user_names: std::collections::BTreeSet<String> = templates.iter().map(|t| t.name.clone()).collect();
     for builtin in builtin_templates() {
         if !user_names.contains(&builtin.name) {
             templates.push(builtin);
@@ -231,10 +227,7 @@ pub fn get_template(workspace_root: &Path, name: &str) -> AppResult<RuntimeTempl
 
 /// 保存用户模板（创建或覆盖）。IPC 传入的 `builtin` 标记被忽略——写盘的
 /// 都是用户模板（内置模板由代码提供）。
-pub fn save_template(
-    workspace_root: &Path,
-    template: &RuntimeTemplate,
-) -> AppResult<RuntimeTemplate> {
+pub fn save_template(workspace_root: &Path, template: &RuntimeTemplate) -> AppResult<RuntimeTemplate> {
     let mut template = template.clone();
     template.builtin = false;
     template.validate()?;
@@ -243,11 +236,7 @@ pub fn save_template(
     crate::runtime::guard::assert_workspace_write_path(&dir, workspace_root, "Template 配置目录")?;
     std::fs::create_dir_all(&dir)?;
     crate::runtime::config::write_json_atomic(&path, &template)?;
-    log::info!(
-        "R-19: template '{}' saved to {}",
-        template.name,
-        path.display()
-    );
+    log::info!("R-19: template '{}' saved to {}", template.name, path.display());
     Ok(template)
 }
 
@@ -257,9 +246,7 @@ pub fn delete_template(workspace_root: &Path, name: &str) -> AppResult<()> {
     if !path.exists() {
         let is_builtin = builtin_templates().iter().any(|t| t.name == name);
         return Err(AppError::NotFound(if is_builtin {
-            format!(
-                "模板 '{name}' 是内置模板，不能删除；如需同名版本请新建用户模板（会自动遮蔽内置）"
-            )
+            format!("模板 '{name}' 是内置模板，不能删除；如需同名版本请新建用户模板（会自动遮蔽内置）")
         } else {
             format!("模板 '{name}' 不存在")
         }));
@@ -353,19 +340,14 @@ mod tests {
     fn user_template_shadows_builtin_and_survives_upgrade() {
         let ws = root();
         // 内置先在列表里。
-        assert!(list_templates(&ws)
-            .iter()
-            .any(|t| t.name == "Spring Boot Development"));
+        assert!(list_templates(&ws).iter().any(|t| t.name == "Spring Boot Development"));
         // 用户创建同名模板（自定义内容）→ 遮蔽内置。
         let mut user = template("Spring Boot Development");
         user.config.jdk = Some("17".into());
         save_template(&ws, &user).unwrap();
         let listed = list_templates(&ws);
         assert_eq!(
-            listed
-                .iter()
-                .filter(|t| t.name == "Spring Boot Development")
-                .count(),
+            listed.iter().filter(|t| t.name == "Spring Boot Development").count(),
             1,
             "user file must shadow the builtin, not duplicate it"
         );
@@ -380,10 +362,7 @@ mod tests {
     fn template_crud_roundtrip_and_builtin_delete_guard() {
         let ws = root();
         save_template(&ws, &template("my-template")).unwrap();
-        assert_eq!(
-            get_template(&ws, "my-template").unwrap().name,
-            "my-template"
-        );
+        assert_eq!(get_template(&ws, "my-template").unwrap().name, "my-template");
         assert!(list_templates(&ws).iter().any(|t| t.name == "my-template"));
 
         delete_template(&ws, "my-template").unwrap();
@@ -399,10 +378,7 @@ mod tests {
     #[test]
     fn template_name_rejects_path_traversal_and_ipc_cannot_write_builtin() {
         let ws = root();
-        assert_eq!(
-            get_template(&ws, "../evil").unwrap_err().code(),
-            "RuntimeConfigError"
-        );
+        assert_eq!(get_template(&ws, "../evil").unwrap_err().code(), "RuntimeConfigError");
         // IPC 传入 builtin=true 也强制落为用户模板（builtin 只由代码提供）。
         let mut forced = template("forced-builtin");
         forced.builtin = true;
@@ -421,8 +397,7 @@ mod tests {
         config.profile = Some("dev".into());
         config.vm_options = vec!["-Xmx1024m".into()];
 
-        let template =
-            save_config_as_template(&ws, config, "from-boot", Some("另存".into())).unwrap();
+        let template = save_config_as_template(&ws, config, "from-boot", Some("另存".into())).unwrap();
         // 身份字段剥离：模板不绑定应用名 / 项目。
         assert_eq!(template.config.name, "");
         assert_eq!(template.config.project, "");

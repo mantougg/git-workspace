@@ -13,12 +13,12 @@
 use serde_json::json;
 
 use super::super::error::AiError;
-use super::SseAction;
 use super::super::request::{AiTokenUsage, MessageRole};
 use super::super::transport::BoxFuture;
+use super::SseAction;
 use super::{
-    endpoint_url, parse_json_body, read_body_limited, send_json, AdapterCall, AdapterContext,
-    AiProviderAdapter, MAX_RESPONSE_BODY_BYTES, ProviderRequest, ProviderResponse, ProviderStream,
+    endpoint_url, parse_json_body, read_body_limited, send_json, AdapterCall, AdapterContext, AiProviderAdapter,
+    ProviderRequest, ProviderResponse, ProviderStream, MAX_RESPONSE_BODY_BYTES,
 };
 use crate::ai::provider::ApiType;
 use crate::error::AppResult;
@@ -30,16 +30,11 @@ impl AiProviderAdapter for AnthropicMessagesAdapter {
         ApiType::AnthropicMessages
     }
 
-    fn validate(
-        &self,
-        _model: &crate::ai::model::AiModel,
-        request: &ProviderRequest,
-    ) -> AppResult<()> {
+    fn validate(&self, _model: &crate::ai::model::AiModel, request: &ProviderRequest) -> AppResult<()> {
         // max_tokens 必填：Gateway 负责推导（默认值兜底），这里防御校验。
         if request.max_output_tokens.is_none() || request.max_output_tokens <= Some(0) {
             return Err(crate::error::AppError::Ai(AiError::NotConfigured {
-                message: "Anthropic Messages 协议要求 max_output_tokens（token 预算或模型上下文推导）"
-                    .to_string(),
+                message: "Anthropic Messages 协议要求 max_output_tokens（token 预算或模型上下文推导）".to_string(),
             }));
         }
         Ok(())
@@ -92,9 +87,7 @@ fn build_body(request: &ProviderRequest, stream: bool) -> serde_json::Value {
         match m.role {
             MessageRole::System => system_parts.push(m.content.clone()),
             MessageRole::User => messages.push(json!({"role": "user", "content": m.content})),
-            MessageRole::Assistant => {
-                messages.push(json!({"role": "assistant", "content": m.content}))
-            }
+            MessageRole::Assistant => messages.push(json!({"role": "assistant", "content": m.content})),
         }
     }
     let mut body = json!({
@@ -133,10 +126,7 @@ fn parse_completion(value: &serde_json::Value) -> Result<ProviderResponse, AiErr
     }
     Ok(ProviderResponse {
         text,
-        finish_reason: value
-            .get("stop_reason")
-            .and_then(|s| s.as_str())
-            .map(String::from),
+        finish_reason: value.get("stop_reason").and_then(|s| s.as_str()).map(String::from),
         usage: value.get("usage").and_then(parse_usage),
     })
 }
@@ -193,8 +183,8 @@ fn map_anthropic_event(event: &super::sse::SseEvent) -> super::SseAction {
 #[cfg(test)]
 mod tests {
     use super::super::SseAction;
-    use crate::ai::request::AiMessage;
     use super::*;
+    use crate::ai::request::AiMessage;
 
     #[test]
     fn body_moves_system_to_top_level_and_sets_max_tokens() {
@@ -271,8 +261,7 @@ mod tests {
     fn stream_events_map_to_chunks() {
         let delta = super::super::sse::SseEvent {
             event: Some("content_block_delta".into()),
-            data: r#"{"type":"content_block_delta","delta":{"type":"text_delta","text":"he"}}"#
-                .into(),
+            data: r#"{"type":"content_block_delta","delta":{"type":"text_delta","text":"he"}}"#.into(),
         };
         assert!(matches!(
             map_anthropic_event(&delta),
@@ -283,10 +272,7 @@ mod tests {
             event: Some("message_stop".into()),
             data: r#"{"type":"message_stop"}"#.into(),
         };
-        assert!(matches!(
-            map_anthropic_event(&stop),
-            SseAction::End { .. }
-        ));
+        assert!(matches!(map_anthropic_event(&stop), SseAction::End { .. }));
 
         let ping = super::super::sse::SseEvent {
             event: None,

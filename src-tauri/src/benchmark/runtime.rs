@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use sysinfo::{get_current_pid, System};
 
 use crate::maven::{
-    compute_runtime_closure, discover_poms, prepare_runtime_reactor, query_dependency_graph,
-    sync_workspace_index, DependencyGraphCache, PomCache, RuntimeClosureCache, RuntimeScope,
+    compute_runtime_closure, discover_poms, prepare_runtime_reactor, query_dependency_graph, sync_workspace_index,
+    DependencyGraphCache, PomCache, RuntimeClosureCache, RuntimeScope,
 };
 use crate::runtime::{create_config, get_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig};
 
@@ -217,8 +217,7 @@ impl ResourceSampler {
                             .values()
                             .filter(|p| p.parent() == Some(pid) && p.thread_kind().is_none())
                             .count();
-                        summary.child_process_count =
-                            summary.child_process_count.max(children);
+                        summary.child_process_count = summary.child_process_count.max(children);
                     }
                     tick += 1;
                     std::thread::sleep(Duration::from_millis(20));
@@ -226,11 +225,8 @@ impl ResourceSampler {
 
                 system.refresh_process(pid);
                 if let (Some(start), Some(end)) = (start_disk, system.process(pid).map(|p| p.disk_usage())) {
-                    summary.disk_read_bytes =
-                        end.total_read_bytes.saturating_sub(start.total_read_bytes);
-                    summary.disk_write_bytes = end
-                        .total_written_bytes
-                        .saturating_sub(start.total_written_bytes);
+                    summary.disk_read_bytes = end.total_read_bytes.saturating_sub(start.total_read_bytes);
+                    summary.disk_write_bytes = end.total_written_bytes.saturating_sub(start.total_written_bytes);
                 }
                 if cpu_samples > 0 {
                     summary.cpu_usage_percent /= cpu_samples as f32;
@@ -263,8 +259,8 @@ pub fn run_runtime(repositories: usize, modules_per_repository: usize) -> Runtim
     let _ = std::fs::remove_dir_all(&tmp);
 
     let gen_start = Instant::now();
-    let spec = generate_maven_workspace(&tmp, repositories, modules_per_repository)
-        .expect("generate_maven_workspace failed");
+    let spec =
+        generate_maven_workspace(&tmp, repositories, modules_per_repository).expect("generate_maven_workspace failed");
     let generate_ms = gen_start.elapsed().as_millis();
 
     let sampler = ResourceSampler::start();
@@ -314,14 +310,13 @@ pub fn run_runtime(repositories: usize, modules_per_repository: usize) -> Runtim
     let local_repository = tmp.join("m2");
 
     let stage = Instant::now();
-    let sync = sync_workspace_index(&mut conn, workspace_id, &discovery, &local_repository)
-        .expect("index sync failed");
+    let sync = sync_workspace_index(&mut conn, workspace_id, &discovery, &local_repository).expect("index sync failed");
     let index_sync_ms = stage.elapsed().as_millis();
     assert_eq!(sync.inserted, spec.project_count);
 
     let stage = Instant::now();
-    let resync = sync_workspace_index(&mut conn, workspace_id, &discovery, &local_repository)
-        .expect("index resync failed");
+    let resync =
+        sync_workspace_index(&mut conn, workspace_id, &discovery, &local_repository).expect("index resync failed");
     let index_resync_ms = stage.elapsed().as_millis();
     assert_eq!(resync.unchanged, spec.project_count);
 
@@ -352,8 +347,8 @@ pub fn run_runtime(repositories: usize, modules_per_repository: usize) -> Runtim
         .project_id;
 
     let stage = Instant::now();
-    let closure = compute_runtime_closure(&graph, root_project_id, &RuntimeScope::Auto)
-        .expect("closure computation failed");
+    let closure =
+        compute_runtime_closure(&graph, root_project_id, &RuntimeScope::Auto).expect("closure computation failed");
     let closure_ms = stage.elapsed().as_millis();
 
     let closure_cache = RuntimeClosureCache::new();
@@ -369,8 +364,7 @@ pub fn run_runtime(repositories: usize, modules_per_repository: usize) -> Runtim
 
     // ---- Stage: Synthetic Reactor generation (R-03) ----
     let stage = Instant::now();
-    let plan = prepare_runtime_reactor(&graph, &closure, &tmp, "bench-app")
-        .expect("reactor plan failed");
+    let plan = prepare_runtime_reactor(&graph, &closure, &tmp, "bench-app").expect("reactor plan failed");
     let reactor_ms = stage.elapsed().as_millis();
     let reactor_kind = format!("{:?}", plan.kind);
 
@@ -394,14 +388,7 @@ pub fn run_runtime(repositories: usize, modules_per_repository: usize) -> Runtim
         ..Default::default()
     };
     let stage = Instant::now();
-    create_config(
-        &conn,
-        &CreateRuntimeConfigRequest {
-            workspace_id,
-            config,
-        },
-    )
-    .expect("config create failed");
+    create_config(&conn, &CreateRuntimeConfigRequest { workspace_id, config }).expect("config create failed");
     let config_write_ms = stage.elapsed().as_millis();
 
     let stage = Instant::now();
@@ -468,8 +455,7 @@ fn insert_workspace(conn: &mut rusqlite::Connection, spec: &SyntheticMavenWorksp
             git_dir_mtime: None,
         })
         .collect();
-    crate::db::dao::upsert_repositories_batch(conn, workspace_id, &scanned)
-        .expect("register repositories");
+    crate::db::dao::upsert_repositories_batch(conn, workspace_id, &scanned).expect("register repositories");
     workspace_id
 }
 
@@ -481,8 +467,7 @@ fn measure_file_change_detection(repo_root: &Path) -> Option<u128> {
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 
     let (tx, rx) = std::sync::mpsc::channel();
-    let mut watcher =
-        RecommendedWatcher::new(move |event| drop(tx.send(event)), Config::default()).ok()?;
+    let mut watcher = RecommendedWatcher::new(move |event| drop(tx.send(event)), Config::default()).ok()?;
     watcher.watch(repo_root, RecursiveMode::Recursive).ok()?;
     // Let the backend finish registering before the probe write.
     std::thread::sleep(Duration::from_millis(200));
@@ -537,10 +522,7 @@ pub fn format_runtime_report(r: &RuntimeBenchmarkResult) -> String {
         "| Runtime Closure Cache Hit | {:.3} ms |\n",
         r.closure_cache_hit_us as f64 / 1000.0
     ));
-    s.push_str(&format!(
-        "| Reactor ({}) | {} ms |\n",
-        r.reactor_kind, r.reactor_ms
-    ));
+    s.push_str(&format!("| Reactor ({}) | {} ms |\n", r.reactor_kind, r.reactor_ms));
     row_ms(&mut s, "Runtime Config Write", r.config_write_ms);
     row_ms(&mut s, "Runtime Config Load", r.config_load_ms);
     match r.file_change_detection_ms {
@@ -571,9 +553,7 @@ pub fn format_runtime_report(r: &RuntimeBenchmarkResult) -> String {
     s.push_str(&format!("- Thread count (peak): {}\n", r.thread_count));
     s.push_str(&format!("- Child process count (peak): {}\n", r.child_process_count));
 
-    s.push_str(
-        "\n### IDEA 对比\n\n口径与场景见 `docs/tasks-runtime/R-08-idea-comparison.md`（§98 半自动对比）。\n",
-    );
+    s.push_str("\n### IDEA 对比\n\n口径与场景见 `docs/tasks-runtime/R-08-idea-comparison.md`（§98 半自动对比）。\n");
     s
 }
 
@@ -602,17 +582,24 @@ pub fn runtime_baseline_path(dir: &Path, repositories: usize, modules: usize) ->
 }
 
 /// Render a Markdown comparison between a previous baseline and the current run.
-pub fn format_runtime_comparison(
-    prev: &RuntimeBenchmarkResult,
-    curr: &RuntimeBenchmarkResult,
-) -> String {
+pub fn format_runtime_comparison(prev: &RuntimeBenchmarkResult, curr: &RuntimeBenchmarkResult) -> String {
     let mut s = String::new();
     s.push_str("## Runtime benchmark comparison (vs baseline)\n\n");
     s.push_str("| metric | baseline | current | delta |\n|---|---:|---:|---:|\n");
-    compare_row(&mut s, "Discovery (cold)", prev.discovery_cold_ms, curr.discovery_cold_ms);
+    compare_row(
+        &mut s,
+        "Discovery (cold)",
+        prev.discovery_cold_ms,
+        curr.discovery_cold_ms,
+    );
     compare_row(&mut s, "POM Cache Hit", prev.pom_cache_hit_ms, curr.pom_cache_hit_ms);
     compare_row(&mut s, "Index Sync", prev.index_sync_ms, curr.index_sync_ms);
-    compare_row(&mut s, "Graph Cache Hit", prev.graph_cache_hit_ms, curr.graph_cache_hit_ms);
+    compare_row(
+        &mut s,
+        "Graph Cache Hit",
+        prev.graph_cache_hit_ms,
+        curr.graph_cache_hit_ms,
+    );
     compare_row(&mut s, "Closure", prev.closure_ms, curr.closure_ms);
     compare_row(&mut s, "Reactor", prev.reactor_ms, curr.reactor_ms);
     compare_row(&mut s, "Config Load", prev.config_load_ms, curr.config_load_ms);
@@ -636,9 +623,7 @@ fn mb(bytes: u64) -> f64 {
 
 fn compare_row(out: &mut String, name: &str, prev_ms: u128, curr_ms: u128) {
     let delta = (curr_ms as f64 - prev_ms as f64) / prev_ms.max(1) as f64 * 100.0;
-    out.push_str(&format!(
-        "| {name} | {prev_ms} ms | {curr_ms} ms | {delta:+.1}% |\n"
-    ));
+    out.push_str(&format!("| {name} | {prev_ms} ms | {curr_ms} ms | {delta:+.1}% |\n"));
 }
 
 // ---------------------------------------------------------------------------
@@ -755,10 +740,7 @@ fn generate_buildable_workspace(
 
 /// R-09 Build 基准：对合成工作区的最后一个模块跑两次 Classpath Run
 /// （真实 mvn，可用性不足时返回 `None` 由调用方记录 skip）。
-pub fn run_build_benchmark(
-    repositories: usize,
-    modules_per_repository: usize,
-) -> Option<BuildBenchmarkResult> {
+pub fn run_build_benchmark(repositories: usize, modules_per_repository: usize) -> Option<BuildBenchmarkResult> {
     use crate::runtime::build::pipeline::execute_build;
     use crate::runtime::build::runner::SpawningMavenRunner;
     use crate::runtime::build::scheduler::BuildScheduler;
@@ -766,26 +748,18 @@ pub fn run_build_benchmark(
     use crate::runtime::{create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig};
 
     let maven = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
-    if std::process::Command::new(maven)
-        .arg("-version")
-        .output()
-        .is_err()
-    {
+    if std::process::Command::new(maven).arg("-version").output().is_err() {
         eprintln!("build benchmark: `{maven}` unavailable, skipping");
         return None;
     }
 
     static BUILD_RUN_COUNTER: AtomicU64 = AtomicU64::new(0);
     let run_id = BUILD_RUN_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = std::env::temp_dir().join(format!(
-        "gw_bench_build_{}_{}",
-        std::process::id(),
-        run_id
-    ));
+    let tmp = std::env::temp_dir().join(format!("gw_bench_build_{}_{}", std::process::id(), run_id));
     let _ = std::fs::remove_dir_all(&tmp);
 
-    let repository_paths = generate_buildable_workspace(&tmp, repositories, modules_per_repository)
-        .expect("generate buildable workspace");
+    let repository_paths =
+        generate_buildable_workspace(&tmp, repositories, modules_per_repository).expect("generate buildable workspace");
 
     let db_path = tmp.join("bench.db");
     let mut conn = rusqlite::Connection::open(&db_path).expect("open bench db");
@@ -805,20 +779,14 @@ pub fn run_build_benchmark(
             git_dir_mtime: None,
         })
         .collect();
-    crate::db::dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned)
-        .expect("register repositories");
+    crate::db::dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned).expect("register repositories");
 
     let discovery = discover_poms(&tmp, 5, None, None);
     assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-    sync_workspace_index(&mut conn, workspace_id, &discovery, &tmp.join("m2"))
-        .expect("index sync failed");
+    sync_workspace_index(&mut conn, workspace_id, &discovery, &tmp.join("m2")).expect("index sync failed");
 
     let graph = query_dependency_graph(&conn, workspace_id).expect("graph query failed");
-    let root_artifact = format!(
-        "module-{:03}-{:02}",
-        repositories - 1,
-        modules_per_repository - 1
-    );
+    let root_artifact = format!("module-{:03}-{:02}", repositories - 1, modules_per_repository - 1);
     let root_project = graph
         .projects
         .iter()
@@ -876,15 +844,11 @@ pub fn run_build_benchmark(
             &scheduler,
             &runner,
             &request,
-            &crate::runtime::script_approval::ScriptApprovalStore::new(
-                tmp.join("approvals.json"),
-            ),
+            &crate::runtime::script_approval::ScriptApprovalStore::new(tmp.join("approvals.json")),
             &mut sink,
             None,
         )
-        .unwrap_or_else(|error| {
-            panic!("build benchmark round {round} failed: {error}\n{}", sink.tail())
-        });
+        .unwrap_or_else(|error| panic!("build benchmark round {round} failed: {error}\n{}", sink.tail()));
         timings.push(stage.elapsed().as_millis());
         reactor_kind = format!("{:?}", outcome.reactor_kind);
         modules_built = outcome.modules_built.len();
@@ -948,8 +912,7 @@ pub fn run_mvnd_build_benchmark(
     let tmp = std::env::temp_dir().join(format!("gw_bench_mvnd_{}_{}", std::process::id(), run_id));
     let _ = std::fs::remove_dir_all(&tmp);
 
-    let repository_paths =
-        generate_buildable_workspace(&tmp, repositories, modules_per_repository).expect("workspace");
+    let repository_paths = generate_buildable_workspace(&tmp, repositories, modules_per_repository).expect("workspace");
     let db_path = tmp.join("bench.db");
     let mut conn = rusqlite::Connection::open(&db_path).expect("open bench db");
     crate::db::init_db(&mut conn).expect("init bench db");
@@ -1088,7 +1051,11 @@ pub fn run_mvnd_build_benchmark(
 /// R-18 mvnd 对比报告（有 mvnd 时量化收益；无 mvnd 时仅基线）。
 pub fn format_mvnd_report(r: &MvndBenchmarkResult) -> String {
     let avg = |xs: &[u128]| -> u128 {
-        if xs.is_empty() { 0 } else { xs.iter().sum::<u128>() / xs.len() as u128 }
+        if xs.is_empty() {
+            0
+        } else {
+            xs.iter().sum::<u128>() / xs.len() as u128
+        }
     };
     let mvn_avg = avg(&r.mvn_builds_ms);
     let mvnd_avg = avg(&r.mvnd_builds_ms);
@@ -1209,11 +1176,7 @@ mod tests {
     #[test]
     fn synthetic_reactor_passes_real_maven_validate_when_available() {
         let maven = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
-        if std::process::Command::new(maven)
-            .arg("-version")
-            .output()
-            .is_err()
-        {
+        if std::process::Command::new(maven).arg("-version").output().is_err() {
             eprintln!("skipping real Maven validation because `{maven}` is unavailable");
             return;
         }

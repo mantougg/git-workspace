@@ -104,9 +104,7 @@ pub struct RuntimeClosureCache {
 impl RuntimeClosureCache {
     pub fn new() -> Self {
         Self {
-            inner: Cache::builder()
-                .max_capacity(CLOSURE_CACHE_CAPACITY)
-                .build(),
+            inner: Cache::builder().max_capacity(CLOSURE_CACHE_CAPACITY).build(),
         }
     }
 
@@ -322,10 +320,7 @@ impl<'a> GraphView<'a> {
         match states.get(&project_id) {
             Some(VisitState::Visited) => return Ok(()),
             Some(VisitState::Visiting) => {
-                let cycle_start = stack
-                    .iter()
-                    .position(|candidate| *candidate == project_id)
-                    .unwrap_or(0);
+                let cycle_start = stack.iter().position(|candidate| *candidate == project_id).unwrap_or(0);
                 let mut cycle = stack[cycle_start..]
                     .iter()
                     .map(|id| self.project_label(*id))
@@ -429,11 +424,7 @@ mod tests {
     }
 
     fn ids(closure: &RuntimeClosure) -> Vec<i64> {
-        closure
-            .projects
-            .iter()
-            .map(|project| project.project_id)
-            .collect()
+        closure.projects.iter().map(|project| project.project_id).collect()
     }
 
     #[test]
@@ -487,10 +478,7 @@ mod tests {
     fn graph_fingerprint_and_normalized_scope_drive_cache_reuse() {
         let graph = graph(3, &[(3, 2), (2, 1)]);
         let cache = RuntimeClosureCache::new();
-        assert_eq!(
-            cache.inner.policy().max_capacity(),
-            Some(CLOSURE_CACHE_CAPACITY)
-        );
+        assert_eq!(cache.inner.policy().max_capacity(), Some(CLOSURE_CACHE_CAPACITY));
 
         let scope = RuntimeScope::Manual {
             project_ids: vec![2, 1, 2],
@@ -499,20 +487,10 @@ mod tests {
         let normalized = RuntimeScope::Manual {
             project_ids: vec![1, 2],
         };
-        assert!(
-            cache
-                .get_or_compute(&graph, 3, &normalized)
-                .unwrap()
-                .cache_hit
-        );
+        assert!(cache.get_or_compute(&graph, 3, &normalized).unwrap().cache_hit);
 
         let mut changed = graph.clone();
         changed.fingerprint = "graph-v2".into();
-        assert!(
-            !cache
-                .get_or_compute(&changed, 3, &normalized)
-                .unwrap()
-                .cache_hit
-        );
+        assert!(!cache.get_or_compute(&changed, 3, &normalized).unwrap().cache_hit);
     }
 }

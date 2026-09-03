@@ -55,9 +55,7 @@ struct ProcOutput {
 /// 超时 kill。不能复用 `maven::detect_exec::wait_with_timeout`——它合并
 /// 双流且不暴露退出码，为版本探测设计。
 fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppResult<ProcOutput> {
-    fn read_all<R: std::io::Read + Send + 'static>(
-        stream: Option<R>,
-    ) -> std::thread::JoinHandle<String> {
+    fn read_all<R: std::io::Read + Send + 'static>(stream: Option<R>) -> std::thread::JoinHandle<String> {
         std::thread::spawn(move || {
             let mut buf = String::new();
             if let Some(mut s) = stream {
@@ -79,10 +77,7 @@ fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppRe
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err(AppError::Other(format!(
-                        "命令超时（{}s），已终止",
-                        timeout.as_secs()
-                    )));
+                    return Err(AppError::Other(format!("命令超时（{}s），已终止", timeout.as_secs())));
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
@@ -91,11 +86,7 @@ fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppRe
     };
     let stdout = out_t.join().unwrap_or_default();
     let stderr = err_t.join().unwrap_or_default();
-    Ok(ProcOutput {
-        code,
-        stdout,
-        stderr,
-    })
+    Ok(ProcOutput { code, stdout, stderr })
 }
 
 /// 运行 git 命令并返回 stdout（非零退出 → 可行动错误，带 stderr）。
@@ -165,17 +156,10 @@ pub fn parse_gitmodules(out: &str) -> Vec<(String, String, String)> {
         .collect()
 }
 
-fn submodule_meta(
-    repo: &str,
-) -> AppResult<std::collections::HashMap<String, (String, Option<String>)>> {
+fn submodule_meta(repo: &str) -> AppResult<std::collections::HashMap<String, (String, Option<String>)>> {
     // name → (path, url)
-    let out = run_git(
-        repo,
-        &["config", "-f", ".gitmodules", "--list"],
-        GIT_TIMEOUT,
-    )?;
-    let mut map: std::collections::HashMap<String, (String, Option<String>)> =
-        std::collections::HashMap::new();
+    let out = run_git(repo, &["config", "-f", ".gitmodules", "--list"], GIT_TIMEOUT)?;
+    let mut map: std::collections::HashMap<String, (String, Option<String>)> = std::collections::HashMap::new();
     for (name, prop, value) in parse_gitmodules(&out) {
         let entry = map.entry(name).or_insert_with(|| (String::new(), None));
         match prop.as_str() {
@@ -190,11 +174,7 @@ fn submodule_meta(
 /// 列出子模块（状态前缀映射 + .gitmodules 元数据）。
 #[tauri::command]
 pub fn list_submodules(repo_path: String) -> AppResult<Vec<SubmoduleEntry>> {
-    let status_out = match run_git(
-        &repo_path,
-        &["submodule", "status", "--recursive"],
-        GIT_TIMEOUT,
-    ) {
+    let status_out = match run_git(&repo_path, &["submodule", "status", "--recursive"], GIT_TIMEOUT) {
         Ok(out) => out,
         Err(_) => String::new(), // 无子模块时 git 以非零退出且无输出
     };
@@ -206,9 +186,7 @@ pub fn list_submodules(repo_path: String) -> AppResult<Vec<SubmoduleEntry>> {
     // URL 取最长路径前缀匹配。
     let mut metas: Vec<(String, String, Option<String>)> = meta
         .into_iter()
-        .map(|(_, (path, url))| {
-            (path.clone(), path, url)
-        })
+        .map(|(_, (path, url))| (path.clone(), path, url))
         .collect();
     metas.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
@@ -239,12 +217,7 @@ pub fn list_submodules(repo_path: String) -> AppResult<Vec<SubmoduleEntry>> {
 
 /// 子模块操作：init / update / sync / add / remove。
 #[tauri::command]
-pub fn submodule_op(
-    repo_path: String,
-    op: String,
-    path: Option<String>,
-    url: Option<String>,
-) -> AppResult<String> {
+pub fn submodule_op(repo_path: String, op: String, path: Option<String>, url: Option<String>) -> AppResult<String> {
     let path_args: Vec<&str> = path.as_deref().map(|p| vec![p]).unwrap_or_default();
     match op.as_str() {
         "init" => run_git(
@@ -254,11 +227,7 @@ pub fn submodule_op(
         ),
         "update" => run_git(
             &repo_path,
-            &[
-                &["submodule", "update", "--init", "--recursive"],
-                path_args.as_slice(),
-            ]
-            .concat(),
+            &[&["submodule", "update", "--init", "--recursive"], path_args.as_slice()].concat(),
             SUBMODULE_NET_TIMEOUT,
         ),
         "sync" => run_git(
@@ -269,20 +238,11 @@ pub fn submodule_op(
         "add" => {
             let url = url.ok_or_else(|| AppError::Other("add 需要 url 参数".to_string()))?;
             let target = path.ok_or_else(|| AppError::Other("add 需要 path 参数".to_string()))?;
-            run_git(
-                &repo_path,
-                &["submodule", "add", &url, &target],
-                SUBMODULE_NET_TIMEOUT,
-            )
+            run_git(&repo_path, &["submodule", "add", &url, &target], SUBMODULE_NET_TIMEOUT)
         }
         "remove" => {
-            let target =
-                path.ok_or_else(|| AppError::Other("remove 需要 path 参数".to_string()))?;
-            run_git(
-                &repo_path,
-                &["submodule", "deinit", "-f", &target],
-                GIT_TIMEOUT,
-            )?;
+            let target = path.ok_or_else(|| AppError::Other("remove 需要 path 参数".to_string()))?;
+            run_git(&repo_path, &["submodule", "deinit", "-f", &target], GIT_TIMEOUT)?;
             run_git(&repo_path, &["rm", "-f", &target], GIT_TIMEOUT)
         }
         other => Err(AppError::Other(format!("未知的子模块操作：{other}"))),
@@ -389,9 +349,7 @@ pub fn parse_lfs_locks(out: &str) -> Vec<LfsLock> {
             let mut parts = line.split_whitespace();
             let id = parts.next()?.to_string();
             let path = parts.next()?.to_string();
-            let owner = parts
-                .next()
-                .map(|s| s.trim_matches('(').trim_matches(')').to_string());
+            let owner = parts.next().map(|s| s.trim_matches('(').trim_matches(')').to_string());
             Some(LfsLock { id, path, owner })
         })
         .collect()
@@ -493,8 +451,8 @@ pub fn get_hook(repo_path: String, name: String) -> AppResult<String> {
     if !KNOWN_HOOKS.contains(&name.as_str()) {
         return Err(AppError::Other(format!("不支持的 hook：{name}")));
     }
-    let (active, disabled) = hook_paths(&repo_path, &name)
-        .ok_or_else(|| AppError::Other("无法定位 .git 目录".to_string()))?;
+    let (active, disabled) =
+        hook_paths(&repo_path, &name).ok_or_else(|| AppError::Other("无法定位 .git 目录".to_string()))?;
     let file = if active.exists() { active } else { disabled };
     Ok(std::fs::read_to_string(file).unwrap_or_default())
 }
@@ -505,8 +463,8 @@ pub fn save_hook(repo_path: String, name: String, content: String) -> AppResult<
     if !KNOWN_HOOKS.contains(&name.as_str()) {
         return Err(AppError::Other(format!("不支持的 hook：{name}")));
     }
-    let (active, disabled) = hook_paths(&repo_path, &name)
-        .ok_or_else(|| AppError::Other("无法定位 .git 目录".to_string()))?;
+    let (active, disabled) =
+        hook_paths(&repo_path, &name).ok_or_else(|| AppError::Other("无法定位 .git 目录".to_string()))?;
     std::fs::create_dir_all(active.parent().unwrap())?;
     // 旧 disabled 文件先清掉
     if disabled.exists() {
@@ -529,8 +487,8 @@ pub fn set_hook_enabled(repo_path: String, name: String, enabled: bool) -> AppRe
     if !KNOWN_HOOKS.contains(&name.as_str()) {
         return Err(AppError::Other(format!("不支持的 hook：{name}")));
     }
-    let (active, disabled) = hook_paths(&repo_path, &name)
-        .ok_or_else(|| AppError::Other("无法定位 .git 目录".to_string()))?;
+    let (active, disabled) =
+        hook_paths(&repo_path, &name).ok_or_else(|| AppError::Other("无法定位 .git 目录".to_string()))?;
     if enabled {
         if disabled.exists() {
             std::fs::rename(&disabled, &active)?;
@@ -554,8 +512,7 @@ pub fn run_hook(repo_path: String, name: String) -> AppResult<HookRunResult> {
     if !KNOWN_HOOKS.contains(&name.as_str()) {
         return Err(AppError::Other(format!("不支持的 hook：{name}")));
     }
-    let (active, _) = hook_paths(&repo_path, &name)
-        .ok_or_else(|| AppError::Other("无法定位 .git 目录".to_string()))?;
+    let (active, _) = hook_paths(&repo_path, &name).ok_or_else(|| AppError::Other("无法定位 .git 目录".to_string()))?;
     if !active.exists() {
         return Err(AppError::NotFound(format!("hook {name} 未创建")));
     }
@@ -688,12 +645,7 @@ abcdef12 * media/big.mp4 (10.2 MB)
         assert_eq!(infos.len(), KNOWN_HOOKS.len());
         assert!(infos.iter().all(|i| !i.exists));
 
-        save_hook(
-            repo_str.clone(),
-            "pre-commit".into(),
-            "#!/bin/sh\necho hi\n".into(),
-        )
-        .unwrap();
+        save_hook(repo_str.clone(), "pre-commit".into(), "#!/bin/sh\necho hi\n".into()).unwrap();
         assert_eq!(
             get_hook(repo_str.clone(), "pre-commit".into()).unwrap(),
             "#!/bin/sh\necho hi\n"
@@ -705,9 +657,7 @@ abcdef12 * media/big.mp4 (10.2 MB)
         let pre = infos.iter().find(|i| i.name == "pre-commit").unwrap();
         assert!(pre.exists && !pre.enabled);
         // 内容仍可读（disabled 文件）
-        assert!(get_hook(repo_str.clone(), "pre-commit".into())
-            .unwrap()
-            .contains("hi"));
+        assert!(get_hook(repo_str.clone(), "pre-commit".into()).unwrap().contains("hi"));
 
         set_hook_enabled(repo_str.clone(), "pre-commit".into(), true).unwrap();
         let infos = list_hooks(repo_str.clone()).unwrap();

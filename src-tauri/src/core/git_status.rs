@@ -7,7 +7,8 @@ use crate::models::repository::{FileChange, RepoChanges, RepoStatus};
 ///
 /// Returns every changed file with its change category, suitable for
 /// building a selectable change tree in the UI. Files are sorted by path.
-pub fn get_repo_changes(repo_path: &Path) -> AppResult<RepoChanges> {    let repo = git2::Repository::open(repo_path)?;
+pub fn get_repo_changes(repo_path: &Path) -> AppResult<RepoChanges> {
+    let repo = git2::Repository::open(repo_path)?;
 
     // 1. Determine current branch
     let (branch, is_detached) = match repo.head() {
@@ -124,7 +125,8 @@ pub(crate) fn is_runtime_path(path: &str) -> bool {
 }
 
 /// Map a libgit2 status bitmask to a coarse change category.
-fn classify_status(s: git2::Status) -> &'static str {    if s.is_index_renamed() {
+fn classify_status(s: git2::Status) -> &'static str {
+    if s.is_index_renamed() {
         "renamed"
     } else if s.is_index_typechange() {
         "typechange"
@@ -161,10 +163,7 @@ pub fn get_repo_status(repo_path: &Path) -> AppResult<RepoStatus> {
     let (branch, is_detached) = match repo.head() {
         Ok(head) => {
             let is_branch = head.is_branch();
-            let name = head
-                .shorthand()
-                .unwrap_or("HEAD")
-                .to_string();
+            let name = head.shorthand().unwrap_or("HEAD").to_string();
             (name, !is_branch)
         }
         Err(_) => {
@@ -176,10 +175,7 @@ pub fn get_repo_status(repo_path: &Path) -> AppResult<RepoStatus> {
 
             let untracked = statuses
                 .iter()
-                .filter(|e| {
-                    e.status().is_wt_new()
-                        && !e.path().map(is_runtime_path).unwrap_or(false)
-                })
+                .filter(|e| e.status().is_wt_new() && !e.path().map(is_runtime_path).unwrap_or(false))
                 .count();
 
             return Ok(RepoStatus {
@@ -250,10 +246,7 @@ pub fn get_repo_status(repo_path: &Path) -> AppResult<RepoStatus> {
         }
         if s.is_wt_new() {
             // Count untracked files, excluding runtime/generated dirs.
-            let runtime = entry
-                .path()
-                .map(is_runtime_path)
-                .unwrap_or(false);
+            let runtime = entry.path().map(is_runtime_path).unwrap_or(false);
             if !runtime {
                 untracked += 1;
             }
@@ -293,7 +286,8 @@ pub fn get_repo_status(repo_path: &Path) -> AppResult<RepoStatus> {
 
 /// Compute how many commits the local branch is ahead/behind its upstream.
 /// Returns (0, 0) if no upstream is configured or the comparison fails.
-fn compute_ahead_behind(repo: &git2::Repository, branch_name: &str) -> (usize, usize) {    let local_branch = match repo.find_branch(branch_name, git2::BranchType::Local) {
+fn compute_ahead_behind(repo: &git2::Repository, branch_name: &str) -> (usize, usize) {
+    let local_branch = match repo.find_branch(branch_name, git2::BranchType::Local) {
         Ok(b) => b,
         Err(_) => return (0, 0),
     };
@@ -324,17 +318,10 @@ fn compute_ahead_behind(repo: &git2::Repository, branch_name: &str) -> (usize, u
 ///
 /// Used by the file watcher to refresh only affected repositories instead of
 /// rescanning the whole workspace (incremental status, §37).
-pub fn find_affected_repos<'a>(
-    changed_paths: &[String],
-    repo_roots: &'a [String],
-) -> Vec<&'a str> {
+pub fn find_affected_repos<'a>(changed_paths: &[String], repo_roots: &'a [String]) -> Vec<&'a str> {
     repo_roots
         .iter()
-        .filter(|root| {
-            changed_paths
-                .iter()
-                .any(|cp| path_under_root(cp, root))
-        })
+        .filter(|root| changed_paths.iter().any(|cp| path_under_root(cp, root)))
         .map(|r| r.as_str())
         .collect()
 }
@@ -357,11 +344,7 @@ mod tests {
 
     #[test]
     fn find_affected_repos_matches_only_prefix_boundary() {
-        let repos = vec![
-            "D:/ws/a".to_string(),
-            "D:/ws/ab".to_string(),
-            "D:/ws/b".to_string(),
-        ];
+        let repos = vec!["D:/ws/a".to_string(), "D:/ws/ab".to_string(), "D:/ws/b".to_string()];
 
         let affected = find_affected_repos(&["D:/ws/a/src/main.rs".to_string()], &repos);
         assert_eq!(affected, vec!["D:/ws/a"]);
@@ -384,12 +367,8 @@ mod tests {
         let sig = git2::Signature::now("tester", "t@example.com").unwrap();
         let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
         match &parent {
-            Some(p) => repo
-                .commit(Some("HEAD"), &sig, &sig, msg, &tree, &[p])
-                .unwrap(),
-            None => repo
-                .commit(Some("HEAD"), &sig, &sig, msg, &tree, &[])
-                .unwrap(),
+            Some(p) => repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &[p]).unwrap(),
+            None => repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &[]).unwrap(),
         };
     }
 
@@ -422,18 +401,12 @@ mod tests {
         }
         crate::core::branch::checkout_branch(&dir, "master").unwrap();
         let outcome = crate::core::merge::merge(&dir, "side", "normal").unwrap();
-        assert!(matches!(
-            outcome,
-            crate::core::merge::MergeOutcome::Conflict { .. }
-        ));
+        assert!(matches!(outcome, crate::core::merge::MergeOutcome::Conflict { .. }));
 
         let status = get_repo_status(&dir).unwrap();
         assert_eq!(status.conflicted, 1);
         assert!(!status.is_clean, "conflicted repo must not be clean");
-        assert_eq!(
-            status.modified, 0,
-            "conflicted path must not also count as modified"
-        );
+        assert_eq!(status.modified, 0, "conflicted path must not also count as modified");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

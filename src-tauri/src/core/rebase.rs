@@ -78,18 +78,14 @@ pub fn get_rebase_state(repo_path: &Path) -> AppResult<Option<RebaseState>> {
         return Ok(None);
     }
     let raw = std::fs::read_to_string(&path)?;
-    let state: RebaseState = serde_json::from_str(&raw)
-        .map_err(|e| AppError::Other(format!("corrupt rebase state: {}", e)))?;
+    let state: RebaseState =
+        serde_json::from_str(&raw).map_err(|e| AppError::Other(format!("corrupt rebase state: {}", e)))?;
     Ok(Some(state))
 }
 
 /// Commits of `branch` (default HEAD) not in `upstream`, oldest first, as
 /// default pick ops — the interactive todo's starting point.
-pub fn list_rebase_commits(
-    repo_path: &Path,
-    upstream: &str,
-    branch: Option<&str>,
-) -> AppResult<Vec<RebaseOp>> {
+pub fn list_rebase_commits(repo_path: &Path, upstream: &str, branch: Option<&str>) -> AppResult<Vec<RebaseOp>> {
     let repo = git2::Repository::open(repo_path)?;
     let upstream_oid = repo
         .revparse_single(upstream)
@@ -303,48 +299,42 @@ fn run_remaining(repo_path: &Path) -> AppResult<RebaseOutcome> {
 /// `commit(Some("HEAD"))` would fail with "current tip is not the first
 /// parent". The branch ref is moved explicitly afterwards (works for
 /// detached HEAD too).
-fn commit_op(
-    repo: &git2::Repository,
-    state: &RebaseState,
-    op: &RebaseOp,
-    tree: &git2::Tree,
-) -> AppResult<String> {
+fn commit_op(repo: &git2::Repository, state: &RebaseState, op: &RebaseOp, tree: &git2::Tree) -> AppResult<String> {
     let sig = repo.signature()?;
     let orig = repo.find_commit(git2::Oid::from_str(&op.oid)?)?;
     let prev_commit = repo.find_commit(git2::Oid::from_str(&state.prev_commit)?)?;
 
-    let (author, message, parents): (git2::Signature, String, Vec<git2::Commit>) =
-        match op.action.as_str() {
-            "pick" => (
-                orig.author(),
-                orig.message().unwrap_or_default().to_string(),
-                vec![prev_commit.clone()],
-            ),
-            "reword" => (
-                orig.author(),
-                op.message
-                    .clone()
-                    .unwrap_or_else(|| orig.message().unwrap_or_default().to_string()),
-                vec![prev_commit.clone()],
-            ),
-            "squash" => {
-                // Meld into the previous chain commit: its parent, its author,
-                // combined message, the new tree.
-                let prev_parent = prev_commit.parent(0).map_err(|_| {
-                    AppError::Other("squash target has no parent".into())
-                })?;
-                (
-                    prev_commit.author(),
-                    format!(
-                        "{}\n\n{}",
-                        prev_commit.message().unwrap_or_default(),
-                        orig.message().unwrap_or_default()
-                    ),
-                    vec![prev_parent],
-                )
-            }
-            other => return Err(AppError::Other(format!("invalid rebase action '{}'", other))),
-        };
+    let (author, message, parents): (git2::Signature, String, Vec<git2::Commit>) = match op.action.as_str() {
+        "pick" => (
+            orig.author(),
+            orig.message().unwrap_or_default().to_string(),
+            vec![prev_commit.clone()],
+        ),
+        "reword" => (
+            orig.author(),
+            op.message
+                .clone()
+                .unwrap_or_else(|| orig.message().unwrap_or_default().to_string()),
+            vec![prev_commit.clone()],
+        ),
+        "squash" => {
+            // Meld into the previous chain commit: its parent, its author,
+            // combined message, the new tree.
+            let prev_parent = prev_commit
+                .parent(0)
+                .map_err(|_| AppError::Other("squash target has no parent".into()))?;
+            (
+                prev_commit.author(),
+                format!(
+                    "{}\n\n{}",
+                    prev_commit.message().unwrap_or_default(),
+                    orig.message().unwrap_or_default()
+                ),
+                vec![prev_parent],
+            )
+        }
+        other => return Err(AppError::Other(format!("invalid rebase action '{}'", other))),
+    };
 
     let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
     let oid = repo.commit(None, &author, &sig, &message, tree, &parent_refs)?;
@@ -357,8 +347,7 @@ fn commit_op(
 
 fn load_state(repo: &git2::Repository) -> AppResult<RebaseState> {
     let path = state_path(repo);
-    let raw = std::fs::read_to_string(&path)
-        .map_err(|_| AppError::Conflict("no rebase in progress".into()))?;
+    let raw = std::fs::read_to_string(&path).map_err(|_| AppError::Conflict("no rebase in progress".into()))?;
     serde_json::from_str(&raw).map_err(|e| AppError::Other(format!("corrupt rebase state: {}", e)))
 }
 
@@ -395,13 +384,7 @@ mod tests {
         dir
     }
 
-    fn commit_file(
-        repo: &git2::Repository,
-        dir: &Path,
-        name: &str,
-        content: &str,
-        msg: &str,
-    ) -> String {
+    fn commit_file(repo: &git2::Repository, dir: &Path, name: &str, content: &str, msg: &str) -> String {
         std::fs::write(dir.join(name), content).unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(Path::new(name)).unwrap();
@@ -430,13 +413,7 @@ mod tests {
         walk.push_head().unwrap();
         walk.flatten()
             .take(count)
-            .map(|oid| {
-                repo.find_commit(oid)
-                    .unwrap()
-                    .summary()
-                    .unwrap_or_default()
-                    .to_string()
-            })
+            .map(|oid| repo.find_commit(oid).unwrap().summary().unwrap_or_default().to_string())
             .collect()
     }
 
@@ -539,12 +516,7 @@ mod tests {
         // Squashed commit carries both messages.
         let repo = git2::Repository::open(&dir).unwrap();
         let head = repo.head().unwrap();
-        let msg = head
-            .peel_to_commit()
-            .unwrap()
-            .message()
-            .unwrap_or_default()
-            .to_string();
+        let msg = head.peel_to_commit().unwrap().message().unwrap_or_default().to_string();
         assert!(msg.contains("s1 rewritten") && msg.contains("s2"));
         // Both files present (squash melded s2's tree).
         assert!(dir.join("s1.txt").exists() && dir.join("s2.txt").exists());
@@ -578,7 +550,9 @@ mod tests {
         let ops = list_rebase_commits(&dir, "master", None).unwrap();
         let outcome = start_rebase(&dir, "master", ops).unwrap();
         match outcome {
-            RebaseOutcome::Conflict { files, position, total, .. } => {
+            RebaseOutcome::Conflict {
+                files, position, total, ..
+            } => {
                 assert_eq!(files, vec!["a.txt".to_string()]);
                 assert_eq!(position, 0);
                 assert_eq!(total, 1);
@@ -597,7 +571,9 @@ mod tests {
         assert_eq!(repo.head().unwrap().target().unwrap().to_string(), side_head);
         drop(repo);
         assert_eq!(
-            std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+            std::fs::read_to_string(dir.join("a.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "side\n"
         );
         assert!(get_rebase_state(&dir).unwrap().is_none());
@@ -647,7 +623,9 @@ mod tests {
         let subjects = head_subjects(&dir, 4);
         assert_eq!(subjects, vec!["s2", "side change", "master change", "init"]);
         assert_eq!(
-            std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+            std::fs::read_to_string(dir.join("a.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "resolved\n"
         );
 
@@ -687,7 +665,9 @@ mod tests {
 
         // Skipped ops are gone: a.txt carries master's content; s2 applied.
         assert_eq!(
-            std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+            std::fs::read_to_string(dir.join("a.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             "master again\n"
         );
         let subjects = head_subjects(&dir, 2);

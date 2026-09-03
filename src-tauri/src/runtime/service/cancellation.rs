@@ -65,9 +65,7 @@ impl CancelWatch {
                 }
                 if cancel.load(Ordering::Relaxed) {
                     processes.signal_build_cancel(workspace_id, &runtime_name);
-                    if let Err(e) =
-                        processes.stop_runtime(workspace_id, &runtime_name, Some(CANCEL_STOP_GRACE))
-                    {
+                    if let Err(e) = processes.stop_runtime(workspace_id, &runtime_name, Some(CANCEL_STOP_GRACE)) {
                         log::warn!("R-12: cancel-stop of '{runtime_name}' failed: {e}");
                     }
                 }

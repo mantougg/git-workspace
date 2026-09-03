@@ -19,14 +19,10 @@ use crate::maven::discovery::MavenDiscoveryResult;
 use crate::maven::effective::EffectiveProject;
 use crate::maven::model::{MavenProject, PomCoordinates};
 use crate::maven::parser::hex_hash;
-use crate::maven::resolver::{
-    local_artifact_path, resolve_dependency, IndexedMavenProject, WorkspaceMavenIndex,
-};
+use crate::maven::resolver::{local_artifact_path, resolve_dependency, IndexedMavenProject, WorkspaceMavenIndex};
 
 use super::cache::graph_fingerprint;
-use super::mapping::{
-    mapping_fingerprint_rows, mapping_row_key, prune_artifacts, replace_source_mappings,
-};
+use super::mapping::{mapping_fingerprint_rows, mapping_row_key, prune_artifacts, replace_source_mappings};
 use super::path::path_key;
 use super::types::IndexSyncResult;
 
@@ -65,21 +61,14 @@ pub fn sync_workspace_index(
     for project in &discovery.projects {
         let path = path_key(&project.path);
         let effective = effective_by_path.get(&path).ok_or_else(|| {
-            AppError::DependencyResolve(format!(
-                "effective Maven model missing for {}",
-                project.path.display()
-            ))
+            AppError::DependencyResolve(format!("effective Maven model missing for {}", project.path.display()))
         })?;
         let repository_id = find_repository_id(&project.path, &repository_roots);
         inputs.push(ProjectInput {
             project: project.clone(),
             effective: (*effective).clone(),
             path,
-            project_path: project
-                .path
-                .parent()
-                .unwrap_or_else(|| Path::new(""))
-                .to_path_buf(),
+            project_path: project.path.parent().unwrap_or_else(|| Path::new("")).to_path_buf(),
             repository_id,
             model_hash: effective_model_hash(project, effective)?,
         });
@@ -128,14 +117,7 @@ pub fn sync_workspace_index(
     } else {
         changed_paths
     };
-    replace_source_mappings(
-        &tx,
-        workspace_id,
-        &inputs,
-        &records,
-        mapping_changed,
-        &recompute_paths,
-    )?;
+    replace_source_mappings(&tx, workspace_id, &inputs, &records, mapping_changed, &recompute_paths)?;
     replace_graph_rows(
         &tx,
         workspace_id,
@@ -198,12 +180,9 @@ fn comparable_path(path: &Path) -> String {
     }
 }
 
-fn existing_projects(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<HashMap<String, (String, String)>> {
-    let mut statement = conn
-        .prepare("SELECT path, pom_hash, model_hash FROM maven_projects WHERE workspace_id = ?1")?;
+fn existing_projects(conn: &Connection, workspace_id: i64) -> AppResult<HashMap<String, (String, String)>> {
+    let mut statement =
+        conn.prepare("SELECT path, pom_hash, model_hash FROM maven_projects WHERE workspace_id = ?1")?;
     let rows = statement.query_map([workspace_id], |row| {
         Ok((
             row.get::<_, String>(0)?,
@@ -213,25 +192,15 @@ fn existing_projects(
     Ok(rows.collect::<Result<HashMap<_, _>, _>>()?)
 }
 
-fn delete_stale_projects(
-    tx: &Transaction<'_>,
-    workspace_id: i64,
-    stale_paths: &[String],
-) -> AppResult<()> {
-    let mut statement =
-        tx.prepare("DELETE FROM maven_projects WHERE workspace_id = ?1 AND path = ?2")?;
+fn delete_stale_projects(tx: &Transaction<'_>, workspace_id: i64, stale_paths: &[String]) -> AppResult<()> {
+    let mut statement = tx.prepare("DELETE FROM maven_projects WHERE workspace_id = ?1 AND path = ?2")?;
     for path in stale_paths {
         statement.execute(params![workspace_id, path])?;
     }
     Ok(())
 }
 
-fn upsert_projects(
-    tx: &Transaction<'_>,
-    workspace_id: i64,
-    inputs: &[ProjectInput],
-    now: &str,
-) -> AppResult<()> {
+fn upsert_projects(tx: &Transaction<'_>, workspace_id: i64, inputs: &[ProjectInput], now: &str) -> AppResult<()> {
     let mut statement = tx.prepare(
         "INSERT INTO maven_projects (
             workspace_id, repository_id, path, group_id, artifact_id, version,
@@ -274,10 +243,7 @@ pub(super) fn load_project_records(
     )?;
     let rows = statement.query_map([workspace_id], |row| {
         let path = row.get::<_, String>(2)?;
-        let project_path = Path::new(&path)
-            .parent()
-            .unwrap_or_else(|| Path::new(""))
-            .to_path_buf();
+        let project_path = Path::new(&path).parent().unwrap_or_else(|| Path::new("")).to_path_buf();
         Ok((
             path,
             ProjectRecord {
@@ -313,10 +279,7 @@ fn update_parent_links(
             continue;
         };
         let parent_id = input.project.parent.as_ref().and_then(|parent| {
-            let gav = format!(
-                "{}:{}:{}",
-                parent.group_id, parent.artifact_id, parent.version
-            );
+            let gav = format!("{}:{}:{}", parent.group_id, parent.artifact_id, parent.version);
             by_gav
                 .get(&gav)
                 .filter(|matches| matches.len() == 1)
@@ -336,18 +299,15 @@ fn replace_graph_rows(
     local_repository: &Path,
     now: &str,
 ) -> AppResult<()> {
-    let workspace_index =
-        WorkspaceMavenIndex::new(records.values().map(|record| IndexedMavenProject {
-            project_id: record.project_id,
-            repository_id: record.repository_id,
-            coordinates: record.coordinates.clone(),
-            project_path: record.project_path.clone(),
-        }));
+    let workspace_index = WorkspaceMavenIndex::new(records.values().map(|record| IndexedMavenProject {
+        project_id: record.project_id,
+        repository_id: record.repository_id,
+        coordinates: record.coordinates.clone(),
+        project_path: record.project_path.clone(),
+    }));
 
-    let mut delete_dependencies =
-        tx.prepare("DELETE FROM maven_dependencies WHERE project_id = ?1")?;
-    let mut delete_modules =
-        tx.prepare("DELETE FROM maven_modules WHERE parent_project_id = ?1")?;
+    let mut delete_dependencies = tx.prepare("DELETE FROM maven_dependencies WHERE project_id = ?1")?;
+    let mut delete_modules = tx.prepare("DELETE FROM maven_modules WHERE parent_project_id = ?1")?;
     let mut insert_dependency = tx.prepare(
         "INSERT INTO maven_dependencies (
             project_id, group_id, artifact_id, version, scope, optional,
@@ -376,9 +336,9 @@ fn replace_graph_rows(
         if !recompute_paths.contains(&input.path) {
             continue;
         }
-        let record = records.get(&input.path).ok_or_else(|| {
-            AppError::DependencyResolve(format!("indexed Maven project missing for {}", input.path))
-        })?;
+        let record = records
+            .get(&input.path)
+            .ok_or_else(|| AppError::DependencyResolve(format!("indexed Maven project missing for {}", input.path)))?;
         delete_dependencies.execute([record.project_id])?;
         delete_modules.execute([record.project_id])?;
 
@@ -403,11 +363,7 @@ fn replace_graph_rows(
                 sort_order as i64,
             ])?;
 
-            if let Some(version) = dependency
-                .version
-                .as_deref()
-                .filter(|value| !value.is_empty())
-            {
+            if let Some(version) = dependency.version.as_deref().filter(|value| !value.is_empty()) {
                 let artifact_path = local_artifact_path(local_repository, dependency, version);
                 upsert_artifact.execute(params![
                     workspace_id,
@@ -432,9 +388,7 @@ fn replace_graph_rows(
                 declared.join("pom.xml")
             };
             let pom_path = std::fs::canonicalize(&pom_path).unwrap_or(pom_path);
-            let module_id = records
-                .get(&path_key(&pom_path))
-                .map(|item| item.project_id);
+            let module_id = records.get(&path_key(&pom_path)).map(|item| item.project_id);
             insert_module.execute(params![record.project_id, module_id, module.path])?;
         }
     }

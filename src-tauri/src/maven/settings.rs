@@ -195,10 +195,7 @@ mod tests {
             <localRepository>/custom/m2/repo</localRepository>
             <mirrors></mirrors>
         </settings>"#;
-        assert_eq!(
-            extract_local_repository_text(xml).as_deref(),
-            Some("/custom/m2/repo")
-        );
+        assert_eq!(extract_local_repository_text(xml).as_deref(), Some("/custom/m2/repo"));
     }
 
     #[test]
@@ -207,10 +204,7 @@ mod tests {
             <!-- <localRepository>/should/not/use</localRepository> -->
             <localRepository>/real/repo</localRepository>
         </settings>"#;
-        assert_eq!(
-            extract_local_repository_text(xml).as_deref(),
-            Some("/real/repo")
-        );
+        assert_eq!(extract_local_repository_text(xml).as_deref(), Some("/real/repo"));
     }
 
     #[test]

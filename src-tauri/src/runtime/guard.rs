@@ -14,11 +14,7 @@ use crate::error::{AppError, AppResult};
 
 /// 纯校验：运行时生成物写路径必须在 `workspace_root/.gitworkspace/` 下。
 /// 不触发 debug 断言（供测试与内部复用直接调用）。
-pub fn check_workspace_write_path(
-    path: &Path,
-    workspace_root: &Path,
-    what: &str,
-) -> AppResult<()> {
+pub fn check_workspace_write_path(path: &Path, workspace_root: &Path, what: &str) -> AppResult<()> {
     let gitworkspace = workspace_root.join(".gitworkspace");
     if !path.starts_with(&gitworkspace) {
         return Err(AppError::Permission(format!(
@@ -33,11 +29,7 @@ pub fn check_workspace_write_path(
 /// `what` 用于错误文案（如「Synthetic Reactor 生成」「日志落盘」）。
 /// 开发期 `debug_assert` fail-fast（违规写立即暴露），生产返回
 /// `Permission` 可行动错误。
-pub fn assert_workspace_write_path(
-    path: &Path,
-    workspace_root: &Path,
-    what: &str,
-) -> AppResult<()> {
+pub fn assert_workspace_write_path(path: &Path, workspace_root: &Path, what: &str) -> AppResult<()> {
     let allowed = path.starts_with(&workspace_root.join(".gitworkspace"));
     debug_assert!(
         allowed,
@@ -74,8 +66,7 @@ mod tests {
             "/etc/passwd",
             "/other/.gitworkspace/x.json",
         ] {
-            let error =
-                check_workspace_write_path(Path::new(path), root, "测试").unwrap_err();
+            let error = check_workspace_write_path(Path::new(path), root, "测试").unwrap_err();
             assert_eq!(error.code(), "PermissionError", "{path}");
         }
     }
@@ -85,12 +76,7 @@ mod tests {
         // 用户子仓库内的 .gitworkspace 也属于「用户项目区」——只在 workspace
         // 根下允许（子模块的 .gitworkspace 可能被提交/污染用户仓库）。
         let root = Path::new("/ws");
-        let error = check_workspace_write_path(
-            Path::new("/ws/repo/.gitworkspace/x.json"),
-            root,
-            "测试",
-        )
-        .unwrap_err();
+        let error = check_workspace_write_path(Path::new("/ws/repo/.gitworkspace/x.json"), root, "测试").unwrap_err();
         assert_eq!(error.code(), "PermissionError");
     }
 }

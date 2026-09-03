@@ -68,15 +68,8 @@ pub fn generate_repos(root: &Path, count: usize) -> std::io::Result<Vec<PathBuf>
             let parents: Vec<git2::Commit> = head_commit.into_iter().collect();
             let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
 
-            repo.commit(
-                Some("HEAD"),
-                &sig,
-                &sig,
-                &format!("commit {}", c),
-                &tree,
-                &parent_refs,
-            )
-            .map_err(io_err)?;
+            repo.commit(Some("HEAD"), &sig, &sig, &format!("commit {}", c), &tree, &parent_refs)
+                .map_err(io_err)?;
         }
         paths.push(dir);
     }
@@ -145,10 +138,8 @@ pub fn run(count: usize) -> BenchmarkResult {
     track_peak_rss(&mut system, pid, &mut peak_rss);
 
     // Incremental rescan (all known paths hit the cache).
-    let known: std::collections::HashMap<String, Option<i64>> = found
-        .iter()
-        .map(|r| (r.path.clone(), r.git_dir_mtime))
-        .collect();
+    let known: std::collections::HashMap<String, Option<i64>> =
+        found.iter().map(|r| (r.path.clone(), r.git_dir_mtime)).collect();
     let incr_start = Instant::now();
     let _found_incr = scanner.scan_incremental(&tmp, None, &known);
     let incremental_scan_ms = incr_start.elapsed().as_millis();
@@ -339,15 +330,8 @@ fn generate_commit_history_repo(dir: &Path, commits: usize) -> std::io::Result<(
         let parents: Vec<git2::Commit> = head_commit.into_iter().collect();
         let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
 
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            &format!("commit {}", c),
-            &tree,
-            &parent_refs,
-        )
-        .map_err(io_err)?;
+        repo.commit(Some("HEAD"), &sig, &sig, &format!("commit {}", c), &tree, &parent_refs)
+            .map_err(io_err)?;
     }
     Ok(())
 }
@@ -377,15 +361,8 @@ fn generate_linear_history_repo(dir: &Path, commits: usize) -> std::io::Result<(
         let head_commit = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
         let parents: Vec<git2::Commit> = head_commit.into_iter().collect();
         let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            &format!("commit {}", c),
-            &tree,
-            &parent_refs,
-        )
-        .map_err(io_err)?;
+        repo.commit(Some("HEAD"), &sig, &sig, &format!("commit {}", c), &tree, &parent_refs)
+            .map_err(io_err)?;
     }
     Ok(())
 }
@@ -425,22 +402,21 @@ pub fn run_diff_graph(graph_commits: usize) -> DiffGraphBenchmarkResult {
     let repo_path = diff_repo_dir.to_string_lossy().to_string();
 
     let cold_start = Instant::now();
-    let cold_files = cached_tree_diff(&cache, &repo, &repo_path, &old_tree, &new_tree, &config)
-        .expect("cold diff failed");
+    let cold_files =
+        cached_tree_diff(&cache, &repo, &repo_path, &old_tree, &new_tree, &config).expect("cold diff failed");
     let diff_cold_ms = cold_start.elapsed().as_millis();
     assert!(!cold_files.is_empty(), "synthetic diff must be non-empty");
 
     let hit_start = Instant::now();
-    let hit_files = cached_tree_diff(&cache, &repo, &repo_path, &old_tree, &new_tree, &config)
-        .expect("cache-hit diff failed");
+    let hit_files =
+        cached_tree_diff(&cache, &repo, &repo_path, &old_tree, &new_tree, &config).expect("cache-hit diff failed");
     let diff_cache_hit_us = hit_start.elapsed().as_micros();
     assert_eq!(cold_files.len(), hit_files.len(), "cache hit must match cold");
 
     // --- 2. Graph first screen on a big repo (T-04: 10k+ commits < 1 s) ---
     let big_repo_dir = tmp.join("big_repo");
     let gen_start = Instant::now();
-    generate_linear_history_repo(&big_repo_dir, graph_commits)
-        .expect("generate big repo failed");
+    generate_linear_history_repo(&big_repo_dir, graph_commits).expect("generate big repo failed");
     let graph_generate_ms = gen_start.elapsed().as_millis();
 
     // File-backed DB so the WAL/pragma path matches production.
@@ -468,22 +444,17 @@ pub fn run_diff_graph(graph_commits: usize) -> DiffGraphBenchmarkResult {
 
     // Cold: empty commits cache — parses + persists the first page.
     let cold_start = Instant::now();
-    let cold = load_commit_history_cached(&mut conn, &big_repo_dir, 100)
-        .expect("cold graph first screen failed");
+    let cold = load_commit_history_cached(&mut conn, &big_repo_dir, 100).expect("cold graph first screen failed");
     let graph_first_screen_cold_ms = cold_start.elapsed().as_millis();
     assert_eq!(cold.len(), 100, "first screen must return a full page");
     // The first page must be the newest 100 commits in chain order — guards
     // the T-04 TIME-sort pagination fix against ordering regressions.
     assert_eq!(cold[0].message, format!("commit {}", graph_commits - 1));
-    assert_eq!(
-        cold[99].message,
-        format!("commit {}", graph_commits - 100)
-    );
+    assert_eq!(cold[99].message, format!("commit {}", graph_commits - 100));
 
     // Warm: metadata cache populated — no commit parsing.
     let warm_start = Instant::now();
-    let warm = load_commit_history_cached(&mut conn, &big_repo_dir, 100)
-        .expect("warm graph first screen failed");
+    let warm = load_commit_history_cached(&mut conn, &big_repo_dir, 100).expect("warm graph first screen failed");
     let graph_first_screen_warm_ms = warm_start.elapsed().as_millis();
     assert_eq!(warm.len(), 100);
 
@@ -511,10 +482,7 @@ pub fn format_diff_graph_report(r: &DiffGraphBenchmarkResult) -> String {
     let mut s = String::new();
     s.push_str("## Benchmark: T-04 Diff & Graph acceptance\n\n");
     s.push_str(&format!("- Generated at: {}\n", r.generated_at));
-    s.push_str(&format!(
-        "- Diff first view (cache miss): {} ms\n",
-        r.diff_cold_ms
-    ));
+    s.push_str(&format!("- Diff first view (cache miss): {} ms\n", r.diff_cold_ms));
     s.push_str(&format!(
         "- Diff second view (cache hit): {:.3} ms — budget < {} ms [{}]\n",
         hit_ms,
@@ -643,7 +611,11 @@ mod tests {
             w.set_sorting(git2::Sort::TIME).unwrap();
             w.push_head().unwrap();
             let v: Vec<_> = w.take(100).flatten().collect();
-            eprintln!("revwalk sort-then-push TIME take(100): {:?} ({} oids)", t.elapsed(), v.len());
+            eprintln!(
+                "revwalk sort-then-push TIME take(100): {:?} ({} oids)",
+                t.elapsed(),
+                v.len()
+            );
             assert_eq!(v[0].to_string(), oids[0]);
         }
 
@@ -691,10 +663,7 @@ mod tests {
             assert_eq!(out.len(), 100);
             assert_eq!(out[0].to_string(), oids[0]);
             // Manual walk must match the revwalk order exactly on this repo.
-            assert_eq!(
-                out.iter().map(|o| o.to_string()).collect::<Vec<_>>(),
-                oids
-            );
+            assert_eq!(out.iter().map(|o| o.to_string()).collect::<Vec<_>>(), oids);
         }
 
         // 6. Reference: object-read cost floor for 100 commits.

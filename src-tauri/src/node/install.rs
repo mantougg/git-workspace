@@ -10,12 +10,9 @@ use crate::node::model::{PackageManager, ToolDetection};
 use crate::process::streaming::{spawn_streaming, OutputStream};
 
 pub fn build_install_command(executable: &Path, project_dir: &Path) -> Command {
-    let is_cmd = executable.extension().is_some_and(|ext| {
-        matches!(
-            ext.to_string_lossy().to_ascii_lowercase().as_str(),
-            "cmd" | "bat"
-        )
-    });
+    let is_cmd = executable
+        .extension()
+        .is_some_and(|ext| matches!(ext.to_string_lossy().to_ascii_lowercase().as_str(), "cmd" | "bat"));
     let mut command = if cfg!(windows) && is_cmd {
         let mut cmd = Command::new("cmd");
         cmd.args(["/C"]).arg(executable);

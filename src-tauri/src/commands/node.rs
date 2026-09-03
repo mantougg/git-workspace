@@ -5,8 +5,8 @@ use tauri::{command, State};
 use crate::error::{AppError, AppResult};
 use crate::models::task::{TaskRequest, TaskType};
 use crate::node::{
-    discover_package_jsons, global_package_cache, sync_node_projects, NodeExecutable,
-    NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, NodeScanCandidate, PackageManager,
+    discover_package_jsons, global_package_cache, sync_node_projects, NodeExecutable, NodeExecutableKind,
+    NodeExecutableRequest, NodeProjectNode, NodeScanCandidate, PackageManager,
 };
 use crate::runtime::config::workspace_root;
 use crate::state::AppState;
@@ -15,10 +15,7 @@ use crate::state::AppState;
 /// SQLite list. The workspace path and scan depth are read from the DB so the
 /// command cannot escape the configured workspace boundary.
 #[command]
-pub fn node_list_projects(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<NodeProjectNode>> {
+pub fn node_list_projects(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<NodeProjectNode>> {
     let (root, scan_depth) = {
         let conn = state
             .db
@@ -54,10 +51,7 @@ pub fn node_list_executables(state: State<'_, AppState>) -> AppResult<Vec<NodeEx
 /// Register a concrete executable path after a version probe. Registration is
 /// explicit and never changes the user's PATH or project files.
 #[command]
-pub fn node_add_executable(
-    request: NodeExecutableRequest,
-    state: State<'_, AppState>,
-) -> AppResult<NodeExecutable> {
+pub fn node_add_executable(request: NodeExecutableRequest, state: State<'_, AppState>) -> AppResult<NodeExecutable> {
     let path = std::path::Path::new(request.executable_path.trim());
     if !path.is_file() {
         return Err(AppError::Other(format!(
@@ -67,14 +61,10 @@ pub fn node_add_executable(
     }
     match request.kind {
         NodeExecutableKind::Node if request.package_manager.is_some() => {
-            return Err(AppError::Other(
-                "Node 注册条目不能携带 packageManager".into(),
-            ));
+            return Err(AppError::Other("Node 注册条目不能携带 packageManager".into()));
         }
         NodeExecutableKind::PackageManager if request.package_manager.is_none() => {
-            return Err(AppError::Other(
-                "包管理器注册条目必须指定 packageManager".into(),
-            ));
+            return Err(AppError::Other("包管理器注册条目必须指定 packageManager".into()));
         }
         _ => {}
     }
@@ -164,15 +154,12 @@ pub fn node_scan_executables(state: State<'_, AppState>) -> AppResult<Vec<NodeSc
         .db
         .lock()
         .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
-    let registered: std::collections::HashSet<String> =
-        crate::node::registry::list_node_executables(&conn)?
-            .into_iter()
-            .map(|entry| crate::node::scan::normalize_path_key(&entry.executable_path))
-            .collect();
+    let registered: std::collections::HashSet<String> = crate::node::registry::list_node_executables(&conn)?
+        .into_iter()
+        .map(|entry| crate::node::scan::normalize_path_key(&entry.executable_path))
+        .collect();
     for candidate in &mut candidates {
-        candidate.registered = registered.contains(&crate::node::scan::normalize_path_key(
-            &candidate.executable_path,
-        ));
+        candidate.registered = registered.contains(&crate::node::scan::normalize_path_key(&candidate.executable_path));
     }
     Ok(candidates)
 }

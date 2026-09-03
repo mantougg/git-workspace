@@ -27,8 +27,8 @@ use crate::runtime::build::runner::MavenRunner;
 use crate::runtime::build::scheduler::BuildScheduler;
 use crate::runtime::build::strategy;
 use crate::runtime::build::{
-    default_strategy, engine_for, BuildContext, BuildEngine, BuildOptions, BuildOutcome,
-    BuildOutputSink, BuildRequest, LaunchPlan, RingTail, RunStrategy,
+    default_strategy, engine_for, BuildContext, BuildEngine, BuildOptions, BuildOutcome, BuildOutputSink, BuildRequest,
+    LaunchPlan, RingTail, RunStrategy,
 };
 use crate::runtime::config;
 use crate::runtime::logs::redact::{sensitive_env_values, LogRedactor};
@@ -285,19 +285,18 @@ pub fn execute_build(
     let local_repository = crate::maven::settings::resolve_local_repository_effective(None);
     let project_dir = strategy::module_directory(root);
     // R-18：mvnd 偏好解析；不可用回退 mvn（可选增强，不构成硬依赖）。
-    let mut resolved =
-        match runner.resolve_maven_for_engine(&project_dir, &local_repository, engine_hint)? {
-            Some(resolved) => resolved,
-            None => {
-                log::warn!("R-18: build_engine=mvnd 但 mvnd 不可用，回退普通 Maven");
-                // 固定提示行（无秘密），直接进 sink 供日志可证。
-                sink.on_line(
-                    OutputStream::Stdout,
-                    "[R-18] mvnd 不可用（未安装或探测失败），本次构建回退普通 Maven",
-                );
-                runner.resolve_maven(&project_dir, &local_repository)?
-            }
-        };
+    let mut resolved = match runner.resolve_maven_for_engine(&project_dir, &local_repository, engine_hint)? {
+        Some(resolved) => resolved,
+        None => {
+            log::warn!("R-18: build_engine=mvnd 但 mvnd 不可用，回退普通 Maven");
+            // 固定提示行（无秘密），直接进 sink 供日志可证。
+            sink.on_line(
+                OutputStream::Stdout,
+                "[R-18] mvnd 不可用（未安装或探测失败），本次构建回退普通 Maven",
+            );
+            runner.resolve_maven(&project_dir, &local_repository)?
+        }
+    };
 
     // ---- 5. Runtime Closure + Reactor ----
     // Scope 来自 Runtime 配置（R-03 §15，缺省 Auto；R-13 起 UI 可调）。
@@ -346,12 +345,7 @@ pub fn execute_build(
             &closure_modules,
             stored.as_ref(),
             &graph.fingerprint,
-            |module| {
-                dep_cache::compute_module_fingerprint(
-                    &module.path,
-                    &strategy::module_directory(module),
-                )
-            },
+            |module| dep_cache::compute_module_fingerprint(&module.path, &strategy::module_directory(module)),
             |module| {
                 // 产物存在性：jar 模块看 target/classes（compile 产物）。
                 strategy::module_directory(module)
@@ -405,8 +399,7 @@ pub fn execute_build(
         if !request.options.affected_modules.is_empty() {
             match build_subset.take() {
                 Some(subset) => {
-                    let mut merged: std::collections::BTreeSet<String> =
-                        subset.into_iter().collect();
+                    let mut merged: std::collections::BTreeSet<String> = subset.into_iter().collect();
                     merged.extend(request.options.affected_modules.iter().cloned());
                     build_subset = Some(merged.into_iter().collect());
                 }
@@ -447,17 +440,15 @@ pub fn execute_build(
             .iter()
             .any(|arg| arg.starts_with("-Dmvnd.idleTimeout="))
     {
-        build_request
-            .extra_args
-            .push(crate::maven::mvnd::idle_timeout_arg());
+        build_request.extra_args.push(crate::maven::mvnd::idle_timeout_arg());
     }
     let build_preview = executor::preview_command(&build_request);
     // R-12：等 permit 期间响应任务取消（排队取消），拿到 permit 后的构建
     // 取消由 runner 的 50ms 轮询负责。
     let _permit = match cancel {
-        Some(flag) => scheduler.acquire_cancelable(flag).ok_or_else(|| {
-            AppError::Task("build cancelled by user（排队等待构建位时取消）".into())
-        })?,
+        Some(flag) => scheduler
+            .acquire_cancelable(flag)
+            .ok_or_else(|| AppError::Task("build cancelled by user（排队等待构建位时取消）".into()))?,
         None => scheduler.acquire(),
     };
     let start = Instant::now();
@@ -468,13 +459,7 @@ pub fn execute_build(
             cancelled: false,
         }
     } else {
-        runner.run(
-            &build_request,
-            &env,
-            &mut redacting,
-            cancel,
-            request.options.timeout,
-        )?
+        runner.run(&build_request, &env, &mut redacting, cancel, request.options.timeout)?
     };
     if let Err(error) = check_exit(&exit, root, &redacting, "build", request.options.timeout) {
         // R-18：mvnd daemon 异常识别 → 回退普通 mvn 重试一次。
@@ -498,30 +483,15 @@ pub fn execute_build(
             Some(resolved.local_repository.clone()),
             build_subset.as_deref(),
         );
-        let retry_exit = runner.run(
-            &retry_request,
-            &env,
-            &mut redacting,
-            cancel,
-            request.options.timeout,
-        )?;
-        check_exit(
-            &retry_exit,
-            root,
-            &redacting,
-            "build",
-            request.options.timeout,
-        )?;
+        let retry_exit = runner.run(&retry_request, &env, &mut redacting, cancel, request.options.timeout)?;
+        check_exit(&retry_exit, root, &redacting, "build", request.options.timeout)?;
     }
     // 构建成功：写入/刷新依赖缓存状态（R-18）。
     if request.options.dependency_cache && !skip_build_call {
         let mut modules = std::collections::BTreeMap::new();
         let mut all_fingerprinted = true;
         for module in &closure.projects {
-            match dep_cache::compute_module_fingerprint(
-                &module.path,
-                &strategy::module_directory(module),
-            ) {
+            match dep_cache::compute_module_fingerprint(&module.path, &strategy::module_directory(module)) {
                 Some(fp) => {
                     modules.insert(strategy::module_ga(module), fp);
                 }
@@ -595,11 +565,9 @@ pub fn execute_build(
     // 构建可能改变了 ~/.m2：best-effort 刷新，失败不影响构建结果。
     {
         let mut conn = db.lock().unwrap();
-        if let Err(error) = crate::maven::refresh_dependency_sources(
-            &mut conn,
-            request.workspace_id,
-            &resolved.local_repository,
-        ) {
+        if let Err(error) =
+            crate::maven::refresh_dependency_sources(&mut conn, request.workspace_id, &resolved.local_repository)
+        {
             log::warn!("R-09: post-build refresh_dependency_sources failed: {error}");
         }
     }
@@ -634,12 +602,7 @@ fn run_user_script(
     const SCRIPT_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
     let hash = crate::runtime::script_approval::script_hash(script);
-    if !approvals.is_approved(
-        request.workspace_id,
-        &request.runtime_name,
-        script_type,
-        &hash,
-    ) {
+    if !approvals.is_approved(request.workspace_id, &request.runtime_name, script_type, &hash) {
         return Err(AppError::ScriptConfirmationRequired {
             workspace_id: request.workspace_id,
             runtime_name: request.runtime_name.clone(),
@@ -652,20 +615,10 @@ fn run_user_script(
     let mut command = user_script_command(script);
     command.current_dir(workspace_root);
     let prefix = format!("[{script_type}-build] ");
-    let exit = spawn_streaming(
-        &mut command,
-        cancel,
-        Some(SCRIPT_TIMEOUT),
-        &mut |stream, line| {
-            sink.on_line(stream, &format!("{prefix}{line}"));
-        },
-    )?;
-    approvals.record_execution(
-        request.workspace_id,
-        &request.runtime_name,
-        script_type,
-        &hash,
-    )?;
+    let exit = spawn_streaming(&mut command, cancel, Some(SCRIPT_TIMEOUT), &mut |stream, line| {
+        sink.on_line(stream, &format!("{prefix}{line}"));
+    })?;
+    approvals.record_execution(request.workspace_id, &request.runtime_name, script_type, &hash)?;
     if exit.exit_code != Some(0) {
         return Err(AppError::ScriptFailed {
             script_type: script_type.to_string(),
@@ -698,10 +651,7 @@ fn user_script_command(script: &str) -> std::process::Command {
 /// 路径匹配对 Windows 分隔符不敏感：R-02 索引把路径统一存为正斜杠
 /// （`path_key`），而用户配置里的 project 可能是反斜杠——相等比较前
 /// 两侧都归一化（Windows 真实 bug 修复，R-14）。
-fn find_root_project<'a>(
-    graph: &'a DependencyGraph,
-    project: &str,
-) -> AppResult<&'a MavenProjectNode> {
+fn find_root_project<'a>(graph: &'a DependencyGraph, project: &str) -> AppResult<&'a MavenProjectNode> {
     let needle = project.replace('\\', "/");
     graph
         .projects
@@ -713,12 +663,7 @@ fn find_root_project<'a>(
                 .iter()
                 .find(|node| node.coordinates.artifact_id == project)
         })
-        .or_else(|| {
-            graph
-                .projects
-                .iter()
-                .find(|node| strategy::module_ga(node) == project)
-        })
+        .or_else(|| graph.projects.iter().find(|node| strategy::module_ga(node) == project))
         .ok_or_else(|| {
             AppError::ProjectNotFound(format!(
                 "Runtime 配置的 project '{project}' 不在当前 Workspace 依赖图中；\
@@ -749,17 +694,10 @@ fn resolve_classpath(
     sink: &mut RedactingSink,
     cancel: Option<&AtomicBool>,
 ) -> AppResult<Vec<PathBuf>> {
-    if let Some(entries) = classpath::cached_classpath(
-        workspace_root,
-        runtime_name,
-        root,
-        graph_fingerprint,
-        local_repository,
-    ) {
-        log::info!(
-            "R-09: classpath cache hit for {}",
-            root.coordinates.artifact_id
-        );
+    if let Some(entries) =
+        classpath::cached_classpath(workspace_root, runtime_name, root, graph_fingerprint, local_repository)
+    {
+        log::info!("R-09: classpath cache hit for {}", root.coordinates.artifact_id);
         return Ok(entries);
     }
 
@@ -778,13 +716,7 @@ fn resolve_classpath(
         Some(local_repository.to_path_buf()),
     );
     let exit = runner.run(&request, env, sink, cancel, options.timeout)?;
-    check_exit(
-        &exit,
-        root,
-        sink,
-        "dependency:build-classpath",
-        options.timeout,
-    )?;
+    check_exit(&exit, root, sink, "dependency:build-classpath", options.timeout)?;
 
     if !output_file.is_file() {
         return Err(AppError::BuildFailed {

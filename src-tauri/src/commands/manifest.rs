@@ -8,9 +8,7 @@ use std::path::Path;
 use rayon::prelude::*;
 use tauri::State;
 
-use crate::core::manifest::{
-    self, ClonePlan, ManifestRepo, WorkspaceManifest, MANIFEST_VERSION,
-};
+use crate::core::manifest::{self, ClonePlan, ManifestRepo, WorkspaceManifest, MANIFEST_VERSION};
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -43,8 +41,7 @@ pub fn export_workspace_manifest(
     let mut repositories: Vec<ManifestRepo> = repos
         .par_iter()
         .map(|repo| {
-            let (remote_url, default_branch) =
-                manifest::read_remote_info(Path::new(&repo.path));
+            let (remote_url, default_branch) = manifest::read_remote_info(Path::new(&repo.path));
             ManifestRepo {
                 path: repo.relative_path.replace('\\', "/"),
                 name: repo.name.clone(),
@@ -77,9 +74,8 @@ pub fn export_workspace_manifest(
 /// Read and validate a manifest file chosen via the frontend open dialog.
 #[tauri::command]
 pub fn read_manifest_file(file_path: String) -> AppResult<WorkspaceManifest> {
-    let content = std::fs::read_to_string(&file_path).map_err(|e| {
-        AppError::Other(format!("无法读取 Manifest 文件 {}: {}", file_path, e))
-    })?;
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| AppError::Other(format!("无法读取 Manifest 文件 {}: {}", file_path, e)))?;
     manifest::parse_manifest(&content)
 }
 
@@ -88,16 +84,10 @@ pub fn read_manifest_file(file_path: String) -> AppResult<WorkspaceManifest> {
 /// destination already exists, and which have no remote URL. The frontend
 /// then submits the `Clone` entries as `TaskType::Clone` tasks.
 #[tauri::command]
-pub fn plan_manifest_clone(
-    manifest: WorkspaceManifest,
-    workspace_root: String,
-) -> AppResult<ClonePlan> {
+pub fn plan_manifest_clone(manifest: WorkspaceManifest, workspace_root: String) -> AppResult<ClonePlan> {
     let root = Path::new(&workspace_root);
     if !root.is_dir() {
-        return Err(AppError::Other(format!(
-            "目标目录不存在或不是目录: {}",
-            workspace_root
-        )));
+        return Err(AppError::Other(format!("目标目录不存在或不是目录: {}", workspace_root)));
     }
     manifest::build_clone_plan(&manifest, root)
 }

@@ -3,13 +3,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
-use crate::maven::{
-    DependencyEdge, MavenModuleLink, MavenProjectNode, RuntimeClosure, SourceMapping,
-};
+use crate::maven::{DependencyEdge, MavenModuleLink, MavenProjectNode, RuntimeClosure, SourceMapping};
 use crate::models::task::RuntimeTaskOptions;
-use crate::runtime::build::scheduler::{
-    DEFAULT_MAX_CONCURRENT_BUILDS, DEFAULT_MAX_CONCURRENT_RESOLVES,
-};
+use crate::runtime::build::scheduler::{DEFAULT_MAX_CONCURRENT_BUILDS, DEFAULT_MAX_CONCURRENT_RESOLVES};
 use crate::runtime::config;
 use crate::runtime::logs::LogFilter;
 
@@ -51,19 +47,11 @@ impl SchedulerConfig {
             Ok(text) => match serde_json::from_str::<SchedulerConfig>(&text) {
                 Ok(config) => {
                     let config = config.sanitized();
-                    log::info!(
-                        "R-12: scheduler config loaded from {:?}: {:?}",
-                        path,
-                        config
-                    );
+                    log::info!("R-12: scheduler config loaded from {:?}: {:?}", path, config);
                     config
                 }
                 Err(e) => {
-                    log::warn!(
-                        "R-12: invalid scheduler config {:?}: {}; using defaults",
-                        path,
-                        e
-                    );
+                    log::warn!("R-12: invalid scheduler config {:?}: {}; using defaults", path, e);
                     Self::default()
                 }
             },

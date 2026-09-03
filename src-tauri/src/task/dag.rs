@@ -29,9 +29,7 @@ use tauri::AppHandle;
 
 use crate::db::dao;
 use crate::error::AppResult;
-use crate::models::task::{
-    BatchState, DagEdge, DagGraph, DagNodeInfo, FailurePolicy, NodeCondition, Task, TaskStatus,
-};
+use crate::models::task::{BatchState, DagEdge, DagGraph, DagNodeInfo, FailurePolicy, NodeCondition, Task, TaskStatus};
 use crate::task::queue::TaskMessage;
 use crate::task::worker;
 
@@ -150,11 +148,7 @@ impl DagState {
             remaining[node] += 1;
             dependents[dep].push(node);
         }
-        let index = nodes
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (n.task_id.clone(), i))
-            .collect();
+        let index = nodes.iter().enumerate().map(|(i, n)| (n.task_id.clone(), i)).collect();
 
         Ok(DagState {
             id,
@@ -334,10 +328,7 @@ impl DagState {
 pub fn validate_edges(node_count: usize, edges: &[(usize, usize)]) -> Result<(), String> {
     for &(dep, node) in edges {
         if dep >= node_count || node >= node_count {
-            return Err(format!(
-                "依赖序号越界：{} -> {}（共 {} 个节点）",
-                dep, node, node_count
-            ));
+            return Err(format!("依赖序号越界：{} -> {}（共 {} 个节点）", dep, node, node_count));
         }
         if dep == node {
             return Err(format!("节点 {} 不能依赖自身", node));
@@ -387,11 +378,9 @@ pub struct DagContext<'a> {
 /// intermediate state is persisted).
 fn evaluate_condition(condition: &NodeCondition, repo_path: &str) -> bool {
     match condition {
-        NodeCondition::RepoClean => crate::core::git_status::get_repo_status(
-            std::path::Path::new(repo_path),
-        )
-        .map(|s| s.is_clean)
-        .unwrap_or(false),
+        NodeCondition::RepoClean => crate::core::git_status::get_repo_status(std::path::Path::new(repo_path))
+            .map(|s| s.is_clean)
+            .unwrap_or(false),
     }
 }
 
@@ -486,13 +475,7 @@ pub fn apply_outcome(dag: &mut DagState, outcome: DagOutcome, ctx: &DagContext<'
 /// Mark a node finished without worker involvement (skipped / cancelled
 /// while pending): update the task row, persist, emit, and account it into
 /// the batch aggregate exactly once.
-fn finalize_node_as(
-    dag: &mut DagState,
-    idx: usize,
-    status: TaskStatus,
-    skipped: bool,
-    ctx: &DagContext<'_>,
-) {
+fn finalize_node_as(dag: &mut DagState, idx: usize, status: TaskStatus, skipped: bool, ctx: &DagContext<'_>) {
     let node = &mut dag.nodes[idx];
     if skipped {
         node.skipped = true;
@@ -681,9 +664,8 @@ pub fn build_graph(dag: &DagState) -> DagGraph {
 pub(crate) fn insert_task_dependencies(conn: &Connection, edges: &[(i64, i64)]) -> AppResult<()> {
     let tx = conn.unchecked_transaction()?;
     {
-        let mut stmt = tx.prepare(
-            "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?1, ?2)",
-        )?;
+        let mut stmt =
+            tx.prepare("INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id) VALUES (?1, ?2)")?;
         for (task_row, dep_row) in edges {
             stmt.execute(params![task_row, dep_row])?;
         }

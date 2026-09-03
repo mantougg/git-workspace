@@ -18,13 +18,13 @@ use tauri::State;
 
 use crate::error::{AppError, AppResult};
 use crate::java::detect::{java_exec_for_home, javac_exec_for_home};
+use crate::java::discover_jdks as run_discover;
 use crate::java::model::{JdkDiscoverySource, JdkInstallation};
 use crate::java::registry::{
-    apply_version, get_jdk as get_jdk_row, list_jdks as list_jdk_rows, mark_validity,
-    prune_invalid_homes, remove_jdk as remove_jdk_row, upsert_jdk, upsert_jdks_batch,
+    apply_version, get_jdk as get_jdk_row, list_jdks as list_jdk_rows, mark_validity, prune_invalid_homes,
+    remove_jdk as remove_jdk_row, upsert_jdk, upsert_jdks_batch,
 };
 use crate::java::version::{parse_java_version, JdkVersionInfo};
-use crate::java::discover_jdks as run_discover;
 use crate::state::AppState;
 
 /// 锁 DB 句柄的样板，错误统一包成 `Other`（与既有命令一致）。
@@ -72,10 +72,7 @@ pub fn get_jdk(state: State<'_, AppState>, id: i64) -> AppResult<Option<JdkInsta
 /// 可行动提示）。校验通过但 `java -version` 探测失败也入库（`is_valid=false`），
 /// 便于用户排查后重检，而非静默丢弃。
 #[tauri::command]
-pub fn add_jdk_manual(
-    state: State<'_, AppState>,
-    home_path: String,
-) -> AppResult<JdkInstallation> {
+pub fn add_jdk_manual(state: State<'_, AppState>, home_path: String) -> AppResult<JdkInstallation> {
     let home = Path::new(&home_path);
     if !home.is_dir() {
         return Err(AppError::JdkNotFound(format!(
@@ -91,10 +88,7 @@ pub fn add_jdk_manual(
     // fork `java -version` 探测版本（手动添加时立即探测，给用户即时反馈）。
     let (info, is_valid) = probe_version(&java_exec);
     let canon = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
-    let mut jdk = JdkInstallation::new(
-        canon.to_string_lossy().to_string(),
-        JdkDiscoverySource::Manual,
-    );
+    let mut jdk = JdkInstallation::new(canon.to_string_lossy().to_string(), JdkDiscoverySource::Manual);
     jdk.major_version = info.major_version;
     jdk.full_version = info.full_version;
     jdk.vendor = info.vendor;
@@ -104,11 +98,7 @@ pub fn add_jdk_manual(
     jdk.javac_exec = javac_exec.map(|p| p.to_string_lossy().to_string());
     jdk.is_valid = is_valid;
     jdk.last_checked = chrono::Utc::now().to_rfc3339();
-    jdk.raw_version = if info.raw.is_empty() {
-        None
-    } else {
-        Some(info.raw)
-    };
+    jdk.raw_version = if info.raw.is_empty() { None } else { Some(info.raw) };
 
     let conn = lock_db(&state)?;
     upsert_jdk(&conn, &jdk)?;
@@ -127,8 +117,7 @@ pub fn add_jdk_manual(
 pub fn validate_jdk(state: State<'_, AppState>, id: i64) -> AppResult<JdkInstallation> {
     let existing = {
         let conn = lock_db(&state)?;
-        get_jdk_row(&conn, id)?
-            .ok_or_else(|| AppError::JdkNotFound(format!("JDK id={id} 不在注册表中")))?
+        get_jdk_row(&conn, id)?.ok_or_else(|| AppError::JdkNotFound(format!("JDK id={id} 不在注册表中")))?
     };
 
     let home = Path::new(&existing.home_path);
@@ -158,11 +147,7 @@ pub fn validate_jdk(state: State<'_, AppState>, id: i64) -> AppResult<JdkInstall
     probed.bitness = info.bitness;
     probed.is_valid = is_valid;
     probed.last_checked = now.clone();
-    probed.raw_version = if info.raw.is_empty() {
-        None
-    } else {
-        Some(info.raw)
-    };
+    probed.raw_version = if info.raw.is_empty() { None } else { Some(info.raw) };
     let conn = lock_db(&state)?;
     apply_version(&conn, id, &probed, &now)?;
     Ok(probed)
@@ -209,6 +194,5 @@ fn probe_version(java_exec: &Path) -> (JdkVersionInfo, bool) {
 }
 
 fn existing_after_update(conn: &Connection, id: i64) -> AppResult<JdkInstallation> {
-    get_jdk_row(conn, id)?
-        .ok_or_else(|| AppError::JdkNotFound(format!("JDK id={id} 不在注册表中")))
+    get_jdk_row(conn, id)?.ok_or_else(|| AppError::JdkNotFound(format!("JDK id={id} 不在注册表中")))
 }

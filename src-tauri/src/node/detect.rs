@@ -28,8 +28,7 @@ const PROBE_TIMEOUT_SECS: u64 = 10;
 pub fn detect_node() -> AppResult<ToolDetection> {
     let exe = find_in_path("node").ok_or_else(|| {
         AppError::NodeNotFound(
-            "PATH 上未找到 node 可执行文件。请安装 Node.js LTS 并把 node 加入 PATH 后重试。"
-                .to_string(),
+            "PATH 上未找到 node 可执行文件。请安装 Node.js LTS 并把 node 加入 PATH 后重试。".to_string(),
         )
     })?;
     Ok(probe_tool(&exe))
@@ -83,8 +82,7 @@ pub fn resolve_package_manager_with_registry(
     if decision.manager == PackageManager::Bun {
         return resolve_package_manager(decision);
     }
-    if let Some(entry) = crate::node::registry::find_valid_package_manager(conn, decision.manager)?
-    {
+    if let Some(entry) = crate::node::registry::find_valid_package_manager(conn, decision.manager)? {
         return Ok(ToolDetection {
             executable: std::path::PathBuf::from(entry.executable_path),
             version: entry.version,
@@ -201,14 +199,10 @@ mod tests {
         // 裸名（Unix shim）与 .cmd 并存：Windows 必须命中 .cmd，Unix 命中裸名。
         std::fs::write(tmp.join("npm"), b"#!/bin/sh\n").unwrap();
         std::fs::write(tmp.join("npm.cmd"), b"@echo off\n").unwrap();
-        let found =
-            find_executable_in_dirs("npm", std::slice::from_ref(&tmp)).expect("npm must be found");
+        let found = find_executable_in_dirs("npm", std::slice::from_ref(&tmp)).expect("npm must be found");
         let name = found.file_name().unwrap().to_string_lossy().to_string();
         if cfg!(windows) {
-            assert_eq!(
-                name, "npm.cmd",
-                "Windows 必须先命中 .cmd 候选（os error 193 防线）"
-            );
+            assert_eq!(name, "npm.cmd", "Windows 必须先命中 .cmd 候选（os error 193 防线）");
         } else {
             assert_eq!(name, "npm", "Unix 回退裸名");
         }
@@ -276,10 +270,7 @@ mod tests {
             );
             return;
         }
-        assert!(
-            detection.version.is_some(),
-            "real node must yield a version"
-        );
+        assert!(detection.version.is_some(), "real node must yield a version");
         eprintln!(
             "N-01 real probe: node={:?} version={:?}",
             detection.executable, detection.version
@@ -346,10 +337,7 @@ mod tests {
             match err {
                 AppError::PackageManagerNotFound(msg) => {
                     assert!(msg.contains(pm.name()), "error must name the pm: {msg}");
-                    assert!(
-                        msg.contains("决策来源"),
-                        "error must carry decision source: {msg}"
-                    );
+                    assert!(msg.contains("决策来源"), "error must carry decision source: {msg}");
                 }
                 other => panic!("expected PackageManagerNotFound, got {other:?}"),
             }
@@ -389,10 +377,7 @@ mod tests {
         });
         let detection = probe_tool(&missing);
         assert!(!detection.probe_ok);
-        assert!(
-            detection.version.is_none(),
-            "probe failure degrades to 未知版本"
-        );
+        assert!(detection.version.is_none(), "probe failure degrades to 未知版本");
         assert!(detection.raw_output.contains("probe error"));
     }
 }

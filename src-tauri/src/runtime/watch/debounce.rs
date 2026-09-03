@@ -20,11 +20,7 @@ pub(super) fn collect_event_paths(event: notify::Event) -> Vec<PathBuf> {
 
 /// 静默窗口收集：以 `first` 为起点，在 `window` 内继续收积后续突发，
 /// 窗口耗尽或通道关闭即返回。返回合并后的全部路径。
-pub(super) fn collect_batch(
-    rx: &Receiver<Vec<PathBuf>>,
-    first: Vec<PathBuf>,
-    window: Duration,
-) -> Vec<PathBuf> {
+pub(super) fn collect_batch(rx: &Receiver<Vec<PathBuf>>, first: Vec<PathBuf>, window: Duration) -> Vec<PathBuf> {
     let mut paths = first;
     let deadline = std::time::Instant::now() + window;
     loop {

@@ -19,9 +19,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
-use crate::models::task::{
-    DagNodeRequest, DagSubmitRequest, FailurePolicy, NodeCondition, TaskRequest, TaskType,
-};
+use crate::models::task::{DagNodeRequest, DagSubmitRequest, FailurePolicy, NodeCondition, TaskRequest, TaskType};
 use crate::task::dag::{DagState, NodeState};
 
 // ---------------------------------------------------------------------------
@@ -79,8 +77,12 @@ pub enum StepKind {
     Fetch,
     CheckStatus,
     Pull,
-    Build { command: String },
-    Test { command: String },
+    Build {
+        command: String,
+    },
+    Test {
+        command: String,
+    },
     /// Virtual barrier step: no task of its own; the run report treats it as
     /// the aggregation point over all upstream nodes.
     Report,
@@ -120,11 +122,7 @@ pub fn validate_pipeline(pipeline: &Pipeline) -> Result<(), String> {
     if pipeline.steps.is_empty() {
         return Err("Pipeline 至少需要一个步骤".to_string());
     }
-    if !pipeline
-        .steps
-        .iter()
-        .any(|s| !matches!(s.kind, StepKind::Report))
-    {
+    if !pipeline.steps.iter().any(|s| !matches!(s.kind, StepKind::Report)) {
         return Err("Pipeline 至少需要一个可执行步骤（Report 是虚拟汇聚步骤）".to_string());
     }
 
@@ -156,10 +154,7 @@ pub fn validate_pipeline(pipeline: &Pipeline) -> Result<(), String> {
                 .iter()
                 .any(|x| &x.id == dep && matches!(x.kind, StepKind::Report))
             {
-                return Err(format!(
-                    "步骤「{}」不能依赖 Report 步骤（虚拟汇聚步骤无任务）",
-                    s.name
-                ));
+                return Err(format!("步骤「{}」不能依赖 Report 步骤（虚拟汇聚步骤无任务）", s.name));
             }
         }
     }
@@ -183,8 +178,7 @@ pub fn validate_pipeline(pipeline: &Pipeline) -> Result<(), String> {
             dependents[u].push(i);
         }
     }
-    let mut queue: std::collections::VecDeque<usize> =
-        (0..exec.len()).filter(|&i| indeg[i] == 0).collect();
+    let mut queue: std::collections::VecDeque<usize> = (0..exec.len()).filter(|&i| indeg[i] == 0).collect();
     let mut visited = 0usize;
     while let Some(i) = queue.pop_front() {
         visited += 1;
@@ -278,8 +272,7 @@ pub fn compile_pipeline(
                         .iter()
                         .position(|x| &x.id == u)
                         .ok_or_else(|| format!("步骤「{}」的上游解析失败：{}", s.name, u))?;
-                    Ok(u_pos * repos.len()
-                        + repos.iter().position(|x| x.repo_path == r.repo_path).unwrap())
+                    Ok(u_pos * repos.len() + repos.iter().position(|x| x.repo_path == r.repo_path).unwrap())
                 })
                 .collect::<Result<Vec<usize>, String>>()?;
             nodes.push(DagNodeRequest {
@@ -323,9 +316,8 @@ pub fn sample_pipeline() -> Pipeline {
     Pipeline {
         id: String::new(),
         name: "示例：Fetch → Check → Pull Clean → Build → Test → Report".to_string(),
-        description:
-            "内置示例流（T-23）：抓取全部仓库 → 检查状态 → 仅干净仓库 Pull → 构建 → 测试 → 汇总报告"
-                .to_string(),
+        description: "内置示例流（T-23）：抓取全部仓库 → 检查状态 → 仅干净仓库 Pull → 构建 → 测试 → 汇总报告"
+            .to_string(),
         steps: vec![
             step("fetch-all", "Fetch All", StepKind::Fetch),
             step("check-status", "Check Status", StepKind::CheckStatus),
@@ -563,15 +555,7 @@ pub fn build_run_report(run_id: &str, pipeline: &Pipeline, dag: &DagState) -> Pi
             step_id: step.id.clone(),
             name: step.name.clone(),
             kind: step.kind.label().to_string(),
-            status: aggregate_status(
-                total,
-                succ,
-                fail,
-                skip,
-                cancel,
-                finished_count == total,
-                any_started,
-            ),
+            status: aggregate_status(total, succ, fail, skip, cancel, finished_count == total, any_started),
             total,
             succeeded: succ,
             failed: fail,
@@ -600,15 +584,7 @@ pub fn build_run_report(run_id: &str, pipeline: &Pipeline, dag: &DagState) -> Pi
     }
     let total = exec_nodes.len();
     let finished_all = succ + fail + skip + cancel == total;
-    let run_status = aggregate_status(
-        total,
-        succ,
-        fail,
-        skip,
-        cancel,
-        finished_all,
-        run_started.is_some(),
-    );
+    let run_status = aggregate_status(total, succ, fail, skip, cancel, finished_all, run_started.is_some());
 
     // Fill the virtual Report step with the run aggregate.
     for s in steps.iter_mut() {
@@ -718,9 +694,7 @@ mod tests {
         assert!(validate_pipeline(&missing).is_err(), "missing dep ref");
 
         let mut empty_cmd = p.clone();
-        empty_cmd.steps[3].kind = StepKind::Build {
-            command: "  ".into(),
-        };
+        empty_cmd.steps[3].kind = StepKind::Build { command: "  ".into() };
         assert!(validate_pipeline(&empty_cmd).is_err(), "empty build command");
 
         let mut cycle = p.clone();
@@ -763,10 +737,7 @@ mod tests {
         let build = &dag.nodes[6];
         assert_eq!(build.max_attempts, 3);
         match &build.task.task_type {
-            TaskType::ShellCommand {
-                command,
-                timeout_secs,
-            } => {
+            TaskType::ShellCommand { command, timeout_secs } => {
                 assert_eq!(command, "cargo build");
                 assert_eq!(*timeout_secs, Some(120));
             }

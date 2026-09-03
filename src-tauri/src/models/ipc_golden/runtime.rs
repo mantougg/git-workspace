@@ -8,14 +8,13 @@ use crate::commands::logs;
 use crate::error::AppError;
 use crate::java::model as jdk_model;
 use crate::maven::{
-    closure as maven_closure, exec_model as maven_exec_model, index as maven_index,
-    model as maven_model, reactor as maven_reactor, resolver as maven_resolver,
+    closure as maven_closure, exec_model as maven_exec_model, index as maven_index, model as maven_model,
+    reactor as maven_reactor, resolver as maven_resolver,
 };
 use crate::models::task;
 use crate::runtime::{
-    config as runtime_config, events as runtime_events, launch as runtime_launch,
-    logs as runtime_logs, script_approval as runtime_script_approval, service as runtime_service,
-    spring_boot as spring_boot_model,
+    config as runtime_config, events as runtime_events, launch as runtime_launch, logs as runtime_logs,
+    script_approval as runtime_script_approval, service as runtime_service, spring_boot as spring_boot_model,
 };
 use serde_json::{json, Map, Value};
 
@@ -139,10 +138,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         }),
         auto_restart: Some(true),
     };
-    m.insert(
-        "RuntimeApplicationConfig".into(),
-        json!(runtime_sample.clone()),
-    );
+    m.insert("RuntimeApplicationConfig".into(), json!(runtime_sample.clone()));
     m.insert(
         "RuntimeConfigSummary".into(),
         json!(runtime_config::RuntimeConfigSummary {
@@ -581,10 +577,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 depends_on: vec!["auth".into()],
                 jdk: Some("21".into()),
                 profile: Some("dev".into()),
-                environment: BTreeMap::from([(
-                    "GATEWAY_UPSTREAM".into(),
-                    "http://auth:8081".into()
-                )]),
+                environment: BTreeMap::from([("GATEWAY_UPSTREAM".into(), "http://auth:8081".into())]),
                 port: Some(8080),
                 external_notes: Some("依赖外部 MySQL".into()),
                 ready_timeout_seconds: Some(90),
@@ -925,9 +918,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     );
     m.insert(
         "JdkNotFoundError".into(),
-        json!(AppError::JdkNotFound(
-            "未在 /opt/jdk/bin 下找到 java 可执行文件".into()
-        )),
+        json!(AppError::JdkNotFound("未在 /opt/jdk/bin 下找到 java 可执行文件".into())),
     );
 
     // R-05 Maven 检测与执行策略 model
@@ -1023,11 +1014,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
 /// Domain portion of `TS_TYPE_MAP`; merged in the parent module.
 pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     // N-09 统一项目视图
-    (
-        "UnifiedProjectNode",
-        "types/runtime.ts",
-        "UnifiedProjectNode",
-    ),
+    ("UnifiedProjectNode", "types/runtime.ts", "UnifiedProjectNode"),
     (
         "UnifiedNodeProjectPayload",
         "types/runtime.ts",
@@ -1042,16 +1029,8 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("MavenProject", "types/maven.ts", "MavenProject"),
     ("PomCoordinates", "types/maven.ts", "MavenCoordinates"),
     // R-06 Spring Boot application discovery
-    (
-        "SpringBootCandidate",
-        "types/springBoot.ts",
-        "SpringBootCandidate",
-    ),
-    (
-        "SpringBootProject",
-        "types/springBoot.ts",
-        "SpringBootProject",
-    ),
+    ("SpringBootCandidate", "types/springBoot.ts", "SpringBootCandidate"),
+    ("SpringBootProject", "types/springBoot.ts", "SpringBootProject"),
     (
         "SpringBootWorkspaceResult",
         "types/springBoot.ts",
@@ -1063,11 +1042,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/runtime.ts",
         "RuntimeApplicationConfig",
     ),
-    (
-        "RuntimeConfigSummary",
-        "types/runtime.ts",
-        "RuntimeConfigSummary",
-    ),
+    ("RuntimeConfigSummary", "types/runtime.ts", "RuntimeConfigSummary"),
     (
         "CreateRuntimeConfigRequest",
         "types/runtime.ts",
@@ -1085,11 +1060,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("SourceMapping", "types/maven.ts", "SourceMapping"),
     ("DependencyEdge", "types/maven.ts", "DependencyEdge"),
     // R-12 Runtime IPC / Event API（§63/§64/§66）
-    (
-        "RuntimeProcessInfo",
-        "types/runtime.ts",
-        "RuntimeProcessInfo",
-    ),
+    ("RuntimeProcessInfo", "types/runtime.ts", "RuntimeProcessInfo"),
     ("LogLine", "types/runtime.ts", "LogLine"),
     ("LogEntry", "types/runtime.ts", "LogEntry"),
     ("LogExportOutcome", "types/runtime.ts", "LogExportOutcome"),
@@ -1104,73 +1075,21 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/runtime.ts",
         "DependencyResolvedPayload",
     ),
-    (
-        "BuildStartedPayload",
-        "types/runtime.ts",
-        "BuildStartedPayload",
-    ),
-    (
-        "BuildProgressPayload",
-        "types/runtime.ts",
-        "BuildProgressPayload",
-    ),
-    (
-        "BuildCompletedPayload",
-        "types/runtime.ts",
-        "BuildCompletedPayload",
-    ),
-    (
-        "ProcessStartedPayload",
-        "types/runtime.ts",
-        "ProcessStartedPayload",
-    ),
-    (
-        "ProcessOutputPayload",
-        "types/runtime.ts",
-        "ProcessOutputPayload",
-    ),
-    (
-        "ProcessStoppedPayload",
-        "types/runtime.ts",
-        "ProcessStoppedPayload",
-    ),
-    (
-        "ProcessFailedPayload",
-        "types/runtime.ts",
-        "ProcessFailedPayload",
-    ),
-    (
-        "HealthChangedPayload",
-        "types/runtime.ts",
-        "HealthChangedPayload",
-    ),
-    (
-        "FileChangedPayload",
-        "types/runtime.ts",
-        "FileChangedPayload",
-    ),
-    (
-        "RestartStartedPayload",
-        "types/runtime.ts",
-        "RestartStartedPayload",
-    ),
-    (
-        "RestartCompletedPayload",
-        "types/runtime.ts",
-        "RestartCompletedPayload",
-    ),
-    (
-        "RuntimeOperationRequest",
-        "types/runtime.ts",
-        "RuntimeOperationRequest",
-    ),
+    ("BuildStartedPayload", "types/runtime.ts", "BuildStartedPayload"),
+    ("BuildProgressPayload", "types/runtime.ts", "BuildProgressPayload"),
+    ("BuildCompletedPayload", "types/runtime.ts", "BuildCompletedPayload"),
+    ("ProcessStartedPayload", "types/runtime.ts", "ProcessStartedPayload"),
+    ("ProcessOutputPayload", "types/runtime.ts", "ProcessOutputPayload"),
+    ("ProcessStoppedPayload", "types/runtime.ts", "ProcessStoppedPayload"),
+    ("ProcessFailedPayload", "types/runtime.ts", "ProcessFailedPayload"),
+    ("HealthChangedPayload", "types/runtime.ts", "HealthChangedPayload"),
+    ("FileChangedPayload", "types/runtime.ts", "FileChangedPayload"),
+    ("RestartStartedPayload", "types/runtime.ts", "RestartStartedPayload"),
+    ("RestartCompletedPayload", "types/runtime.ts", "RestartCompletedPayload"),
+    ("RuntimeOperationRequest", "types/runtime.ts", "RuntimeOperationRequest"),
     ("RuntimeLogQuery", "types/runtime.ts", "RuntimeLogQuery"),
     ("ProjectInspection", "types/runtime.ts", "ProjectInspection"),
-    (
-        "DependencyGraphView",
-        "types/runtime.ts",
-        "DependencyGraphView",
-    ),
+    ("DependencyGraphView", "types/runtime.ts", "DependencyGraphView"),
     ("SchedulerConfig", "types/runtime.ts", "SchedulerConfig"),
     // R-16 §41/§81 健康检查 + 端口管理
     ("HealthSnapshot", "types/runtime.ts", "HealthSnapshot"),
@@ -1179,16 +1098,8 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("PortKillOutcome", "types/runtime.ts", "PortKillOutcome"),
     ("PortOccupier", "types/runtime.ts", "PortOccupier"),
     // R-15 环境编排
-    (
-        "RuntimeEnvironment",
-        "types/runtime.ts",
-        "RuntimeEnvironment",
-    ),
-    (
-        "EnvironmentService",
-        "types/runtime.ts",
-        "EnvironmentService",
-    ),
+    ("RuntimeEnvironment", "types/runtime.ts", "RuntimeEnvironment"),
+    ("EnvironmentService", "types/runtime.ts", "EnvironmentService"),
     (
         "EnvironmentProgressPayload",
         "types/runtime.ts",
@@ -1211,11 +1122,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "types/runtime.ts",
         "DependencyChangedPayload",
     ),
-    (
-        "RuntimeRunningBrief",
-        "types/runtime.ts",
-        "RuntimeRunningBrief",
-    ),
+    ("RuntimeRunningBrief", "types/runtime.ts", "RuntimeRunningBrief"),
     // R-13 Runtime Scope 预览
     ("ClosurePreview", "types/runtime.ts", "ClosurePreview"),
     // R-14 §75 Command Safety 脚本确认
@@ -1232,11 +1139,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("MavenVersionInfo", "types/maven.ts", "MavenVersionInfo"),
     ("MavenExecutable", "types/maven.ts", "MavenExecutable"),
     ("ResolvedMaven", "types/maven.ts", "ResolvedMaven"),
-    (
-        "MavenExecutionRequest",
-        "types/maven.ts",
-        "MavenExecutionRequest",
-    ),
+    ("MavenExecutionRequest", "types/maven.ts", "MavenExecutionRequest"),
     ("TaskType", "types/task.ts", "TaskType"),
     ("RuntimeTaskOptions", "types/task.ts", "RuntimeTaskOptions"),
     ("TaskStatus", "types/task.ts", "TaskStatus"),
@@ -1250,16 +1153,8 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("WorktreeInfo", "types/worktree.ts", "WorktreeInfo"),
     ("DryRunItem", "types/batch.ts", "DryRunItem"),
     ("Workspace", "types/workspace.ts", "Workspace"),
-    (
-        "CreateWorkspaceRequest",
-        "types/workspace.ts",
-        "CreateWorkspaceRequest",
-    ),
-    (
-        "UpdateWorkspaceRequest",
-        "types/workspace.ts",
-        "UpdateWorkspaceRequest",
-    ),
+    ("CreateWorkspaceRequest", "types/workspace.ts", "CreateWorkspaceRequest"),
+    ("UpdateWorkspaceRequest", "types/workspace.ts", "UpdateWorkspaceRequest"),
     ("RepoGroup", "types/group.ts", "RepoGroup"),
     ("CreateGroupRequest", "types/group.ts", "CreateGroupRequest"),
     ("FileDiff", "types/git.ts", "FileDiff"),

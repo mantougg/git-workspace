@@ -8,12 +8,12 @@
 use serde_json::json;
 
 use super::super::error::AiError;
-use super::SseAction;
 use super::super::request::{AiTokenUsage, MessageRole};
 use super::super::transport::BoxFuture;
+use super::SseAction;
 use super::{
-    endpoint_url, parse_json_body, read_body_limited, send_json, AdapterCall, AdapterContext,
-    AiProviderAdapter, MAX_RESPONSE_BODY_BYTES, ProviderRequest, ProviderResponse, ProviderStream,
+    endpoint_url, parse_json_body, read_body_limited, send_json, AdapterCall, AdapterContext, AiProviderAdapter,
+    ProviderRequest, ProviderResponse, ProviderStream, MAX_RESPONSE_BODY_BYTES,
 };
 use crate::ai::provider::ApiType;
 use crate::error::AppResult;
@@ -115,10 +115,7 @@ fn parse_completion(value: &serde_json::Value) -> Result<ProviderResponse, AiErr
         .and_then(|c| c.as_str())
         .unwrap_or_default()
         .to_string();
-    let finish_reason = choice
-        .get("finish_reason")
-        .and_then(|f| f.as_str())
-        .map(String::from);
+    let finish_reason = choice.get("finish_reason").and_then(|f| f.as_str()).map(String::from);
     Ok(ProviderResponse {
         text,
         finish_reason,
@@ -168,8 +165,8 @@ fn map_chat_event(event: &super::sse::SseEvent) -> super::SseAction {
 #[cfg(test)]
 mod tests {
     use super::super::SseAction;
-    use crate::ai::request::AiMessage;
     use super::*;
+    use crate::ai::request::AiMessage;
 
     fn req() -> ProviderRequest {
         ProviderRequest {
@@ -214,10 +211,7 @@ mod tests {
     #[test]
     fn parse_completion_rejects_missing_choices() {
         let v = serde_json::json!({"error": {"code": "x"}});
-        assert!(matches!(
-            parse_completion(&v),
-            Err(AiError::ResponseInvalid { .. })
-        ));
+        assert!(matches!(parse_completion(&v), Err(AiError::ResponseInvalid { .. })));
     }
 
     #[test]
@@ -241,9 +235,6 @@ mod tests {
             event: None,
             data: r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#.into(),
         };
-        assert!(matches!(
-            map_chat_event(&finish),
-            SseAction::Finish { .. }
-        ));
+        assert!(matches!(map_chat_event(&finish), SseAction::Finish { .. }));
     }
 }

@@ -45,11 +45,7 @@ impl SshCredentials {
         let key_paths = self.key_paths.clone();
 
         callbacks.credentials(move |url, username, _allowed_types| {
-            log::debug!(
-                "Credentials requested for {} (user: {:?})",
-                url,
-                username
-            );
+            log::debug!("Credentials requested for {} (user: {:?})", url, username);
 
             // 1. Try SSH Agent
             if let Some(user) = username {
@@ -75,11 +71,7 @@ impl SshCredentials {
                             return Ok(cred);
                         }
                         Err(e) => {
-                            log::warn!(
-                                "Failed to use SSH key {:?}: {}",
-                                key_path,
-                                e
-                            );
+                            log::warn!("Failed to use SSH key {:?}: {}", key_path, e);
                         }
                     }
                 }

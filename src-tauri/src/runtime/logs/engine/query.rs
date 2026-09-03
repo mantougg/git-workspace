@@ -131,8 +131,7 @@ impl RuntimeLogEngine {
         let mut writer = BufWriter::new(File::create(dest)?);
         let mut lines = 0u64;
         for_each_file_line(&paths, |_, text| {
-            if matches_filter(filter, parse_level(text), text) && writeln!(writer, "{text}").is_ok()
-            {
+            if matches_filter(filter, parse_level(text), text) && writeln!(writer, "{text}").is_ok() {
                 lines += 1;
             }
             true
@@ -145,12 +144,7 @@ impl RuntimeLogEngine {
     }
 
     /// 清空（§36）：活跃会话按序经 worker 截断；已结束会话直接清理段文件。
-    pub fn clear(
-        &self,
-        workspace_root: &Path,
-        runtime_name: &str,
-        process_id: i64,
-    ) -> AppResult<()> {
+    pub fn clear(&self, workspace_root: &Path, runtime_name: &str, process_id: i64) -> AppResult<()> {
         if let Some(session) = self.session(process_id) {
             session.request_clear();
             return Ok(());
@@ -203,12 +197,7 @@ impl RuntimeLogEngine {
     }
 
     /// 段文件清单（最旧 → 最新）；一个段都不存在时报可行动错误。
-    fn require_segments(
-        &self,
-        workspace_root: &Path,
-        runtime_name: &str,
-        process_id: i64,
-    ) -> AppResult<Vec<PathBuf>> {
+    fn require_segments(&self, workspace_root: &Path, runtime_name: &str, process_id: i64) -> AppResult<Vec<PathBuf>> {
         let dir = logs_dir(workspace_root, runtime_name)?;
         let paths = segment_paths(&dir, process_id, self.limits.segments_kept);
         if paths.is_empty() {

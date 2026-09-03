@@ -54,8 +54,8 @@ pub fn cherry_pick(repo_path: &Path, oids: &[String]) -> AppResult<PickOutcome> 
     let total = oids.len();
 
     for (idx, oid_str) in oids.iter().enumerate() {
-        let oid = git2::Oid::from_str(oid_str)
-            .map_err(|_| AppError::NotFound(format!("commit '{}' not found", oid_str)))?;
+        let oid =
+            git2::Oid::from_str(oid_str).map_err(|_| AppError::NotFound(format!("commit '{}' not found", oid_str)))?;
         let commit = repo.find_commit(oid)?;
         repo.cherrypick(&commit, None)?;
 
@@ -94,8 +94,8 @@ pub fn cherry_pick(repo_path: &Path, oids: &[String]) -> AppResult<PickOutcome> 
 pub fn revert(repo_path: &Path, oid_str: &str) -> AppResult<PickOutcome> {
     let repo = git2::Repository::open(repo_path)?;
     let base_oid = head_oid(&repo);
-    let oid = git2::Oid::from_str(oid_str)
-        .map_err(|_| AppError::NotFound(format!("commit '{}' not found", oid_str)))?;
+    let oid =
+        git2::Oid::from_str(oid_str).map_err(|_| AppError::NotFound(format!("commit '{}' not found", oid_str)))?;
     let commit = repo.find_commit(oid)?;
     repo.revert(&commit, None)?;
 
@@ -165,8 +165,7 @@ pub fn reset_to(repo_path: &Path, target: Option<&str>, mode: &str) -> AppResult
 pub fn abort_pick(repo_path: &Path, base_oid: Option<&str>) -> AppResult<()> {
     let repo = git2::Repository::open(repo_path)?;
     let target = match base_oid {
-        Some(o) => git2::Oid::from_str(o)
-            .map_err(|_| AppError::NotFound(format!("commit '{}' not found", o)))?,
+        Some(o) => git2::Oid::from_str(o).map_err(|_| AppError::NotFound(format!("commit '{}' not found", o)))?,
         None => repo
             .head()
             .and_then(|h| h.target().ok_or(git2::Error::from_str("HEAD has no target")))?,
@@ -195,16 +194,12 @@ pub fn pick_continue(repo_path: &Path) -> AppResult<String> {
     let in_pick = repo.path().join("CHERRY_PICK_HEAD").exists();
     let in_revert = repo.path().join("REVERT_HEAD").exists();
     if !in_pick && !in_revert {
-        return Err(AppError::Conflict(
-            "no cherry-pick / revert in progress".into(),
-        ));
+        return Err(AppError::Conflict("no cherry-pick / revert in progress".into()));
     }
 
     let mut index = repo.index()?;
     if index.has_conflicts() {
-        return Err(AppError::Conflict(
-            "仍有未解决的冲突，请先解决后再继续".into(),
-        ));
+        return Err(AppError::Conflict("仍有未解决的冲突，请先解决后再继续".into()));
     }
 
     let tree_oid = index.write_tree()?;
@@ -222,10 +217,7 @@ pub fn pick_continue(repo_path: &Path) -> AppResult<String> {
 }
 
 fn head_oid(repo: &git2::Repository) -> Option<String> {
-    repo.head()
-        .ok()
-        .and_then(|h| h.target())
-        .map(|o| o.to_string())
+    repo.head().ok().and_then(|h| h.target()).map(|o| o.to_string())
 }
 
 /// Collect unique conflicted paths from the index.
@@ -233,10 +225,7 @@ pub(crate) fn conflict_paths(index: &git2::Index) -> AppResult<Vec<String>> {
     let mut paths: Vec<String> = Vec::new();
     for conflict in index.conflicts()? {
         let conflict = conflict?;
-        let entry = conflict
-            .our
-            .or(conflict.their)
-            .or(conflict.ancestor);
+        let entry = conflict.our.or(conflict.their).or(conflict.ancestor);
         if let Some(entry) = entry {
             let path = String::from_utf8_lossy(&entry.path).to_string();
             if !paths.contains(&path) {
@@ -264,13 +253,7 @@ mod tests {
         dir
     }
 
-    fn commit_file(
-        repo: &git2::Repository,
-        dir: &Path,
-        name: &str,
-        content: &str,
-        msg: &str,
-    ) -> String {
+    fn commit_file(repo: &git2::Repository, dir: &Path, name: &str, content: &str, msg: &str) -> String {
         std::fs::write(dir.join(name), content).unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(Path::new(name)).unwrap();

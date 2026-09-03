@@ -23,8 +23,7 @@ mod storage;
 mod validation;
 
 pub use environment::{
-    get_workspace_environment, merge_environment, resolve_environment, set_workspace_environment,
-    EnvironmentLayers,
+    get_workspace_environment, merge_environment, resolve_environment, set_workspace_environment, EnvironmentLayers,
 };
 pub use model::{
     CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeKind,

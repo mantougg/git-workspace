@@ -14,11 +14,7 @@ const SECRET_SCAN_MAX_BYTES: usize = 1024 * 1024;
 
 /// Paths whose content will be committed: the staged set for `index_only`,
 /// the explicit file list, or every changed path for stage-all.
-pub(super) fn paths_for_scan(
-    repo: &git2::Repository,
-    files: &[String],
-    index_only: bool,
-) -> AppResult<Vec<String>> {
+pub(super) fn paths_for_scan(repo: &git2::Repository, files: &[String], index_only: bool) -> AppResult<Vec<String>> {
     if index_only {
         let head_tree = crate::core::diff::head_or_empty_tree(repo)?;
         let staged = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
@@ -35,10 +31,7 @@ pub(super) fn paths_for_scan(
     opts.include_untracked(true);
     opts.include_ignored(false);
     let statuses = repo.statuses(Some(&mut opts))?;
-    Ok(statuses
-        .iter()
-        .filter_map(|e| e.path().map(str::to_string))
-        .collect())
+    Ok(statuses.iter().filter_map(|e| e.path().map(str::to_string)).collect())
 }
 
 /// Scan the given paths for commit-blocking findings (T-11; §5):
@@ -53,8 +46,7 @@ pub(super) fn scan_paths(repo: &git2::Repository, paths: &[String]) -> Vec<Commi
             findings.push(CommitScanFinding {
                 path: path.clone(),
                 kind: "forbidden".to_string(),
-                detail: "禁止提交的敏感文件（.env / *.pem / *.key / 私钥 / credentials.json）"
-                    .to_string(),
+                detail: "禁止提交的敏感文件（.env / *.pem / *.key / 私钥 / credentials.json）".to_string(),
             });
             // Forbidden is decisive; skip content scans for this path.
             continue;
@@ -104,11 +96,7 @@ pub(super) fn scan_paths(repo: &git2::Repository, paths: &[String]) -> Vec<Commi
 /// Pre-commit safety scan entry point for the UI pre-flight check (T-11):
 /// returns the findings without committing, so the UI can list them and let
 /// the user explicitly override (allow_unsafe).
-pub fn pre_commit_scan(
-    repo_path: &Path,
-    files: &[String],
-    index_only: bool,
-) -> AppResult<Vec<CommitScanFinding>> {
+pub fn pre_commit_scan(repo_path: &Path, files: &[String], index_only: bool) -> AppResult<Vec<CommitScanFinding>> {
     let repo = git2::Repository::open(repo_path)?;
     let paths = paths_for_scan(&repo, files, index_only)?;
     Ok(scan_paths(&repo, &paths))

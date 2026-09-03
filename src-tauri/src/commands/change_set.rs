@@ -16,16 +16,14 @@ use rayon::prelude::*;
 use tauri::State;
 
 use crate::core::change_set::{
-    self, ChangeSet, ChangeSetRepo, ChangeSetRepoInput, ChangeSetRepoSummary, ChangeSetSummary,
-    CreateChangeSetRequest, UpdateChangeSetRequest,
+    self, ChangeSet, ChangeSetRepo, ChangeSetRepoInput, ChangeSetRepoSummary, ChangeSetSummary, CreateChangeSetRequest,
+    UpdateChangeSetRequest,
 };
 use crate::core::git_status;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-fn lock_db<'a>(
-    state: &'a State<'_, AppState>,
-) -> AppResult<std::sync::MutexGuard<'a, rusqlite::Connection>> {
+fn lock_db<'a>(state: &'a State<'_, AppState>) -> AppResult<std::sync::MutexGuard<'a, rusqlite::Connection>> {
     state
         .db
         .lock()
@@ -34,10 +32,7 @@ fn lock_db<'a>(
 
 /// List all change sets of a workspace (most recently updated first).
 #[tauri::command]
-pub fn list_change_sets(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<ChangeSet>> {
+pub fn list_change_sets(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<ChangeSet>> {
     let conn = lock_db(&state)?;
     change_set::list_change_sets(&conn, workspace_id)
 }
@@ -45,10 +40,7 @@ pub fn list_change_sets(
 /// Create a change set, optionally attaching an initial set of repositories
 /// (validated and inserted together with the set in one transaction).
 #[tauri::command]
-pub fn create_change_set(
-    req: CreateChangeSetRequest,
-    state: State<'_, AppState>,
-) -> AppResult<ChangeSet> {
+pub fn create_change_set(req: CreateChangeSetRequest, state: State<'_, AppState>) -> AppResult<ChangeSet> {
     let name = req.name.trim();
     if name.is_empty() {
         return Err(AppError::Other("Change Set 名称不能为空".to_string()));
@@ -65,10 +57,7 @@ pub fn create_change_set(
 
 /// Rename / re-describe a change set (`None` fields keep their values).
 #[tauri::command]
-pub fn update_change_set(
-    req: UpdateChangeSetRequest,
-    state: State<'_, AppState>,
-) -> AppResult<ChangeSet> {
+pub fn update_change_set(req: UpdateChangeSetRequest, state: State<'_, AppState>) -> AppResult<ChangeSet> {
     if let Some(name) = req.name.as_deref() {
         if name.trim().is_empty() {
             return Err(AppError::Other("Change Set 名称不能为空".to_string()));
@@ -117,10 +106,7 @@ pub fn remove_change_set_repository(
 /// fails to read degrades to a row with `error` set — it never fails the
 /// whole summary.
 #[tauri::command]
-pub fn get_change_set_summary(
-    id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<ChangeSetSummary> {
+pub fn get_change_set_summary(id: i64, state: State<'_, AppState>) -> AppResult<ChangeSetSummary> {
     let (cs, repos) = {
         let conn = lock_db(&state)?;
         (

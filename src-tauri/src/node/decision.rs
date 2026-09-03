@@ -122,15 +122,9 @@ pub fn decide_package_manager(input: &DecisionInput) -> PackageManagerDecision {
     // 1. 配置显式指定（用户覆盖，最高优先级）。
     if let Some(configured) = non_empty(input.configured.as_deref()) {
         if let Some(pm) = PackageManager::parse(configured) {
-            return decision(
-                pm,
-                DecisionSource::Configured,
-                format!("配置显式指定 {}", pm.name()),
-            );
+            return decision(pm, DecisionSource::Configured, format!("配置显式指定 {}", pm.name()));
         }
-        log::warn!(
-            "unknown configured package manager {configured:?}; falling through decision chain"
-        );
+        log::warn!("unknown configured package manager {configured:?}; falling through decision chain");
     }
 
     // 2. package.json 的 packageManager 字段（Corepack 标准）。
@@ -147,11 +141,7 @@ pub fn decide_package_manager(input: &DecisionInput) -> PackageManagerDecision {
 
     // 3. lockfile 推断（固定顺序 pnpm > yarn > npm > bun）。
     if let Some((pm, lockfile)) = input.lockfiles.infer() {
-        return decision(
-            pm,
-            DecisionSource::Lockfile,
-            format!("lockfile 推断：{lockfile}"),
-        );
+        return decision(pm, DecisionSource::Lockfile, format!("lockfile 推断：{lockfile}"));
     }
 
     // 4. 回退 PATH 上的 npm（node 自带，MVP 保底）。
@@ -178,11 +168,7 @@ fn non_empty(raw: Option<&str>) -> Option<&str> {
 mod tests {
     use super::*;
 
-    fn input(
-        configured: Option<&str>,
-        field: Option<&str>,
-        lockfiles: LockfileSnapshot,
-    ) -> DecisionInput {
+    fn input(configured: Option<&str>, field: Option<&str>, lockfiles: LockfileSnapshot) -> DecisionInput {
         DecisionInput {
             configured: configured.map(str::to_string),
             package_json_field: field.map(str::to_string),
@@ -192,27 +178,15 @@ mod tests {
 
     #[test]
     fn parses_package_manager_field_name_part() {
-        assert_eq!(
-            parse_package_manager_field("pnpm@9.1.0"),
-            Some(PackageManager::Pnpm)
-        );
-        assert_eq!(
-            parse_package_manager_field("npm@10.2.3"),
-            Some(PackageManager::Npm)
-        );
+        assert_eq!(parse_package_manager_field("pnpm@9.1.0"), Some(PackageManager::Pnpm));
+        assert_eq!(parse_package_manager_field("npm@10.2.3"), Some(PackageManager::Npm));
         assert_eq!(
             parse_package_manager_field("yarn@4.1.1+sha.abc"),
             Some(PackageManager::Yarn)
         );
-        assert_eq!(
-            parse_package_manager_field("bun@1.1.0"),
-            Some(PackageManager::Bun)
-        );
+        assert_eq!(parse_package_manager_field("bun@1.1.0"), Some(PackageManager::Bun));
         // 容忍无版本与大小写。
-        assert_eq!(
-            parse_package_manager_field("PNPM"),
-            Some(PackageManager::Pnpm)
-        );
+        assert_eq!(parse_package_manager_field("PNPM"), Some(PackageManager::Pnpm));
         // 空串 / scoped / 未知名 → None（落下一层）。
         assert_eq!(parse_package_manager_field(""), None);
         assert_eq!(parse_package_manager_field("   "), None);
@@ -253,10 +227,7 @@ mod tests {
             ..Default::default()
         };
         let d = decide_package_manager(&input(None, None, snapshot));
-        assert_eq!(
-            (d.manager, d.source),
-            (PackageManager::Pnpm, DecisionSource::Lockfile)
-        );
+        assert_eq!((d.manager, d.source), (PackageManager::Pnpm, DecisionSource::Lockfile));
 
         // yarn 与 npm lock 并存 → yarn。
         let snapshot = LockfileSnapshot {
@@ -296,10 +267,7 @@ mod tests {
             ..Default::default()
         };
         let d = decide_package_manager(&input(None, None, snapshot));
-        assert_eq!(
-            (d.manager, d.source),
-            (PackageManager::Bun, DecisionSource::Lockfile)
-        );
+        assert_eq!((d.manager, d.source), (PackageManager::Bun, DecisionSource::Lockfile));
         assert!(d.reason.contains("bun.lockb"));
     }
 
@@ -315,11 +283,7 @@ mod tests {
     #[test]
     fn unknown_values_fall_through_layers() {
         // 配置写未知名 → 落到 packageManager 字段层。
-        let d = decide_package_manager(&input(
-            Some("deno"),
-            Some("yarn@4.1.1"),
-            LockfileSnapshot::default(),
-        ));
+        let d = decide_package_manager(&input(Some("deno"), Some("yarn@4.1.1"), LockfileSnapshot::default()));
         assert_eq!(
             (d.manager, d.source),
             (PackageManager::Yarn, DecisionSource::PackageJsonField)
@@ -331,10 +295,7 @@ mod tests {
             ..Default::default()
         };
         let d = decide_package_manager(&input(Some("deno"), Some("deno@1.0"), snapshot));
-        assert_eq!(
-            (d.manager, d.source),
-            (PackageManager::Pnpm, DecisionSource::Lockfile)
-        );
+        assert_eq!((d.manager, d.source), (PackageManager::Pnpm, DecisionSource::Lockfile));
 
         // 全部未识别 → 回退 PATH npm。
         let d = decide_package_manager(&input(Some("deno"), Some(""), LockfileSnapshot::default()));
@@ -356,10 +317,7 @@ mod tests {
         let snapshot = LockfileSnapshot::scan(&tmp);
         assert!(snapshot.pnpm_lock && snapshot.yarn_lock);
         assert!(!snapshot.npm_package_lock && !snapshot.npm_shrinkwrap && !snapshot.bun_lockb);
-        assert_eq!(
-            snapshot.infer().map(|(pm, _)| pm),
-            Some(PackageManager::Pnpm)
-        );
+        assert_eq!(snapshot.infer().map(|(pm, _)| pm), Some(PackageManager::Pnpm));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

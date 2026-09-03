@@ -71,9 +71,7 @@ pub fn build_maven_request_with_subset(
                 if reactor.arguments[i] == "-pl" {
                     // 跳过 -pl <值> 及紧随的 -am。
                     i += 2;
-                    if i - 1 < reactor.arguments.len()
-                        && reactor.arguments.get(i) == Some(&"-am".to_string())
-                    {
+                    if i - 1 < reactor.arguments.len() && reactor.arguments.get(i) == Some(&"-am".to_string()) {
                         i += 1;
                     }
                     continue;
@@ -132,18 +130,12 @@ pub fn launch_plan(strategy: RunStrategy, inputs: &LaunchInputs) -> AppResult<La
 
 /// `groupId:artifactId` 模块坐标。
 pub fn module_ga(node: &MavenProjectNode) -> String {
-    format!(
-        "{}:{}",
-        node.coordinates.group_id, node.coordinates.artifact_id
-    )
+    format!("{}:{}", node.coordinates.group_id, node.coordinates.artifact_id)
 }
 
 /// 模块目录（`node.path` 是 pom 文件路径）。
 pub fn module_directory(node: &MavenProjectNode) -> PathBuf {
-    node.path
-        .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .to_path_buf()
+    node.path.parent().unwrap_or_else(|| Path::new("")).to_path_buf()
 }
 
 /// 所选 JDK 的 `java` 可执行路径；无配置 JDK 时回退 PATH 中的 `java`。
@@ -161,10 +153,7 @@ pub fn java_exec_for(jdk: Option<&JdkInstallation>) -> PathBuf {
 /// MavenRun：`spring-boot:run` 只在应用模块上执行——带 `-f <reactor pom>`
 /// 与（多模块时）`-pl <app g:a>`，**不带 `-am`**，避免在库模块上跑 run 目标。
 fn maven_run_plan(inputs: &LaunchInputs) -> AppResult<LaunchPlan> {
-    let mut extra_args = vec![
-        "-f".into(),
-        inputs.reactor.pom_path.to_string_lossy().into_owned(),
-    ];
+    let mut extra_args = vec!["-f".into(), inputs.reactor.pom_path.to_string_lossy().into_owned()];
     if inputs.reactor.module_paths.len() > 1 {
         extra_args.extend(["-pl".into(), module_ga(inputs.root)]);
     }
@@ -243,12 +232,7 @@ fn classpath_run_plan(inputs: &LaunchInputs) -> AppResult<LaunchPlan> {
         &main_class,
         &config.program_arguments,
     );
-    let classpath = super::pathing_jar::shorten_if_needed(
-        inputs.workspace_root,
-        &config.name,
-        classpath,
-        estimate,
-    )?;
+    let classpath = super::pathing_jar::shorten_if_needed(inputs.workspace_root, &config.name, classpath, estimate)?;
     let cp = std::env::join_paths(&classpath)
         .map(|cp| cp.to_string_lossy().into_owned())
         .unwrap_or_default();
@@ -270,12 +254,7 @@ fn classpath_run_plan(inputs: &LaunchInputs) -> AppResult<LaunchPlan> {
     })
 }
 
-fn java_preview(
-    java_exec: &Path,
-    vm_options: &[String],
-    app_args: &[String],
-    program_arguments: &[String],
-) -> String {
+fn java_preview(java_exec: &Path, vm_options: &[String], app_args: &[String], program_arguments: &[String]) -> String {
     let mut parts = vec![java_exec.to_string_lossy().into_owned()];
     parts.extend(vm_options.iter().cloned());
     parts.extend(app_args.iter().cloned());
@@ -462,10 +441,7 @@ mod tests {
             classpath: None,
         };
         let plan = launch_plan(RunStrategy::MavenRun, &inputs).unwrap();
-        let LaunchPlan::MavenGoal {
-            request, preview, ..
-        } = plan
-        else {
+        let LaunchPlan::MavenGoal { request, preview, .. } = plan else {
             panic!("expected MavenGoal");
         };
         assert_eq!(request.goals, ["spring-boot:run"]);
@@ -505,11 +481,7 @@ mod tests {
             program_arguments: vec!["--server.port=9090".into()],
             ..Default::default()
         };
-        let app = node(
-            2,
-            "app",
-            module_dir.join("pom.xml").to_string_lossy().as_ref(),
-        );
+        let app = node(2, "app", module_dir.join("pom.xml").to_string_lossy().as_ref());
         let inputs = LaunchInputs {
             config: &config,
             root: &app,
@@ -568,9 +540,7 @@ mod tests {
         };
         let plan = launch_plan(RunStrategy::ClasspathRun, &inputs).unwrap();
         let LaunchPlan::JavaClasspath {
-            classpath,
-            main_class,
-            ..
+            classpath, main_class, ..
         } = plan
         else {
             panic!("expected JavaClasspath");

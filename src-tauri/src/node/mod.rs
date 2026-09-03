@@ -26,19 +26,19 @@ pub mod workspace;
 
 pub use command::build_run_args;
 pub use decision::{
-    decide_package_manager, parse_package_manager_field, DecisionInput, DecisionSource,
-    LockfileSnapshot, PackageManagerDecision,
+    decide_package_manager, parse_package_manager_field, DecisionInput, DecisionSource, LockfileSnapshot,
+    PackageManagerDecision,
 };
 pub use detect::{
-    detect_node, detect_package_manager, extract_version, resolve_node_with_registry,
-    resolve_package_manager, resolve_package_manager_with_registry,
+    detect_node, detect_package_manager, extract_version, resolve_node_with_registry, resolve_package_manager,
+    resolve_package_manager_with_registry,
 };
 pub use discovery::{
-    discover_package_jsons, global_package_cache, list_node_projects, sync_node_projects,
-    NodeDiscoveryResult, NodePackageCache,
+    discover_package_jsons, global_package_cache, list_node_projects, sync_node_projects, NodeDiscoveryResult,
+    NodePackageCache,
 };
 pub use model::{
-    NodeExecutable, NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, NodeScanCandidate,
-    PackageManager, ToolDetection, ToolDetectionSource,
+    NodeExecutable, NodeExecutableKind, NodeExecutableRequest, NodeProjectNode, NodeScanCandidate, PackageManager,
+    ToolDetection, ToolDetectionSource,
 };
 pub use scan::scan_node_toolchain;

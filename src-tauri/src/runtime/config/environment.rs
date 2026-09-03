@@ -17,9 +17,7 @@ use super::storage::{
     read_config_file, read_environment_file, workspace_environment_path, write_json_atomic,
     WorkspaceEnvironmentDocument,
 };
-use super::validation::{
-    preserve_masked_environment, redact_environment, reject_symlink, validate_environment,
-};
+use super::validation::{preserve_masked_environment, redact_environment, reject_symlink, validate_environment};
 
 /// Environment layers are merged from low to high priority.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -40,28 +38,19 @@ pub fn merge_environment(layers: &EnvironmentLayers) -> BTreeMap<String, String>
         &layers.runtime,
         &layers.application,
     ] {
-        merged.extend(
-            source
-                .iter()
-                .map(|(key, value)| (key.clone(), value.clone())),
-        );
+        merged.extend(source.iter().map(|(key, value)| (key.clone(), value.clone())));
     }
     merged
 }
 
 /// Resolve System < Global < Workspace < Runtime < Application precedence.
-pub fn resolve_environment(
-    conn: &Connection,
-    workspace_id: i64,
-    name: &str,
-) -> AppResult<BTreeMap<String, String>> {
+pub fn resolve_environment(conn: &Connection, workspace_id: i64, name: &str) -> AppResult<BTreeMap<String, String>> {
     let summary = get_summary(conn, workspace_id, name)?
         .ok_or_else(|| AppError::NotFound(format!("Runtime 配置 '{}' 不存在", name)))?;
     let config = read_config_file(Path::new(&summary.config_path), name)?;
     let root = workspace_root(conn, workspace_id)?;
     let workspace = read_environment_file(&workspace_environment_path(&root))?;
-    let global =
-        read_environment_file(&crate::get_app_data_dir().join("runtime-global-environment.json"))?;
+    let global = read_environment_file(&crate::get_app_data_dir().join("runtime-global-environment.json"))?;
     Ok(merge_environment(&EnvironmentLayers {
         system: std::env::vars().collect(),
         global,
@@ -71,14 +60,11 @@ pub fn resolve_environment(
     }))
 }
 
-pub fn get_workspace_environment(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<BTreeMap<String, String>> {
+pub fn get_workspace_environment(conn: &Connection, workspace_id: i64) -> AppResult<BTreeMap<String, String>> {
     let root = workspace_root(conn, workspace_id)?;
-    Ok(redact_environment(read_environment_file(
-        &workspace_environment_path(&root),
-    )?))
+    Ok(redact_environment(read_environment_file(&workspace_environment_path(
+        &root,
+    ))?))
 }
 
 pub fn set_workspace_environment(

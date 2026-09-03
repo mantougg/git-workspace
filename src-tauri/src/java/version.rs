@@ -178,10 +178,7 @@ mod tests {
     #[test]
     fn parses_corretto_and_zulu() {
         let corretto = "openjdk version \"17.0.8.8.1\" 2023-08-22\nOpenJDK Runtime Environment Corretto-17.0.8.8.1 (build 17.0.8.8.1)";
-        assert_eq!(
-            parse_java_version(corretto).vendor,
-            Some(JdkVendor::Corretto)
-        );
+        assert_eq!(parse_java_version(corretto).vendor, Some(JdkVendor::Corretto));
         let zulu = "openjdk version \"17.0.10\" 2024-01-16\nOpenJDK Runtime Environment Zulu17.50+19 (build 17.0.10+7)";
         assert_eq!(parse_java_version(zulu).vendor, Some(JdkVendor::Zulu));
     }

@@ -28,8 +28,8 @@ pub use mapping::refresh_dependency_sources;
 pub use query::{query_dependency_graph, query_project_dependencies};
 pub use sync::sync_workspace_index;
 pub use types::{
-    DependencyEdge, DependencyGraph, GraphCacheLookup, IndexSyncResult, MavenModuleLink,
-    MavenProjectNode, SourceMapping,
+    DependencyEdge, DependencyGraph, GraphCacheLookup, IndexSyncResult, MavenModuleLink, MavenProjectNode,
+    SourceMapping,
 };
 
 #[cfg(test)]

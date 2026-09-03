@@ -94,11 +94,7 @@ impl FileWatcher {
         self.started
     }
 
-    fn boot(
-        &mut self,
-        status_cache: Arc<Cache<String, RepoStatus>>,
-        app_handle: AppHandle,
-    ) -> AppResult<()> {
+    fn boot(&mut self, status_cache: Arc<Cache<String, RepoStatus>>, app_handle: AppHandle) -> AppResult<()> {
         let (tx, rx) = mpsc::unbounded_channel::<Vec<PathBuf>>();
 
         // OS-native watcher (ReadDirectoryChangesW / inotify / FSEvents);
@@ -141,10 +137,7 @@ impl Default for FileWatcher {
 
 /// Compute the set difference between the currently-watched roots and the
 /// desired set: `(to_add, to_remove)`.
-fn diff_watch_sets(
-    current: &HashSet<PathBuf>,
-    next: &HashSet<PathBuf>,
-) -> (Vec<PathBuf>, Vec<PathBuf>) {
+fn diff_watch_sets(current: &HashSet<PathBuf>, next: &HashSet<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
     let to_add: Vec<PathBuf> = next.difference(current).cloned().collect();
     let to_remove: Vec<PathBuf> = current.difference(next).cloned().collect();
     (to_add, to_remove)
@@ -270,14 +263,8 @@ mod tests {
 
     #[test]
     fn diff_watch_sets_splits_added_and_removed() {
-        let current: HashSet<PathBuf> = ["D:/ws/a", "D:/ws/b"]
-            .iter()
-            .map(PathBuf::from)
-            .collect();
-        let next: HashSet<PathBuf> = ["D:/ws/b", "D:/ws/c"]
-            .iter()
-            .map(PathBuf::from)
-            .collect();
+        let current: HashSet<PathBuf> = ["D:/ws/a", "D:/ws/b"].iter().map(PathBuf::from).collect();
+        let next: HashSet<PathBuf> = ["D:/ws/b", "D:/ws/c"].iter().map(PathBuf::from).collect();
 
         let (to_add, to_remove) = diff_watch_sets(&current, &next);
 

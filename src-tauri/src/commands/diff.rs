@@ -45,10 +45,7 @@ pub fn get_diff(repo_path: String, options: Option<DiffOptionsParam>) -> AppResu
 /// indices returned here are valid inputs to `stage_hunk` / `stage_lines`
 /// when the default diff options are used.
 #[tauri::command]
-pub fn get_unstaged_diff(
-    repo_path: String,
-    options: Option<DiffOptionsParam>,
-) -> AppResult<Vec<FileDiff>> {
+pub fn get_unstaged_diff(repo_path: String, options: Option<DiffOptionsParam>) -> AppResult<Vec<FileDiff>> {
     let opt = options.unwrap_or_default();
     diff::get_unstaged_diff_with_config(Path::new(&repo_path), &opt.to_config())
 }
@@ -58,10 +55,7 @@ pub fn get_unstaged_diff(
 /// Hunk/line indices returned here are valid inputs to `unstage_hunk` /
 /// `unstage_lines` when the default diff options are used.
 #[tauri::command]
-pub fn get_staged_diff(
-    repo_path: String,
-    options: Option<DiffOptionsParam>,
-) -> AppResult<Vec<FileDiff>> {
+pub fn get_staged_diff(repo_path: String, options: Option<DiffOptionsParam>) -> AppResult<Vec<FileDiff>> {
     let opt = options.unwrap_or_default();
     diff::get_staged_diff_with_config(Path::new(&repo_path), &opt.to_config())
 }
@@ -141,62 +135,34 @@ pub(crate) fn cached_tree_diff(
 /// options. Untracked files have no hunks — stage them whole via batch_add.
 #[tauri::command]
 pub fn stage_hunk(repo_path: String, file_path: String, hunk_index: u32) -> AppResult<()> {
-    stage::stage_hunk(
-        Path::new(&repo_path),
-        &file_path,
-        hunk_index as usize,
-    )
+    stage::stage_hunk(Path::new(&repo_path), &file_path, hunk_index as usize)
 }
 
 /// Unstage one hunk of a file's staged changes (index moves back towards
 /// HEAD). `hunk_index` refers to `get_staged_diff` with default options.
 #[tauri::command]
 pub fn unstage_hunk(repo_path: String, file_path: String, hunk_index: u32) -> AppResult<()> {
-    stage::unstage_hunk(
-        Path::new(&repo_path),
-        &file_path,
-        hunk_index as usize,
-    )
+    stage::unstage_hunk(Path::new(&repo_path), &file_path, hunk_index as usize)
 }
 
 /// Stage only the selected lines of one hunk (indices into the hunk's line
 /// list as returned by `get_unstaged_diff` with default options).
 #[tauri::command]
-pub fn stage_lines(
-    repo_path: String,
-    file_path: String,
-    hunk_index: u32,
-    line_indices: Vec<u32>,
-) -> AppResult<()> {
+pub fn stage_lines(repo_path: String, file_path: String, hunk_index: u32, line_indices: Vec<u32>) -> AppResult<()> {
     if line_indices.is_empty() {
         return Err(AppError::Other("未选择任何行".to_string()));
     }
-    stage::stage_lines(
-        Path::new(&repo_path),
-        &file_path,
-        hunk_index as usize,
-        &line_indices,
-    )
+    stage::stage_lines(Path::new(&repo_path), &file_path, hunk_index as usize, &line_indices)
 }
 
 /// Unstage only the selected lines of one staged hunk (indices into the
 /// hunk's line list as returned by `get_staged_diff` with default options).
 #[tauri::command]
-pub fn unstage_lines(
-    repo_path: String,
-    file_path: String,
-    hunk_index: u32,
-    line_indices: Vec<u32>,
-) -> AppResult<()> {
+pub fn unstage_lines(repo_path: String, file_path: String, hunk_index: u32, line_indices: Vec<u32>) -> AppResult<()> {
     if line_indices.is_empty() {
         return Err(AppError::Other("未选择任何行".to_string()));
     }
-    stage::unstage_lines(
-        Path::new(&repo_path),
-        &file_path,
-        hunk_index as usize,
-        &line_indices,
-    )
+    stage::unstage_lines(Path::new(&repo_path), &file_path, hunk_index as usize, &line_indices)
 }
 
 #[cfg(test)]
@@ -227,12 +193,8 @@ mod tests {
         let sig = git2::Signature::now("tester", "t@example.com").unwrap();
         let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
         match &parent {
-            Some(p) => repo
-                .commit(Some("HEAD"), &sig, &sig, msg, &tree, &[p])
-                .unwrap(),
-            None => repo
-                .commit(Some("HEAD"), &sig, &sig, msg, &tree, &[])
-                .unwrap(),
+            Some(p) => repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &[p]).unwrap(),
+            None => repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &[]).unwrap(),
         };
     }
 
@@ -245,16 +207,8 @@ mod tests {
         commit_file(&repo, &dir, "a.txt", "one\ntwo\n", "c1");
         commit_file(&repo, &dir, "a.txt", "one\nTWO\n", "c2");
 
-        let old_tree = repo
-            .revparse_single("HEAD~1")
-            .unwrap()
-            .peel_to_tree()
-            .unwrap();
-        let new_tree = repo
-            .revparse_single("HEAD")
-            .unwrap()
-            .peel_to_tree()
-            .unwrap();
+        let old_tree = repo.revparse_single("HEAD~1").unwrap().peel_to_tree().unwrap();
+        let new_tree = repo.revparse_single("HEAD").unwrap().peel_to_tree().unwrap();
         let config = DiffConfig::default();
         let cache = build_diff_cache();
 
@@ -271,13 +225,11 @@ mod tests {
         let hit = cache.get(&key).expect("second view must be a cache hit");
         assert_eq!(hit.len(), first.len());
         assert_eq!(hit[0].new_path, "a.txt");
-        assert!(
-            hit[0]
-                .hunks
-                .iter()
-                .flat_map(|h| h.lines.iter())
-                .any(|l| l.line_type == "add" && l.content == "TWO")
-        );
+        assert!(hit[0]
+            .hunks
+            .iter()
+            .flat_map(|h| h.lines.iter())
+            .any(|l| l.line_type == "add" && l.content == "TWO"));
 
         // T-04 acceptance proxy: a cache hit must be far below the 50 ms
         // "second view" budget. 1000 hits (each cloning the payload) in well
@@ -307,13 +259,11 @@ mod tests {
         let files = diff::diff_commit(&repo, "HEAD").unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].status, "added");
-        assert!(
-            files[0]
-                .hunks
-                .iter()
-                .flat_map(|h| h.lines.iter())
-                .any(|l| l.line_type == "add" && l.content == "hello")
-        );
+        assert!(files[0]
+            .hunks
+            .iter()
+            .flat_map(|h| h.lines.iter())
+            .any(|l| l.line_type == "add" && l.content == "hello"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -361,8 +311,7 @@ mod tests {
         }
         std::fs::write(dir.join("a.txt"), "ONE\ntwo\nTHREE\n").unwrap();
 
-        let staged =
-            diff::get_staged_diff_with_config(&dir, &DiffConfig::default()).unwrap();
+        let staged = diff::get_staged_diff_with_config(&dir, &DiffConfig::default()).unwrap();
         assert_eq!(staged.len(), 1);
         let staged_adds: Vec<_> = staged[0]
             .hunks
@@ -373,8 +322,7 @@ mod tests {
             .collect();
         assert_eq!(staged_adds, vec!["ONE"]);
 
-        let unstaged =
-            diff::get_unstaged_diff_with_config(&dir, &DiffConfig::default()).unwrap();
+        let unstaged = diff::get_unstaged_diff_with_config(&dir, &DiffConfig::default()).unwrap();
         assert_eq!(unstaged.len(), 1);
         let unstaged_adds: Vec<_> = unstaged[0]
             .hunks

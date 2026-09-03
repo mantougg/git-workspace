@@ -121,8 +121,7 @@ fn apply_with(
                     report.masked_sources.push(item.source_id.clone());
                 } else {
                     // 二次扫描仍命中 → 继续阻断（不脱敏，按 Block 处理）。
-                    let mut rescan_kinds: Vec<String> =
-                        rescan.iter().map(|f| f.kind.label().to_string()).collect();
+                    let mut rescan_kinds: Vec<String> = rescan.iter().map(|f| f.kind.label().to_string()).collect();
                     rescan_kinds.sort();
                     rescan_kinds.dedup();
                     report.blocked = true;
@@ -155,17 +154,12 @@ mod tests {
     use crate::core::secret::SecretKind;
 
     fn item(source: &str, content: &str) -> DraftContextItem {
-        DraftContextItem::supplementary(
-            ContextRole::FullDiff,
-            ContextKind::Diff,
-            source,
-            source,
-            content,
-        )
+        DraftContextItem::supplementary(ContextRole::FullDiff, ContextKind::Diff, source, source, content)
     }
 
     const AWS: &str = "const key = \"AKIAIOSFODNN7EXAMPLE\";";
-    const JWT: &str = "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+    const JWT: &str =
+        "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
     const KEY: &str = "-----BEGIN RSA PRIVATE KEY-----\nMII...";
     const PASSWORD: &str = "password=supersecret123";
     const GITHUB: &str = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";

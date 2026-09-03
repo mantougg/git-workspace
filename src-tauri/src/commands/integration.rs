@@ -121,16 +121,16 @@ pub(crate) fn cmd_plan(dir: &str) -> SpawnPlan {
 /// Windows Terminal：`wt -d <dir>`。
 #[cfg(any(windows, test))]
 pub(crate) fn wt_plan(exe: &Path, dir: &str) -> SpawnPlan {
-    SpawnPlan::new(exe.to_string_lossy().to_string(), vec!["-d".to_string(), dir.to_string()])
+    SpawnPlan::new(
+        exe.to_string_lossy().to_string(),
+        vec!["-d".to_string(), dir.to_string()],
+    )
 }
 
 /// Git Bash：`git-bash.exe --cd=<dir>`。
 #[cfg(any(windows, test))]
 pub(crate) fn git_bash_plan(exe: &Path, dir: &str) -> SpawnPlan {
-    SpawnPlan::new(
-        exe.to_string_lossy().to_string(),
-        vec![format!("--cd={dir}")],
-    )
+    SpawnPlan::new(exe.to_string_lossy().to_string(), vec![format!("--cd={dir}")])
 }
 
 /// 由 `git.exe` 路径推导 `git-bash.exe`（`<Git>\cmd\git.exe` → `<Git>\git-bash.exe`）。
@@ -149,43 +149,59 @@ pub(crate) fn git_bash_from_git_exe(git_exe: &Path) -> Option<PathBuf> {
 pub(crate) fn linux_terminal_plan_in_dirs(dir: &str, dirs: &[PathBuf]) -> Option<SpawnPlan> {
     use crate::java::detect::find_executable_in_dirs;
 
-    let (name, plan): (&str, fn(&Path, &str) -> SpawnPlan) = if find_executable_in_dirs("gnome-terminal", dirs).is_some() {
-        ("gnome-terminal", |exe, d| {
-            SpawnPlan::new(exe.to_string_lossy().to_string(), vec![format!("--working-directory={d}")])
-        })
-    } else if find_executable_in_dirs("konsole", dirs).is_some() {
-        ("konsole", |exe, d| {
-            SpawnPlan::new(exe.to_string_lossy().to_string(), vec!["--workdir".to_string(), d.to_string()])
-        })
-    } else if find_executable_in_dirs("xfce4-terminal", dirs).is_some() {
-        ("xfce4-terminal", |exe, d| {
-            SpawnPlan::new(exe.to_string_lossy().to_string(), vec![format!("--working-directory={d}")])
-        })
-    } else if find_executable_in_dirs("alacritty", dirs).is_some() {
-        ("alacritty", |exe, d| {
-            SpawnPlan::new(exe.to_string_lossy().to_string(), vec!["--working-directory".to_string(), d.to_string()])
-        })
-    } else if find_executable_in_dirs("kitty", dirs).is_some() {
-        ("kitty", |exe, d| {
-            SpawnPlan::new(exe.to_string_lossy().to_string(), vec!["--directory".to_string(), d.to_string()])
-        })
-    } else if find_executable_in_dirs("wezterm", dirs).is_some() {
-        ("wezterm", |exe, d| {
-            SpawnPlan::new(
-                exe.to_string_lossy().to_string(),
-                vec!["start".to_string(), "--cwd".to_string(), d.to_string()],
-            )
-        })
-    } else if find_executable_in_dirs("x-terminal-emulator", dirs).is_some()
-        || find_executable_in_dirs("xterm", dirs).is_some()
-    {
-        // 通用 X 终端无统一目录参数，退化为子进程 cwd。
-        ("x-terminal-emulator", |exe, d| {
-            SpawnPlan::new(exe.to_string_lossy().to_string(), vec![]).with_cwd(d)
-        })
-    } else {
-        return None;
-    };
+    let (name, plan): (&str, fn(&Path, &str) -> SpawnPlan) =
+        if find_executable_in_dirs("gnome-terminal", dirs).is_some() {
+            ("gnome-terminal", |exe, d| {
+                SpawnPlan::new(
+                    exe.to_string_lossy().to_string(),
+                    vec![format!("--working-directory={d}")],
+                )
+            })
+        } else if find_executable_in_dirs("konsole", dirs).is_some() {
+            ("konsole", |exe, d| {
+                SpawnPlan::new(
+                    exe.to_string_lossy().to_string(),
+                    vec!["--workdir".to_string(), d.to_string()],
+                )
+            })
+        } else if find_executable_in_dirs("xfce4-terminal", dirs).is_some() {
+            ("xfce4-terminal", |exe, d| {
+                SpawnPlan::new(
+                    exe.to_string_lossy().to_string(),
+                    vec![format!("--working-directory={d}")],
+                )
+            })
+        } else if find_executable_in_dirs("alacritty", dirs).is_some() {
+            ("alacritty", |exe, d| {
+                SpawnPlan::new(
+                    exe.to_string_lossy().to_string(),
+                    vec!["--working-directory".to_string(), d.to_string()],
+                )
+            })
+        } else if find_executable_in_dirs("kitty", dirs).is_some() {
+            ("kitty", |exe, d| {
+                SpawnPlan::new(
+                    exe.to_string_lossy().to_string(),
+                    vec!["--directory".to_string(), d.to_string()],
+                )
+            })
+        } else if find_executable_in_dirs("wezterm", dirs).is_some() {
+            ("wezterm", |exe, d| {
+                SpawnPlan::new(
+                    exe.to_string_lossy().to_string(),
+                    vec!["start".to_string(), "--cwd".to_string(), d.to_string()],
+                )
+            })
+        } else if find_executable_in_dirs("x-terminal-emulator", dirs).is_some()
+            || find_executable_in_dirs("xterm", dirs).is_some()
+        {
+            // 通用 X 终端无统一目录参数，退化为子进程 cwd。
+            ("x-terminal-emulator", |exe, d| {
+                SpawnPlan::new(exe.to_string_lossy().to_string(), vec![]).with_cwd(d)
+            })
+        } else {
+            return None;
+        };
     let exe = find_executable_in_dirs(name, dirs)?;
     Some(plan(&exe, dir))
 }
@@ -199,10 +215,7 @@ pub(crate) fn linux_terminal_plan_in_dirs(dir: &str, dirs: &[PathBuf]) -> Option
 pub(crate) fn cli_ide_plan(exe: &Path, target: &str) -> SpawnPlan {
     let exe_str = exe.to_string_lossy().to_string();
     if needs_cmd_c(exe) {
-        SpawnPlan::new(
-            "cmd",
-            vec!["/C".to_string(), exe_str, target.to_string()],
-        )
+        SpawnPlan::new("cmd", vec!["/C".to_string(), exe_str, target.to_string()])
     } else {
         SpawnPlan::new(exe_str, vec![target.to_string()])
     }
@@ -210,10 +223,7 @@ pub(crate) fn cli_ide_plan(exe: &Path, target: &str) -> SpawnPlan {
 
 /// 在给定目录列表中定位 IntelliJ IDEA 可执行（`candidates` 注入便于单测）。
 /// 命中规则：目录下任一候选名存在即返回（如 `bin/idea64.exe`、`MacOS/idea`）。
-pub(crate) fn find_idea_in_dirs(
-    install_dirs: &[PathBuf],
-    candidate_suffixes: &[&str],
-) -> Option<PathBuf> {
+pub(crate) fn find_idea_in_dirs(install_dirs: &[PathBuf], candidate_suffixes: &[&str]) -> Option<PathBuf> {
     for dir in install_dirs {
         for suffix in candidate_suffixes {
             let candidate = dir.join(suffix);
@@ -336,17 +346,13 @@ fn windows_terminal_plan(kind: TerminalKind, dir: &str) -> AppResult<SpawnPlan> 
         TerminalKind::Cmd => cmd_plan(dir),
         TerminalKind::GitBash => {
             let exe = locate_git_bash().ok_or_else(|| {
-                AppError::NotFound(
-                    "未找到 Git Bash。请确认已安装 Git for Windows（含 git-bash.exe）".to_string(),
-                )
+                AppError::NotFound("未找到 Git Bash。请确认已安装 Git for Windows（含 git-bash.exe）".to_string())
             })?;
             git_bash_plan(&exe, dir)
         }
         TerminalKind::WindowsTerminal => {
             let exe = find_in_path("wt").ok_or_else(|| {
-                AppError::NotFound(
-                    "未找到 Windows Terminal（wt.exe）。可从 Microsoft Store 安装".to_string(),
-                )
+                AppError::NotFound("未找到 Windows Terminal（wt.exe）。可从 Microsoft Store 安装".to_string())
             })?;
             wt_plan(&exe, dir)
         }
@@ -417,16 +423,18 @@ fn ide_plan(kind: IdeKind, target: &str) -> AppResult<SpawnPlan> {
         IdeKind::VsCode => ("code", "VS Code", "请安装 VS Code 并把 code 加入 PATH"),
         IdeKind::Cursor => ("cursor", "Cursor", "请安装 Cursor 并把 cursor 加入 PATH"),
         IdeKind::Zed => ("zed", "Zed", "请安装 Zed 并把 zed 加入 PATH"),
-        IdeKind::Idea => ("idea", "IntelliJ IDEA", "请安装 IntelliJ IDEA（命令行启动器或默认安装路径）"),
+        IdeKind::Idea => (
+            "idea",
+            "IntelliJ IDEA",
+            "请安装 IntelliJ IDEA（命令行启动器或默认安装路径）",
+        ),
     };
     let exe = if kind == IdeKind::Idea {
         locate_idea()
     } else {
         find_in_path(name)
     };
-    let exe = exe.ok_or_else(|| {
-        AppError::NotFound(format!("未找到 {label} 可执行文件。{hint}"))
-    })?;
+    let exe = exe.ok_or_else(|| AppError::NotFound(format!("未找到 {label} 可执行文件。{hint}")))?;
     Ok(cli_ide_plan(&exe, target))
 }
 
@@ -536,8 +544,8 @@ fn integration_terminals() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::env;
+    use std::fs;
 
     fn temp_dir(name: &str) -> PathBuf {
         let base = env::temp_dir().join(format!("gw-integration-{}-{name}", std::process::id()));
@@ -597,16 +605,10 @@ mod tests {
         let bin = base.join("JetBrains").join("IntelliJ IDEA 2024.2").join("bin");
         fs::create_dir_all(&bin).unwrap();
         fs::write(bin.join("idea64.exe"), b"").unwrap();
-        let found = find_idea_in_dirs(
-            &[base.join("JetBrains")],
-            &["IntelliJ IDEA 2024.2/bin/idea64.exe"],
-        );
+        let found = find_idea_in_dirs(&[base.join("JetBrains")], &["IntelliJ IDEA 2024.2/bin/idea64.exe"]);
         assert_eq!(found, Some(bin.join("idea64.exe")));
         // 候选相对路径不匹配时返回 None。
-        assert_eq!(
-            find_idea_in_dirs(&[base.join("JetBrains")], &["bin/idea64.exe"]),
-            None
-        );
+        assert_eq!(find_idea_in_dirs(&[base.join("JetBrains")], &["bin/idea64.exe"]), None);
     }
 
     #[test]

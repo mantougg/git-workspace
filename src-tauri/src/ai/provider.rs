@@ -161,10 +161,7 @@ pub fn list_providers(conn: &Connection) -> AppResult<Vec<AiProvider>> {
 }
 
 pub fn get_provider(conn: &Connection, id: &str) -> AppResult<Option<AiProvider>> {
-    let mut stmt = conn.prepare(&format!(
-        "SELECT {} FROM ai_providers WHERE id = ?1",
-        PROVIDER_COLS
-    ))?;
+    let mut stmt = conn.prepare(&format!("SELECT {} FROM ai_providers WHERE id = ?1", PROVIDER_COLS))?;
     let mut rows = stmt.query_map(params![id], row_to_provider)?;
     match rows.next() {
         Some(row) => Ok(Some(row?)),
@@ -192,11 +189,7 @@ fn validate_base_url(base_url: &str) -> Result<(), AiError> {
 }
 
 fn is_loopback_host(host: &str) -> bool {
-    host == "localhost"
-        || host == "127.0.0.1"
-        || host == "::1"
-        || host == "[::1]"
-        || host.ends_with(".local")
+    host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" || host.ends_with(".local")
 }
 
 /// 新增或更新 Provider（`input.id` 为空 = 新建，返回完整行）。
@@ -514,13 +507,7 @@ mod tests {
             serde_json::to_value(ApiType::AnthropicMessages).unwrap(),
             "anthropicMessages"
         );
-        assert_eq!(
-            serde_json::to_value(NetworkPolicy::OnlineOnly).unwrap(),
-            "onlineOnly"
-        );
-        assert_eq!(
-            serde_json::to_value(NetworkPolicy::LocalOnly).unwrap(),
-            "localOnly"
-        );
+        assert_eq!(serde_json::to_value(NetworkPolicy::OnlineOnly).unwrap(), "onlineOnly");
+        assert_eq!(serde_json::to_value(NetworkPolicy::LocalOnly).unwrap(), "localOnly");
     }
 }

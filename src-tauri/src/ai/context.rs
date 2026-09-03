@@ -224,18 +224,10 @@ pub fn content_hash(parts: &[&str]) -> String {
 // ---------------------------------------------------------------------------
 
 /// Workspace 概览（Workspace/Repository store）：名称、路径、仓库清单。
-pub fn collect_workspace_summary(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<DraftContextItem> {
+pub fn collect_workspace_summary(conn: &Connection, workspace_id: i64) -> AppResult<DraftContextItem> {
     let ws = crate::db::dao::get_workspace(conn, workspace_id)?;
     let repos = crate::db::dao::list_repositories_by_workspace(conn, workspace_id)?;
-    let mut content = format!(
-        "Workspace: {} ({})\n仓库数量: {}\n",
-        ws.name,
-        ws.path,
-        repos.len()
-    );
+    let mut content = format!("Workspace: {} ({})\n仓库数量: {}\n", ws.name, ws.path, repos.len());
     for r in &repos {
         content.push_str(&format!("- {} ({})\n", r.name, r.relative_path));
     }
@@ -418,11 +410,7 @@ pub fn collect_diff_summary_for_selection(
     Ok(DraftContextItem {
         kind: ContextKind::Diff,
         role: ContextRole::HunkStructure,
-        source_id: format!(
-            "diff:{}:{}:{path_key}:summary",
-            scope.source_label(),
-            scope.as_str()
-        ),
+        source_id: format!("diff:{}:{}:{path_key}:summary", scope.source_label(), scope.as_str()),
         display_name: format!("diff 摘要（{} / {}）", scope.source_label(), scope.as_str()),
         content,
         redacted: false,
@@ -479,10 +467,7 @@ fn selected_diff_files(
     selection: &DiffRepositorySelection,
 ) -> AppResult<Vec<diff::FileDiff>> {
     let files = scope.load(repo_path)?;
-    Ok(files
-        .into_iter()
-        .filter(|file| selection.includes_file(file))
-        .collect())
+    Ok(files.into_iter().filter(|file| selection.includes_file(file)).collect())
 }
 
 impl DiffRepositorySelection {
@@ -492,15 +477,9 @@ impl DiffRepositorySelection {
     }
 
     fn includes_path(&self, path: &str) -> bool {
-        let included = self.include_paths.is_empty()
-            || self
-                .include_paths
-                .iter()
-                .any(|selector| path_matches(selector, path));
-        let excluded = self
-            .exclude_paths
-            .iter()
-            .any(|selector| path_matches(selector, path));
+        let included =
+            self.include_paths.is_empty() || self.include_paths.iter().any(|selector| path_matches(selector, path));
+        let excluded = self.exclude_paths.iter().any(|selector| path_matches(selector, path));
         included && !excluded
     }
 }
@@ -514,10 +493,7 @@ fn path_matches(selector: &str, path: &str) -> bool {
         .trim_start_matches("./")
         .to_string();
     let path = path.replace('\\', "/").trim_matches('/').to_string();
-    selector.is_empty()
-        || selector == "."
-        || path == selector
-        || path.starts_with(&(selector + "/"))
+    selector.is_empty() || selector == "." || path == selector || path.starts_with(&(selector + "/"))
 }
 
 /// Filter the existing status service output using the same selection rules
@@ -705,9 +681,7 @@ pub fn collect_conflicts_for_selection(
         if let Ok(content) = conflict::conflict_content(repo_path, &c.path) {
             let hunks = split_conflict_hunks(content.worktree.as_deref().unwrap_or(""));
             for hunk in &hunks {
-                items.extend(render_conflict_hunk_items(
-                    &path_key, &c.path, &content, hunk,
-                ));
+                items.extend(render_conflict_hunk_items(&path_key, &c.path, &content, hunk));
             }
         }
     }
@@ -791,17 +765,8 @@ fn render_conflict_hunk_items(
         items.push(DraftContextItem {
             kind: ContextKind::File,
             role: ContextRole::ConflictContent,
-            source_id: format!(
-                "{}{}",
-                conflict_source_id(source, path_key, path),
-                hunk_suffix
-            ),
-            display_name: format!(
-                "冲突文件 [{label}] {}（hunk {}/{})",
-                path,
-                hunk.index + 1,
-                hunk.total
-            ),
+            source_id: format!("{}{}", conflict_source_id(source, path_key, path), hunk_suffix),
+            display_name: format!("冲突文件 [{label}] {}（hunk {}/{})", path, hunk.index + 1, hunk.total),
             content: render_conflict_side(label, text),
             redacted: false,
             truncate_keep: Some(TruncateKeep::Head),
@@ -816,22 +781,10 @@ fn base_snippet_for_hunk(base: &str, hunk: &ConflictHunk) -> String {
         return String::new();
     }
     let lines: Vec<&str> = base.lines().collect();
-    let start = hunk
-        .start_line
-        .saturating_sub(1)
-        .saturating_sub(40)
-        .min(lines.len());
+    let start = hunk.start_line.saturating_sub(1).saturating_sub(40).min(lines.len());
     let end = (start + MAX_CONFLICT_BASE_LINES).min(lines.len());
-    let prefix = if start > 0 {
-        "... (base snippet)\n"
-    } else {
-        ""
-    };
-    let suffix = if end < lines.len() {
-        "\n... (base snippet)"
-    } else {
-        ""
-    };
+    let prefix = if start > 0 { "... (base snippet)\n" } else { "" };
+    let suffix = if end < lines.len() { "\n... (base snippet)" } else { "" };
     format!("{prefix}{}{suffix}", lines[start..end].join("\n"))
 }
 
@@ -880,16 +833,14 @@ pub fn split_conflict_hunks(worktree: &str) -> Vec<ConflictHunk> {
     hunks
         .into_iter()
         .enumerate()
-        .map(
-            |(index, (ours, theirs, worktree, start_line))| ConflictHunk {
-                index,
-                total,
-                start_line,
-                ours,
-                theirs,
-                worktree,
-            },
-        )
+        .map(|(index, (ours, theirs, worktree, start_line))| ConflictHunk {
+            index,
+            total,
+            start_line,
+            ours,
+            theirs,
+            worktree,
+        })
         .collect()
 }
 
@@ -915,11 +866,7 @@ fn conflict_source_id(source: &str, path_key: &str, path: &str) -> String {
 
 /// Runtime 配置（R-07）：**只取 redacted 版**（敏感 env 值已掩码），
 /// 未脱敏版是 `pub(crate)` 且不得跨越边界。
-pub fn collect_runtime_config(
-    conn: &Connection,
-    workspace_id: i64,
-    name: &str,
-) -> AppResult<DraftContextItem> {
+pub fn collect_runtime_config(conn: &Connection, workspace_id: i64, name: &str) -> AppResult<DraftContextItem> {
     let cfg = runtime_config::get_config(conn, workspace_id, name)?;
     let mut content = format!(
         "Runtime: {}\n项目: {}\nmain_class: {}\njdk: {}\nprofile: {}\nbuild_engine: {}\n",
@@ -934,10 +881,7 @@ pub fn collect_runtime_config(
         content.push_str(&format!("vm_options: {}\n", cfg.vm_options.join(" ")));
     }
     if !cfg.program_arguments.is_empty() {
-        content.push_str(&format!(
-            "program_arguments: {}\n",
-            cfg.program_arguments.join(" ")
-        ));
+        content.push_str(&format!("program_arguments: {}\n", cfg.program_arguments.join(" ")));
     }
     if !cfg.environment.is_empty() {
         content.push_str("environment:\n");
@@ -971,14 +915,8 @@ pub fn collect_runtime_processes(
             p.runtime_name,
             p.status.as_str(),
             p.pid.map(|v| v.to_string()).unwrap_or_else(|| "-".into()),
-            p.ports
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-            p.exit_code
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "-".into()),
+            p.ports.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","),
+            p.exit_code.map(|v| v.to_string()).unwrap_or_else(|| "-".into()),
             p.uptime_seconds.unwrap_or(0),
         ));
     }
@@ -1133,10 +1071,7 @@ pub fn collect_project_dependencies(
     Ok(DraftContextItem {
         kind: ContextKind::Dependency,
         role: ContextRole::Dependency,
-        source_id: format!(
-            "deps:{workspace_id}:{}",
-            inspection.project.coordinates.gav()
-        ),
+        source_id: format!("deps:{workspace_id}:{}", inspection.project.coordinates.gav()),
         display_name: format!("项目「{}」依赖", inspection.project.coordinates.artifact_id),
         content,
         redacted: false,
@@ -1291,13 +1226,8 @@ mod tests {
 
     #[test]
     fn manifest_item_reflects_draft_state() {
-        let mut draft = DraftContextItem::supplementary(
-            ContextRole::UserNote,
-            ContextKind::File,
-            "note:1",
-            "备注",
-            "abcd",
-        );
+        let mut draft =
+            DraftContextItem::supplementary(ContextRole::UserNote, ContextKind::File, "note:1", "备注", "abcd");
         let item = draft.manifest_item(&TokenEstimator::default());
         assert_eq!(item.char_count, 4);
         assert_eq!(item.estimated_tokens, 1);

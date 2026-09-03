@@ -14,10 +14,7 @@ use crate::state::AppState;
 /// Batch fetch: create Fetch tasks for each repo path and submit to the task queue.
 /// Returns the list of task IDs.
 #[tauri::command]
-pub fn batch_fetch(
-    repo_paths: Vec<String>,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub fn batch_fetch(repo_paths: Vec<String>, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     let requests: Vec<TaskRequest> = repo_paths
         .iter()
         .map(|p| {
@@ -39,10 +36,7 @@ pub fn batch_fetch(
 
 /// Batch pull: create Pull tasks for each repo path.
 #[tauri::command]
-pub fn batch_pull(
-    repo_paths: Vec<String>,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub fn batch_pull(repo_paths: Vec<String>, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     let requests: Vec<TaskRequest> = repo_paths
         .iter()
         .map(|p| {
@@ -64,10 +58,7 @@ pub fn batch_pull(
 
 /// Batch push: create Push tasks for each repo path.
 #[tauri::command]
-pub fn batch_push(
-    repo_paths: Vec<String>,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub fn batch_push(repo_paths: Vec<String>, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     let requests: Vec<TaskRequest> = repo_paths
         .iter()
         .map(|p| {
@@ -91,10 +82,7 @@ pub fn batch_push(
 /// Each entry in `commits` specifies the repo path, message, and files.
 /// The commit identity is resolved server-side (repo > group > git default).
 #[tauri::command]
-pub fn batch_commit(
-    commits: Vec<CommitRequest>,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub fn batch_commit(commits: Vec<CommitRequest>, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     let conn = state
         .db
         .lock()
@@ -103,9 +91,7 @@ pub fn batch_commit(
     let requests: Vec<TaskRequest> = commits
         .into_iter()
         .map(|c| {
-            let identity = dao::resolve_commit_identity(&conn, &c.repo_path)
-                .ok()
-                .flatten();
+            let identity = dao::resolve_commit_identity(&conn, &c.repo_path).ok().flatten();
             TaskRequest {
                 task_type: TaskType::Commit {
                     message: c.message,
@@ -132,21 +118,14 @@ pub fn batch_commit(
 /// secret) for the paths that would be committed, without committing. The UI
 /// shows these and lets the user explicitly override via `allow_unsafe`.
 #[tauri::command]
-pub fn scan_commit(
-    repo_path: String,
-    files: Vec<String>,
-    index_only: bool,
-) -> AppResult<Vec<CommitScanFinding>> {
+pub fn scan_commit(repo_path: String, files: Vec<String>, index_only: bool) -> AppResult<Vec<CommitScanFinding>> {
     crate::core::git_ops::pre_commit_scan(Path::new(&repo_path), &files, index_only)
 }
 
 /// Resolved commit identity for a repository (T-11 §54): repo override >
 /// group override; `None` means the git default signature is used.
 #[tauri::command]
-pub fn get_commit_identity(
-    repo_path: String,
-    state: State<'_, AppState>,
-) -> AppResult<Option<CommitIdentity>> {
+pub fn get_commit_identity(repo_path: String, state: State<'_, AppState>) -> AppResult<Option<CommitIdentity>> {
     let conn = state
         .db
         .lock()
@@ -220,10 +199,7 @@ pub fn start_watcher(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let paths: Vec<std::path::PathBuf> = repo_paths
-        .iter()
-        .map(|p| std::path::PathBuf::from(p))
-        .collect();
+    let paths: Vec<std::path::PathBuf> = repo_paths.iter().map(|p| std::path::PathBuf::from(p)).collect();
 
     let status_cache = std::sync::Arc::clone(&state.status_cache);
 
@@ -253,10 +229,7 @@ pub fn watcher_status(state: State<'_, AppState>) -> AppResult<bool> {
 
 /// Stop the file watcher.
 #[tauri::command]
-pub fn stop_watcher(
-    app_handle: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn stop_watcher(app_handle: tauri::AppHandle, state: State<'_, AppState>) -> AppResult<()> {
     let mut watcher = state
         .watcher
         .lock()
@@ -354,10 +327,7 @@ pub fn batch_restore(requests: Vec<RestoreRequest>) -> AppResult<Vec<String>> {
     for req in requests {
         let repo = git2::Repository::open(&req.repo_path)?;
 
-        let head_tree = repo
-            .head()
-            .ok()
-            .and_then(|h| h.peel_to_tree().ok());
+        let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
 
         let mut checkout_paths: Vec<&str> = Vec::new();
         let mut index_dirty = false;
@@ -401,11 +371,7 @@ pub fn batch_restore(requests: Vec<RestoreRequest>) -> AppResult<Vec<String>> {
             repo.checkout_head(Some(&mut opts))?;
         }
 
-        log::info!(
-            "Restored {} file(s) in {:?}",
-            req.files.len(),
-            req.repo_path
-        );
+        log::info!("Restored {} file(s) in {:?}", req.files.len(), req.repo_path);
         processed.push(req.repo_name);
     }
 

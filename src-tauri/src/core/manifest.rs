@@ -108,9 +108,7 @@ pub fn read_remote_info(repo_path: &Path) -> (Option<String>, Option<String>) {
     let remote_name = if repo.find_remote("origin").is_ok() {
         Some("origin".to_string())
     } else {
-        repo.remotes()
-            .ok()
-            .and_then(|names| names.get(0).map(str::to_string))
+        repo.remotes().ok().and_then(|names| names.get(0).map(str::to_string))
     };
 
     let Some(remote_name) = remote_name else {
@@ -204,10 +202,7 @@ pub fn validate_manifest(manifest: &WorkspaceManifest) -> AppResult<()> {
     for repo in &manifest.repositories {
         normalize_rel_path(&repo.path)?;
         if repo.name.trim().is_empty() {
-            return Err(AppError::Other(format!(
-                "Manifest 仓库 {} 缺少名称",
-                repo.path
-            )));
+            return Err(AppError::Other(format!("Manifest 仓库 {} 缺少名称", repo.path)));
         }
         if let Some(url) = &repo.remote_url {
             let ok = url.starts_with("https://")
@@ -238,10 +233,7 @@ pub fn serialize_manifest(manifest: &WorkspaceManifest) -> AppResult<String> {
 /// without a remote URL are reported as not cloneable. The manifest is
 /// re-validated here because it may arrive over IPC, not only from
 /// `parse_manifest`.
-pub fn build_clone_plan(
-    manifest: &WorkspaceManifest,
-    workspace_root: &Path,
-) -> AppResult<ClonePlan> {
+pub fn build_clone_plan(manifest: &WorkspaceManifest, workspace_root: &Path) -> AppResult<ClonePlan> {
     validate_manifest(manifest)?;
 
     let mut items = Vec::with_capacity(manifest.repositories.len());
@@ -316,17 +308,10 @@ mod tests {
         let oid = repo
             .commit(Some("refs/heads/main"), &sig, &sig, "init", &tree, &[])
             .unwrap();
-        repo.remote("origin", "https://example.com/org/repo.git")
+        repo.remote("origin", "https://example.com/org/repo.git").unwrap();
+        repo.reference("refs/remotes/origin/main", oid, false, "test").unwrap();
+        repo.reference_symbolic("refs/remotes/origin/HEAD", "refs/remotes/origin/main", true, "test")
             .unwrap();
-        repo.reference("refs/remotes/origin/main", oid, false, "test")
-            .unwrap();
-        repo.reference_symbolic(
-            "refs/remotes/origin/HEAD",
-            "refs/remotes/origin/main",
-            true,
-            "test",
-        )
-        .unwrap();
     }
 
     fn sample_manifest() -> WorkspaceManifest {
@@ -431,10 +416,7 @@ mod tests {
         assert_eq!(by_name("core").action, CloneAction::NoUrl);
         assert_eq!(by_name("cli").action, CloneAction::SkipExisting);
         // Destination = root + relative path.
-        assert_eq!(
-            PathBuf::from(&by_name("web").dest_path),
-            root.join("apps").join("web")
-        );
+        assert_eq!(PathBuf::from(&by_name("web").dest_path), root.join("apps").join("web"));
 
         let _ = std::fs::remove_dir_all(&root);
     }

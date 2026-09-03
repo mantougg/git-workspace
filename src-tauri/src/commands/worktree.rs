@@ -15,10 +15,7 @@ use crate::state::AppState;
 /// List worktrees (main + linked) of a repository, persisting a snapshot into
 /// the `worktrees` table (T-03). Purely local.
 #[tauri::command]
-pub fn list_worktrees(
-    repo_path: String,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<WorktreeInfo>> {
+pub fn list_worktrees(repo_path: String, state: State<'_, AppState>) -> AppResult<Vec<WorktreeInfo>> {
     let list = wt::list_worktrees(Path::new(&repo_path))?;
 
     // Persist the snapshot when the repository is registered in the DB.
@@ -27,10 +24,7 @@ pub fn list_worktrees(
         .lock()
         .map_err(|e| crate::error::AppError::Other(format!("DB lock error: {}", e)))?;
     if let Some(repo_id) = dao::get_repository_id_by_path(&conn, &repo_path)? {
-        let rows: Vec<(String, Option<String>)> = list
-            .iter()
-            .map(|w| (w.path.clone(), w.branch.clone()))
-            .collect();
+        let rows: Vec<(String, Option<String>)> = list.iter().map(|w| (w.path.clone(), w.branch.clone())).collect();
         dao::replace_worktrees(&mut conn, repo_id, &rows)?;
     }
 

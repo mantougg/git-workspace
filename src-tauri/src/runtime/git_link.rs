@@ -22,9 +22,9 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
-use crate::models::task::{RuntimeOp, RuntimeTaskOptions, TaskRequest, TaskType};
-use crate::maven::index::DependencyGraphCache;
 use crate::maven::closure::RuntimeClosureCache;
+use crate::maven::index::DependencyGraphCache;
+use crate::models::task::{RuntimeOp, RuntimeTaskOptions, TaskRequest, TaskType};
 use crate::runtime::events::{
     DependencyChangedPayload, RuntimeEmission, RuntimeEventEmitter, EVENT_DEPENDENCY_CHANGED,
 };
@@ -124,24 +124,21 @@ impl GitLinkEngine {
 
     /// 读取运行中应用闭包内仓库的 dirty 快照（纯 DB，禁 git 调用）。
     /// 返回 (workspace_id, runtime) → (dirty repo paths, affected module GAs)。
-    fn current_dirty_snapshot(
-        &self,
-    ) -> BTreeMap<(i64, String), (BTreeSet<String>, Vec<String>)> {
+    fn current_dirty_snapshot(&self) -> BTreeMap<(i64, String), (BTreeSet<String>, Vec<String>)> {
         let mut result = BTreeMap::new();
         let conn = self.db.lock().unwrap();
         let Ok(workspaces) = crate::db::dao::list_workspaces(&conn) else {
             return result;
         };
         for ws in workspaces {
-            let runtime_names: Vec<String> =
-                match crate::runtime::launch::store::list_processes(&conn, ws.id) {
-                    Ok(rows) => rows
-                        .into_iter()
-                        .filter(|row| row.status.is_active())
-                        .map(|row| row.runtime_name)
-                        .collect(),
-                    Err(_) => continue,
-                };
+            let runtime_names: Vec<String> = match crate::runtime::launch::store::list_processes(&conn, ws.id) {
+                Ok(rows) => rows
+                    .into_iter()
+                    .filter(|row| row.status.is_active())
+                    .map(|row| row.runtime_name)
+                    .collect(),
+                Err(_) => continue,
+            };
             for runtime_name in runtime_names {
                 let snapshot = self.dirty_for_app(&conn, ws.id, &runtime_name);
                 result.insert((ws.id, runtime_name), snapshot);
@@ -187,27 +184,18 @@ impl GitLinkEngine {
         };
         let graph = lookup.graph;
         // 运行中的应用：任何 active 进程行已在上层过滤；这里取其闭包。
-        let cfg = match crate::runtime::config::load_config_unredacted(
-            conn,
-            workspace_id,
-            runtime_name,
-        ) {
+        let cfg = match crate::runtime::config::load_config_unredacted(conn, workspace_id, runtime_name) {
             Ok(c) => c,
             Err(_) => return (BTreeSet::new(), Vec::new()),
         };
         let needle = cfg.project.replace('\\', "/");
         let Some(root) = graph.projects.iter().find(|p| {
             let path = p.path.to_string_lossy().replace('\\', "/");
-            path == needle
-                || path.ends_with(&needle)
-                || p.coordinates.artifact_id == cfg.project
+            path == needle || path.ends_with(&needle) || p.coordinates.artifact_id == cfg.project
         }) else {
             return (BTreeSet::new(), Vec::new());
         };
-        let Ok(closure_lookup) = self
-            .closure_cache
-            .get_or_compute(&graph, root.project_id, &cfg.scope)
-        else {
+        let Ok(closure_lookup) = self.closure_cache.get_or_compute(&graph, root.project_id, &cfg.scope) else {
             return (BTreeSet::new(), Vec::new());
         };
 
@@ -335,9 +323,7 @@ impl GitLinkEngine {
                     return false; // 复核完成，移除。
                 }
                 if elapsed >= BRANCH_RECHECK_TIMEOUT {
-                    log::info!(
-                        "R-21: workspace #{workspace_id} branch recheck timed out without POM change"
-                    );
+                    log::info!("R-21: workspace #{workspace_id} branch recheck timed out without POM change");
                     actions.push((*workspace_id, false));
                     return false;
                 }
@@ -363,8 +349,7 @@ impl GitLinkEngine {
     fn emit_pom_changed(&self, workspace_id: i64) {
         let (active, auto_restart_names) = {
             let conn = self.db.lock().unwrap();
-            let Ok(rows) = crate::runtime::launch::store::list_processes(&conn, workspace_id)
-            else {
+            let Ok(rows) = crate::runtime::launch::store::list_processes(&conn, workspace_id) else {
                 return;
             };
             let mut active = Vec::new();
@@ -373,13 +358,10 @@ impl GitLinkEngine {
                 if !row.status.is_active() {
                     continue;
                 }
-                let auto_restart = crate::runtime::config::load_config_unredacted(
-                    &conn,
-                    workspace_id,
-                    &row.runtime_name,
-                )
-                .ok()
-                .and_then(|cfg| cfg.auto_restart);
+                let auto_restart =
+                    crate::runtime::config::load_config_unredacted(&conn, workspace_id, &row.runtime_name)
+                        .ok()
+                        .and_then(|cfg| cfg.auto_restart);
                 if auto_restart == Some(true) {
                     auto_restart_names.push(row.runtime_name.clone());
                 }
@@ -489,10 +471,7 @@ mod tests {
 
     impl WatchTaskSubmitter for Recorder {
         fn submit(&self, request: TaskRequest) -> crate::error::AppResult<String> {
-            if let TaskType::Runtime {
-                op, runtime_name, ..
-            } = &request.task_type
-            {
+            if let TaskType::Runtime { op, runtime_name, .. } = &request.task_type {
                 self.0.lock().unwrap().push((*op, runtime_name.clone()));
             }
             Ok(format!("t-{}", self.0.lock().unwrap().len()))
@@ -557,8 +536,7 @@ mod tests {
         .unwrap();
         let discovery = crate::maven::discover_poms(&root, 5, None, None);
         assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-        crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
-            .unwrap();
+        crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2")).unwrap();
 
         crate::runtime::config::create_config(
             &conn,
@@ -617,9 +595,7 @@ mod tests {
             graph_cache: Arc::new(DependencyGraphCache::new()),
             closure_cache: Arc::new(RuntimeClosureCache::new()),
             emitter: Arc::clone(&emitter) as Arc<dyn RuntimeEventEmitter>,
-            task_manager: Mutex::new(Some(
-                Arc::clone(&recorder) as Arc<dyn WatchTaskSubmitter>
-            )),
+            task_manager: Mutex::new(Some(Arc::clone(&recorder) as Arc<dyn WatchTaskSubmitter>)),
             last_dirty: Mutex::new(HashMap::new()),
             pending_branch: Mutex::new(HashMap::new()),
             stop: Arc::new(AtomicBool::new(false)),
@@ -690,13 +666,8 @@ mod tests {
         {
             let mut conn = fixture.db.lock().unwrap();
             let discovery = crate::maven::discover_poms(&fixture.root, 5, None, None);
-            crate::maven::sync_workspace_index(
-                &mut conn,
-                fixture.workspace_id,
-                &discovery,
-                &fixture.root.join("m2"),
-            )
-            .unwrap();
+            crate::maven::sync_workspace_index(&mut conn, fixture.workspace_id, &discovery, &fixture.root.join("m2"))
+                .unwrap();
         }
         engine.sync_tick();
 
@@ -728,7 +699,11 @@ mod tests {
         assert!(emitter.collected().is_empty());
         assert_eq!(recorder.ops().len(), 1, "no rebuild without POM change");
         assert!(
-            engine.pending_branch.lock().unwrap().contains_key(&fixture.workspace_id),
+            engine
+                .pending_branch
+                .lock()
+                .unwrap()
+                .contains_key(&fixture.workspace_id),
             "pending kept for recheck window"
         );
     }

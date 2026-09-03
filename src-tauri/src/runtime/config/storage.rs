@@ -49,9 +49,7 @@ pub(super) struct WorkspaceEnvironmentDocument {
     pub(super) environment: std::collections::BTreeMap<String, String>,
 }
 
-pub(super) fn read_environment_file(
-    path: &Path,
-) -> AppResult<std::collections::BTreeMap<String, String>> {
+pub(super) fn read_environment_file(path: &Path) -> AppResult<std::collections::BTreeMap<String, String>> {
     reject_symlink(path)?;
     if !path.exists() {
         return Ok(std::collections::BTreeMap::new());
@@ -66,13 +64,10 @@ pub(super) fn read_environment_file(
     }
 }
 
-pub(super) fn read_config_file(
-    path: &Path,
-    expected_name: &str,
-) -> AppResult<RuntimeApplicationConfig> {
+pub(super) fn read_config_file(path: &Path, expected_name: &str) -> AppResult<RuntimeApplicationConfig> {
     let content = read_file(path)?;
-    let config = serde_json::from_str::<RuntimeApplicationConfig>(&content)
-        .map_err(|error| invalid_json_error(path, error))?;
+    let config =
+        serde_json::from_str::<RuntimeApplicationConfig>(&content).map_err(|error| invalid_json_error(path, error))?;
     if !config.name.trim().is_empty() && config.name != expected_name {
         return Err(AppError::RuntimeConfig(format!(
             "配置文件 {} 的 name='{}' 与索引名称 '{}' 不一致；请通过 Runtime 配置更新它",
@@ -94,13 +89,8 @@ pub(super) fn read_file(path: &Path) -> AppResult<String> {
         ))
     })?;
     let mut content = String::new();
-    file.read_to_string(&mut content).map_err(|error| {
-        AppError::RuntimeConfig(format!(
-            "无法读取 Runtime 配置文件 {}：{}",
-            path.display(),
-            error
-        ))
-    })?;
+    file.read_to_string(&mut content)
+        .map_err(|error| AppError::RuntimeConfig(format!("无法读取 Runtime 配置文件 {}：{}", path.display(), error)))?;
     Ok(content)
 }
 
@@ -126,16 +116,13 @@ pub(crate) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> AppResu
 
 pub(super) fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
     reject_symlink(path)?;
-    let parent = path.parent().ok_or_else(|| {
-        AppError::RuntimeConfig(format!("配置路径没有父目录：{}", path.display()))
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| AppError::RuntimeConfig(format!("配置路径没有父目录：{}", path.display())))?;
     fs::create_dir_all(parent)?;
     let file_name = path.file_name().unwrap_or_default().to_string_lossy();
     let temp_path = parent.join(format!(".{file_name}.tmp-{}", Uuid::new_v4()));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temp_path)?;
+    let mut file = OpenOptions::new().write(true).create_new(true).open(&temp_path)?;
     let result = (|| -> AppResult<()> {
         file.write_all(bytes)?;
         file.sync_all()?;
@@ -165,9 +152,7 @@ pub(super) fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
     result
 }
 
-pub(super) fn normalized_for_storage(
-    mut config: RuntimeApplicationConfig,
-) -> RuntimeApplicationConfig {
+pub(super) fn normalized_for_storage(mut config: RuntimeApplicationConfig) -> RuntimeApplicationConfig {
     config.schema_version = CURRENT_SCHEMA_VERSION;
     if config.build_engine.is_none() {
         config.build_engine = default_build_engine();

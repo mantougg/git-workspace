@@ -38,11 +38,7 @@ pub fn get_merge_in_progress(repo_path: String) -> AppResult<bool> {
 /// Default rebase todo: commits of `branch` (default HEAD) not in `upstream`,
 /// oldest first, as pick ops.
 #[tauri::command]
-pub fn list_rebase_commits(
-    repo_path: String,
-    upstream: String,
-    branch: Option<String>,
-) -> AppResult<Vec<RebaseOp>> {
+pub fn list_rebase_commits(repo_path: String, upstream: String, branch: Option<String>) -> AppResult<Vec<RebaseOp>> {
     rebase::list_rebase_commits(Path::new(&repo_path), &upstream, branch.as_deref())
 }
 

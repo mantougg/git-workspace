@@ -152,9 +152,7 @@ fn affected_modules_pure_maps_paths_and_propagates() {
     };
 
     // 改 lib 源码 → lib + app（反向传播）。
-    let mut changed: BTreeSet<PathBuf> = [PathBuf::from("/ws/repo/lib/src/A.java")]
-        .into_iter()
-        .collect();
+    let mut changed: BTreeSet<PathBuf> = [PathBuf::from("/ws/repo/lib/src/A.java")].into_iter().collect();
     let affected = super::impact::affected_modules(&closure, &graph, &changed).unwrap();
     assert_eq!(
         affected,
@@ -171,9 +169,7 @@ fn affected_modules_pure_maps_paths_and_propagates() {
     );
 
     // 全部路径都在闭包外 → None（不触发任何任务）。
-    let outside: BTreeSet<PathBuf> = [PathBuf::from("/elsewhere/src/X.java")]
-        .into_iter()
-        .collect();
+    let outside: BTreeSet<PathBuf> = [PathBuf::from("/elsewhere/src/X.java")].into_iter().collect();
     assert!(super::impact::affected_modules(&closure, &graph, &outside).is_none());
 }
 
@@ -236,8 +232,7 @@ fn watch_fixture(tag: &str) -> Fixture {
     .unwrap();
     let discovery = crate::maven::discover_poms(&root, 5, None, None);
     assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
-        .unwrap();
+    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2")).unwrap();
 
     crate::runtime::config::create_config(
         &conn,
@@ -262,10 +257,7 @@ fn watch_fixture(tag: &str) -> Fixture {
 }
 
 /// 直接构造引擎（不走 spawn：不起防抖/同步线程，注入假提交端）。
-fn test_engine(
-    fixture: &Fixture,
-    emitter: Arc<VecEmitter>,
-) -> (RuntimeWatchEngine, Arc<RecordingSubmitter>) {
+fn test_engine(fixture: &Fixture, emitter: Arc<VecEmitter>) -> (RuntimeWatchEngine, Arc<RecordingSubmitter>) {
     let submitter = RecordingSubmitter::new();
     let (event_tx, _event_rx) = std::sync::mpsc::channel::<Vec<PathBuf>>();
     let engine = RuntimeWatchEngine {
@@ -273,9 +265,9 @@ fn test_engine(
         graph_cache: Arc::new(DependencyGraphCache::new()),
         closure_cache: Arc::new(RuntimeClosureCache::new()),
         emitter,
-        processes: Arc::new(crate::runtime::launch::RuntimeProcessManager::new(
-            Arc::clone(&fixture.db),
-        )),
+        processes: Arc::new(crate::runtime::launch::RuntimeProcessManager::new(Arc::clone(
+            &fixture.db,
+        ))),
         task_manager: Mutex::new(Some(Arc::clone(&submitter) as Arc<dyn WatchTaskSubmitter>)),
         watcher: Mutex::new(None),
         watched: Mutex::new(HashSet::new()),

@@ -36,10 +36,7 @@ impl DependencyGraphCache {
             fingerprint,
         };
         if let Some(graph) = self.inner.get(&key) {
-            return Ok(GraphCacheLookup {
-                graph,
-                cache_hit: true,
-            });
+            return Ok(GraphCacheLookup { graph, cache_hit: true });
         }
 
         let graph = query_dependency_graph(conn, workspace_id)?;

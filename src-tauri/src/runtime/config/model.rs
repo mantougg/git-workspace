@@ -152,8 +152,7 @@ impl RuntimeApplicationConfig {
             RuntimeKind::SpringBoot => {
                 if self.node_script.is_some() || self.node_package_manager.is_some() {
                     return Err(AppError::RuntimeConfig(
-                        "springBoot Runtime 不允许设置 nodeScript 或 nodePackageManager；请清空 Node 字段"
-                            .into(),
+                        "springBoot Runtime 不允许设置 nodeScript 或 nodePackageManager；请清空 Node 字段".into(),
                     ));
                 }
             }
@@ -204,8 +203,7 @@ impl RuntimeApplicationConfig {
                     .iter()
                     .any(|arg| arg.starts_with("--spring.profiles.active="));
             if !has_injection {
-                next.vm_options
-                    .push(format!("-Dspring.profiles.active={profile}"));
+                next.vm_options.push(format!("-Dspring.profiles.active={profile}"));
             }
         }
         next

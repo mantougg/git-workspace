@@ -138,10 +138,7 @@ where
     // 当前指纹。
     let mut current: BTreeMap<String, String> = BTreeMap::new();
     for module in closure_modules {
-        let ga = format!(
-            "{}:{}",
-            module.coordinates.group_id, module.coordinates.artifact_id
-        );
+        let ga = format!("{}:{}", module.coordinates.group_id, module.coordinates.artifact_id);
         match fingerprint_of(module) {
             Some(fp) => {
                 current.insert(ga, fp);
@@ -153,10 +150,7 @@ where
     // 自身指纹变化或产物缺失的模块。
     let mut rebuild: BTreeSet<String> = BTreeSet::new();
     for module in closure_modules {
-        let ga = format!(
-            "{}:{}",
-            module.coordinates.group_id, module.coordinates.artifact_id
-        );
+        let ga = format!("{}:{}", module.coordinates.group_id, module.coordinates.artifact_id);
         let fp_changed = stored.modules.get(&ga) != current.get(&ga);
         if fp_changed || !artifact_exists(module) {
             rebuild.insert(ga);
@@ -176,27 +170,20 @@ where
             let Some(upstream) = graph.projects.iter().find(|p| p.project_id == upstream_id) else {
                 continue;
             };
-            let upstream_ga = format!(
-                "{}:{}",
-                upstream.coordinates.group_id, upstream.coordinates.artifact_id
-            );
+            let upstream_ga = format!("{}:{}", upstream.coordinates.group_id, upstream.coordinates.artifact_id);
             if !rebuild.contains(&upstream_ga) {
                 continue;
             }
-            let Some(downstream) = graph
-                .projects
-                .iter()
-                .find(|p| p.project_id == edge.from_project_id)
-            else {
+            let Some(downstream) = graph.projects.iter().find(|p| p.project_id == edge.from_project_id) else {
                 continue;
             };
             let downstream_ga = format!(
                 "{}:{}",
                 downstream.coordinates.group_id, downstream.coordinates.artifact_id
             );
-            let in_closure = closure_modules.iter().any(|m| {
-                format!("{}:{}", m.coordinates.group_id, m.coordinates.artifact_id) == downstream_ga
-            });
+            let in_closure = closure_modules
+                .iter()
+                .any(|m| format!("{}:{}", m.coordinates.group_id, m.coordinates.artifact_id) == downstream_ga);
             if in_closure && !rebuild.contains(&downstream_ga) {
                 propagated.insert(downstream_ga);
             }

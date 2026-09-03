@@ -11,11 +11,10 @@ use crate::maven::{MavenProjectNode, RuntimeScope};
 use crate::models::task::RuntimeOp;
 use crate::runtime::logs::LogEntry;
 use crate::runtime::{
-    create_config, delete_config, get_config, get_workspace_environment, list_configs,
-    resolve_environment, set_workspace_environment, update_config, ClosurePreview,
-    CreateRuntimeConfigRequest, DependencyGraphView, LogExportOutcome, ProjectInspection,
-    RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeLogQuery, RuntimeOperationRequest,
-    RuntimeProcessInfo, RuntimeRunningBrief, SchedulerConfig, ScriptApproval,
+    create_config, delete_config, get_config, get_workspace_environment, list_configs, resolve_environment,
+    set_workspace_environment, update_config, ClosurePreview, CreateRuntimeConfigRequest, DependencyGraphView,
+    LogExportOutcome, ProjectInspection, RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeLogQuery,
+    RuntimeOperationRequest, RuntimeProcessInfo, RuntimeRunningBrief, SchedulerConfig, ScriptApproval,
     UpdateRuntimeConfigRequest,
 };
 use crate::state::AppState;
@@ -46,20 +45,13 @@ pub fn update_runtime_config(
 }
 
 #[command]
-pub fn delete_runtime_config(
-    workspace_id: i64,
-    name: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn delete_runtime_config(workspace_id: i64, name: String, state: State<'_, AppState>) -> AppResult<()> {
     let conn = lock_db(&state)?;
     delete_config(&conn, workspace_id, &name)
 }
 
 #[command]
-pub fn list_runtime_configs(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<RuntimeConfigSummary>> {
+pub fn list_runtime_configs(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<RuntimeConfigSummary>> {
     let conn = lock_db(&state)?;
     list_configs(&conn, workspace_id)
 }
@@ -128,10 +120,7 @@ pub fn set_workspace_runtime_environment(
 // ---------------------------------------------------------------------------
 
 /// 提交单个 Runtime 任务，返回任务 id。
-fn submit_one(
-    state: &State<'_, AppState>,
-    req: crate::models::task::TaskRequest,
-) -> AppResult<String> {
+fn submit_one(state: &State<'_, AppState>, req: crate::models::task::TaskRequest) -> AppResult<String> {
     let mut ids = state.task_manager.submit(&[req])?;
     ids.pop()
         .ok_or_else(|| AppError::Task("任务提交失败：未返回任务 id".into()))
@@ -139,10 +128,7 @@ fn submit_one(
 
 /// §63 `runtime.list_projects`：workspace 的 Maven 项目索引（DB 热路径）。
 #[command]
-pub fn runtime_list_projects(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<MavenProjectNode>> {
+pub fn runtime_list_projects(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<MavenProjectNode>> {
     state.runtime.list_projects(workspace_id)
 }
 
@@ -247,8 +233,7 @@ pub fn runtime_list_unified_projects(
             .db
             .lock()
             .map_err(|error| AppError::Other(format!("DB lock error: {error}")))?;
-        crate::node::discovery::sync_node_projects(&mut conn, workspace_id, &discovery)
-            .unwrap_or_default()
+        crate::node::discovery::sync_node_projects(&mut conn, workspace_id, &discovery).unwrap_or_default()
     };
     for project in node_projects {
         unified.push(UnifiedProjectNode {
@@ -281,10 +266,7 @@ pub fn runtime_inspect_project(
 
 /// §63 `runtime.resolve_dependencies`：提交依赖解析同步任务（§66 限流 4）。
 #[command]
-pub fn runtime_resolve_dependencies(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
+pub fn runtime_resolve_dependencies(workspace_id: i64, state: State<'_, AppState>) -> AppResult<String> {
     let req = state.runtime.resolve_task_request(workspace_id);
     submit_one(&state, req)
 }
@@ -298,9 +280,7 @@ pub fn runtime_get_dependency_graph(
     max_edges: Option<usize>,
     state: State<'_, AppState>,
 ) -> AppResult<DependencyGraphView> {
-    state
-        .runtime
-        .dependency_graph(workspace_id, project_id, max_edges)
+    state.runtime.dependency_graph(workspace_id, project_id, max_edges)
 }
 
 /// R-13：`runtime.get_closure`——按给定 Scope 计算闭包预览（R-03 §15，
@@ -312,17 +292,12 @@ pub fn runtime_get_closure(
     scope: RuntimeScope,
     state: State<'_, AppState>,
 ) -> AppResult<ClosurePreview> {
-    state
-        .runtime
-        .closure_preview(workspace_id, &project, &scope)
+    state.runtime.closure_preview(workspace_id, &project, &scope)
 }
 
 /// §63 `runtime.build`：提交 Build 任务（§66 限流 2，排队可取消）。
 #[command]
-pub fn runtime_build(
-    req: RuntimeOperationRequest,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
+pub fn runtime_build(req: RuntimeOperationRequest, state: State<'_, AppState>) -> AppResult<String> {
     let req = state.runtime.operation_task_request(&req, RuntimeOp::Build);
     submit_one(&state, req)
 }
@@ -330,21 +305,14 @@ pub fn runtime_build(
 /// §63 `runtime.start`：提交 Start 任务（Validate JDK/Maven → Resolve →
 /// Reactor → Build → Start 子任务进度经 §64 事件流出）。
 #[command]
-pub fn runtime_start(
-    req: RuntimeOperationRequest,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
+pub fn runtime_start(req: RuntimeOperationRequest, state: State<'_, AppState>) -> AppResult<String> {
     let req = state.runtime.operation_task_request(&req, RuntimeOp::Start);
     submit_one(&state, req)
 }
 
 /// §63 `runtime.stop`：提交 Stop 任务（SIGTERM 优雅优先，幂等）。
 #[command]
-pub fn runtime_stop(
-    workspace_id: i64,
-    runtime_name: String,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
+pub fn runtime_stop(workspace_id: i64, runtime_name: String, state: State<'_, AppState>) -> AppResult<String> {
     let req = state.runtime.operation_task_request(
         &RuntimeOperationRequest {
             workspace_id,
@@ -358,53 +326,34 @@ pub fn runtime_stop(
 
 /// §63 `runtime.restart`：提交 Restart 任务（复用最近构建产物）。
 #[command]
-pub fn runtime_restart(
-    req: RuntimeOperationRequest,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
-    let req = state
-        .runtime
-        .operation_task_request(&req, RuntimeOp::Restart);
+pub fn runtime_restart(req: RuntimeOperationRequest, state: State<'_, AppState>) -> AppResult<String> {
+    let req = state.runtime.operation_task_request(&req, RuntimeOp::Restart);
     submit_one(&state, req)
 }
 
 /// R-17/R-21：Stop → 完整构建 → Start（源码/POM 变化后的重建重启入口，
 /// 区别于 `runtime_restart` 的 skip-build 复用）。
 #[command]
-pub fn runtime_rebuild_restart(
-    req: RuntimeOperationRequest,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
-    let req = state
-        .runtime
-        .operation_task_request(&req, RuntimeOp::RebuildRestart);
+pub fn runtime_rebuild_restart(req: RuntimeOperationRequest, state: State<'_, AppState>) -> AppResult<String> {
+    let req = state.runtime.operation_task_request(&req, RuntimeOp::RebuildRestart);
     submit_one(&state, req)
 }
 
 /// §63 `runtime.list_processes`。
 #[command]
-pub fn runtime_list_processes(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<RuntimeProcessInfo>> {
+pub fn runtime_list_processes(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<RuntimeProcessInfo>> {
     state.runtime.list_processes(workspace_id)
 }
 
 /// §63 `runtime.process_status`。
 #[command]
-pub fn runtime_process_status(
-    process_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Option<RuntimeProcessInfo>> {
+pub fn runtime_process_status(process_id: i64, state: State<'_, AppState>) -> AppResult<Option<RuntimeProcessInfo>> {
     state.runtime.process_status(process_id)
 }
 
 /// §63 `runtime.get_logs`（R-11：跨滚动段搜索 / tail，`filter.limit` 分页）。
 #[command]
-pub fn runtime_get_logs(
-    query: RuntimeLogQuery,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<LogEntry>> {
+pub fn runtime_get_logs(query: RuntimeLogQuery, state: State<'_, AppState>) -> AppResult<Vec<LogEntry>> {
     state.runtime.get_logs(&query)
 }
 
@@ -429,20 +378,14 @@ pub fn runtime_export_logs(
 /// （Phase 1 口径；依赖排序 / 并行编排由 R-15 引入）。返回任务 id 列表
 /// （>1 个配置时共享 T-20 批量聚合行）。
 #[command]
-pub fn runtime_start_environment(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub fn runtime_start_environment(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     let requests = state.runtime.start_environment_requests(workspace_id)?;
     state.task_manager.submit(&requests)
 }
 
 /// §63 `runtime.stop_environment`：停止 workspace 下全部活跃 Runtime 进程。
 #[command]
-pub fn runtime_stop_environment(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub fn runtime_stop_environment(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     let requests = state.runtime.stop_environment_requests(workspace_id)?;
     state.task_manager.submit(&requests)
 }
@@ -455,10 +398,7 @@ pub fn runtime_get_scheduler_config(state: State<'_, AppState>) -> AppResult<Sch
 
 /// §66 可配置：调整调度并发上限（立即生效并持久化）。
 #[command]
-pub fn runtime_set_scheduler_config(
-    config: SchedulerConfig,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn runtime_set_scheduler_config(config: SchedulerConfig, state: State<'_, AppState>) -> AppResult<()> {
     state.runtime.set_scheduler_config(&config)
 }
 
@@ -522,12 +462,8 @@ pub fn runtime_change_runtime_port(
     config
         .program_arguments
         .retain(|arg| !arg.starts_with("--server.port=") && !arg.starts_with("--server.port "));
-    config
-        .vm_options
-        .retain(|arg| !arg.starts_with("-Dserver.port="));
-    config
-        .program_arguments
-        .push(format!("--server.port={port}"));
+    config.vm_options.retain(|arg| !arg.starts_with("-Dserver.port="));
+    config.program_arguments.push(format!("--server.port={port}"));
     crate::runtime::config::update_config(
         &conn,
         &UpdateRuntimeConfigRequest {
@@ -569,11 +505,7 @@ pub fn runtime_save_environment(
 
 /// R-15 `runtime.delete_environment`。
 #[command]
-pub fn runtime_delete_environment(
-    workspace_id: i64,
-    name: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn runtime_delete_environment(workspace_id: i64, name: String, state: State<'_, AppState>) -> AppResult<()> {
     let conn = lock_db(&state)?;
     let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
     crate::runtime::environment::delete_environment(&root, &name)
@@ -587,11 +519,9 @@ pub fn runtime_start_named_environment(
     environment: String,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
-    let req = state.runtime.named_environment_task_request(
-        workspace_id,
-        &environment,
-        RuntimeOp::StartEnvironment,
-    );
+    let req = state
+        .runtime
+        .named_environment_task_request(workspace_id, &environment, RuntimeOp::StartEnvironment);
     submit_one(&state, req)
 }
 
@@ -603,11 +533,9 @@ pub fn runtime_stop_named_environment(
     environment: String,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
-    let req = state.runtime.named_environment_task_request(
-        workspace_id,
-        &environment,
-        RuntimeOp::StopEnvironment,
-    );
+    let req = state
+        .runtime
+        .named_environment_task_request(workspace_id, &environment, RuntimeOp::StopEnvironment);
     submit_one(&state, req)
 }
 
@@ -641,11 +569,7 @@ pub fn runtime_save_template(
 
 /// R-19 `runtime.delete_template`：删除用户模板（内置模板拒绝）。
 #[command]
-pub fn runtime_delete_template(
-    workspace_id: i64,
-    name: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn runtime_delete_template(workspace_id: i64, name: String, state: State<'_, AppState>) -> AppResult<()> {
     let conn = lock_db(&state)?;
     let root = crate::runtime::config::workspace_root(&conn, workspace_id)?;
     crate::runtime::templates::delete_template(&root, &name)
@@ -686,13 +610,7 @@ pub fn runtime_apply_template(
             "应用模板前请填写应用名称并选择 Maven 项目".into(),
         ));
     }
-    crate::runtime::config::create_config(
-        &conn,
-        &CreateRuntimeConfigRequest {
-            workspace_id,
-            config,
-        },
-    )
+    crate::runtime::config::create_config(&conn, &CreateRuntimeConfigRequest { workspace_id, config })
 }
 
 // ---------------------------------------------------------------------------
@@ -714,9 +632,7 @@ pub fn runtime_approve_script(
     script_type: String,
     state: State<'_, AppState>,
 ) -> AppResult<ScriptApproval> {
-    state
-        .runtime
-        .approve_script(workspace_id, &runtime_name, &script_type)
+    state.runtime.approve_script(workspace_id, &runtime_name, &script_type)
 }
 
 /// 按范围撤销脚本确认（workspace / runtime 可空 = 匹配任意）。

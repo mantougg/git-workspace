@@ -6,8 +6,8 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::error::{AppError, AppResult};
 use crate::core::graph;
+use crate::error::{AppError, AppResult};
 
 /// A single reflog line (newest first).
 #[derive(Debug, Clone, Serialize)]
@@ -30,11 +30,7 @@ pub struct ReflogEntry {
 /// Read the reflog of `reference` ("HEAD", a full ref like "refs/heads/main",
 /// or a shorthand like "main" / "origin/main"), newest first, capped at
 /// `max` entries.
-pub fn read_reflog(
-    repo_path: &Path,
-    reference: Option<&str>,
-    max: usize,
-) -> AppResult<Vec<ReflogEntry>> {
+pub fn read_reflog(repo_path: &Path, reference: Option<&str>, max: usize) -> AppResult<Vec<ReflogEntry>> {
     let repo = git2::Repository::open(repo_path)?;
     let (full_ref, display) = resolve_ref_name(reference);
 
@@ -110,13 +106,7 @@ mod tests {
         dir
     }
 
-    fn commit_file(
-        repo: &git2::Repository,
-        dir: &Path,
-        name: &str,
-        content: &str,
-        msg: &str,
-    ) -> String {
+    fn commit_file(repo: &git2::Repository, dir: &Path, name: &str, content: &str, msg: &str) -> String {
         std::fs::write(dir.join(name), content).unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(Path::new(name)).unwrap();
@@ -218,10 +208,7 @@ mod tests {
 
         assert!(dir.join("b.txt").exists());
         let repo = git2::Repository::open(&dir).unwrap();
-        assert_eq!(
-            repo.head().unwrap().target().unwrap().to_string(),
-            second_oid
-        );
+        assert_eq!(repo.head().unwrap().target().unwrap().to_string(), second_oid);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

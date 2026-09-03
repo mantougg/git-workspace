@@ -58,10 +58,7 @@ pub fn build_effective(pom: &MavenProject, index: &PomIndex) -> EffectiveProject
     visited.insert(pom.coordinates().gav());
 
     while let Some(parent) = current {
-        let gav = format!(
-            "{}:{}:{}",
-            parent.group_id, parent.artifact_id, parent.version
-        );
+        let gav = format!("{}:{}:{}", parent.group_id, parent.artifact_id, parent.version);
         if visited.contains(&gav) {
             // 防止循环（理论上不应出现）。
             break;
@@ -122,26 +119,15 @@ pub fn build_effective(pom: &MavenProject, index: &PomIndex) -> EffectiveProject
     };
 
     // 坐标和 properties 都允许相互引用；有限轮次收敛，循环引用保持原样。
-    let mut group_id = resolve_placeholders(
-        &raw_group_id,
-        &effective_properties,
-        &raw_group_id,
-        &raw_version,
-    );
-    let mut version =
-        resolve_placeholders(&raw_version, &effective_properties, &group_id, &raw_version);
+    let mut group_id = resolve_placeholders(&raw_group_id, &effective_properties, &raw_group_id, &raw_version);
+    let mut version = resolve_placeholders(&raw_version, &effective_properties, &group_id, &raw_version);
     for _ in 0..8 {
         let previous = effective_properties.clone();
         for (key, value) in &previous {
-            effective_properties.insert(
-                key.clone(),
-                resolve_placeholders(value, &previous, &group_id, &version),
-            );
+            effective_properties.insert(key.clone(), resolve_placeholders(value, &previous, &group_id, &version));
         }
-        let next_group =
-            resolve_placeholders(&group_id, &effective_properties, &group_id, &version);
-        let next_version =
-            resolve_placeholders(&version, &effective_properties, &next_group, &version);
+        let next_group = resolve_placeholders(&group_id, &effective_properties, &group_id, &version);
+        let next_version = resolve_placeholders(&version, &effective_properties, &next_group, &version);
         if previous == effective_properties && next_group == group_id && next_version == version {
             break;
         }
@@ -169,10 +155,7 @@ pub fn build_effective(pom: &MavenProject, index: &PomIndex) -> EffectiveProject
             let mut dependency = dependency.clone();
             resolve_dependency_coordinates(&mut dependency, &resolve);
             let key = dependency_key(&dependency);
-            if let Some(existing) = inherited
-                .iter_mut()
-                .find(|candidate| dependency_key(candidate) == key)
-            {
+            if let Some(existing) = inherited.iter_mut().find(|candidate| dependency_key(candidate) == key) {
                 *existing = dependency;
             } else {
                 inherited.push(dependency);
@@ -182,16 +165,12 @@ pub fn build_effective(pom: &MavenProject, index: &PomIndex) -> EffectiveProject
 
     let mut effective_dependencies = Vec::with_capacity(inherited.len());
     for mut dependency in inherited {
-        dependency.version = dependency
-            .version
-            .as_ref()
-            .map(|value| resolve(value))
-            .or_else(|| {
-                managed
-                    .get(&dependency_key(&dependency))
-                    .and_then(|managed| managed.version.as_ref())
-                    .map(|value| resolve(value))
-            });
+        dependency.version = dependency.version.as_ref().map(|value| resolve(value)).or_else(|| {
+            managed
+                .get(&dependency_key(&dependency))
+                .and_then(|managed| managed.version.as_ref())
+                .map(|value| resolve(value))
+        });
         for exclusion in &mut dependency.exclusions {
             exclusion.group_id = resolve(&exclusion.group_id);
             exclusion.artifact_id = resolve(&exclusion.artifact_id);
@@ -218,12 +197,7 @@ pub fn build_effective(pom: &MavenProject, index: &PomIndex) -> EffectiveProject
 
 /// 替换 `${...}` 占位符。支持内建变量 `project.version` / `project.groupId`，
 /// 以及用户自定义 properties。未识别占位符原样保留。
-fn resolve_placeholders(
-    s: &str,
-    props: &BTreeMap<String, String>,
-    group_id: &str,
-    version: &str,
-) -> String {
+fn resolve_placeholders(s: &str, props: &BTreeMap<String, String>, group_id: &str, version: &str) -> String {
     let mut out = s.to_string();
     let mut prev: Option<String> = None;
     // 最多迭代若干轮以解析嵌套引用（${x} 引用 ${y}）。
@@ -266,10 +240,7 @@ fn replace_all_placeholders<F: Fn(&str) -> String>(s: &str, lookup: F) -> String
     out
 }
 
-fn resolve_dependency_coordinates<F: Fn(&str) -> String>(
-    dependency: &mut MavenDependency,
-    resolve: &F,
-) {
+fn resolve_dependency_coordinates<F: Fn(&str) -> String>(dependency: &mut MavenDependency, resolve: &F) {
     dependency.group_id = resolve(&dependency.group_id);
     dependency.artifact_id = resolve(&dependency.artifact_id);
     dependency.dep_type = resolve(&dependency.dep_type);
@@ -333,10 +304,7 @@ pub(crate) fn build_index(poms: &[MavenProject]) -> PomIndex {
         } else {
             p.version.clone()
         };
-        idx.insert(
-            format!("{}:{}:{}", group_id, p.artifact_id, version),
-            p.clone(),
-        );
+        idx.insert(format!("{}:{}:{}", group_id, p.artifact_id, version), p.clone());
     }
     idx
 }
@@ -414,10 +382,7 @@ mod tests {
         assert!(eff.has_workspace_parent);
         assert!(!eff.remote_parent_missing);
         // 版本从 dependencyManagement 落地
-        assert_eq!(
-            eff.effective_dependencies[0].version.as_deref(),
-            Some("1.5.0")
-        );
+        assert_eq!(eff.effective_dependencies[0].version.as_deref(), Some("1.5.0"));
     }
 
     #[test]
@@ -503,10 +468,7 @@ mod tests {
 
         assert_eq!(effective.effective_dependencies.len(), 2);
         assert_eq!(effective.effective_dependencies[0].artifact_id, "inherited");
-        assert_eq!(
-            effective.effective_dependencies[1].version.as_deref(),
-            Some("2.0.0")
-        );
+        assert_eq!(effective.effective_dependencies[1].version.as_deref(), Some("2.0.0"));
     }
 
     #[test]
@@ -579,14 +541,8 @@ mod tests {
 
         let idx = PomIndex::new();
         let eff = build_effective(&p, &idx);
-        assert_eq!(
-            eff.effective_dependencies[0].version.as_deref(),
-            Some("2.3.0")
-        );
-        assert_eq!(
-            eff.effective_dependencies[1].version.as_deref(),
-            Some("1.0.0")
-        );
+        assert_eq!(eff.effective_dependencies[0].version.as_deref(), Some("2.3.0"));
+        assert_eq!(eff.effective_dependencies[1].version.as_deref(), Some("1.0.0"));
     }
 
     #[test]
@@ -604,19 +560,15 @@ mod tests {
         });
         let idx = PomIndex::new();
         let eff = build_effective(&p, &idx);
-        assert_eq!(
-            eff.effective_dependencies[0].version.as_deref(),
-            Some("${unknown.key}")
-        );
+        assert_eq!(eff.effective_dependencies[0].version.as_deref(), Some("${unknown.key}"));
     }
 
     #[test]
     fn multi_module_parent_type() {
         let mut p = pom("com.example", "root", "1.0.0", None);
         p.packaging = "pom".to_string();
-        p.modules.push(crate::maven::model::MavenModule {
-            path: "mod-a".into(),
-        });
+        p.modules
+            .push(crate::maven::model::MavenModule { path: "mod-a".into() });
         let idx = PomIndex::new();
         let eff = build_effective(&p, &idx);
         assert_eq!(eff.project_type, MavenProjectType::Parent);

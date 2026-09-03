@@ -44,11 +44,7 @@ impl RepoScanner {
     /// Public API reserved for the UI cancel button (T-01 cancellation wiring);
     /// exercised by unit tests today, hence the allow.
     #[allow(dead_code)]
-    pub fn scan_cancellable(
-        &self,
-        root: &Path,
-        cancel: Option<&AtomicBool>,
-    ) -> Vec<ScannedRepo> {
+    pub fn scan_cancellable(&self, root: &Path, cancel: Option<&AtomicBool>) -> Vec<ScannedRepo> {
         self.scan_internal(root, cancel, None)
     }
 
@@ -225,9 +221,7 @@ impl IgnoreRules {
         if self.names.iter().any(|n| n == name) {
             return true;
         }
-        self.path_prefixes
-            .iter()
-            .any(|p| relative.starts_with(p.as_str()))
+        self.path_prefixes.iter().any(|p| relative.starts_with(p.as_str()))
     }
 }
 
@@ -400,8 +394,12 @@ mod tests {
         // Main repo + a linked worktree alongside it.
         let main = dir.join("main_repo");
         git2::Repository::init(&main).unwrap();
-        std::fs::write(main.join("a.txt"), "one
-").unwrap();
+        std::fs::write(
+            main.join("a.txt"),
+            "one
+",
+        )
+        .unwrap();
         {
             let repo = git2::Repository::open(&main).unwrap();
             let mut index = repo.index().unwrap();
@@ -410,8 +408,7 @@ mod tests {
             let tree_oid = index.write_tree().unwrap();
             let tree = repo.find_tree(tree_oid).unwrap();
             let sig = git2::Signature::now("t", "t@e.c").unwrap();
-            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
-                .unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
         }
         let wt = dir.join("linked_wt");
         crate::core::worktree::add_worktree(&main, &wt, None, Some("wtbr")).unwrap();

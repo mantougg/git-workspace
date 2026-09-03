@@ -56,9 +56,7 @@ pub(super) fn worker_main(ctx: WorkerCtx, rx: Receiver<SessionMsg>, file: std::f
             }
             match rx.recv_timeout(remaining) {
                 Ok(SessionMsg::Line(line)) => pending.push(line),
-                Ok(SessionMsg::Clear) => {
-                    do_clear(&ctx, &mut writer, &mut current_bytes, &mut pending)
-                }
+                Ok(SessionMsg::Clear) => do_clear(&ctx, &mut writer, &mut current_bytes, &mut pending),
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => {
                     disconnected = true;
@@ -136,21 +134,14 @@ fn flush_batch(
 }
 
 /// 滚动切分：删最旧段，逐段移位（`N-1→N … 1→2，当前段→1`），重开当前段。
-fn rotate_segments(
-    ctx: &WorkerCtx,
-    writer: &mut BufWriter<std::fs::File>,
-    current_bytes: &mut u64,
-) -> AppResult<()> {
+fn rotate_segments(ctx: &WorkerCtx, writer: &mut BufWriter<std::fs::File>, current_bytes: &mut u64) -> AppResult<()> {
     let keep = ctx.limits.segments_kept;
     if keep > 0 {
         let _ = fs::remove_file(ctx.dir.join(format!("{}.{keep}.log", ctx.process_id)));
         for i in (1..keep).rev() {
             let from = ctx.dir.join(format!("{}.{i}.log", ctx.process_id));
             if from.exists() {
-                fs::rename(
-                    &from,
-                    ctx.dir.join(format!("{}.{}.log", ctx.process_id, i + 1)),
-                )?;
+                fs::rename(&from, ctx.dir.join(format!("{}.{}.log", ctx.process_id, i + 1)))?;
             }
         }
         let current = current_segment_path(&ctx.dir, ctx.process_id);

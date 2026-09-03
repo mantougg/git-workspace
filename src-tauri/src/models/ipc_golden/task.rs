@@ -100,9 +100,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 succeeded: 2,
                 failed: 1,
             },
-            task::TaskStatus::Failed {
-                error: "boom".into(),
-            },
+            task::TaskStatus::Failed { error: "boom".into() },
             task::TaskStatus::Cancelled,
         ]),
     );
@@ -183,10 +181,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             on_failure: task::FailurePolicy::Continue,
         }),
     );
-    m.insert(
-        "NodeCondition".into(),
-        json!([task::NodeCondition::RepoClean]),
-    );
+    m.insert("NodeCondition".into(), json!([task::NodeCondition::RepoClean]));
     m.insert(
         "DagNodeInfo".into(),
         json!(task::DagNodeInfo {
@@ -499,17 +494,9 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("PipelineRunReport", "types/pipeline.ts", "PipelineRunReport"),
     // T-34 operation log
     ("OperationLogPage", "types/operationLog.ts", "OperationLogPage"),
-    (
-        "OperationLogSummary",
-        "types/operationLog.ts",
-        "OperationLogSummary",
-    ),
+    ("OperationLogSummary", "types/operationLog.ts", "OperationLogSummary"),
     ("OperationLogItem", "types/operationLog.ts", "OperationLogItem"),
-    (
-        "OperationLogDetail",
-        "types/operationLog.ts",
-        "OperationLogDetail",
-    ),
+    ("OperationLogDetail", "types/operationLog.ts", "OperationLogDetail"),
     ("UndoPreviewItem", "types/operationLog.ts", "UndoPreviewItem"),
     ("UndoItemResult", "types/operationLog.ts", "UndoItemResult"),
     ("UndoOutcome", "types/operationLog.ts", "UndoOutcome"),

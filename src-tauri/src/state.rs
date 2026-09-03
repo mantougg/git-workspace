@@ -109,16 +109,12 @@ const AI_RESULT_CACHE_CAPACITY: usize = 64;
 /// tests (the "LRU 上限生效" acceptance criterion) without constructing a full
 /// Tauri app state.
 pub(crate) fn build_status_cache() -> Cache<String, RepoStatus> {
-    Cache::builder()
-        .max_capacity(STATUS_CACHE_CAPACITY)
-        .build()
+    Cache::builder().max_capacity(STATUS_CACHE_CAPACITY).build()
 }
 
 /// Build the bounded LRU revision-diff cache.
 pub(crate) fn build_diff_cache() -> Cache<DiffCacheKey, Vec<FileDiff>> {
-    Cache::builder()
-        .max_capacity(DIFF_CACHE_CAPACITY)
-        .build()
+    Cache::builder().max_capacity(DIFF_CACHE_CAPACITY).build()
 }
 
 impl AppState {
@@ -147,9 +143,7 @@ impl AppState {
             ai_gateway: Arc::new(
                 crate::ai::AiGateway::new(
                     crate::ai::GatewayConfig::default(),
-                    Arc::new(
-                        crate::ai::transport::ReqwestTransport::new().expect("reqwest transport"),
-                    ),
+                    Arc::new(crate::ai::transport::ReqwestTransport::new().expect("reqwest transport")),
                     Arc::new(crate::ai::events::NoopAiEventSink),
                 )
                 .with_store(Arc::clone(&db))
@@ -196,8 +190,7 @@ mod tests {
     /// specific eviction order.
     #[test]
     fn status_cache_respects_capacity_bound() {
-        let cache: Cache<String, RepoStatus> =
-            Cache::builder().max_capacity(2).build();
+        let cache: Cache<String, RepoStatus> = Cache::builder().max_capacity(2).build();
 
         for i in 0..100 {
             cache.insert(format!("repo_{}", i), status("x"));

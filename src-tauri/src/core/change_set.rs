@@ -138,8 +138,7 @@ fn row_to_change_set(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChangeSet> {
     })
 }
 
-const CHANGE_SET_COLS: &str =
-    "SELECT id, workspace_id, name, description, created_at, updated_at FROM change_sets";
+const CHANGE_SET_COLS: &str = "SELECT id, workspace_id, name, description, created_at, updated_at FROM change_sets";
 
 /// Insert a new change set together with its initial member repositories in
 /// one transaction (a foreign/unknown repo rolls back the create, so no
@@ -178,18 +177,13 @@ pub(crate) fn get_change_set(conn: &Connection, id: i64) -> AppResult<ChangeSet>
         row_to_change_set,
     )
     .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => {
-            AppError::NotFound(format!("Change set {} not found", id))
-        }
+        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound(format!("Change set {} not found", id)),
         other => AppError::Db(other),
     })
 }
 
 /// List all change sets of a workspace, most recently updated first.
-pub(crate) fn list_change_sets(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<Vec<ChangeSet>> {
+pub(crate) fn list_change_sets(conn: &Connection, workspace_id: i64) -> AppResult<Vec<ChangeSet>> {
     let mut stmt = conn.prepare(&format!(
         "{} WHERE workspace_id = ?1 ORDER BY updated_at DESC, id DESC",
         CHANGE_SET_COLS
@@ -234,10 +228,7 @@ pub(crate) fn delete_change_set(conn: &Connection, id: i64) -> AppResult<()> {
 
 /// List member repositories of a change set (soft-deleted repos excluded),
 /// ordered by repo name.
-pub(crate) fn list_change_set_repos(
-    conn: &Connection,
-    change_set_id: i64,
-) -> AppResult<Vec<ChangeSetRepo>> {
+pub(crate) fn list_change_set_repos(conn: &Connection, change_set_id: i64) -> AppResult<Vec<ChangeSetRepo>> {
     let mut stmt = conn.prepare(
         r#"SELECT csr.change_set_id, csr.repo_id, r.path, r.name, r.relative_path, csr.target_branch
            FROM change_set_repositories csr
@@ -331,11 +322,7 @@ pub(crate) fn add_change_set_repos(
 }
 
 /// Remove one repository from a change set. Bumps `updated_at`.
-pub(crate) fn remove_change_set_repo(
-    conn: &Connection,
-    change_set_id: i64,
-    repo_id: i64,
-) -> AppResult<()> {
+pub(crate) fn remove_change_set_repo(conn: &Connection, change_set_id: i64, repo_id: i64) -> AppResult<()> {
     let now = Utc::now().to_rfc3339();
     conn.execute(
         "DELETE FROM change_set_repositories WHERE change_set_id = ?1 AND repo_id = ?2",
@@ -510,12 +497,8 @@ mod tests {
         assert!(list_change_set_repos(&conn, cs.id).unwrap().is_empty());
 
         // Mixed batch (valid + foreign) also rolls back the valid part.
-        let err = add_change_set_repos(
-            &mut conn,
-            cs.id,
-            &[input(r1, Some("f/a")), input(r_foreign, None)],
-        )
-        .unwrap_err();
+        let err =
+            add_change_set_repos(&mut conn, cs.id, &[input(r1, Some("f/a")), input(r_foreign, None)]).unwrap_err();
         assert!(matches!(err, AppError::Other(_)));
         assert!(list_change_set_repos(&conn, cs.id).unwrap().is_empty());
 
@@ -524,12 +507,7 @@ mod tests {
         assert!(matches!(err, AppError::NotFound(_)));
 
         // Valid batch lands; empty branch string normalizes to None.
-        add_change_set_repos(
-            &mut conn,
-            cs.id,
-            &[input(r1, Some("feature/x")), input(r2, Some("  "))],
-        )
-        .unwrap();
+        add_change_set_repos(&mut conn, cs.id, &[input(r1, Some("feature/x")), input(r2, Some("  "))]).unwrap();
         let repos = list_change_set_repos(&conn, cs.id).unwrap();
         assert_eq!(repos.len(), 2);
         assert_eq!(repos[0].repo_name, "a");
@@ -558,8 +536,7 @@ mod tests {
         let ws2 = insert_workspace(&conn, "D:/w2");
         let r_foreign = insert_repo(&conn, ws2, "D:/w2/c", "c");
 
-        let err =
-            create_change_set(&mut conn, ws1, "cs", None, &[input(r_foreign, None)]).unwrap_err();
+        let err = create_change_set(&mut conn, ws1, "cs", None, &[input(r_foreign, None)]).unwrap_err();
         assert!(matches!(err, AppError::Other(_)));
         assert!(
             list_change_sets(&conn, ws1).unwrap().is_empty(),

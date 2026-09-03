@@ -122,11 +122,7 @@ pub struct MavenExecutable {
 
 impl MavenExecutable {
     /// 构造一个最小字段的新候选（未持久化、未探测版本）。
-    pub fn new(
-        executable_path: impl Into<String>,
-        source: MavenSource,
-        project_path: Option<String>,
-    ) -> Self {
+    pub fn new(executable_path: impl Into<String>, source: MavenSource, project_path: Option<String>) -> Self {
         Self {
             id: None,
             executable_path: executable_path.into(),

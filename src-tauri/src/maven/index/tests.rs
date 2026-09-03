@@ -104,12 +104,10 @@ fn persists_cross_repo_graph_and_classifies_all_sources() {
         4
     );
     assert!(graph.dependencies.iter().any(|edge| {
-        edge.dependency.artifact_id == "spring-boot"
-            && edge.source == DependencySource::LocalRepository
+        edge.dependency.artifact_id == "spring-boot" && edge.source == DependencySource::LocalRepository
     }));
     assert!(graph.dependencies.iter().any(|edge| {
-        edge.dependency.artifact_id == "remote-only"
-            && edge.source == DependencySource::RemoteRepository
+        edge.dependency.artifact_id == "remote-only" && edge.source == DependencySource::RemoteRepository
     }));
 
     let _ = std::fs::remove_dir_all(root);
@@ -154,8 +152,7 @@ fn unchanged_models_reuse_graph_and_pom_change_invalidates_cache() {
     let local_lookup = cache.get_or_load(&conn, workspace_id).unwrap();
     assert!(!local_lookup.cache_hit);
     assert!(local_lookup.graph.dependencies.iter().any(|edge| {
-        edge.dependency.artifact_id == "spring-boot"
-            && edge.source == DependencySource::LocalRepository
+        edge.dependency.artifact_id == "spring-boot" && edge.source == DependencySource::LocalRepository
     }));
 
     std::fs::remove_file(&spring_artifact).unwrap();
@@ -169,8 +166,7 @@ fn unchanged_models_reuse_graph_and_pom_change_invalidates_cache() {
         .dependencies
         .iter()
         .any(|edge| {
-            edge.dependency.artifact_id == "spring-boot"
-                && edge.source == DependencySource::RemoteRepository
+            edge.dependency.artifact_id == "spring-boot" && edge.source == DependencySource::RemoteRepository
         }));
 
     write_fixture_poms(&root, &dep("org.example", "new-dependency", "2.0.0"));
@@ -209,9 +205,10 @@ fn removed_project_reclassifies_dependents_without_stale_mapping() {
         .source_mappings
         .iter()
         .any(|mapping| mapping.coordinates.artifact_id == "common"));
-    assert!(graph.dependencies.iter().all(|edge| {
-        edge.dependency.artifact_id != "common" || edge.source != DependencySource::WorkspaceSource
-    }));
+    assert!(graph
+        .dependencies
+        .iter()
+        .all(|edge| { edge.dependency.artifact_id != "common" || edge.source != DependencySource::WorkspaceSource }));
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -278,10 +275,7 @@ fn runtime_dependency_unique_index_treats_null_as_one_value() {
         )
     };
     insert().unwrap();
-    assert!(
-        insert().is_err(),
-        "NULL dependency ids must still deduplicate"
-    );
+    assert!(insert().is_err(), "NULL dependency ids must still deduplicate");
 }
 
 #[test]

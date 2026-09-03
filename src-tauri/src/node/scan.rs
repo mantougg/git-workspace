@@ -132,10 +132,7 @@ fn candidates_from_version_parent(
                 });
                 if let Some(bin) = node_bin {
                     for pm in COMPANION_MANAGERS {
-                        if let Some(exe) = find_executable_in_dirs(
-                            pm.executable_name(),
-                            std::slice::from_ref(&bin),
-                        ) {
+                        if let Some(exe) = find_executable_in_dirs(pm.executable_name(), std::slice::from_ref(&bin)) {
                             out.push(RawCandidate {
                                 kind: NodeExecutableKind::PackageManager,
                                 package_manager: Some(pm),
@@ -149,9 +146,7 @@ fn candidates_from_version_parent(
                 // 无 node 的安装目录仍可能住着独立安装的包管理器。
                 for bin in &bin_dirs {
                     for pm in COMPANION_MANAGERS {
-                        if let Some(exe) =
-                            find_executable_in_dirs(pm.executable_name(), std::slice::from_ref(bin))
-                        {
+                        if let Some(exe) = find_executable_in_dirs(pm.executable_name(), std::slice::from_ref(bin)) {
                             out.push(RawCandidate {
                                 kind: NodeExecutableKind::PackageManager,
                                 package_manager: Some(pm),
@@ -193,8 +188,8 @@ fn dedupe(raw: Vec<RawCandidate>) -> Vec<RawCandidate> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = Vec::new();
     for candidate in raw {
-        let canonical = std::fs::canonicalize(&candidate.executable_path)
-            .unwrap_or_else(|_| candidate.executable_path.clone());
+        let canonical =
+            std::fs::canonicalize(&candidate.executable_path).unwrap_or_else(|_| candidate.executable_path.clone());
         let path = normalized_candidate_path(&canonical);
         let key = normalize_path_key(&path.to_string_lossy());
         if seen.insert(key) {
@@ -412,15 +407,13 @@ fn scan_roots() -> Vec<ScanRoot> {
         }
     }
     // 跨平台：pnpm 独立安装目录与 yarn 全局 bin。
-    let pnpm_home = std::env::var_os("PNPM_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            if cfg!(target_os = "windows") {
-                dirs::data_local_dir().map(|d| d.join("pnpm"))
-            } else {
-                home.as_ref().map(|h| h.join(".local/share/pnpm"))
-            }
-        });
+    let pnpm_home = std::env::var_os("PNPM_HOME").map(PathBuf::from).or_else(|| {
+        if cfg!(target_os = "windows") {
+            dirs::data_local_dir().map(|d| d.join("pnpm"))
+        } else {
+            home.as_ref().map(|h| h.join(".local/share/pnpm"))
+        }
+    });
     if let Some(dir) = pnpm_home {
         roots.push(ScanRoot::BinDir {
             source: "pnpm-home",
@@ -443,10 +436,7 @@ fn path_scan_roots_from(path: Option<OsString>) -> Vec<ScanRoot> {
     path.map(|value| {
         std::env::split_paths(&value)
             .filter(|dir| dir.is_dir())
-            .map(|dir| ScanRoot::BinDir {
-                source: "path",
-                dir,
-            })
+            .map(|dir| ScanRoot::BinDir { source: "path", dir })
             .collect()
     })
     .unwrap_or_default()
@@ -493,10 +483,7 @@ mod tests {
         stamp(&b.join("bin").join("node"));
         let mut out = Vec::new();
         candidates_from_version_parent(&root, "test", None, &mut out);
-        let nodes: Vec<_> = out
-            .iter()
-            .filter(|c| c.kind == NodeExecutableKind::Node)
-            .collect();
+        let nodes: Vec<_> = out.iter().filter(|c| c.kind == NodeExecutableKind::Node).collect();
         assert_eq!(nodes.len(), 2, "both layouts must be found: {out:?}");
         let _ = fs::remove_dir_all(&root);
     }
@@ -528,9 +515,7 @@ mod tests {
         let mut out = Vec::new();
         candidates_from_install_dir(&bin, "test", &mut out);
         assert!(out.iter().any(|c| c.kind == NodeExecutableKind::Node));
-        let npm = out
-            .iter()
-            .find(|c| c.package_manager == Some(PackageManager::Npm));
+        let npm = out.iter().find(|c| c.package_manager == Some(PackageManager::Npm));
         assert!(npm.is_some(), "npm companion must be found: {out:?}");
         let _ = fs::remove_dir_all(&bin);
     }
@@ -542,15 +527,8 @@ mod tests {
         stamp(&node_file(&root.join("someother").join("bin")));
         let mut out = Vec::new();
         candidates_from_version_parent(&root, "homebrew", Some("node"), &mut out);
-        let nodes: Vec<_> = out
-            .iter()
-            .filter(|c| c.kind == NodeExecutableKind::Node)
-            .collect();
-        assert_eq!(
-            nodes.len(),
-            1,
-            "prefix filter must skip non-node subdirs: {out:?}"
-        );
+        let nodes: Vec<_> = out.iter().filter(|c| c.kind == NodeExecutableKind::Node).collect();
+        assert_eq!(nodes.len(), 1, "prefix filter must skip non-node subdirs: {out:?}");
         let _ = fs::remove_dir_all(&root);
     }
 

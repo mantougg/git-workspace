@@ -41,10 +41,7 @@ impl RuntimeProcessManager {
             store::insert_process(&conn, workspace_id, runtime_name)?
         };
         let handle = ActiveProcess::new(false, workspace_id, runtime_name);
-        self.active
-            .lock()
-            .unwrap()
-            .insert(process_id, handle.clone());
+        self.active.lock().unwrap().insert(process_id, handle.clone());
 
         let result = self.start_inner(process_id, workspace_id, runtime_name, &options, &handle);
         if result.is_err() {
@@ -90,13 +87,7 @@ impl RuntimeProcessManager {
                 // execute_build 内部（图/闭包/Reactor → Maven）无法插桩；
                 // 构建主体是 Maven 调用，紧邻置位 Building（模块文档说明）。
                 self.transit(process_id, runtime_name, LifecycleStatus::Building, None)?;
-                match self.run_build(
-                    process_id,
-                    workspace_id,
-                    runtime_name,
-                    build_options,
-                    handle,
-                ) {
+                match self.run_build(process_id, workspace_id, runtime_name, build_options, handle) {
                     Ok(built) => (built.plan, built.strategy),
                     Err(error) => {
                         // Stop/Kill 在构建期间介入：以停止语义收尾，不再算启动失败。
@@ -146,13 +137,7 @@ impl RuntimeProcessManager {
         } else {
             crate::runtime::config::RuntimeKind::SpringBoot
         };
-        self.spawn_monitor(
-            process_id,
-            runtime_name.to_string(),
-            command,
-            handle,
-            detector_kind,
-        );
+        self.spawn_monitor(process_id, runtime_name.to_string(), command, handle, detector_kind);
 
         // spawn 失败 / 拿到 pid 之前进程就没了 → outcome 先到。
         let pid = match self.wait_pid_or_outcome(handle, Duration::from_secs(10)) {
@@ -205,12 +190,7 @@ impl RuntimeProcessManager {
 
     /// Preparing 阶段的准备工作：加载未脱敏配置（校验存在性）、R-06 推断
     /// mainClass（仅缺省时）、判定走缓存还是完整构建。
-    fn prepare(
-        &self,
-        workspace_id: i64,
-        runtime_name: &str,
-        options: &StartOptions,
-    ) -> AppResult<Prepared> {
+    fn prepare(&self, workspace_id: i64, runtime_name: &str, options: &StartOptions) -> AppResult<Prepared> {
         let (mut config, workspace_root) = {
             let conn = self.db.lock().unwrap();
             let config = config::load_config_unredacted(&conn, workspace_id, runtime_name)?;
@@ -237,19 +217,13 @@ impl RuntimeProcessManager {
                         config
                             .program_arguments
                             .retain(|arg| !arg.starts_with("--server.port="));
-                        config
-                            .vm_options
-                            .retain(|arg| !arg.starts_with("-Dserver.port="));
-                        config
-                            .program_arguments
-                            .push(format!("--server.port={port}"));
+                        config.vm_options.retain(|arg| !arg.starts_with("-Dserver.port="));
+                        config.program_arguments.push(format!("--server.port={port}"));
                     }
                 }
                 crate::runtime::config::RuntimeKind::Node => {
                     if overrides.jdk.is_some() || overrides.profile.is_some() {
-                        log::warn!(
-                            "R-15/N-09: node runtime '{runtime_name}' ignores jdk/profile overrides"
-                        );
+                        log::warn!("R-15/N-09: node runtime '{runtime_name}' ignores jdk/profile overrides");
                     }
                     config.environment.extend(overrides.environment.clone());
                     if let Some(port) = overrides.port {
@@ -270,9 +244,7 @@ impl RuntimeProcessManager {
             // LaunchPlan 构造处给出可行动错误。
             match self.infer_main_class(&workspace_root, &config.project) {
                 Ok(Some(inferred)) => {
-                    log::info!(
-                        "R-10: mainClass inferred via R-06 for '{runtime_name}': {inferred}"
-                    );
+                    log::info!("R-10: mainClass inferred via R-06 for '{runtime_name}': {inferred}");
                     build_options.main_class_override = Some(inferred);
                 }
                 Ok(None) => log::debug!("R-10: no main class candidate for '{runtime_name}'"),
@@ -303,17 +275,10 @@ impl RuntimeProcessManager {
 
     /// R-06 自动推断默认 mainClass：按 Runtime 配置的 project 匹配检测结果。
     /// 路径比较对 Windows 分隔符不敏感（配置可能是 `\`、`/` 或混合，R-14 修复）。
-    fn infer_main_class(
-        &self,
-        workspace_root: &std::path::Path,
-        project: &str,
-    ) -> AppResult<Option<String>> {
+    fn infer_main_class(&self, workspace_root: &std::path::Path, project: &str) -> AppResult<Option<String>> {
         let discovery = crate::maven::discover_poms(workspace_root, 5, None, None);
-        let result = crate::runtime::spring_boot::detect_spring_boot_workspace(
-            &discovery.projects,
-            &discovery.effective,
-            None,
-        );
+        let result =
+            crate::runtime::spring_boot::detect_spring_boot_workspace(&discovery.projects, &discovery.effective, None);
         let needle = project.replace('\\', "/");
         let found = result.projects.iter().find(|candidate| {
             let path = candidate.project_path.to_string_lossy().replace('\\', "/");
@@ -377,17 +342,9 @@ impl RuntimeProcessManager {
     /// spawn 前阶段（Preparing/Resolving/Building/Starting）的失败收尾：
     /// 若 Stop 已介入（Stopping）则尊重停止语义落 Stopped，否则落 Failed。
     /// 同时收口 R-11 日志会话（幂等；会话未开启时 no-op）。
-    fn abort_before_spawn(
-        &self,
-        process_id: i64,
-        runtime_name: &str,
-        handle: &ActiveProcess,
-        exit_code: Option<i32>,
-    ) {
+    fn abort_before_spawn(&self, process_id: i64, runtime_name: &str, handle: &ActiveProcess, exit_code: Option<i32>) {
         self.deps.logs.finish_session(process_id);
-        let current = self
-            .current_status(process_id)
-            .unwrap_or(LifecycleStatus::Failed);
+        let current = self.current_status(process_id).unwrap_or(LifecycleStatus::Failed);
         let to = if current == LifecycleStatus::Stopping {
             LifecycleStatus::Stopped
         } else {

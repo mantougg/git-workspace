@@ -127,9 +127,7 @@ impl RuntimeProcessManager {
     ) {
         if outcome.cancelled {
             // kill 标志置位导致的退出流取消：信号已发，exit_code 多半取不到，日志留痕便于排查。
-            log::debug!(
-                "R-10: monitor of process #{process_id} ('{runtime_name}') was cancelled by kill flag"
-            );
+            log::debug!("R-10: monitor of process #{process_id} ('{runtime_name}') was cancelled by kill flag");
         }
         let (from, to, crashed) = {
             let conn = self.db.lock().unwrap();
@@ -148,9 +146,7 @@ impl RuntimeProcessManager {
                      exit code unavailable to a non-parent"
                 );
             }
-            if let Err(error) =
-                store::transition_status(&conn, process_id, to, Some(outcome.exit_code))
-            {
+            if let Err(error) = store::transition_status(&conn, process_id, to, Some(outcome.exit_code)) {
                 log::error!("R-10: failed to finalize process #{process_id}: {error}");
                 return;
             }
@@ -243,11 +239,7 @@ impl RuntimeProcessManager {
         }
     }
 
-    pub(super) fn wait_running_or_outcome(
-        &self,
-        handle: &ActiveProcess,
-        grace: Duration,
-    ) -> RunWait {
+    pub(super) fn wait_running_or_outcome(&self, handle: &ActiveProcess, grace: Duration) -> RunWait {
         let (lock, cv) = &*handle.progress;
         let mut guard = lock.lock().unwrap();
         let deadline = Instant::now() + grace;

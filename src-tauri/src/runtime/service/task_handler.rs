@@ -32,13 +32,9 @@ impl RuntimeTaskHandler for RuntimeService {
             RuntimeOp::Stop => self.exec_stop(*workspace_id, runtime_name),
             RuntimeOp::Restart => self.exec_restart(*workspace_id, runtime_name, options, &cancel),
             RuntimeOp::ResolveDependencies => self.exec_resolve(*workspace_id, &cancel),
-            RuntimeOp::StartEnvironment => {
-                self.exec_start_environment(*workspace_id, runtime_name, &cancel)
-            }
+            RuntimeOp::StartEnvironment => self.exec_start_environment(*workspace_id, runtime_name, &cancel),
             RuntimeOp::StopEnvironment => self.exec_stop_environment(*workspace_id, runtime_name),
-            RuntimeOp::RebuildRestart => {
-                self.exec_rebuild_restart(*workspace_id, runtime_name, options, &cancel)
-            }
+            RuntimeOp::RebuildRestart => self.exec_rebuild_restart(*workspace_id, runtime_name, options, &cancel),
         }
     }
 }

@@ -17,20 +17,16 @@ use crate::error::{AppError, AppResult};
 use crate::runtime::service::RuntimeService;
 
 use super::context::{
-    self, ContextRole, DiffRepositorySelection, DiffScope, DraftContextItem, GitDiffSelection,
-    TokenEstimator,
+    self, ContextRole, DiffRepositorySelection, DiffScope, DraftContextItem, GitDiffSelection, TokenEstimator,
 };
 use super::error::AiError;
-use super::model::{
-    ensure_task_capability, required_capabilities, resolve_model, AiTaskKind, ModelCapability,
-};
+use super::model::{ensure_task_capability, required_capabilities, resolve_model, AiTaskKind, ModelCapability};
 use super::policy::{self, BudgetStrategy};
 use super::prompt;
 use super::provider::NetworkPolicy;
 use super::redact::{self, SecretPolicyChoice, SecretReport, SecretStrategyKind};
 use super::request::{
-    AiRequest, ContextItem, ContextKind, ExclusionReason, GitAssistantScenario, ResponseFormat,
-    ToolPolicy,
+    AiRequest, ContextItem, ContextKind, ExclusionReason, GitAssistantScenario, ResponseFormat, ToolPolicy,
 };
 
 /// 默认日志尾部行数（§8.2 日志尾部；大日志分块的一环）。
@@ -194,32 +190,23 @@ pub struct AiContextPreview {
 // ---------------------------------------------------------------------------
 
 /// 各任务种类的默认受信任务指令（§8.3 第 3 层；后端定义，非用户输入）。
-fn default_task_instruction(
-    task_kind: AiTaskKind,
-    git_scenario: Option<GitAssistantScenario>,
-) -> &'static str {
+fn default_task_instruction(task_kind: AiTaskKind, git_scenario: Option<GitAssistantScenario>) -> &'static str {
     if let Some(scenario) = git_scenario {
         return match scenario {
             GitAssistantScenario::CommitMessage => {
                 "根据选定的 diff、文件状态与可用的历史风格生成一条可编辑的 CommitSuggestion"
             }
-            GitAssistantScenario::CommitSummary => {
-                "根据已选多个 Repository 的变更生成结构化 Commit Summary 与风险摘要"
-            }
+            GitAssistantScenario::CommitSummary => "根据已选多个 Repository 的变更生成结构化 Commit Summary 与风险摘要",
             GitAssistantScenario::CodeReview => "对选定 diff 执行代码审查",
             GitAssistantScenario::SecurityReview => "对选定 diff 执行安全审查",
             GitAssistantScenario::BugDetection => "对选定 diff 识别潜在缺陷与回归",
-            GitAssistantScenario::PrDescription => {
-                "根据已选多个 Repository 的变更生成可编辑的 PR Description"
-            }
+            GitAssistantScenario::PrDescription => "根据已选多个 Repository 的变更生成可编辑的 PR Description",
             GitAssistantScenario::CommitExplanation => "解释给定提交的历史与变更意图",
             GitAssistantScenario::FileExplanation => "解释给定文件变更的意图与影响",
         };
     }
     match task_kind {
-        AiTaskKind::RuntimeDiagnostic => {
-            "诊断该 Runtime 的失败/异常原因，给出证据、排查路径与修复建议"
-        }
+        AiTaskKind::RuntimeDiagnostic => "诊断该 Runtime 的失败/异常原因，给出证据、排查路径与修复建议",
         AiTaskKind::GitReview => "评审给定的 diff，输出总体结论与问题清单",
         AiTaskKind::CommitMessage => "为给定的变更生成提交信息",
         AiTaskKind::Conflict => "分析给定的冲突两侧意图，提出合并建议与理由",
@@ -251,10 +238,7 @@ pub fn build(
     if req
         .git_scenario
         .is_some_and(GitAssistantScenario::requires_structured_output)
-        && !resolved
-            .model
-            .capabilities
-            .contains(&ModelCapability::StructuredOutput)
+        && !resolved.model.capabilities.contains(&ModelCapability::StructuredOutput)
     {
         return Err(AiError::ModelCapabilityMismatch {
             provider_id: resolved.model.provider_id.clone(),
@@ -289,8 +273,7 @@ pub fn build(
 
     // 3. 用户排除项（§10.2 Exclude；扫描前生效）。
     if !req.exclusions.is_empty() {
-        let excluded: std::collections::HashSet<&str> =
-            req.exclusions.iter().map(|s| s.as_str()).collect();
+        let excluded: std::collections::HashSet<&str> = req.exclusions.iter().map(|s| s.as_str()).collect();
         for d in drafts.iter_mut() {
             if d.exclusion.is_none() && excluded.contains(d.source_id.as_str()) {
                 d.exclusion = Some(ExclusionReason::User);
@@ -305,8 +288,7 @@ pub fn build(
     let outcome = policy::apply_budget(drafts, strategy, budget_tokens, &estimator);
 
     // 6. Prompt 分层组装（§8.3）。
-    let response_format = if required_capabilities(req.task_kind)
-        .contains(&ModelCapability::StructuredOutput)
+    let response_format = if required_capabilities(req.task_kind).contains(&ModelCapability::StructuredOutput)
         || req
             .git_scenario
             .is_some_and(GitAssistantScenario::requires_structured_output)
@@ -478,16 +460,8 @@ fn collect_for_task(
                     )?);
                 }
             }
-            drafts.push(context::collect_runtime_config(
-                conn,
-                workspace_id,
-                &runtime_name,
-            )?);
-            drafts.push(context::collect_runtime_processes(
-                runtime,
-                conn,
-                workspace_id,
-            )?);
+            drafts.push(context::collect_runtime_config(conn, workspace_id, &runtime_name)?);
+            drafts.push(context::collect_runtime_processes(runtime, conn, workspace_id)?);
             if let Some(project) = req.project.as_deref() {
                 drafts.push(context::collect_project_dependencies(
                     runtime,
@@ -506,15 +480,11 @@ fn collect_for_task(
             let selections = git_selections(req)?;
             for selection in selections {
                 let repo_path = std::path::Path::new(&selection.repo_path);
-                drafts.extend(context::collect_repo_status_for_selection(
-                    repo_path, &selection,
-                )?);
+                drafts.extend(context::collect_repo_status_for_selection(repo_path, &selection)?);
                 drafts.push(context::collect_diff_summary_for_selection(
                     repo_path, scope, &selection,
                 )?);
-                drafts.extend(context::collect_diff_files_for_selection(
-                    repo_path, scope, &selection,
-                )?);
+                drafts.extend(context::collect_diff_files_for_selection(repo_path, scope, &selection)?);
             }
         }
         AiTaskKind::Conflict => {
@@ -531,9 +501,7 @@ fn collect_for_task(
                         target.hunk_total,
                     )?);
                 } else {
-                    drafts.extend(context::collect_conflicts_for_selection(
-                        repo_path, &selection,
-                    )?);
+                    drafts.extend(context::collect_conflicts_for_selection(repo_path, &selection)?);
                 }
             }
         }
@@ -656,7 +624,8 @@ mod tests {
     }
 
     const AWS: &str = "const key = \"AKIAIOSFODNN7EXAMPLE\";";
-    const JWT: &str = "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+    const JWT: &str =
+        "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
     const KEY: &str = "-----BEGIN RSA PRIVATE KEY-----\nMII...";
     const PASSWORD: &str = "password=supersecret123";
     const GITHUB: &str = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
@@ -691,10 +660,7 @@ mod tests {
     fn exclusion_rebuild_drops_content_and_recomputes() {
         let conn = open_db();
         seed_model(&conn);
-        let base = chat_request(vec![
-            supp("secret.env", PASSWORD),
-            supp("ok.rs", "fn main() {}"),
-        ]);
+        let base = chat_request(vec![supp("secret.env", PASSWORD), supp("ok.rs", "fn main() {}")]);
         let blocked = build(&conn, None, base.clone()).unwrap();
         assert!(blocked.blocked);
 
@@ -714,12 +680,7 @@ mod tests {
         assert_eq!(item.exclusion_reason, Some(ExclusionReason::User));
 
         // 发送正文中不含被排除内容。
-        let sent: String = preview
-            .request
-            .messages
-            .iter()
-            .map(|m| m.content.as_str())
-            .collect();
+        let sent: String = preview.request.messages.iter().map(|m| m.content.as_str()).collect();
         assert!(!sent.contains("supersecret123"));
         assert!(!sent.contains("secret.env"));
         assert!(sent.contains("ok.rs"));
@@ -765,12 +726,7 @@ mod tests {
         assert_eq!(preview.secret.masked_sources, vec!["aws"]);
         let item = &preview.items.iter().find(|i| i.source_id == "aws").unwrap();
         assert!(item.redacted);
-        let sent: String = preview
-            .request
-            .messages
-            .iter()
-            .map(|m| m.content.as_str())
-            .collect();
+        let sent: String = preview.request.messages.iter().map(|m| m.content.as_str()).collect();
         assert!(!sent.contains("AKIAIOSFODNN7EXAMPLE"), "发送内容必须已脱敏");
     }
 
@@ -841,19 +797,10 @@ mod tests {
         req.diff_scope = Some(DiffScope::Workdir);
         let preview = build(&conn, None, req).unwrap();
 
-        assert_eq!(
-            preview.request.git_scenario,
-            Some(GitAssistantScenario::CommitMessage)
-        );
+        assert_eq!(preview.request.git_scenario, Some(GitAssistantScenario::CommitMessage));
         assert_eq!(preview.request.response_format, ResponseFormat::Json);
-        assert!(preview
-            .request
-            .system_instruction
-            .contains("CommitSuggestion"));
-        assert!(preview
-            .items
-            .iter()
-            .any(|item| item.kind == ContextKind::Diff));
+        assert!(preview.request.system_instruction.contains("CommitSuggestion"));
+        assert!(preview.items.iter().any(|item| item.kind == ContextKind::Diff));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -865,10 +812,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("src/generated")).unwrap();
         let _repo = git2::Repository::init(&dir).unwrap();
         crate::test_support::write(&dir.join("src/main.rs"), "fn main() {}\n");
-        crate::test_support::write(
-            &dir.join("src/generated/schema.rs"),
-            "pub const X: i32 = 1;\n",
-        );
+        crate::test_support::write(&dir.join("src/generated/schema.rs"), "pub const X: i32 = 1;\n");
 
         let mut all = chat_request(vec![]);
         all.task_kind = AiTaskKind::GitReview;

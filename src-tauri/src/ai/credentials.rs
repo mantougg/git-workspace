@@ -77,9 +77,7 @@ impl KeyringStore {
         // 注意：不做 set/delete 往返探测——实测 gnome-keyring 在
         // 「探测写入后立即删除」会让后续连接的 create 静默不可见（NoEntry），
         // 写路径的失败由 `set` 的错误路径兜底（AiCredentialUnavailable）。
-        match Self::entry("ai-probe").and_then(|entry| {
-            entry.get_password().map_err(Self::map_err)
-        }) {
+        match Self::entry("ai-probe").and_then(|entry| entry.get_password().map_err(Self::map_err)) {
             Ok(_) | Err(CredentialError::Other(_)) => true,
             Err(CredentialError::Unavailable(_)) => false,
         }
@@ -110,9 +108,7 @@ impl CredentialStore for KeyringStore {
     }
 
     fn set(&self, credential_ref: &str, secret: &str) -> Result<(), CredentialError> {
-        Self::entry(credential_ref)?
-            .set_password(secret)
-            .map_err(Self::map_err)
+        Self::entry(credential_ref)?.set_password(secret).map_err(Self::map_err)
     }
 
     fn delete(&self, credential_ref: &str) -> Result<(), CredentialError> {
@@ -215,17 +211,11 @@ impl CredentialManager {
     /// 写入凭证。`persist = true` 要求落 OS 存储（不可用时报
     /// `AiCredentialUnavailable`，**不回退普通文件**）；`persist = false`
     /// 明确只存本次会话。
-    pub fn set(
-        &self,
-        credential_ref: &str,
-        secret: &str,
-        persist: bool,
-    ) -> Result<CredentialLocation, AiError> {
+    pub fn set(&self, credential_ref: &str, secret: &str, persist: bool) -> Result<CredentialLocation, AiError> {
         if persist {
             if !self.os.is_available() {
                 return Err(AiError::CredentialUnavailable {
-                    message: "OS 凭证存储不可用：可选择「仅本次会话」临时保存（不落盘）"
-                        .to_string(),
+                    message: "OS 凭证存储不可用：可选择「仅本次会话」临时保存（不落盘）".to_string(),
                 });
             }
             self.os
@@ -261,8 +251,7 @@ impl CredentialManager {
 
     /// 凭证是否仅存在于会话内存（UI 标记「仅本次会话」）。
     pub fn is_session_only(&self, credential_ref: &str) -> bool {
-        !matches!(self.os.get(credential_ref), Ok(Some(_)))
-            && matches!(self.session.get(credential_ref), Ok(Some(_)))
+        !matches!(self.os.get(credential_ref), Ok(Some(_))) && matches!(self.session.get(credential_ref), Ok(Some(_)))
     }
 
     /// 删除凭证（两个落点都清）。
@@ -385,10 +374,7 @@ mod tests {
             Ok(Some(v)) if v == "sk-smoke" => {}
             other => {
                 let shape = other.map(|o| o.map(|s| s.len()));
-                eprintln!(
-                    "SKIP os_credential_store_smoke_or_skip: 往返读取异常: {:?}",
-                    shape
-                );
+                eprintln!("SKIP os_credential_store_smoke_or_skip: 往返读取异常: {:?}", shape);
                 let _ = store.delete(cref);
                 return;
             }

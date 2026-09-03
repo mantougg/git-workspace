@@ -36,9 +36,7 @@ pub fn snapshot_head(repo_path: &Path) -> Option<(String, String)> {
 /// branch does not exist (nothing to record / restore).
 pub fn snapshot_branch(repo_path: &Path, branch_name: &str) -> Option<(String, String)> {
     let repo = git2::Repository::open(repo_path).ok()?;
-    let branch = repo
-        .find_branch(branch_name, git2::BranchType::Local)
-        .ok()?;
+    let branch = repo.find_branch(branch_name, git2::BranchType::Local).ok()?;
     let oid = branch.get().target()?;
     Some((branch_name.to_string(), oid.to_string()))
 }
@@ -60,8 +58,7 @@ pub fn record_operation_best_effort(
     match db.lock() {
         Ok(mut conn) => {
             let workspace_id = resolve_workspace_id(&conn, any_repo_path);
-            if let Err(e) = insert_operation_log(&mut conn, workspace_id, op_type, summary, &items)
-            {
+            if let Err(e) = insert_operation_log(&mut conn, workspace_id, op_type, summary, &items) {
                 log::warn!("T-34: operation log write failed (op already ran): {}", e);
             }
         }

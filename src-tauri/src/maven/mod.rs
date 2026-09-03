@@ -16,10 +16,10 @@
 pub mod cache;
 pub mod closure;
 pub mod detect_exec;
+pub mod discovery;
 pub mod effective;
 pub mod exec_model;
 pub mod executor;
-pub mod discovery;
 pub mod index;
 pub mod model;
 pub mod mvnd;
@@ -31,42 +31,34 @@ pub mod settings;
 
 pub use cache::{PomCache, PomCacheStats};
 pub use closure::{
-    compute_runtime_closure, ClosureCacheLookup, RuntimeClosure, RuntimeClosureCache, RuntimeScope,
-    RuntimeScopeMode,
+    compute_runtime_closure, ClosureCacheLookup, RuntimeClosure, RuntimeClosureCache, RuntimeScope, RuntimeScopeMode,
 };
 pub use detect_exec::{
-    candidate_is_usable, detect_maven_candidates, probe_version, resolve_maven_for_project,
-    MIN_MAVEN_MAJOR_VERSION,
+    candidate_is_usable, detect_maven_candidates, probe_version, resolve_maven_for_project, MIN_MAVEN_MAJOR_VERSION,
 };
-pub use exec_model::{
-    MavenExecutable, MavenExecutionRequest, MavenSource, MavenVersionInfo, ResolvedMaven,
-};
-pub use executor::{build_command, build_process, build_request, preview_command};
 pub use discovery::{
-    discover_poms, discover_poms_in_repos, MavenDiscoveryResult, PomDiscoveryError,
-    RepoDiscoveryResult,
+    discover_poms, discover_poms_in_repos, MavenDiscoveryResult, PomDiscoveryError, RepoDiscoveryResult,
 };
 pub use effective::{build_effective, EffectiveProject};
+pub use exec_model::{MavenExecutable, MavenExecutionRequest, MavenSource, MavenVersionInfo, ResolvedMaven};
+pub use executor::{build_command, build_process, build_request, preview_command};
 pub use index::{
-    query_dependency_graph, query_project_dependencies, refresh_dependency_sources,
-    sync_workspace_index, DependencyEdge, DependencyGraph, DependencyGraphCache, GraphCacheLookup,
-    IndexSyncResult, MavenModuleLink, MavenProjectNode, SourceMapping,
+    query_dependency_graph, query_project_dependencies, refresh_dependency_sources, sync_workspace_index,
+    DependencyEdge, DependencyGraph, DependencyGraphCache, GraphCacheLookup, IndexSyncResult, MavenModuleLink,
+    MavenProjectNode, SourceMapping,
 };
 pub use model::{
-    MavenDependency, MavenModule, MavenParent, MavenProject, MavenProjectType, MavenReactor,
-    MavenReactorModule, PomCoordinates,
+    MavenDependency, MavenModule, MavenParent, MavenProject, MavenProjectType, MavenReactor, MavenReactorModule,
+    PomCoordinates,
 };
 pub use parser::{parse_pom, parse_pom_file, PomParseError};
-pub use reactor::{
-    ensure_gitworkspace_ignored, prepare_runtime_reactor, RuntimeReactorKind, RuntimeReactorPlan,
-};
+pub use reactor::{ensure_gitworkspace_ignored, prepare_runtime_reactor, RuntimeReactorKind, RuntimeReactorPlan};
 pub use registry::{
     apply_version as apply_maven_version, get_maven_executable, list_maven_executables,
-    mark_validity as mark_maven_validity, prune_invalid_paths, remove_maven_executable,
-    upsert_maven_executable,
+    mark_validity as mark_maven_validity, prune_invalid_paths, remove_maven_executable, upsert_maven_executable,
 };
 pub use resolver::{
-    default_local_repository, resolve_dependency, DependencySource, IndexedMavenProject,
-    ResolutionReason, ResolvedDependency, WorkspaceMavenIndex,
+    default_local_repository, resolve_dependency, DependencySource, IndexedMavenProject, ResolutionReason,
+    ResolvedDependency, WorkspaceMavenIndex,
 };
 pub use settings::{resolve_local_repository, user_settings_path};

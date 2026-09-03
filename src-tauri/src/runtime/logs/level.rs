@@ -97,14 +97,8 @@ mod tests {
     #[test]
     fn parses_maven_bracket_style() {
         assert_eq!(parse_level("[INFO] Building app 1.0"), Some(LogLevel::Info));
-        assert_eq!(
-            parse_level("[WARNING] deprecated API"),
-            Some(LogLevel::Warn)
-        );
-        assert_eq!(
-            parse_level("[ERROR] COMPILATION ERROR"),
-            Some(LogLevel::Error)
-        );
+        assert_eq!(parse_level("[WARNING] deprecated API"), Some(LogLevel::Warn));
+        assert_eq!(parse_level("[ERROR] COMPILATION ERROR"), Some(LogLevel::Error));
     }
 
     #[test]

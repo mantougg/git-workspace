@@ -23,19 +23,14 @@ pub trait MavenRunner: Send + Sync {
     ///
     /// 默认实现走真实检测（会 fork `mvn -v`）；测试 fake 覆盖它以保持
     /// 单测环境无 Maven 依赖。
-    fn resolve_maven(
-        &self,
-        project_dir: &Path,
-        local_repository: &Path,
-    ) -> AppResult<ResolvedMaven> {
-        crate::maven::detect_exec::resolve_maven_for_project(project_dir, None, local_repository)
-            .ok_or_else(|| {
-                crate::error::AppError::MavenNotFound(format!(
-                    "未在项目 {} 找到可用的 Maven（wrapper / 配置 / 系统三者皆缺）。\
+    fn resolve_maven(&self, project_dir: &Path, local_repository: &Path) -> AppResult<ResolvedMaven> {
+        crate::maven::detect_exec::resolve_maven_for_project(project_dir, None, local_repository).ok_or_else(|| {
+            crate::error::AppError::MavenNotFound(format!(
+                "未在项目 {} 找到可用的 Maven（wrapper / 配置 / 系统三者皆缺）。\
                      请安装 Maven 或在 Settings 中配置 Maven 可执行路径。",
-                    project_dir.display()
-                ))
-            })
+                project_dir.display()
+            ))
+        })
     }
 
     /// R-18：带 Build Engine 偏好的解析。默认忽略偏好（测试 fake 不受影响）；
@@ -90,8 +85,7 @@ impl MavenRunner for SpawningMavenRunner {
         let Some(path) = &detection.executable_path else {
             return Ok(None);
         };
-        let mut exe =
-            crate::maven::exec_model::MavenExecutable::new(path, MavenSource::System, None);
+        let mut exe = crate::maven::exec_model::MavenExecutable::new(path, MavenSource::System, None);
         exe.is_valid = true;
         exe.raw_version = detection.raw.clone();
         exe.full_version = detection.full_version.clone();
@@ -185,11 +179,7 @@ pub mod fake {
     }
 
     impl MavenRunner for FakeMavenRunner {
-        fn resolve_maven(
-            &self,
-            _project_dir: &Path,
-            local_repository: &Path,
-        ) -> AppResult<ResolvedMaven> {
+        fn resolve_maven(&self, _project_dir: &Path, local_repository: &Path) -> AppResult<ResolvedMaven> {
             Ok(ResolvedMaven {
                 executable: MavenExecutable::new("fake-mvn", MavenSource::System, None),
                 local_repository: local_repository.to_path_buf(),
@@ -273,9 +263,7 @@ mod tests {
             local_repository: None,
         };
         let mut tail = RingTail::new();
-        let exit = SpawningMavenRunner
-            .run(&request, &[], &mut tail, None, None)
-            .unwrap();
+        let exit = SpawningMavenRunner.run(&request, &[], &mut tail, None, None).unwrap();
         assert_eq!(exit.exit_code, Some(0));
         assert!(tail.tail().contains("hello-from-fake-mvn"));
         let _ = OutputStream::Stdout;

@@ -90,10 +90,7 @@ pub fn kill_external_process(pid: u32) -> PortKillOutcome {
     }
     // KILL 升级（或 TERM 不可用）。
     system.refresh_processes();
-    let killed = system
-        .process(sysinfo::Pid::from_u32(pid))
-        .map(|p| p.kill())
-        .is_some();
+    let killed = system.process(sysinfo::Pid::from_u32(pid)).map(|p| p.kill()).is_some();
     log::info!("R-16: pid={pid} kill outcome: killed={killed}");
     PortKillOutcome {
         pid,
@@ -119,10 +116,7 @@ mod tests {
         drop(listener);
         // 释放后大概率空闲（本机自占，无并发竞争方）。
         let result = check_port(free_port);
-        assert!(
-            !result.in_use,
-            "port {free_port} should be free after close"
-        );
+        assert!(!result.in_use, "port {free_port} should be free after close");
     }
 
     #[test]

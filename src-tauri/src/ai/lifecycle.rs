@@ -123,10 +123,7 @@ impl Lifecycle {
             self.phase = to;
             Ok(to)
         } else {
-            Err(InvalidTransition {
-                from: self.phase,
-                to,
-            })
+            Err(InvalidTransition { from: self.phase, to })
         }
     }
 }
@@ -140,11 +137,7 @@ impl Default for Lifecycle {
 /// 把非法迁移（内部不变量破坏）转换为可上报的 AiError。
 pub fn invalid_transition_error(e: InvalidTransition) -> AiError {
     AiError::ResponseInvalid {
-        message: format!(
-            "非法生命周期迁移 {} -> {}",
-            e.from.as_str(),
-            e.to.as_str()
-        ),
+        message: format!("非法生命周期迁移 {} -> {}", e.from.as_str(), e.to.as_str()),
     }
 }
 
@@ -239,10 +232,7 @@ mod tests {
         let mut lc = Lifecycle::new();
         lc.transition(RequestPhase::ContextBuilding).unwrap();
         assert!(lc.transition(RequestPhase::Created).is_err(), "不可回退");
-        assert!(
-            lc.transition(RequestPhase::Sending).is_err(),
-            "不可跨阶段跳跃"
-        );
+        assert!(lc.transition(RequestPhase::Sending).is_err(), "不可跨阶段跳跃");
         assert_eq!(lc.phase(), RequestPhase::ContextBuilding);
     }
 

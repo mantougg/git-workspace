@@ -7,8 +7,8 @@ use crate::error::{AppError, AppResult};
 use crate::models::task::{RuntimeOp, RuntimeTaskOptions, TaskRequest, TaskType};
 use crate::runtime::config;
 use crate::runtime::events::{
-    EnvironmentCompletedPayload, EnvironmentProgressPayload, EnvironmentServiceOutcome,
-    ServiceExecState, EVENT_ENVIRONMENT_COMPLETED, EVENT_ENVIRONMENT_PROGRESS,
+    EnvironmentCompletedPayload, EnvironmentProgressPayload, EnvironmentServiceOutcome, ServiceExecState,
+    EVENT_ENVIRONMENT_COMPLETED, EVENT_ENVIRONMENT_PROGRESS,
 };
 use crate::runtime::launch::StartOptions;
 
@@ -70,12 +70,7 @@ impl RuntimeService {
 
     /// `runtime_start_named_environment` 的任务组装（环境名放 `runtime_name`
     /// 字段；任务面板显示为「环境 <name>」）。
-    pub fn named_environment_task_request(
-        &self,
-        workspace_id: i64,
-        environment: &str,
-        op: RuntimeOp,
-    ) -> TaskRequest {
+    pub fn named_environment_task_request(&self, workspace_id: i64, environment: &str, op: RuntimeOp) -> TaskRequest {
         TaskRequest {
             task_type: TaskType::Runtime {
                 op,
@@ -138,10 +133,7 @@ impl RuntimeService {
             // 进程先死 → 就绪等待失败（编排按失败处理，依赖分支跳过）。
             if let Ok(Some(info)) = self.processes.get_process(process_id) {
                 if info.status.is_terminal() {
-                    return Err(format!(
-                        "服务在就绪等待期间退出（状态 {}）",
-                        info.status.as_str()
-                    ));
+                    return Err(format!("服务在就绪等待期间退出（状态 {}）", info.status.as_str()));
                 }
             }
             if let Some(snapshot) = self.health.snapshot(process_id) {
@@ -156,10 +148,7 @@ impl RuntimeService {
                 }
             }
             if Instant::now() >= deadline {
-                return Ok(format!(
-                    "就绪等待超时（{:?}），进程仍在运行，放行依赖分支",
-                    timeout
-                ));
+                return Ok(format!("就绪等待超时（{:?}），进程仍在运行，放行依赖分支", timeout));
             }
             std::thread::sleep(Duration::from_millis(250));
         }
@@ -177,13 +166,8 @@ impl RuntimeService {
         let environment = {
             let conn = self.db.lock().unwrap();
             let root = config::workspace_root(&conn, workspace_id)?;
-            let environment =
-                crate::runtime::environment::get_environment(&root, environment_name)?;
-            crate::runtime::environment::validate_environment_configs(
-                &conn,
-                workspace_id,
-                &environment,
-            )?;
+            let environment = crate::runtime::environment::get_environment(&root, environment_name)?;
+            crate::runtime::environment::validate_environment_configs(&conn, workspace_id, &environment)?;
             environment
         };
         let env_name: &str = &environment.name;
@@ -196,12 +180,11 @@ impl RuntimeService {
         );
 
         // 服务终态收集（state + detail）。
-        let mut outcomes: std::collections::BTreeMap<String, (ServiceExecState, Option<String>)> =
-            environment
-                .services
-                .iter()
-                .map(|s| (s.runtime_name.clone(), (ServiceExecState::Starting, None)))
-                .collect();
+        let mut outcomes: std::collections::BTreeMap<String, (ServiceExecState, Option<String>)> = environment
+            .services
+            .iter()
+            .map(|s| (s.runtime_name.clone(), (ServiceExecState::Starting, None)))
+            .collect();
 
         for wave in &waves {
             if cancel.load(Ordering::Relaxed) {
@@ -221,10 +204,7 @@ impl RuntimeService {
             let plans: Vec<(crate::runtime::environment::EnvironmentService, Vec<String>)> = wave
                 .iter()
                 .filter_map(|service_name| {
-                    let service = environment
-                        .services
-                        .iter()
-                        .find(|s| &s.runtime_name == service_name)?;
+                    let service = environment.services.iter().find(|s| &s.runtime_name == service_name)?;
                     let failed_deps: Vec<String> = service
                         .depends_on
                         .iter()
@@ -239,27 +219,19 @@ impl RuntimeService {
                     Some((service.clone(), failed_deps))
                 })
                 .collect();
-            let results: Vec<(String, ServiceExecState, Option<String>)> =
-                std::thread::scope(|scope| {
-                    let mut handles = Vec::new();
-                    for (service, failed_deps) in plans {
-                        let cancel = Arc::clone(cancel);
-                        handles.push(scope.spawn(move || {
-                            start_environment_service(
-                                self,
-                                workspace_id,
-                                env_name,
-                                &service,
-                                &failed_deps,
-                                &cancel,
-                            )
-                        }));
-                    }
-                    handles
-                        .into_iter()
-                        .map(|handle| handle.join().expect("environment service thread"))
-                        .collect()
-                });
+            let results: Vec<(String, ServiceExecState, Option<String>)> = std::thread::scope(|scope| {
+                let mut handles = Vec::new();
+                for (service, failed_deps) in plans {
+                    let cancel = Arc::clone(cancel);
+                    handles.push(scope.spawn(move || {
+                        start_environment_service(self, workspace_id, env_name, &service, &failed_deps, &cancel)
+                    }));
+                }
+                handles
+                    .into_iter()
+                    .map(|handle| handle.join().expect("environment service thread"))
+                    .collect()
+            });
             for (name, state, detail) in results {
                 outcomes.insert(name, (state, detail));
             }
@@ -309,10 +281,7 @@ impl RuntimeService {
         if success {
             Ok(Some(summary))
         } else if ready == 0 {
-            Err(AppError::Task(format!(
-                "{summary}；失败服务：{}",
-                failed.join(", ")
-            )))
+            Err(AppError::Task(format!("{summary}；失败服务：{}", failed.join(", "))))
         } else {
             // 部分成功：任务成功收尾，失败明细在汇总与事件中可见。
             Ok(Some(format!("{summary}；失败服务：{}", failed.join(", "))))
@@ -320,11 +289,7 @@ impl RuntimeService {
     }
 
     /// §38 Stop Environment：逆拓扑序分波并行停止（先停下游，再停上游）。
-    pub(super) fn exec_stop_environment(
-        &self,
-        workspace_id: i64,
-        environment_name: &str,
-    ) -> AppResult<Option<String>> {
+    pub(super) fn exec_stop_environment(&self, workspace_id: i64, environment_name: &str) -> AppResult<Option<String>> {
         let environment = {
             let conn = self.db.lock().unwrap();
             let root = config::workspace_root(&conn, workspace_id)?;
@@ -334,48 +299,35 @@ impl RuntimeService {
         waves.reverse();
         let env_name: &str = &environment.name;
 
-        let mut outcomes: std::collections::BTreeMap<String, (ServiceExecState, Option<String>)> =
-            environment
-                .services
-                .iter()
-                .map(|s| (s.runtime_name.clone(), (ServiceExecState::Stopped, None)))
-                .collect();
+        let mut outcomes: std::collections::BTreeMap<String, (ServiceExecState, Option<String>)> = environment
+            .services
+            .iter()
+            .map(|s| (s.runtime_name.clone(), (ServiceExecState::Stopped, None)))
+            .collect();
 
         for wave in &waves {
-            let results: Vec<(String, ServiceExecState, Option<String>)> =
-                std::thread::scope(|scope| {
-                    let mut handles = Vec::new();
-                    for service_name in wave {
-                        let service_name = service_name.clone();
-                        handles.push(scope.spawn(move || {
-                            let result =
-                                self.processes
-                                    .stop_runtime(workspace_id, &service_name, None);
-                            let (state, detail) = match result {
-                                Ok(Some(info)) => (
-                                    ServiceExecState::Stopped,
-                                    Some(format!("已停止（pid {:?}）", info.pid)),
-                                ),
-                                Ok(None) => {
-                                    (ServiceExecState::Stopped, Some("未在运行".to_string()))
-                                }
-                                Err(error) => (ServiceExecState::Failed, Some(error.to_string())),
-                            };
-                            self.emit_environment_progress(
-                                workspace_id,
-                                env_name,
-                                &service_name,
-                                state,
-                                detail.clone(),
-                            );
-                            (service_name, state, detail)
-                        }));
-                    }
-                    handles
-                        .into_iter()
-                        .map(|handle| handle.join().expect("environment stop thread"))
-                        .collect()
-                });
+            let results: Vec<(String, ServiceExecState, Option<String>)> = std::thread::scope(|scope| {
+                let mut handles = Vec::new();
+                for service_name in wave {
+                    let service_name = service_name.clone();
+                    handles.push(scope.spawn(move || {
+                        let result = self.processes.stop_runtime(workspace_id, &service_name, None);
+                        let (state, detail) = match result {
+                            Ok(Some(info)) => {
+                                (ServiceExecState::Stopped, Some(format!("已停止（pid {:?}）", info.pid)))
+                            }
+                            Ok(None) => (ServiceExecState::Stopped, Some("未在运行".to_string())),
+                            Err(error) => (ServiceExecState::Failed, Some(error.to_string())),
+                        };
+                        self.emit_environment_progress(workspace_id, env_name, &service_name, state, detail.clone());
+                        (service_name, state, detail)
+                    }));
+                }
+                handles
+                    .into_iter()
+                    .map(|handle| handle.join().expect("environment stop thread"))
+                    .collect()
+            });
             for (name, state, detail) in results {
                 outcomes.insert(name, (state, detail));
             }
@@ -436,10 +388,7 @@ fn start_environment_service(
 ) -> (String, ServiceExecState, Option<String>) {
     let runtime_name = &service.runtime_name;
     if !failed_deps.is_empty() {
-        let detail = format!(
-            "依赖未就绪：{}（部分失败语义：跳过本服务）",
-            failed_deps.join(", ")
-        );
+        let detail = format!("依赖未就绪：{}（部分失败语义：跳过本服务）", failed_deps.join(", "));
         service_runtime.emit_environment_progress(
             workspace_id,
             environment_name,
@@ -447,11 +396,7 @@ fn start_environment_service(
             ServiceExecState::Skipped,
             Some(detail.clone()),
         );
-        return (
-            runtime_name.clone(),
-            ServiceExecState::Skipped,
-            Some(detail),
-        );
+        return (runtime_name.clone(), ServiceExecState::Skipped, Some(detail));
     }
 
     service_runtime.emit_environment_progress(
@@ -462,12 +407,7 @@ fn start_environment_service(
         None,
     );
     // 每服务一个取消 watcher（构建取消快路径 + 停止收尾）。
-    let _watch = CancelWatch::start(
-        &service_runtime.processes,
-        workspace_id,
-        runtime_name,
-        cancel,
-    );
+    let _watch = CancelWatch::start(&service_runtime.processes, workspace_id, runtime_name, cancel);
     let options = StartOptions {
         overrides: Some(crate::runtime::launch::EnvironmentOverrides {
             jdk: service.jdk.clone(),
@@ -477,22 +417,14 @@ fn start_environment_service(
         }),
         ..Default::default()
     };
-    match service_runtime
-        .processes
-        .start(workspace_id, runtime_name, options)
-    {
+    match service_runtime.processes.start(workspace_id, runtime_name, options) {
         Ok(info) => {
             let timeout = Duration::from_secs(
                 service
                     .ready_timeout_seconds
                     .unwrap_or(crate::runtime::environment::DEFAULT_READY_TIMEOUT_SECS),
             );
-            match service_runtime.wait_service_ready(
-                workspace_id,
-                runtime_name,
-                info.process_id,
-                timeout,
-            ) {
+            match service_runtime.wait_service_ready(workspace_id, runtime_name, info.process_id, timeout) {
                 Ok(detail) => {
                     service_runtime.emit_environment_progress(
                         workspace_id,

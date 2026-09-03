@@ -21,11 +21,7 @@ use crate::state::AppState;
 /// happens in memory over the repo list + status cache — no DB scan per
 /// keystroke, no git processes spawned.
 #[tauri::command]
-pub fn select_repos(
-    workspace_id: i64,
-    query: String,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<String>> {
+pub fn select_repos(workspace_id: i64, query: String, state: State<'_, AppState>) -> AppResult<Vec<String>> {
     let conn = state
         .db
         .lock()
@@ -43,8 +39,7 @@ pub(crate) fn facet_repo_paths(
 ) -> AppResult<Vec<String>> {
     let repos = dao::list_repositories_by_workspace(conn, workspace_id)?;
     let groups = dao::list_groups(conn, workspace_id)?;
-    let group_names: std::collections::HashMap<i64, String> =
-        groups.into_iter().map(|g| (g.id, g.name)).collect();
+    let group_names: std::collections::HashMap<i64, String> = groups.into_iter().map(|g| (g.id, g.name)).collect();
 
     let facets: Vec<RepoFacet> = repos
         .into_par_iter()
@@ -153,18 +148,16 @@ pub fn batch_branch_op(
         BranchOpKind::Delete => repo_paths
             .iter()
             .filter_map(|p| {
-                operation_log::snapshot_branch(Path::new(p), &name).map(|(ref_name, oid)| {
-                    NewOperationLogItem {
-                        repo_path: p.clone(),
-                        ref_name,
-                        before_oid: oid,
-                        after_oid: None,
-                        detail: Some(if force {
-                            "force 删除".to_string()
-                        } else {
-                            "删除已合入分支".to_string()
-                        }),
-                    }
+                operation_log::snapshot_branch(Path::new(p), &name).map(|(ref_name, oid)| NewOperationLogItem {
+                    repo_path: p.clone(),
+                    ref_name,
+                    before_oid: oid,
+                    after_oid: None,
+                    detail: Some(if force {
+                        "force 删除".to_string()
+                    } else {
+                        "删除已合入分支".to_string()
+                    }),
                 })
             })
             .collect(),
@@ -215,13 +208,7 @@ pub fn batch_branch_op(
             BranchOpKind::Create => unreachable!("create is not logged"),
         };
         if let Some(first) = repo_paths.first() {
-            operation_log::record_operation_best_effort(
-                &state.db,
-                first,
-                op_type,
-                &summary,
-                snapshots,
-            );
+            operation_log::record_operation_best_effort(&state.db, first, op_type, &summary, snapshots);
         }
     }
 
@@ -254,10 +241,7 @@ pub fn batch_dry_run(repo_paths: Vec<String>, op: String) -> AppResult<Vec<DryRu
     if op != "pull" && op != "push" {
         return Err(AppError::Other(format!("不支持的 dry-run 类型：{op}")));
     }
-    let items: Vec<DryRunItem> = repo_paths
-        .par_iter()
-        .map(|p| dry_run_repo(p, &op))
-        .collect();
+    let items: Vec<DryRunItem> = repo_paths.par_iter().map(|p| dry_run_repo(p, &op)).collect();
     Ok(items)
 }
 
@@ -279,9 +263,9 @@ fn dry_run_repo(repo_path: &str, op: &str) -> DryRunItem {
     let result = (|| -> AppResult<()> {
         let repo = git2::Repository::open(repo_path)?;
         let head = repo.head()?;
-        let local_oid = head.target().ok_or_else(|| {
-            AppError::Other("HEAD 未指向提交".to_string())
-        })?;
+        let local_oid = head
+            .target()
+            .ok_or_else(|| AppError::Other("HEAD 未指向提交".to_string()))?;
         let branch_name = head
             .shorthand()
             .ok_or_else(|| AppError::Other("HEAD 异常".to_string()))?
@@ -295,9 +279,10 @@ fn dry_run_repo(repo_path: &str, op: &str) -> DryRunItem {
                 return Ok(());
             }
         };
-        let upstream_oid = upstream.get().target().ok_or_else(|| {
-            AppError::Other("上游引用异常".to_string())
-        })?;
+        let upstream_oid = upstream
+            .get()
+            .target()
+            .ok_or_else(|| AppError::Other("上游引用异常".to_string()))?;
 
         let (ahead, behind) = repo.graph_ahead_behind(local_oid, upstream_oid)?;
         item.ahead = ahead as u32;
@@ -315,8 +300,7 @@ fn dry_run_repo(repo_path: &str, op: &str) -> DryRunItem {
                     // Diverged: predict conflicts with an in-memory merge.
                     let local_commit = repo.find_commit(local_oid)?;
                     let their_commit = repo.find_commit(upstream_oid)?;
-                    let merge_index =
-                        repo.merge_commits(&local_commit, &their_commit, None)?;
+                    let merge_index = repo.merge_commits(&local_commit, &their_commit, None)?;
                     if merge_index.has_conflicts() {
                         item.category = "conflict".to_string();
                         item.detail = format!("分叉（前 {ahead} / 后 {behind}），预计冲突");
@@ -369,11 +353,7 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        let out = Command::new("git")
-            .current_dir(dir)
-            .args(args)
-            .output()
-            .unwrap();
+        let out = Command::new("git").current_dir(dir).args(args).output().unwrap();
         assert!(
             out.status.success(),
             "git {:?} failed: {}",

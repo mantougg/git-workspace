@@ -85,16 +85,12 @@ impl RuntimeEnvironment {
             )));
         }
         if self.services.is_empty() {
-            return Err(AppError::RuntimeConfig(format!(
-                "环境 '{name}' 至少需要一个服务"
-            )));
+            return Err(AppError::RuntimeConfig(format!("环境 '{name}' 至少需要一个服务")));
         }
         let mut seen = BTreeSet::new();
         for service in &self.services {
             if service.runtime_name.trim().is_empty() {
-                return Err(AppError::RuntimeConfig(format!(
-                    "环境 '{name}' 存在空的 runtime_name"
-                )));
+                return Err(AppError::RuntimeConfig(format!("环境 '{name}' 存在空的 runtime_name")));
             }
             if !seen.insert(service.runtime_name.as_str()) {
                 return Err(AppError::RuntimeConfig(format!(
@@ -150,7 +146,10 @@ pub fn topo_sort_services(environment: &RuntimeEnvironment) -> AppResult<Vec<Vec
                 )));
             };
             *indegree.entry(service.runtime_name.as_str()).or_insert(0) += 1;
-            dependents.entry(target).or_default().push(service.runtime_name.as_str());
+            dependents
+                .entry(target)
+                .or_default()
+                .push(service.runtime_name.as_str());
         }
     }
 
@@ -200,9 +199,7 @@ pub fn topo_sort_services(environment: &RuntimeEnvironment) -> AppResult<Vec<Vec
 // ---------------------------------------------------------------------------
 
 pub fn environments_dir(workspace_root: &Path) -> PathBuf {
-    workspace_root
-        .join(".gitworkspace")
-        .join(ENVIRONMENTS_DIR)
+    workspace_root.join(".gitworkspace").join(ENVIRONMENTS_DIR)
 }
 
 fn environment_path(workspace_root: &Path, name: &str) -> AppResult<PathBuf> {
@@ -256,10 +253,7 @@ pub fn list_environments(workspace_root: &Path) -> Vec<RuntimeEnvironment> {
             .and_then(|text| serde_json::from_str::<RuntimeEnvironment>(&text).map_err(Into::into))
         {
             Ok(environment) => environments.push(environment),
-            Err(e) => log::warn!(
-                "R-15: skipping invalid environment file {}: {e}",
-                path.display()
-            ),
+            Err(e) => log::warn!("R-15: skipping invalid environment file {}: {e}", path.display()),
         }
     }
     environments.sort_by(|a, b| a.name.cmp(&b.name));
@@ -270,21 +264,14 @@ pub fn list_environments(workspace_root: &Path) -> Vec<RuntimeEnvironment> {
 pub fn get_environment(workspace_root: &Path, name: &str) -> AppResult<RuntimeEnvironment> {
     validate_environment_name(name)?;
     let path = environments_dir(workspace_root).join(format!("{name}.json"));
-    let text = std::fs::read_to_string(&path).map_err(|e| {
-        AppError::NotFound(format!(
-            "环境 '{name}' 不存在（{}：{e}）",
-            path.display()
-        ))
-    })?;
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| AppError::NotFound(format!("环境 '{name}' 不存在（{}：{e}）", path.display())))?;
     let environment: RuntimeEnvironment = serde_json::from_str(&text)?;
     Ok(environment)
 }
 
 /// 保存（创建或覆盖）环境。先校验模型与依赖图，再原子写盘。
-pub fn save_environment(
-    workspace_root: &Path,
-    environment: &RuntimeEnvironment,
-) -> AppResult<RuntimeEnvironment> {
+pub fn save_environment(workspace_root: &Path, environment: &RuntimeEnvironment) -> AppResult<RuntimeEnvironment> {
     environment.validate()?;
     let path = environment_path(workspace_root, &environment.name)?;
     ensure_environments_dir(workspace_root)?;
@@ -296,9 +283,8 @@ pub fn save_environment(
 /// 删除环境；不存在返回 NotFound。
 pub fn delete_environment(workspace_root: &Path, name: &str) -> AppResult<()> {
     let path = environment_path(workspace_root, name)?;
-    std::fs::remove_file(&path).map_err(|e| {
-        AppError::NotFound(format!("环境 '{name}' 不存在（{}：{e}）", path.display()))
-    })?;
+    std::fs::remove_file(&path)
+        .map_err(|e| AppError::NotFound(format!("环境 '{name}' 不存在（{}：{e}）", path.display())))?;
     log::info!("R-15: environment '{name}' deleted");
     Ok(())
 }

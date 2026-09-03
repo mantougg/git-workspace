@@ -10,9 +10,7 @@ use uuid::Uuid;
 use crate::core::git_ops::GitOps;
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
-use crate::models::task::{
-    BatchState, DagGraph, DagSubmitRequest, Task, TaskRequest, TaskStatus, TaskType,
-};
+use crate::models::task::{BatchState, DagGraph, DagSubmitRequest, Task, TaskRequest, TaskStatus, TaskType};
 use crate::task::dag::{self, DagContext, DagNodeState, DagState, NodeState};
 use crate::task::queue::{self, TaskMessage};
 use crate::task::worker;
@@ -155,8 +153,7 @@ impl TaskManager {
 
             // Store in active tasks + create cancel flag
             self.active_tasks.insert(id.clone(), task.clone());
-            self.cancel_flags
-                .insert(id.clone(), Arc::new(AtomicBool::new(false)));
+            self.cancel_flags.insert(id.clone(), Arc::new(AtomicBool::new(false)));
 
             // Send to channel
             if let Err(e) = self.sender.try_send(TaskMessage { task: task.clone() }) {
@@ -173,10 +170,7 @@ impl TaskManager {
                     failed_task.status = failed;
                     worker::update_batch(&self.batches, &self.db, &self.app_handle, &failed_task);
                 }
-                return Err(AppError::Task(format!(
-                    "Failed to queue task: {}",
-                    e
-                )));
+                return Err(AppError::Task(format!("Failed to queue task: {}", e)));
             }
 
             ids.push(id);
@@ -252,8 +246,7 @@ impl TaskManager {
             };
             let row = self.persist_new_task(&task);
             self.active_tasks.insert(id.clone(), task);
-            self.cancel_flags
-                .insert(id.clone(), Arc::new(AtomicBool::new(false)));
+            self.cancel_flags.insert(id.clone(), Arc::new(AtomicBool::new(false)));
             task_ids.push(id);
             row_ids.push(row);
         }
@@ -295,14 +288,8 @@ impl TaskManager {
                 finished_at: None,
             })
             .collect();
-        let state = DagState::build(
-            dag_id.clone(),
-            req.name.clone(),
-            req.on_failure,
-            nodes,
-            &edges,
-        )
-        .map_err(AppError::Task)?;
+        let state =
+            DagState::build(dag_id.clone(), req.name.clone(), req.on_failure, nodes, &edges).map_err(AppError::Task)?;
 
         self.dags.insert(dag_id.clone(), state);
         dag::evict_finished(&self.dags);
@@ -425,10 +412,7 @@ impl TaskManager {
                 _ => Ok(()), // Already finished
             }
         } else {
-            Err(AppError::NotFound(format!(
-                "Task {} not found",
-                task_id
-            )))
+            Err(AppError::NotFound(format!("Task {} not found", task_id)))
         }
     }
 

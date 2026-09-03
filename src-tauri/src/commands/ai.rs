@@ -67,9 +67,7 @@ fn fill_credential_status(credentials: &ai::CredentialManager, providers: &mut [
 }
 
 #[tauri::command]
-pub fn ai_list_providers(
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<Vec<ai::AiProvider>> {
+pub fn ai_list_providers(state: tauri::State<'_, crate::state::AppState>) -> AppResult<Vec<ai::AiProvider>> {
     let conn = lock_db(&state)?;
     let mut providers = ai::list_providers(&conn)?;
     fill_credential_status(&state.ai_credentials, &mut providers);
@@ -94,10 +92,7 @@ pub fn ai_save_provider(
 }
 
 #[tauri::command]
-pub fn ai_remove_provider(
-    state: tauri::State<'_, crate::state::AppState>,
-    provider_id: String,
-) -> AppResult<()> {
+pub fn ai_remove_provider(state: tauri::State<'_, crate::state::AppState>, provider_id: String) -> AppResult<()> {
     let provider = {
         let conn = lock_db(&state)?;
         let provider = ai::get_provider(&conn, &provider_id)?;
@@ -200,8 +195,7 @@ pub fn ai_set_task_default_model(
     workspace_id: Option<i64>,
 ) -> AppResult<ai::AiTaskDefault> {
     let conn = lock_db(&state)?;
-    let default =
-        ai::model::set_task_default(&conn, task_kind, workspace_id, &provider_id, &model_id)?;
+    let default = ai::model::set_task_default(&conn, task_kind, workspace_id, &provider_id, &model_id)?;
     log::info!(
         "ai task default set: kind={} workspace={:?} model={}/{}",
         task_kind.as_str(),
@@ -225,17 +219,13 @@ pub fn ai_clear_task_default_model(
 }
 
 #[tauri::command]
-pub fn ai_get_settings_summary(
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<AiSettingsSummary> {
+pub fn ai_get_settings_summary(state: tauri::State<'_, crate::state::AppState>) -> AppResult<AiSettingsSummary> {
     let conn = lock_db(&state)?;
     let providers = ai::list_providers(&conn)?;
     let models = ai::list_models(&conn, None)?;
     let task_defaults = ai::list_task_defaults(&conn, None)?;
-    let legacy_review_count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM ai_reviews", [], |r| r.get(0))?;
-    let legacy_task_count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM ai_tasks", [], |r| r.get(0))?;
+    let legacy_review_count: i64 = conn.query_row("SELECT COUNT(*) FROM ai_reviews", [], |r| r.get(0))?;
+    let legacy_task_count: i64 = conn.query_row("SELECT COUNT(*) FROM ai_tasks", [], |r| r.get(0))?;
     Ok(AiSettingsSummary {
         provider_count: providers.len() as i64,
         enabled_provider_count: providers.iter().filter(|p| p.enabled).count() as i64,
@@ -279,11 +269,7 @@ pub fn ai_set_credential(
         .clone()
         .unwrap_or_else(|| ai::provider::credential_ref_for(&provider_id));
     state.ai_credentials.set(&cref, key, persist)?;
-    log::info!(
-        "ai credential set: provider={} persist={}",
-        provider_id,
-        persist
-    );
+    log::info!("ai credential set: provider={} persist={}", provider_id, persist);
     Ok(AiCredentialStatus {
         provider_id: provider_id.clone(),
         has_credential: state.ai_credentials.has(&cref),
@@ -337,9 +323,7 @@ pub fn ai_approve_request(
     state: tauri::State<'_, crate::state::AppState>,
     request_id: String,
 ) -> AppResult<ai::AiRequestSnapshot> {
-    state
-        .ai_gateway
-        .approve(state.ai_credentials.clone(), &request_id)
+    state.ai_gateway.approve(state.ai_credentials.clone(), &request_id)
 }
 
 /// 取消请求（幂等）：排队/执行中触发协作取消，中断进行中的流式响应。
@@ -386,28 +370,17 @@ fn proposal_task_request(record: &ai::proposal::ProposalRecord) -> AppResult<Tas
     let payload = &record.action_payload;
     match record.proposal.action_kind {
         ai::ActionKind::GitCreateCommit => {
-            let repo_path = payload
-                .get("repoPath")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    AppError::Ai(AiError::ToolInputInvalid {
-                        tool: "git.createCommitProposal".into(),
-                        message: "proposal repoPath missing".into(),
-                    })
-                })?;
-            let repo_name = payload
-                .get("repoName")
-                .and_then(Value::as_str)
-                .unwrap_or("repository");
+            let repo_path = payload.get("repoPath").and_then(Value::as_str).ok_or_else(|| {
+                AppError::Ai(AiError::ToolInputInvalid {
+                    tool: "git.createCommitProposal".into(),
+                    message: "proposal repoPath missing".into(),
+                })
+            })?;
+            let repo_name = payload.get("repoName").and_then(Value::as_str).unwrap_or("repository");
             let files = payload
                 .get("files")
                 .and_then(Value::as_array)
-                .map(|v| {
-                    v.iter()
-                        .filter_map(Value::as_str)
-                        .map(ToOwned::to_owned)
-                        .collect()
-                })
+                .map(|v| v.iter().filter_map(Value::as_str).map(ToOwned::to_owned).collect())
                 .unwrap_or_default();
             Ok(TaskRequest {
                 task_type: TaskType::Commit {
@@ -417,26 +390,11 @@ fn proposal_task_request(record: &ai::proposal::ProposalRecord) -> AppResult<Tas
                         .unwrap_or_default()
                         .to_string(),
                     files,
-                    amend: payload
-                        .get("amend")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                    no_edit: payload
-                        .get("noEdit")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                    index_only: payload
-                        .get("indexOnly")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                    then_push: payload
-                        .get("thenPush")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                    allow_unsafe: payload
-                        .get("allowUnsafe")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
+                    amend: payload.get("amend").and_then(Value::as_bool).unwrap_or(false),
+                    no_edit: payload.get("noEdit").and_then(Value::as_bool).unwrap_or(false),
+                    index_only: payload.get("indexOnly").and_then(Value::as_bool).unwrap_or(false),
+                    then_push: payload.get("thenPush").and_then(Value::as_bool).unwrap_or(false),
+                    allow_unsafe: payload.get("allowUnsafe").and_then(Value::as_bool).unwrap_or(false),
                     author_name: None,
                     author_email: None,
                 },
@@ -445,36 +403,26 @@ fn proposal_task_request(record: &ai::proposal::ProposalRecord) -> AppResult<Tas
             })
         }
         ai::ActionKind::RuntimeStart => {
-            let workspace_id = payload
-                .get("workspaceId")
-                .and_then(Value::as_i64)
-                .ok_or_else(|| {
-                    AppError::Ai(AiError::ToolInputInvalid {
-                        tool: "runtime.startProposal".into(),
-                        message: "proposal workspaceId missing".into(),
-                    })
-                })?;
-            let runtime_name = payload
-                .get("runtimeName")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    AppError::Ai(AiError::ToolInputInvalid {
-                        tool: "runtime.startProposal".into(),
-                        message: "proposal runtimeName missing".into(),
-                    })
-                })?;
-            let options: RuntimeTaskOptions = serde_json::from_value(
-                payload
-                    .get("options")
-                    .cloned()
-                    .unwrap_or_else(|| serde_json::json!({})),
-            )
-            .map_err(|e| {
+            let workspace_id = payload.get("workspaceId").and_then(Value::as_i64).ok_or_else(|| {
                 AppError::Ai(AiError::ToolInputInvalid {
                     tool: "runtime.startProposal".into(),
-                    message: e.to_string(),
+                    message: "proposal workspaceId missing".into(),
                 })
             })?;
+            let runtime_name = payload.get("runtimeName").and_then(Value::as_str).ok_or_else(|| {
+                AppError::Ai(AiError::ToolInputInvalid {
+                    tool: "runtime.startProposal".into(),
+                    message: "proposal runtimeName missing".into(),
+                })
+            })?;
+            let options: RuntimeTaskOptions =
+                serde_json::from_value(payload.get("options").cloned().unwrap_or_else(|| serde_json::json!({})))
+                    .map_err(|e| {
+                        AppError::Ai(AiError::ToolInputInvalid {
+                            tool: "runtime.startProposal".into(),
+                            message: e.to_string(),
+                        })
+                    })?;
             Ok(TaskRequest {
                 task_type: TaskType::Runtime {
                     op: crate::models::task::RuntimeOp::Start,
@@ -487,68 +435,42 @@ fn proposal_task_request(record: &ai::proposal::ProposalRecord) -> AppResult<Tas
             })
         }
         ai::ActionKind::ConflictApply => {
-            let repo_path = payload
-                .get("repoPath")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    AppError::Ai(AiError::ToolInputInvalid {
-                        tool: "conflict.applyProposal".into(),
-                        message: "proposal repoPath missing".into(),
-                    })
-                })?;
-            let repo_name = payload
-                .get("repoName")
-                .and_then(Value::as_str)
-                .unwrap_or("repository");
-            let path = payload
-                .get("path")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let strategy = payload
-                .get("strategy")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
+            let repo_path = payload.get("repoPath").and_then(Value::as_str).ok_or_else(|| {
+                AppError::Ai(AiError::ToolInputInvalid {
+                    tool: "conflict.applyProposal".into(),
+                    message: "proposal repoPath missing".into(),
+                })
+            })?;
+            let repo_name = payload.get("repoName").and_then(Value::as_str).unwrap_or("repository");
+            let path = payload.get("path").and_then(Value::as_str).unwrap_or_default();
+            let strategy = payload.get("strategy").and_then(Value::as_str).unwrap_or_default();
             Ok(TaskRequest {
                 task_type: TaskType::ConflictApply {
                     path: path.to_string(),
                     strategy: strategy.to_string(),
-                    content: payload
-                        .get("content")
-                        .and_then(Value::as_str)
-                        .map(ToOwned::to_owned),
+                    content: payload.get("content").and_then(Value::as_str).map(ToOwned::to_owned),
                 },
                 repo_path: repo_path.to_string(),
                 repo_name: repo_name.to_string(),
             })
         }
         ai::ActionKind::RuntimeUpdateConfig => {
-            let workspace_id = payload
-                .get("workspaceId")
-                .and_then(Value::as_i64)
-                .ok_or_else(|| {
-                    AppError::Ai(AiError::ToolInputInvalid {
-                        tool: "runtime.updateConfigProposal".into(),
-                        message: "proposal workspaceId missing".into(),
-                    })
-                })?;
-            let name = payload
-                .get("runtimeName")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    AppError::Ai(AiError::ToolInputInvalid {
-                        tool: "runtime.updateConfigProposal".into(),
-                        message: "proposal runtimeName missing".into(),
-                    })
-                })?;
-            let config = payload
-                .get("config")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!({}));
+            let workspace_id = payload.get("workspaceId").and_then(Value::as_i64).ok_or_else(|| {
+                AppError::Ai(AiError::ToolInputInvalid {
+                    tool: "runtime.updateConfigProposal".into(),
+                    message: "proposal workspaceId missing".into(),
+                })
+            })?;
+            let name = payload.get("runtimeName").and_then(Value::as_str).ok_or_else(|| {
+                AppError::Ai(AiError::ToolInputInvalid {
+                    tool: "runtime.updateConfigProposal".into(),
+                    message: "proposal runtimeName missing".into(),
+                })
+            })?;
+            let config = payload.get("config").cloned().unwrap_or_else(|| serde_json::json!({}));
             let mut config = config;
             if let Some(object) = config.as_object_mut() {
-                object
-                    .entry("name")
-                    .or_insert_with(|| Value::String(name.to_string()));
+                object.entry("name").or_insert_with(|| Value::String(name.to_string()));
             }
             let req = crate::runtime::UpdateRuntimeConfigRequest {
                 workspace_id,
@@ -639,11 +561,7 @@ pub fn ai_create_session(
 ) -> AppResult<ai::AiSession> {
     let conn = lock_db(&state)?;
     let session = ai::session::create_session(&conn, &input)?;
-    log::info!(
-        "ai session created: id={} role={}",
-        session.id,
-        session.role.as_str()
-    );
+    log::info!("ai session created: id={} role={}", session.id, session.role.as_str());
     Ok(session)
 }
 
@@ -666,12 +584,7 @@ pub fn ai_get_session(
     before_sequence: Option<i64>,
 ) -> AppResult<Option<ai::AiSessionDetail>> {
     let conn = lock_db(&state)?;
-    ai::session::get_session_detail(
-        &conn,
-        &session_id,
-        message_limit.unwrap_or(50),
-        before_sequence,
-    )
+    ai::session::get_session_detail(&conn, &session_id, message_limit.unwrap_or(50), before_sequence)
 }
 
 #[tauri::command]
@@ -700,10 +613,7 @@ pub fn ai_archive_session(
 /// DB 侧由外键与显式删除清理；内存 LRU 需显式失效——否则会话已删仍可能
 /// 命中内存里的旧结果。
 #[tauri::command]
-pub fn ai_delete_session(
-    state: tauri::State<'_, crate::state::AppState>,
-    session_id: String,
-) -> AppResult<()> {
+pub fn ai_delete_session(state: tauri::State<'_, crate::state::AppState>, session_id: String) -> AppResult<()> {
     let conn = lock_db(&state)?;
     ai::session::delete_session(&conn, &session_id)?;
     state.ai_result_cache.invalidate_session(&conn, &session_id);
@@ -939,9 +849,7 @@ pub async fn ai_review(
         let conn = lock_db(&state)?;
         state.ai_gateway.submit(&conn, preview.request)?;
     }
-    state
-        .ai_gateway
-        .approve(state.ai_credentials.clone(), &request_id)?;
+    state.ai_gateway.approve(state.ai_credentials.clone(), &request_id)?;
     let snapshot = state
         .ai_gateway
         .wait(&request_id, std::time::Duration::from_secs(130))
@@ -956,31 +864,29 @@ pub async fn ai_review(
         return Ok(legacy_review_result(result));
     }
     Err(AppError::Ai(AiError::ProviderUnavailable {
-        message: snapshot
-            .error
-            .unwrap_or_else(|| "AI Review 未返回结果".to_string()),
+        message: snapshot.error.unwrap_or_else(|| "AI Review 未返回结果".to_string()),
         transient: false,
     }))
 }
 
 fn legacy_review_result(result: ai::AiResult) -> ReviewResult {
     match result {
-        ai::AiResult::ReviewReport { payload } => serde_json::from_value(payload.clone())
-            .unwrap_or_else(|_| ReviewResult {
+        ai::AiResult::ReviewReport { payload } => {
+            serde_json::from_value(payload.clone()).unwrap_or_else(|_| ReviewResult {
                 summary: payload
                     .get("summary")
                     .and_then(|v| v.as_str())
                     .unwrap_or("AI Review 返回了无法转换的结构化结果")
                     .to_string(),
                 issues: vec![],
-            }),
+            })
+        }
         ai::AiResult::Answer { text } | ai::AiResult::GeneratedText { text } => ReviewResult {
             summary: text,
             issues: vec![],
         },
         other => ReviewResult {
-            summary: serde_json::to_string_pretty(&other)
-                .unwrap_or_else(|_| "AI Review 完成".into()),
+            summary: serde_json::to_string_pretty(&other).unwrap_or_else(|_| "AI Review 完成".into()),
             issues: vec![],
         },
     }
@@ -989,10 +895,7 @@ fn legacy_review_result(result: ai::AiResult) -> ReviewResult {
 /// Build the code search index for a repository.
 /// Scans all non-binary files and writes their content to the FTS5 index.
 #[tauri::command]
-pub fn build_code_index(
-    repo_path: String,
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<()> {
+pub fn build_code_index(repo_path: String, state: tauri::State<'_, crate::state::AppState>) -> AppResult<()> {
     use rusqlite::params;
     use std::fs;
     use walkdir::WalkDir;
@@ -1121,20 +1024,13 @@ pub fn build_code_index(
         }
     }
 
-    log::info!(
-        "Code index built: {} files for {:?}",
-        batch_count,
-        repo_path
-    );
+    log::info!("Code index built: {} files for {:?}", batch_count, repo_path);
     Ok(())
 }
 
 /// Search the code index for matching files.
 #[tauri::command]
-pub fn ai_search(
-    query: String,
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<Vec<SearchResult>> {
+pub fn ai_search(query: String, state: tauri::State<'_, crate::state::AppState>) -> AppResult<Vec<SearchResult>> {
     use rusqlite::params;
 
     let conn = state
@@ -1194,13 +1090,7 @@ pub fn extract_snippet(content: &str, query: &str) -> String {
     // 字节偏移不能直接切原文：用「字符序号」映射回原文的 char boundary。
     let match_start_char = lower_content[..pos].chars().count();
     let match_chars = lower_query.chars().count();
-    let nth_boundary = |n: usize| {
-        content
-            .char_indices()
-            .map(|(i, _)| i)
-            .nth(n)
-            .unwrap_or(content.len())
-    };
+    let nth_boundary = |n: usize| content.char_indices().map(|(i, _)| i).nth(n).unwrap_or(content.len());
     let match_start = nth_boundary(match_start_char);
     let match_end = nth_boundary(match_start_char + match_chars);
     let start = floor_char_boundary(content, match_start.saturating_sub(60));
@@ -1258,10 +1148,7 @@ mod snippet_tests {
 
 /// Clear the code index for a specific repository.
 #[tauri::command]
-pub fn clear_code_index(
-    repo_path: String,
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<()> {
+pub fn clear_code_index(repo_path: String, state: tauri::State<'_, crate::state::AppState>) -> AppResult<()> {
     use rusqlite::params;
 
     let conn = state
@@ -1269,10 +1156,7 @@ pub fn clear_code_index(
         .lock()
         .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
 
-    conn.execute(
-        "DELETE FROM code_index WHERE repo_path = ?1",
-        params![repo_path],
-    )?;
+    conn.execute("DELETE FROM code_index WHERE repo_path = ?1", params![repo_path])?;
 
     Ok(())
 }

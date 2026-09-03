@@ -15,16 +15,12 @@ use rusqlite::Connection;
 use super::credentials::{CredentialManager, SessionStore};
 use super::events::{AiEventSink, AiRequestEvent};
 use super::gateway::{AiGateway, GatewayConfig};
+use super::model::AiTaskKind;
 use super::model::{save_model, AiModelDefaults, ModelCapability, SaveAiModelRequest};
 use super::provider::{save_provider, ApiType, NetworkPolicy, SaveAiProviderRequest};
-use super::model::AiTaskKind;
-use super::request::{
-    AiMessage, AiRequest, AiResult, GitAssistantScenario, MessageRole, ResponseFormat,
-    ToolPolicy,
-};
+use super::request::{AiMessage, AiRequest, AiResult, GitAssistantScenario, MessageRole, ResponseFormat, ToolPolicy};
 use super::transport::{
-    BoxFuture, ByteStream, CancelToken, HttpTransport, TransportError, TransportRequest,
-    TransportResponse,
+    BoxFuture, ByteStream, CancelToken, HttpTransport, TransportError, TransportRequest, TransportResponse,
 };
 
 // ---------------------------------------------------------------------------
@@ -219,10 +215,7 @@ fn test_config() -> GatewayConfig {
     }
 }
 
-fn test_gateway(
-    config: GatewayConfig,
-    transport: Arc<FakeTransport>,
-) -> (Arc<AiGateway>, Arc<CaptureSink>) {
+fn test_gateway(config: GatewayConfig, transport: Arc<FakeTransport>) -> (Arc<AiGateway>, Arc<CaptureSink>) {
     let sink = Arc::new(CaptureSink::default());
     let gateway = Arc::new(AiGateway::new(config, transport, sink.clone()));
     (gateway, sink)
@@ -426,7 +419,12 @@ async fn three_protocols_complete_success() {
         let credentials = credentials_for_ref(provider.credential_ref.as_deref().unwrap(), KEY);
 
         let snapshot = run_to_end(&gateway, &conn, &credentials, make_request("r", false)).await;
-        assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::Succeeded, "{:?}", snapshot);
+        assert_eq!(
+            snapshot.phase,
+            super::lifecycle::RequestPhase::Succeeded,
+            "{:?}",
+            snapshot
+        );
         assert!(matches!(
             snapshot.result,
             Some(super::request::AiResult::Answer { ref text }) if text == "hello"
@@ -469,7 +467,12 @@ async fn three_protocols_stream_success() {
         let credentials = credentials_for_ref(provider.credential_ref.as_deref().unwrap(), KEY);
 
         let snapshot = run_to_end(&gateway, &conn, &credentials, make_request("rs", true)).await;
-        assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::Succeeded, "{:?}", snapshot);
+        assert_eq!(
+            snapshot.phase,
+            super::lifecycle::RequestPhase::Succeeded,
+            "{:?}",
+            snapshot
+        );
         assert!(matches!(
             snapshot.result,
             Some(super::request::AiResult::Answer { ref text }) if text == "hello"
@@ -504,7 +507,11 @@ async fn three_protocols_stream_success() {
 /// （状态码归一化在共享链路，重试语义协议无关）。
 #[tokio::test]
 async fn rate_limited_retries_once_then_succeeds_with_backoff() {
-    for api_type in [ApiType::OpenaiChatCompletions, ApiType::OpenaiResponses, ApiType::AnthropicMessages] {
+    for api_type in [
+        ApiType::OpenaiChatCompletions,
+        ApiType::OpenaiResponses,
+        ApiType::AnthropicMessages,
+    ] {
         let conn = open_db();
         let provider = add_provider(&conn, api_type);
         add_model(&conn, &provider.id);
@@ -554,7 +561,11 @@ async fn rate_limited_retries_once_then_succeeds_with_backoff() {
 /// 5xx 自动重试至多 1 次后失败（§7.4）——三协议各覆盖一遍。
 #[tokio::test]
 async fn server_error_retries_then_fails() {
-    for api_type in [ApiType::OpenaiChatCompletions, ApiType::OpenaiResponses, ApiType::AnthropicMessages] {
+    for api_type in [
+        ApiType::OpenaiChatCompletions,
+        ApiType::OpenaiResponses,
+        ApiType::AnthropicMessages,
+    ] {
         let conn = open_db();
         let provider = add_provider(&conn, api_type);
         add_model(&conn, &provider.id);
@@ -588,7 +599,11 @@ async fn server_error_retries_then_fails() {
 /// 非法 JSON 响应 → AiResponseInvalid 且不重试（§18.2）——三协议各覆盖一遍。
 #[tokio::test]
 async fn invalid_json_fails_without_retry() {
-    for api_type in [ApiType::OpenaiChatCompletions, ApiType::OpenaiResponses, ApiType::AnthropicMessages] {
+    for api_type in [
+        ApiType::OpenaiChatCompletions,
+        ApiType::OpenaiResponses,
+        ApiType::AnthropicMessages,
+    ] {
         let conn = open_db();
         let provider = add_provider(&conn, api_type);
         add_model(&conn, &provider.id);
@@ -615,7 +630,11 @@ async fn invalid_json_fails_without_retry() {
 /// 超时不自动重试（§7.4：长请求翻倍等待只会更糟）——三协议各覆盖一遍。
 #[tokio::test]
 async fn timeout_fails_without_retry() {
-    for api_type in [ApiType::OpenaiChatCompletions, ApiType::OpenaiResponses, ApiType::AnthropicMessages] {
+    for api_type in [
+        ApiType::OpenaiChatCompletions,
+        ApiType::OpenaiResponses,
+        ApiType::AnthropicMessages,
+    ] {
         let conn = open_db();
         let provider = add_provider(&conn, api_type);
         add_model(&conn, &provider.id);
@@ -671,7 +690,11 @@ async fn cancel_before_approve_makes_zero_network_calls() {
 async fn cancel_mid_stream_interrupts_response() {
     // 仅送达一个 delta 分块后流挂起（模拟 Provider 卡死），取消必须能中断（§7.2）。
     // 三协议各覆盖一遍（SSE 泵与归一化通道为共享链路，事件形状协议各异）。
-    for api_type in [ApiType::OpenaiChatCompletions, ApiType::OpenaiResponses, ApiType::AnthropicMessages] {
+    for api_type in [
+        ApiType::OpenaiChatCompletions,
+        ApiType::OpenaiResponses,
+        ApiType::AnthropicMessages,
+    ] {
         let conn = open_db();
         let provider = add_provider(&conn, api_type);
         add_model(&conn, &provider.id);
@@ -791,7 +814,12 @@ async fn migrated_legacy_provider_config_works() {
     };
 
     let snapshot = run_to_end(&gateway, &conn, &credentials, make_request("rmig", false)).await;
-    assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::Succeeded, "{:?}", snapshot);
+    assert_eq!(
+        snapshot.phase,
+        super::lifecycle::RequestPhase::Succeeded,
+        "{:?}",
+        snapshot
+    );
     assert_eq!(snapshot.provider_id, "p-legacy");
 }
 
@@ -834,7 +862,10 @@ fn submit_blocks_high_risk_secrets_by_default() {
 
     let secrets = [
         ("aws", "const key = \"AKIAIOSFODNN7EXAMPLE\";"),
-        ("jwt", "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"),
+        (
+            "jwt",
+            "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+        ),
         ("private-key", "-----BEGIN RSA PRIVATE KEY-----\nMII..."),
         ("password", "password=supersecret123"),
         ("token", "ghp_abcdefghijklmnopqrstuvwxyz0123456789"),
@@ -854,11 +885,7 @@ fn submit_blocks_high_risk_secrets_by_default() {
         }
         // 被拒绝的请求停在 Rejected 终态。
         let snapshot = gateway.status("req-secret").unwrap();
-        assert_eq!(
-            snapshot.phase,
-            super::lifecycle::RequestPhase::Rejected,
-            "{name}"
-        );
+        assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::Rejected, "{name}");
     }
     assert_eq!(transport.call_count(), 0, "阻断发生在任何网络调用之前");
 

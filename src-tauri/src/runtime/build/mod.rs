@@ -216,11 +216,7 @@ impl RingTail {
 
     /// 当前尾部内容（`\n` 连接）。
     pub fn tail(&self) -> String {
-        self.lines
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            .join("\n")
+        self.lines.iter().map(String::as_str).collect::<Vec<_>>().join("\n")
     }
 }
 
@@ -300,10 +296,7 @@ mod tests {
         ] {
             assert_eq!(strategy.as_str(), text);
             assert_eq!(RunStrategy::parse(text), Some(strategy));
-            assert_eq!(
-                serde_json::to_value(strategy).unwrap(),
-                serde_json::json!(text)
-            );
+            assert_eq!(serde_json::to_value(strategy).unwrap(), serde_json::json!(text));
         }
         assert_eq!(RunStrategy::parse("unknown"), None);
     }
@@ -313,10 +306,7 @@ mod tests {
         assert_eq!(default_strategy(None), RunStrategy::ClasspathRun);
         assert_eq!(default_strategy(Some("dev")), RunStrategy::ClasspathRun);
         assert_eq!(default_strategy(Some("prod")), RunStrategy::PackageRun);
-        assert_eq!(
-            default_strategy(Some("Production")),
-            RunStrategy::PackageRun
-        );
+        assert_eq!(default_strategy(Some("Production")), RunStrategy::PackageRun);
         assert_eq!(default_strategy(Some("PROD")), RunStrategy::PackageRun);
     }
 
@@ -348,9 +338,7 @@ mod tests {
         // R-18：mvnd 与 maven 共用流水线，是合法 engine id。
         assert_eq!(engine_for("mvnd").unwrap().id(), "maven");
         assert_eq!(engine_for("node").unwrap().id(), "node");
-        let error = engine_for("gradle")
-            .err()
-            .expect("unknown engine must fail");
+        let error = engine_for("gradle").err().expect("unknown engine must fail");
         assert_eq!(error.code(), "RuntimeConfigError");
         assert!(error.to_string().contains("gradle"));
     }

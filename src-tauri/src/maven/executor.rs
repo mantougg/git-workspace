@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::maven::exec_model::{MavenExecutionRequest, MavenExecutable};
+use crate::maven::exec_model::{MavenExecutable, MavenExecutionRequest};
 
 /// 构造完整的 Maven 命令行（含 `cmd /c` 前缀，若需要）。
 ///
@@ -36,10 +36,7 @@ pub fn build_command(req: &MavenExecutionRequest) -> Vec<String> {
     parts.extend(req.goals.iter().cloned());
 
     if let Some(local_repo) = &req.local_repository {
-        parts.push(format!(
-            "-Dmaven.repo.local={}",
-            local_repo.to_string_lossy()
-        ));
+        parts.push(format!("-Dmaven.repo.local={}", local_repo.to_string_lossy()));
     }
 
     parts.extend(req.extra_args.iter().cloned());
@@ -57,8 +54,7 @@ pub fn build_request(
     extra_args: Vec<String>,
     local_repository: Option<PathBuf>,
 ) -> MavenExecutionRequest {
-    let via_cmd_c = cfg!(windows)
-        && crate::maven::detect_exec::needs_cmd_c(Path::new(&executable.executable_path));
+    let via_cmd_c = cfg!(windows) && crate::maven::detect_exec::needs_cmd_c(Path::new(&executable.executable_path));
     MavenExecutionRequest {
         working_dir: working_dir.to_path_buf(),
         executable: executable.executable_path.clone(),
@@ -117,11 +113,9 @@ mod tests {
         assert!(parts.contains(&"clean".to_string()));
         assert!(parts.contains(&"install".to_string()));
         assert!(parts.contains(&"-DskipTests".to_string()));
-        assert!(
-            parts
-                .iter()
-                .any(|p| p.starts_with("-Dmaven.repo.local=/custom/.m2/repository"))
-        );
+        assert!(parts
+            .iter()
+            .any(|p| p.starts_with("-Dmaven.repo.local=/custom/.m2/repository")));
     }
 
     #[test]
@@ -136,9 +130,7 @@ mod tests {
         };
         let parts = build_command(&req);
         assert!(
-            !parts
-                .iter()
-                .any(|p| p.starts_with("-Dmaven.repo.local")),
+            !parts.iter().any(|p| p.starts_with("-Dmaven.repo.local")),
             "no local repo flag when unset"
         );
     }

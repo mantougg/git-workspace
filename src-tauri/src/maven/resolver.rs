@@ -104,10 +104,7 @@ impl WorkspaceMavenIndex {
                 .push(project.clone());
             index
                 .by_ga
-                .entry(ga(
-                    &project.coordinates.group_id,
-                    &project.coordinates.artifact_id,
-                ))
+                .entry(ga(&project.coordinates.group_id, &project.coordinates.artifact_id))
                 .or_default()
                 .push(project);
         }
@@ -141,11 +138,7 @@ pub fn resolve_dependency(
     dependency: &MavenDependency,
     local_repository: &Path,
 ) -> ResolvedDependency {
-    let Some(version) = dependency
-        .version
-        .as_deref()
-        .filter(|value| !value.is_empty())
-    else {
+    let Some(version) = dependency.version.as_deref().filter(|value| !value.is_empty()) else {
         return resolved(
             dependency,
             DependencySource::RemoteRepository,
@@ -185,10 +178,7 @@ pub fn resolve_dependency(
 
     let artifact = local_artifact_path(local_repository, dependency, version);
     if artifact.is_file() {
-        let reason = if matches!(
-            fallback_reason,
-            ResolutionReason::RemoteArtifactMissingLocally
-        ) {
+        let reason = if matches!(fallback_reason, ResolutionReason::RemoteArtifactMissingLocally) {
             ResolutionReason::LocalArtifactExists
         } else {
             fallback_reason
@@ -212,17 +202,10 @@ pub fn resolve_dependency(
 }
 
 pub fn default_local_repository() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".m2")
-        .join("repository")
+    dirs::home_dir().unwrap_or_default().join(".m2").join("repository")
 }
 
-pub fn local_artifact_path(
-    local_repository: &Path,
-    dependency: &MavenDependency,
-    version: &str,
-) -> PathBuf {
+pub fn local_artifact_path(local_repository: &Path, dependency: &MavenDependency, version: &str) -> PathBuf {
     let mut directory = local_repository.to_path_buf();
     for segment in dependency.group_id.split('.') {
         directory.push(segment);
@@ -368,9 +351,6 @@ mod tests {
             &std::env::temp_dir().join("gw_resolver_ambiguous"),
         );
         assert_eq!(result.source, DependencySource::RemoteRepository);
-        assert_eq!(
-            result.reason,
-            ResolutionReason::AmbiguousWorkspaceCoordinate
-        );
+        assert_eq!(result.reason, ResolutionReason::AmbiguousWorkspaceCoordinate);
     }
 }

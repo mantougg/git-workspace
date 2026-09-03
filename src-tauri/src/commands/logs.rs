@@ -49,10 +49,9 @@ pub fn export_logs(target_dir: Option<String>) -> AppResult<String> {
     let dir = logs_dir();
     let dest = match target_dir {
         Some(t) => PathBuf::from(t),
-        None => dir.join("export").join(format!(
-            "logs-{}",
-            chrono::Utc::now().format("%Y%m%d-%H%M%S")
-        )),
+        None => dir
+            .join("export")
+            .join(format!("logs-{}", chrono::Utc::now().format("%Y%m%d-%H%M%S"))),
     };
     fs::create_dir_all(&dest)?;
     for name in LOG_FILES {
@@ -94,13 +93,7 @@ fn open_in_file_manager(path: &Path) -> AppResult<()> {
 
     match status {
         Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(AppError::Other(format!(
-            "File manager exited with status {}",
-            s
-        ))),
-        Err(e) => Err(AppError::Other(format!(
-            "Failed to open file manager: {}",
-            e
-        ))),
+        Ok(s) => Err(AppError::Other(format!("File manager exited with status {}", s))),
+        Err(e) => Err(AppError::Other(format!("Failed to open file manager: {}", e))),
     }
 }

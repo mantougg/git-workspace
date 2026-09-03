@@ -26,10 +26,7 @@ pub mod store;
 
 pub use launcher::{launch_command, LaunchRunner, SystemLaunchRunner};
 pub use lifecycle::LifecycleStatus;
-pub use manager::{
-    EnvironmentOverrides, RuntimeProcessManager, StartOptions, DEFAULT_START_GRACE,
-    DEFAULT_STOP_GRACE,
-};
+pub use manager::{EnvironmentOverrides, RuntimeProcessManager, StartOptions, DEFAULT_START_GRACE, DEFAULT_STOP_GRACE};
 pub use store::RuntimeProcessRow;
 
 use serde::{Deserialize, Serialize};
@@ -148,12 +145,9 @@ impl RuntimeEventSink for LoggingEventSink {
             RuntimeEvent::Metrics { .. } | RuntimeEvent::Ports { .. } => {
                 log::debug!("R-10: event {event:?}")
             }
-            RuntimeEvent::Logs {
-                process_id, lines, ..
-            } => log::debug!(
-                "R-11: {} log line(s) captured for process {process_id}",
-                lines.len()
-            ),
+            RuntimeEvent::Logs { process_id, lines, .. } => {
+                log::debug!("R-11: {} log line(s) captured for process {process_id}", lines.len())
+            }
         }
     }
 }

@@ -20,7 +20,9 @@ pub const AI_REQUEST_EVENT: &str = "ai-request://progress";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AiStreamChunk {
-    TextDelta { text: String },
+    TextDelta {
+        text: String,
+    },
     End {
         #[serde(rename = "finishReason")]
         finish_reason: Option<String>,

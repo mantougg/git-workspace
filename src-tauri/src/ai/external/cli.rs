@@ -103,11 +103,8 @@ fn parse_call_args(args: &[String]) -> Result<CallOptions, String> {
         match arg.as_str() {
             "--confirm" => confirmed = true,
             "--args" => {
-                let raw = iter
-                    .next()
-                    .ok_or_else(|| "--args 需要一个 JSON 参数".to_string())?;
-                arguments = serde_json::from_str(raw)
-                    .map_err(|error| format!("--args 不是合法 JSON: {error}"))?;
+                let raw = iter.next().ok_or_else(|| "--args 需要一个 JSON 参数".to_string())?;
+                arguments = serde_json::from_str(raw).map_err(|error| format!("--args 不是合法 JSON: {error}"))?;
                 if !arguments.is_object() {
                     return Err("--args 必须是 JSON object".into());
                 }
@@ -170,16 +167,11 @@ fn cmd_call(args: &[String]) -> i32 {
     {
         Some(endpoint) => endpoint,
         None => {
-            eprintln!(
-                "未发现运行中的 GitWorkspace 实例。请先启动应用，或用 --endpoint <url> 指定外部端点。"
-            );
+            eprintln!("未发现运行中的 GitWorkspace 实例。请先启动应用，或用 --endpoint <url> 指定外部端点。");
             return EXIT_USAGE;
         }
     };
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
+    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("无法创建异步运行时: {error}");
@@ -201,9 +193,7 @@ async fn post_call(endpoint: &str, options: &CallOptions) -> i32 {
     {
         Ok(response) => response,
         Err(error) => {
-            eprintln!(
-                "无法连接 GitWorkspace 外部端点 {endpoint}（{error}）。请确认应用正在运行。"
-            );
+            eprintln!("无法连接 GitWorkspace 外部端点 {endpoint}（{error}）。请确认应用正在运行。");
             return EXIT_USAGE;
         }
     };
@@ -226,9 +216,7 @@ async fn post_call(endpoint: &str, options: &CallOptions) -> i32 {
         return EXIT_TOOL_ERROR;
     }
     let result = &body["result"];
-    let text = result["content"][0]["text"]
-        .as_str()
-        .unwrap_or_default();
+    let text = result["content"][0]["text"].as_str().unwrap_or_default();
     if result["isError"].as_bool().unwrap_or(false) {
         eprintln!("{text}");
         EXIT_TOOL_ERROR

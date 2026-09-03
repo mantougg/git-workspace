@@ -17,9 +17,9 @@ pub(super) fn validate_runtime_name(name: &str) -> AppResult<()> {
         || trimmed == ".."
         || trimmed != name
         || name.len() > 128
-        || name.chars().any(|c| {
-            c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
-        })
+        || name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
     {
         return Err(AppError::RuntimeConfig(format!(
             "Runtime 名称 '{}' 不能用作配置文件名；请移除首尾空格、路径分隔符或 Windows 保留字符",
@@ -69,9 +69,7 @@ pub(super) fn redact_config(mut config: RuntimeApplicationConfig) -> RuntimeAppl
     config
 }
 
-pub(super) fn redact_environment(
-    environment: BTreeMap<String, String>,
-) -> BTreeMap<String, String> {
+pub(super) fn redact_environment(environment: BTreeMap<String, String>) -> BTreeMap<String, String> {
     environment
         .into_iter()
         .map(|(key, value)| {

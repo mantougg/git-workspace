@@ -52,26 +52,20 @@ pub fn is_port_in_use(port: u16) -> bool {
         SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port),
     ];
 
-    addresses
-        .iter()
-        .any(|address| match TcpListener::bind(address) {
-            Ok(listener) => {
-                drop(listener);
-                false
-            }
-            Err(error)
-                if address.is_ipv6()
-                    && matches!(
-                        error.kind(),
-                        ErrorKind::AddrNotAvailable | ErrorKind::Unsupported
-                    ) =>
-            {
-                // IPv6 may be disabled on the host; it is not evidence that the
-                // TCP port is occupied.
-                false
-            }
-            Err(_) => true,
-        })
+    addresses.iter().any(|address| match TcpListener::bind(address) {
+        Ok(listener) => {
+            drop(listener);
+            false
+        }
+        Err(error)
+            if address.is_ipv6() && matches!(error.kind(), ErrorKind::AddrNotAvailable | ErrorKind::Unsupported) =>
+        {
+            // IPv6 may be disabled on the host; it is not evidence that the
+            // TCP port is occupied.
+            false
+        }
+        Err(_) => true,
+    })
 }
 
 /// 用 sysinfo 查询 pid 的可执行文件绝对路径。归一化 + 文件存在校验
@@ -79,8 +73,7 @@ pub fn is_port_in_use(port: u16) -> bool {
 fn executable_path_for_pid(pid: u32) -> Option<String> {
     use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
     let mut system = System::new_with_specifics(
-        RefreshKind::new()
-            .with_processes(ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet)),
+        RefreshKind::new().with_processes(ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet)),
     );
     system.refresh_processes();
     let raw = system
@@ -139,9 +132,7 @@ pub fn parse_netstat_occupier(output: &str, port: u16) -> Option<u32> {
             continue;
         };
         if parse_endpoint_port(local_address) != Some(port)
-            || !fields
-                .iter()
-                .any(|field| field.eq_ignore_ascii_case("LISTENING"))
+            || !fields.iter().any(|field| field.eq_ignore_ascii_case("LISTENING"))
         {
             continue;
         }

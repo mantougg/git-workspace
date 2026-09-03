@@ -292,10 +292,7 @@ fn row_to_task_default(row: &rusqlite::Row) -> rusqlite::Result<AiTaskDefault> {
 }
 
 /// 列出任务默认值；`workspace_id = None` 返回全部（含全局与各 Workspace 覆盖）。
-pub fn list_task_defaults(
-    conn: &Connection,
-    workspace_id: Option<i64>,
-) -> AppResult<Vec<AiTaskDefault>> {
+pub fn list_task_defaults(conn: &Connection, workspace_id: Option<i64>) -> AppResult<Vec<AiTaskDefault>> {
     let mut stmt = conn.prepare(
         "SELECT task_kind, workspace_id, provider_id, model_id, updated_at
          FROM ai_task_defaults ORDER BY task_kind, workspace_id",
@@ -362,11 +359,7 @@ pub fn set_task_default(
 }
 
 /// 清除任务默认值（Workspace 覆盖清除后回落到全局链）。
-pub fn clear_task_default(
-    conn: &Connection,
-    task_kind: AiTaskKind,
-    workspace_id: Option<i64>,
-) -> AppResult<()> {
+pub fn clear_task_default(conn: &Connection, task_kind: AiTaskKind, workspace_id: Option<i64>) -> AppResult<()> {
     conn.execute(
         "DELETE FROM ai_task_defaults
          WHERE task_kind = ?1 AND (workspace_id IS ?2 OR workspace_id = ?2)",
@@ -475,7 +468,10 @@ pub fn resolve_model(
                 None => {
                     log::warn!(
                         "task default {:?} ({:?}) points at missing/disabled model {}/{}; falling through",
-                        kind, source, default.provider_id, default.model_id
+                        kind,
+                        source,
+                        default.provider_id,
+                        default.model_id
                     );
                 }
             }
@@ -503,9 +499,7 @@ pub fn resolve_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::provider::{
-        save_provider, ApiType, NetworkPolicy, SaveAiProviderRequest,
-    };
+    use crate::ai::provider::{save_provider, ApiType, NetworkPolicy, SaveAiProviderRequest};
 
     fn open_memory() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -548,9 +542,7 @@ mod tests {
             display_name: id.into(),
             capabilities: caps,
             max_context_tokens: 128000,
-            defaults: AiModelDefaults {
-                temperature: Some(0.2),
-            },
+            defaults: AiModelDefaults { temperature: Some(0.2) },
             enabled: true,
         }
     }
@@ -573,11 +565,7 @@ mod tests {
         assert_eq!(m.capabilities.len(), 3);
 
         // upsert 更新能力
-        let m2 = save_model(
-            &conn,
-            &model_input(&p.id, "gpt-x", vec![ModelCapability::Chat]),
-        )
-        .unwrap();
+        let m2 = save_model(&conn, &model_input(&p.id, "gpt-x", vec![ModelCapability::Chat])).unwrap();
         assert_eq!(m2.capabilities, vec![ModelCapability::Chat]);
         assert_eq!(m2.created_at, m.created_at, "upsert 保持 created_at");
 
@@ -609,10 +597,7 @@ mod tests {
 
         // Provider 不存在
         bad = model_input("no-such-provider", "m", full_caps());
-        assert_eq!(
-            save_model(&conn, &bad).unwrap_err().code(),
-            "AiModelNotFound"
-        );
+        assert_eq!(save_model(&conn, &bad).unwrap_err().code(), "AiModelNotFound");
     }
 
     #[test]
@@ -662,8 +647,7 @@ mod tests {
         assert_eq!(r.source, ModelResolutionSource::Explicit);
 
         // 显式选择不存在的模型 → AiModelNotFound（不下落）
-        let err = resolve_model(&conn, AiTaskKind::GitReview, Some(ws), Some((p.id.as_str(), "gone")))
-            .unwrap_err();
+        let err = resolve_model(&conn, AiTaskKind::GitReview, Some(ws), Some((p.id.as_str(), "gone"))).unwrap_err();
         assert_eq!(err.code(), "AiModelNotFound");
 
         // 清除 Workspace 覆盖 → 回落全局任务默认
@@ -712,8 +696,7 @@ mod tests {
         save_model(&conn, &model_input(&p.id, "chat-only", vec![ModelCapability::Chat])).unwrap();
 
         // chat-only 模型不能设为 GitReview（需要 structuredOutput）默认
-        let err = set_task_default(&conn, AiTaskKind::GitReview, None, &p.id, "chat-only")
-            .unwrap_err();
+        let err = set_task_default(&conn, AiTaskKind::GitReview, None, &p.id, "chat-only").unwrap_err();
         assert_eq!(err.code(), "AiModelCapabilityMismatch");
 
         // 但可以作为 chat 默认

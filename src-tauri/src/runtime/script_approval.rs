@@ -107,13 +107,7 @@ impl ScriptApprovalStore {
     }
 
     /// 脚本是否已确认（key = workspace + runtime + type + 内容哈希）。
-    pub fn is_approved(
-        &self,
-        workspace_id: i64,
-        runtime_name: &str,
-        script_type: &str,
-        hash: &str,
-    ) -> bool {
+    pub fn is_approved(&self, workspace_id: i64, runtime_name: &str, script_type: &str, hash: &str) -> bool {
         self.load().approvals.iter().any(|a| {
             a.workspace_id == workspace_id
                 && a.runtime_name == runtime_name
@@ -184,11 +178,7 @@ impl ScriptApprovalStore {
     /// 按范围撤销确认（「不再询问」可重置，§75）。
     /// `workspace_id` / `runtime_name` 为 `None` 时匹配任意；全部为 `None`
     /// 即清空。返回删除条数。
-    pub fn reset(
-        &self,
-        workspace_id: Option<i64>,
-        runtime_name: Option<&str>,
-    ) -> AppResult<usize> {
+    pub fn reset(&self, workspace_id: Option<i64>, runtime_name: Option<&str>) -> AppResult<usize> {
         let mut file = self.load();
         let before = file.approvals.len();
         file.approvals.retain(|a| {
@@ -231,9 +221,7 @@ mod tests {
         let (store, dir) = temp_store("default");
         let hash = script_hash("echo hi");
         assert!(!store.is_approved(1, "app", "pre", &hash));
-        assert!(store
-            .approve(1, "app", "pre", &hash, "echo hi")
-            .unwrap());
+        assert!(store.approve(1, "app", "pre", &hash, "echo hi").unwrap());
         assert!(store.is_approved(1, "app", "pre", &hash));
         // 不同 runtime / workspace / type / hash 均不匹配。
         assert!(!store.is_approved(2, "app", "pre", &hash));
@@ -260,9 +248,7 @@ mod tests {
         let (store, dir) = temp_store("exec");
         let hash = script_hash("echo hi");
         store.approve(1, "app", "pre", &hash, "echo hi").unwrap();
-        store
-            .record_execution(1, "app", "pre", &hash)
-            .unwrap();
+        store.record_execution(1, "app", "pre", &hash).unwrap();
         let entry = store.list().into_iter().find(|a| a.script_hash == hash).unwrap();
         assert!(entry.last_executed_at.is_some());
         std::fs::remove_dir_all(dir).ok();

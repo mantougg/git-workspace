@@ -57,9 +57,7 @@ use crate::runtime::build::scheduler::BuildScheduler;
 use crate::runtime::build::{LaunchPlan, RunStrategy};
 use crate::runtime::launch::launcher::{LaunchRunner, SystemLaunchRunner};
 use crate::runtime::launch::store;
-use crate::runtime::launch::{
-    LifecycleStatus, LoggingEventSink, RuntimeEvent, RuntimeEventSink, RuntimeProcessInfo,
-};
+use crate::runtime::launch::{LifecycleStatus, LoggingEventSink, RuntimeEvent, RuntimeEventSink, RuntimeProcessInfo};
 use crate::runtime::logs::RuntimeLogEngine;
 use crate::runtime::script_approval::ScriptApprovalStore;
 
@@ -72,14 +70,9 @@ mod types;
 
 use output::BuildLogSink;
 
-use types::{
-    classify_exit, ActiveProcess, Built, CachedLaunch, MonitorOutcome, PidWait, Prepared, RunWait,
-};
+use types::{classify_exit, ActiveProcess, Built, CachedLaunch, MonitorOutcome, PidWait, Prepared, RunWait};
 
-pub use types::{
-    EnvironmentOverrides, StartOptions, DEFAULT_SAMPLE_INTERVAL, DEFAULT_START_GRACE,
-    DEFAULT_STOP_GRACE,
-};
+pub use types::{EnvironmentOverrides, StartOptions, DEFAULT_SAMPLE_INTERVAL, DEFAULT_START_GRACE, DEFAULT_STOP_GRACE};
 
 /// Manager 的可替换依赖（生产默认值 + 测试注入 seam）。
 pub struct RuntimeProcessDeps {
@@ -109,9 +102,7 @@ impl Default for RuntimeProcessDeps {
             events: Arc::new(LoggingEventSink),
             logs: Arc::new(RuntimeLogEngine::new()),
             sample_interval: DEFAULT_SAMPLE_INTERVAL,
-            script_approvals: ScriptApprovalStore::new(
-                crate::runtime::script_approval::script_approvals_path(),
-            ),
+            script_approvals: ScriptApprovalStore::new(crate::runtime::script_approval::script_approvals_path()),
             health: None,
         }
     }
@@ -196,11 +187,7 @@ impl RuntimeProcessManager {
     }
 
     /// 某 Runtime 最新一条进程记录（Dashboard 状态槽位用）。
-    pub fn runtime_status(
-        &self,
-        workspace_id: i64,
-        runtime_name: &str,
-    ) -> AppResult<Option<RuntimeProcessInfo>> {
+    pub fn runtime_status(&self, workspace_id: i64, runtime_name: &str) -> AppResult<Option<RuntimeProcessInfo>> {
         let conn = self.db.lock().unwrap();
         let rows = store::list_processes(&conn, workspace_id)?;
         Ok(rows
@@ -239,12 +226,7 @@ impl RuntimeProcessManager {
 
     /// 宽容迁移：行已是终态（竞态收尾完成）时返回 `false` 而非报错；
     /// 其他非法迁移仍报错。
-    fn transit_lenient(
-        &self,
-        process_id: i64,
-        runtime_name: &str,
-        to: LifecycleStatus,
-    ) -> AppResult<bool> {
+    fn transit_lenient(&self, process_id: i64, runtime_name: &str, to: LifecycleStatus) -> AppResult<bool> {
         let current = self.current_status(process_id)?;
         if current.is_terminal() {
             return Ok(false);
@@ -253,13 +235,7 @@ impl RuntimeProcessManager {
         Ok(true)
     }
 
-    fn emit_transition(
-        &self,
-        process_id: i64,
-        runtime_name: &str,
-        from: LifecycleStatus,
-        to: LifecycleStatus,
-    ) {
+    fn emit_transition(&self, process_id: i64, runtime_name: &str, from: LifecycleStatus, to: LifecycleStatus) {
         self.deps.events.emit(RuntimeEvent::Lifecycle {
             process_id,
             runtime_name: runtime_name.to_string(),

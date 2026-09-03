@@ -197,7 +197,7 @@ impl ToSocketAddrsLossy for String {
             .unwrap_or_default();
         // IPv6 localhost 等场景下保留端口兜底。
         if addrs.is_empty() {
-                if let Some((host, port)) = self.rsplit_once(':') {
+            if let Some((host, port)) = self.rsplit_once(':') {
                 if let Ok(port) = port.parse::<u16>() {
                     let ip = if host.is_empty() || host == "localhost" {
                         std::net::IpAddr::from([127, 0, 0, 1])
@@ -222,8 +222,7 @@ pub fn http_get(host: &str, port: u16, path: &str, timeout: Duration) -> Result<
         .to_socket_addrs_lossy()
         .next()
         .ok_or_else(|| format!("主机解析失败：{target}"))?;
-    let mut stream = TcpStream::connect_timeout(&addr, timeout)
-        .map_err(|e| format!("连接 {target} 失败：{e}"))?;
+    let mut stream = TcpStream::connect_timeout(&addr, timeout).map_err(|e| format!("连接 {target} 失败：{e}"))?;
     stream
         .set_read_timeout(Some(timeout))
         .map_err(|e| format!("设置读超时失败：{e}"))?;
@@ -315,22 +314,20 @@ pub fn evaluate_check(config: &HealthCheckConfig, port: Option<u16>) -> ProbeOut
         HealthCheckKind::Actuator | HealthCheckKind::Auto => {
             let path = config.effective_path();
             match http_get(&host, port, &path, timeout) {
-                Ok((code, body)) if (200..300).contains(&code) => {
-                    match actuator_status(&body).as_deref() {
-                        Some("UP") => ProbeOutcome {
-                            healthy: true,
-                            detail: format!("Actuator {path} UP"),
-                        },
-                        Some(other) => ProbeOutcome {
-                            healthy: false,
-                            detail: format!("Actuator {path} 状态 {other}"),
-                        },
-                        None => ProbeOutcome {
-                            healthy: true,
-                            detail: format!("Actuator {path} HTTP {code}（响应无 status 字段，按可达处理）"),
-                        },
-                    }
-                }
+                Ok((code, body)) if (200..300).contains(&code) => match actuator_status(&body).as_deref() {
+                    Some("UP") => ProbeOutcome {
+                        healthy: true,
+                        detail: format!("Actuator {path} UP"),
+                    },
+                    Some(other) => ProbeOutcome {
+                        healthy: false,
+                        detail: format!("Actuator {path} 状态 {other}"),
+                    },
+                    None => ProbeOutcome {
+                        healthy: true,
+                        detail: format!("Actuator {path} HTTP {code}（响应无 status 字段，按可达处理）"),
+                    },
+                },
                 Ok((code, _)) if config.kind == HealthCheckKind::Auto => {
                     // Auto：Actuator 不可达（404 等）回退 TCP 端口探测。
                     let mut fallback = tcp_probe(&host, port, timeout);
@@ -515,13 +512,7 @@ impl HealthEngine {
             .collect()
     }
 
-    fn monitor_loop(
-        self: &Arc<Self>,
-        process_id: i64,
-        workspace_id: i64,
-        runtime_name: &str,
-        stop: &AtomicBool,
-    ) {
+    fn monitor_loop(self: &Arc<Self>, process_id: i64, workspace_id: i64, runtime_name: &str, stop: &AtomicBool) {
         // 配置加载：无 health_check 配置 → 不监控，直接退出（R-12 语义保持）。
         let config = {
             let conn = match self.db.lock() {
@@ -593,7 +584,12 @@ impl HealthEngine {
             // 目标端口：显式配置 > 启动日志探测端口（最近一个）。
             let port = config.port.or_else(|| {
                 let conn = self.db.lock().ok()?;
-                store::get_process(&conn, process_id).ok().flatten()?.ports.last().copied()
+                store::get_process(&conn, process_id)
+                    .ok()
+                    .flatten()?
+                    .ports
+                    .last()
+                    .copied()
             });
             let outcome = evaluate_check(&config, port);
             let at = chrono::Utc::now().to_rfc3339();
@@ -795,8 +791,7 @@ mod tests {
         let config: HealthCheckConfig = serde_json::from_str(text).unwrap();
         assert_eq!(config.kind, HealthCheckKind::Auto);
         assert!(config.port.is_none());
-        let roundtrip: HealthCheckConfig =
-            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        let roundtrip: HealthCheckConfig = serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
         assert_eq!(config, roundtrip);
     }
 

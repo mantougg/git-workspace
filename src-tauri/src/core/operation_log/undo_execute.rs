@@ -17,8 +17,8 @@ use crate::error::AppResult;
 
 use super::undo_plan::{plan_item, repo_name_of, reset_mode, short_oid};
 use super::{
-    OperationLogDetail, OperationLogItem, UndoItemResult, OP_CHECKOUT_ALL, OP_DELETE_BRANCH_ALL,
-    OP_AI_COMMIT, OP_REBASE, OP_RESET,
+    OperationLogDetail, OperationLogItem, UndoItemResult, OP_AI_COMMIT, OP_CHECKOUT_ALL, OP_DELETE_BRANCH_ALL,
+    OP_REBASE, OP_RESET,
 };
 
 /// Execute the undo of every pending item (parallel over repos). Items
@@ -55,11 +55,7 @@ pub fn run_undo(detail: &OperationLogDetail) -> Vec<UndoItemResult> {
 /// Persist undo results: mark each succeeded item undone (idempotent), then
 /// mark the whole log undone when no pending item remains. Returns whether
 /// the log is now fully undone. One transaction (single-writer model).
-pub(crate) fn persist_undo_results(
-    conn: &mut Connection,
-    log_id: i64,
-    results: &[UndoItemResult],
-) -> AppResult<bool> {
+pub(crate) fn persist_undo_results(conn: &mut Connection, log_id: i64, results: &[UndoItemResult]) -> AppResult<bool> {
     let now = Utc::now().to_rfc3339();
     let tx = conn.transaction()?;
     for r in results.iter().filter(|r| r.success) {
@@ -98,8 +94,7 @@ fn execute_item(op_type: &str, item: &OperationLogItem) -> Result<String, String
 fn undo_checkout(path: &Path, item: &OperationLogItem) -> Result<String, String> {
     if item.ref_name.is_empty() {
         let repo = git2::Repository::open(path).map_err(|e| e.message().to_string())?;
-        let oid =
-            git2::Oid::from_str(&item.before_oid).map_err(|_| "记录的 oid 无效".to_string())?;
+        let oid = git2::Oid::from_str(&item.before_oid).map_err(|_| "记录的 oid 无效".to_string())?;
         let obj = repo
             .find_object(oid, Some(git2::ObjectType::Commit))
             .map_err(|e| e.message().to_string())?;
@@ -107,15 +102,10 @@ fn undo_checkout(path: &Path, item: &OperationLogItem) -> Result<String, String>
         // that would be overwritten abort the undo with an error.
         repo.checkout_tree(&obj, None)
             .map_err(|e| format!("检出操作前提交失败：{}", e.message()))?;
-        repo.set_head_detached(oid)
-            .map_err(|e| e.message().to_string())?;
-        Ok(format!(
-            "已恢复分离 HEAD 到 {}",
-            short_oid(&item.before_oid)
-        ))
+        repo.set_head_detached(oid).map_err(|e| e.message().to_string())?;
+        Ok(format!("已恢复分离 HEAD 到 {}", short_oid(&item.before_oid)))
     } else {
-        branch::checkout_branch(path, &item.ref_name)
-            .map_err(|e| format!("切回分支失败：{}", e))?;
+        branch::checkout_branch(path, &item.ref_name).map_err(|e| format!("切回分支失败：{}", e))?;
         Ok(format!("已切回分支 '{}'", item.ref_name))
     }
 }
@@ -154,9 +144,5 @@ fn undo_ref_rollback(path: &Path, item: &OperationLogItem, mode: &str) -> Result
             .reset(&obj, git2::ResetType::Mixed, None)
             .map_err(|e| e.message().to_string())?,
     }
-    Ok(format!(
-        "已回退到 {}（reset --{}）",
-        short_oid(&item.before_oid),
-        mode
-    ))
+    Ok(format!("已回退到 {}（reset --{}）", short_oid(&item.before_oid), mode))
 }

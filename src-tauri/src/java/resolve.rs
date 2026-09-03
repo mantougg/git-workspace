@@ -32,10 +32,7 @@ pub fn resolve_jdk_for_config(conn: &Connection, spec: &str) -> AppResult<JdkIns
         .parse()
         .ok();
     if let Some(major) = major {
-        if let Some(jdk) = jdks
-            .iter()
-            .find(|jdk| jdk.is_valid && jdk.major_version == Some(major))
-        {
+        if let Some(jdk) = jdks.iter().find(|jdk| jdk.is_valid && jdk.major_version == Some(major)) {
             return Ok(jdk.clone());
         }
     }
@@ -44,8 +41,7 @@ pub fn resolve_jdk_for_config(conn: &Connection, spec: &str) -> AppResult<JdkIns
     let available = if jdks.is_empty() {
         "（注册表为空）".to_string()
     } else {
-        jdks
-            .iter()
+        jdks.iter()
             .map(|jdk| {
                 format!(
                     "{} [{}]",

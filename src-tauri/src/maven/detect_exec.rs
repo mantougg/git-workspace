@@ -35,10 +35,7 @@ pub const MIN_MAVEN_MAJOR_VERSION: u32 = 3;
 ///
 /// 候选只做「路径是否存在」检查，不 fork `mvn -v`（探测由 `probe_version` /
 /// `resolve_maven_for_project` 按需触发）。
-pub fn detect_maven_candidates(
-    project_dir: Option<&Path>,
-    configured_path: Option<&str>,
-) -> Vec<MavenExecutable> {
+pub fn detect_maven_candidates(project_dir: Option<&Path>, configured_path: Option<&str>) -> Vec<MavenExecutable> {
     let mut out = Vec::new();
 
     if let Some(dir) = project_dir {
@@ -55,11 +52,7 @@ pub fn detect_maven_candidates(
     if let Some(cfg) = configured_path.filter(|s| !s.trim().is_empty()) {
         let p = Path::new(cfg);
         if is_executable_candidate(p) {
-            out.push(MavenExecutable::new(
-                canonical_or_raw(p),
-                MavenSource::Configured,
-                None,
-            ));
+            out.push(MavenExecutable::new(canonical_or_raw(p), MavenSource::Configured, None));
         }
     }
 
@@ -165,10 +158,7 @@ fn find_mvn_in_bin(bin: &Path) -> Option<PathBuf> {
 
 /// 候选是否可用：探测有效且版本 >= 最低支持版本。
 pub fn candidate_is_usable(info: &MavenVersionInfo) -> bool {
-    info.is_valid()
-        && info
-            .major_version
-            .is_some_and(|major| major >= MIN_MAVEN_MAJOR_VERSION)
+    info.is_valid() && info.major_version.is_some_and(|major| major >= MIN_MAVEN_MAJOR_VERSION)
 }
 
 /// 为项目解析最终生效的 Maven（优先级链第一个可用候选）。
@@ -201,11 +191,7 @@ pub fn resolve_maven_for_project(
         exe.full_version = info.full_version;
         exe.is_valid = is_valid;
         exe.last_checked = chrono::Utc::now().to_rfc3339();
-        exe.raw_version = if info.raw.is_empty() {
-            None
-        } else {
-            Some(info.raw)
-        };
+        exe.raw_version = if info.raw.is_empty() { None } else { Some(info.raw) };
         if usable {
             return Some(crate::maven::exec_model::ResolvedMaven {
                 executable: exe,
@@ -213,10 +199,7 @@ pub fn resolve_maven_for_project(
                 uses_wrapper,
             });
         }
-        log::warn!(
-            "Maven candidate {} unusable: {fallback_reason}",
-            exe.executable_path
-        );
+        log::warn!("Maven candidate {} unusable: {fallback_reason}", exe.executable_path);
     }
     None
 }
@@ -297,10 +280,7 @@ pub(crate) fn needs_cmd_c(exe: &Path) -> bool {
 ///
 /// pub(crate)：N-01 node/npm 版本探测（`node/detect.rs`）复用同一
 /// 「超时 + 输出上限」模式，不另起一套。
-pub(crate) fn wait_with_timeout(
-    mut child: std::process::Child,
-    timeout: Duration,
-) -> Result<String, String> {
+pub(crate) fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> Result<String, String> {
     let start = std::time::Instant::now();
     loop {
         match child.try_wait() {
@@ -471,10 +451,7 @@ mod tests {
         assert!(!candidate_is_usable(&m2), "Maven 2 is below minimum");
 
         m3.major_version = None;
-        assert!(
-            !candidate_is_usable(&m3),
-            "unparseable version is not usable"
-        );
+        assert!(!candidate_is_usable(&m3), "unparseable version is not usable");
     }
 
     #[test]
@@ -514,10 +491,7 @@ mod tests {
         // 不可执行（0o644）。
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&mvnw, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(
-            find_wrapper_in_dir(&tmp).is_none(),
-            "non-executable wrapper is skipped"
-        );
+        assert!(find_wrapper_in_dir(&tmp).is_none(), "non-executable wrapper is skipped");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -545,10 +519,7 @@ mod tests {
         assert!(!candidates.is_empty());
         // wrapper 必须排第一。
         assert_eq!(candidates[0].source, MavenSource::ProjectWrapper);
-        assert_eq!(
-            candidates[0].project_path.as_deref(),
-            Some(tmp.to_str().unwrap())
-        );
+        assert_eq!(candidates[0].project_path.as_deref(), Some(tmp.to_str().unwrap()));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -593,11 +564,7 @@ mod tests {
     #[test]
     fn build_version_command_uses_cmd_c_on_windows_for_cmd() {
         // 这个测试验证命令构造逻辑，不实际 spawn。
-        let exe = Path::new(if cfg!(windows) {
-            "C:/mvnw.cmd"
-        } else {
-            "/usr/bin/mvn"
-        });
+        let exe = Path::new(if cfg!(windows) { "C:/mvnw.cmd" } else { "/usr/bin/mvn" });
         let cmd = build_version_command(exe);
         // 跨平台：只是确保不 panic 且构造出 Command。
         let _ = cmd;

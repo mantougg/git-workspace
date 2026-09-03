@@ -9,18 +9,13 @@ use std::path::Path;
 use rusqlite::{params, Connection, Transaction};
 
 use crate::error::{AppError, AppResult};
-use crate::maven::resolver::{
-    local_artifact_path, resolve_dependency, IndexedMavenProject, WorkspaceMavenIndex,
-};
+use crate::maven::resolver::{local_artifact_path, resolve_dependency, IndexedMavenProject, WorkspaceMavenIndex};
 
 use super::path::path_key;
 use super::query::query_dependencies_with_filter;
 use super::sync::{load_project_records, ProjectInput, ProjectRecord};
 
-pub(super) fn mapping_fingerprint_rows(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<BTreeSet<String>> {
+pub(super) fn mapping_fingerprint_rows(conn: &Connection, workspace_id: i64) -> AppResult<BTreeSet<String>> {
     let mut statement = conn.prepare(
         "SELECT group_id, artifact_id, version, repository_id, project_path
          FROM maven_source_mappings WHERE workspace_id = ?1",
@@ -82,9 +77,9 @@ pub(super) fn replace_source_mappings(
         if !replace_all && !recompute_paths.contains(&input.path) {
             continue;
         }
-        let record = records.get(&input.path).ok_or_else(|| {
-            AppError::SourceMapping(format!("indexed Maven project missing for {}", input.path))
-        })?;
+        let record = records
+            .get(&input.path)
+            .ok_or_else(|| AppError::SourceMapping(format!("indexed Maven project missing for {}", input.path)))?;
         insert.execute(params![
             workspace_id,
             input.effective.group_id,
@@ -111,13 +106,12 @@ pub fn refresh_dependency_sources(
     let now = chrono::Utc::now().to_rfc3339();
     let tx = conn.transaction()?;
     let records = load_project_records(&tx, workspace_id)?;
-    let workspace_index =
-        WorkspaceMavenIndex::new(records.values().map(|record| IndexedMavenProject {
-            project_id: record.project_id,
-            repository_id: record.repository_id,
-            coordinates: record.coordinates.clone(),
-            project_path: record.project_path.clone(),
-        }));
+    let workspace_index = WorkspaceMavenIndex::new(records.values().map(|record| IndexedMavenProject {
+        project_id: record.project_id,
+        repository_id: record.repository_id,
+        coordinates: record.coordinates.clone(),
+        project_path: record.project_path.clone(),
+    }));
     let dependencies = query_dependencies_with_filter(&tx, None, Some(workspace_id))?;
 
     let mut changed = 0usize;
@@ -159,14 +153,8 @@ pub fn refresh_dependency_sources(
                 ])?;
             }
 
-            if let Some(version) = edge
-                .dependency
-                .version
-                .as_deref()
-                .filter(|value| !value.is_empty())
-            {
-                let artifact_path =
-                    local_artifact_path(local_repository, &edge.dependency, version);
+            if let Some(version) = edge.dependency.version.as_deref().filter(|value| !value.is_empty()) {
+                let artifact_path = local_artifact_path(local_repository, &edge.dependency, version);
                 upsert_artifact.execute(params![
                     workspace_id,
                     edge.dependency.group_id,

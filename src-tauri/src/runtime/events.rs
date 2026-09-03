@@ -357,12 +357,7 @@ impl VecEmitter {
     }
 
     pub fn names(&self) -> Vec<&'static str> {
-        self.emissions
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|e| e.name)
-            .collect()
+        self.emissions.lock().unwrap().iter().map(|e| e.name).collect()
     }
 }
 
@@ -399,11 +394,7 @@ impl RuntimeEventEmitter for VecEmitter {
 /// `workspace_id`：进程域事件由桥接方按 `process_id` 反查 `runtime_processes`
 /// 填入；查不到时传 `None`，payload 记 0 并告警（管理器插行后才发事件，
 /// 正常路径必然查到）。
-pub fn map_internal_event(
-    event: &RuntimeEvent,
-    workspace_id: Option<i64>,
-    at: &str,
-) -> Vec<RuntimeEmission> {
+pub fn map_internal_event(event: &RuntimeEvent, workspace_id: Option<i64>, at: &str) -> Vec<RuntimeEmission> {
     let ws = workspace_id.unwrap_or(0);
     match event {
         RuntimeEvent::Lifecycle {
@@ -735,10 +726,7 @@ mod tests {
                 .iter()
                 .map(|e| e.name),
         );
-        assert_eq!(
-            names.iter().filter(|n| **n == EVENT_PROCESS_FAILED).count(),
-            1
-        );
+        assert_eq!(names.iter().filter(|n| **n == EVENT_PROCESS_FAILED).count(), 1);
         assert!(names.contains(&EVENT_HEALTH_CHANGED));
     }
 
@@ -746,11 +734,10 @@ mod tests {
     #[test]
     fn graceful_stop_emits_process_stopped_once() {
         use LifecycleStatus::*;
-        let mut names: Vec<&'static str> =
-            map_internal_event(&lifecycle(Stopping, Stopped), Some(1), AT)
-                .iter()
-                .map(|e| e.name)
-                .collect();
+        let mut names: Vec<&'static str> = map_internal_event(&lifecycle(Stopping, Stopped), Some(1), AT)
+            .iter()
+            .map(|e| e.name)
+            .collect();
         names.extend(
             map_internal_event(
                 &RuntimeEvent::Exited {
@@ -765,10 +752,7 @@ mod tests {
             .iter()
             .map(|e| e.name),
         );
-        assert_eq!(
-            names.iter().filter(|n| **n == EVENT_PROCESS_STOPPED).count(),
-            1
-        );
+        assert_eq!(names.iter().filter(|n| **n == EVENT_PROCESS_STOPPED).count(), 1);
     }
 
     /// R-11 日志批次原样转为 process_output；Metrics/Ports 不映射。

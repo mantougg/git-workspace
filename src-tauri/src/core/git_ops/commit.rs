@@ -64,11 +64,7 @@ impl super::GitOps {
     /// Create a commit (T-11): normal / amend / --no-edit / index-only
     /// (hunk/line staging preserved), with pre-commit safety scan and
     /// per-repo identity override.
-    pub(super) fn commit(
-        &self,
-        repo_path: &Path,
-        opts: &CommitOptions,
-    ) -> AppResult<CommitOutcome> {
+    pub(super) fn commit(&self, repo_path: &Path, opts: &CommitOptions) -> AppResult<CommitOutcome> {
         let repo = git2::Repository::open(repo_path)?;
 
         // 1. Staging (skipped entirely in index_only mode).
@@ -162,8 +158,6 @@ impl super::GitOps {
             opts.amend,
             opts.index_only
         );
-        Ok(CommitOutcome {
-            oid: oid.to_string(),
-        })
+        Ok(CommitOutcome { oid: oid.to_string() })
     }
 }

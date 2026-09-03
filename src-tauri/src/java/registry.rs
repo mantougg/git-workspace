@@ -137,12 +137,7 @@ pub fn remove_jdk(conn: &Connection, id: i64) -> AppResult<()> {
 }
 
 /// 更新单条的有效性与校验时间（强制复检后调用）。
-pub fn mark_validity(
-    conn: &Connection,
-    id: i64,
-    is_valid: bool,
-    last_checked: &str,
-) -> AppResult<()> {
+pub fn mark_validity(conn: &Connection, id: i64, is_valid: bool, last_checked: &str) -> AppResult<()> {
     conn.execute(
         "UPDATE jdks SET is_valid = ?2, last_checked = ?3, updated_at = ?3 WHERE id = ?1",
         params![id, is_valid as i64, last_checked],
@@ -151,12 +146,7 @@ pub fn mark_validity(
 }
 
 /// 用一次探测得到的版本信息更新单条的全部版本字段（强制复检用）。
-pub fn apply_version(
-    conn: &Connection,
-    id: i64,
-    jdk: &JdkInstallation,
-    last_checked: &str,
-) -> AppResult<()> {
+pub fn apply_version(conn: &Connection, id: i64, jdk: &JdkInstallation, last_checked: &str) -> AppResult<()> {
     conn.execute(
         "UPDATE jdks SET
             major_version = ?2, full_version = ?3, vendor = ?4, architecture = ?5,
@@ -186,12 +176,8 @@ pub fn apply_version(
 /// 失效条目保留以便用户重检，而非误用或静默删除。返回被标记失效的条数。
 pub fn prune_invalid_homes(conn: &mut Connection) -> AppResult<usize> {
     let now = chrono::Utc::now().to_rfc3339();
-    let mut stmt = conn.prepare(
-        "SELECT id, home_path FROM jdks WHERE is_valid = 1",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-    })?;
+    let mut stmt = conn.prepare("SELECT id, home_path FROM jdks WHERE is_valid = 1")?;
+    let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
     let mut changed = 0usize;
     let stale: Vec<i64> = rows
         .filter_map(Result::ok)
@@ -204,9 +190,8 @@ pub fn prune_invalid_homes(conn: &mut Connection) -> AppResult<usize> {
     }
     let tx = conn.transaction()?;
     {
-        let mut upd = tx.prepare_cached(
-            "UPDATE jdks SET is_valid = 0, last_checked = ?2, updated_at = ?2 WHERE id = ?1",
-        )?;
+        let mut upd =
+            tx.prepare_cached("UPDATE jdks SET is_valid = 0, last_checked = ?2, updated_at = ?2 WHERE id = ?1")?;
         for id in &stale {
             changed += upd.execute(params![id, &now])?;
         }
@@ -221,9 +206,7 @@ fn row_to_jdk(row: &rusqlite::Row) -> rusqlite::Result<JdkInstallation> {
         home_path: row.get("home_path")?,
         major_version: row.get::<_, Option<i64>>("major_version")?.map(|v| v as u32),
         full_version: row.get("full_version")?,
-        vendor: row
-            .get::<_, Option<String>>("vendor")?
-            .map(|s| JdkVendor::parse(&s)),
+        vendor: row.get::<_, Option<String>>("vendor")?.map(|s| JdkVendor::parse(&s)),
         architecture: row.get("architecture")?,
         bitness: row.get::<_, Option<i64>>("bitness")?.map(|v| v as u32),
         source: JdkDiscoverySource::parse(&row.get::<_, String>("source")?),

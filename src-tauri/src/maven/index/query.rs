@@ -10,9 +10,7 @@ use crate::maven::model::{DependencyScope, MavenDependency, PomCoordinates};
 use crate::maven::resolver::{DependencySource, ResolutionReason};
 
 use super::cache::graph_fingerprint;
-use super::types::{
-    DependencyEdge, DependencyGraph, MavenModuleLink, MavenProjectNode, SourceMapping,
-};
+use super::types::{DependencyEdge, DependencyGraph, MavenModuleLink, MavenProjectNode, SourceMapping};
 
 pub fn query_dependency_graph(conn: &Connection, workspace_id: i64) -> AppResult<DependencyGraph> {
     let projects = query_projects(conn, workspace_id)?;
@@ -29,10 +27,7 @@ pub fn query_dependency_graph(conn: &Connection, workspace_id: i64) -> AppResult
     })
 }
 
-pub fn query_project_dependencies(
-    conn: &Connection,
-    project_id: i64,
-) -> AppResult<Vec<DependencyEdge>> {
+pub fn query_project_dependencies(conn: &Connection, project_id: i64) -> AppResult<Vec<DependencyEdge>> {
     query_dependencies_with_filter(conn, Some(project_id), None)
 }
 

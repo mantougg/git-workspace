@@ -26,9 +26,7 @@ use rusqlite::Connection;
 use crate::maven::closure::RuntimeClosureCache;
 use crate::maven::index::DependencyGraphCache;
 use crate::runtime::config;
-use crate::runtime::events::{
-    FileChangedPayload, RuntimeEmission, RuntimeEventEmitter, EVENT_FILE_CHANGED,
-};
+use crate::runtime::events::{FileChangedPayload, RuntimeEmission, RuntimeEventEmitter, EVENT_FILE_CHANGED};
 
 mod classify;
 mod debounce;
@@ -283,9 +281,7 @@ impl RuntimeWatchEngine {
                     .map(|t| t.elapsed() >= RESTART_RESUBMIT_COOLDOWN)
                     .unwrap_or(true);
                 if running && cooled {
-                    let modules = std::mem::take(&mut state.pending_modules)
-                        .into_iter()
-                        .collect();
+                    let modules = std::mem::take(&mut state.pending_modules).into_iter().collect();
                     state.last_submitted = Some(std::time::Instant::now());
                     result.push((*workspace_id, runtime_name.clone(), modules));
                 }
@@ -331,19 +327,12 @@ impl RuntimeWatchEngine {
             .iter()
             .find(|p| {
                 let path = p.path.to_string_lossy().replace('\\', "/");
-                path == needle
-                    || path.ends_with(&needle)
-                    || p.coordinates.artifact_id == cfg.project
+                path == needle || path.ends_with(&needle) || p.coordinates.artifact_id == cfg.project
             })
             .ok_or_else(|| {
-                crate::error::AppError::ProjectNotFound(format!(
-                    "项目 '{0}' 不在依赖图中（R-17 watch）",
-                    cfg.project
-                ))
+                crate::error::AppError::ProjectNotFound(format!("项目 '{0}' 不在依赖图中（R-17 watch）", cfg.project))
             })?;
-        let lookup = self
-            .closure_cache
-            .get_or_compute(&graph, root.project_id, &cfg.scope)?;
+        let lookup = self.closure_cache.get_or_compute(&graph, root.project_id, &cfg.scope)?;
         Ok(lookup.closure)
     }
 
@@ -367,13 +356,7 @@ impl RuntimeWatchEngine {
     fn handle_events(&self, paths: &[PathBuf]) {
         // 路径分类：按「监听中的应用闭包」归属（未监听路径直接忽略——
         // 不监听整个 Workspace，目标/构建产物等在挂载前已排除大半）。
-        let apps = self
-            .apps
-            .lock()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>();
+        let apps = self.apps.lock().unwrap().keys().cloned().collect::<Vec<_>>();
         if apps.is_empty() {
             return;
         }
@@ -399,9 +382,7 @@ impl RuntimeWatchEngine {
                     continue;
                 }
                 let is_pom = normalized.ends_with("/pom.xml");
-                let entry = per_app
-                    .entry((*workspace_id, runtime_name.clone()))
-                    .or_default();
+                let entry = per_app.entry((*workspace_id, runtime_name.clone())).or_default();
                 entry.0.insert(path.clone());
                 if is_pom {
                     entry.1 = true;
@@ -414,10 +395,7 @@ impl RuntimeWatchEngine {
                 EVENT_FILE_CHANGED,
                 &FileChangedPayload {
                     workspace_id,
-                    paths: changed_paths
-                        .iter()
-                        .map(|p| p.to_string_lossy().into_owned())
-                        .collect(),
+                    paths: changed_paths.iter().map(|p| p.to_string_lossy().into_owned()).collect(),
                     at: chrono::Utc::now().to_rfc3339(),
                 },
             ));
@@ -425,16 +403,13 @@ impl RuntimeWatchEngine {
             if has_pom {
                 // pom.xml 变化：依赖模型失效重算（R-02/R-03 缓存在
                 // exec_resolve 内 invalidate），不直接构建。
-                log::info!(
-                    "R-17: pom.xml changed in '{runtime_name}' closure → resubmitting dependency resolve"
-                );
+                log::info!("R-17: pom.xml changed in '{runtime_name}' closure → resubmitting dependency resolve");
                 self.submit_resolve(workspace_id);
                 continue;
             }
 
             // 源码变化：计算受影响子集并入队（合并连续保存）。
-            let Some(affected) = self.affected_modules(workspace_id, &runtime_name, &changed_paths)
-            else {
+            let Some(affected) = self.affected_modules(workspace_id, &runtime_name, &changed_paths) else {
                 continue;
             };
             if affected.is_empty() {
@@ -461,9 +436,7 @@ impl RuntimeWatchEngine {
                 );
                 continue;
             }
-            let modules: Vec<String> = std::mem::take(&mut state.pending_modules)
-                .into_iter()
-                .collect();
+            let modules: Vec<String> = std::mem::take(&mut state.pending_modules).into_iter().collect();
             drop(apps);
             if self.submit_rebuild(workspace_id, &runtime_name, &modules) {
                 let mut apps = self.apps.lock().unwrap();
@@ -491,11 +464,7 @@ impl RuntimeWatchEngine {
     ) -> Option<BTreeSet<String>> {
         let closure = self.runtime_closure(workspace_id, runtime_name).ok()?;
         let conn = self.db.lock().unwrap();
-        let graph = self
-            .graph_cache
-            .get_or_load(&conn, workspace_id)
-            .ok()?
-            .graph;
+        let graph = self.graph_cache.get_or_load(&conn, workspace_id).ok()?.graph;
         drop(conn);
         affected_modules(&closure, &graph, changed_paths)
     }

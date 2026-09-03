@@ -53,11 +53,7 @@ fn probe_into_installation(home: &Path, source: JdkDiscoverySource) -> Option<Jd
     jdk.javac_exec = javac_exec.map(|p| p.to_string_lossy().to_string());
     jdk.is_valid = is_valid;
     jdk.last_checked = chrono::Utc::now().to_rfc3339();
-    jdk.raw_version = if info.raw.is_empty() {
-        None
-    } else {
-        Some(info.raw)
-    };
+    jdk.raw_version = if info.raw.is_empty() { None } else { Some(info.raw) };
     Some(jdk)
 }
 
@@ -252,11 +248,7 @@ fn system_install_dirs() -> Vec<PathBuf> {
     } else if cfg!(target_os = "macos") {
         parents.push(PathBuf::from("/Library/Java/JavaVirtualMachines"));
         if let Some(home) = dirs::home_dir() {
-            parents.push(
-                home.join("Library")
-                    .join("Java")
-                    .join("JavaVirtualMachines"),
-            );
+            parents.push(home.join("Library").join("Java").join("JavaVirtualMachines"));
         }
         // Homebrew formula 符号链接目录。
         parents.push(PathBuf::from("/opt/homebrew/opt"));
@@ -376,15 +368,8 @@ mod tests {
             "gw_jdk_jre_{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
-        stamp(&tmp.join(if cfg!(windows) {
-            "bin/java.exe"
-        } else {
-            "bin/java"
-        }));
-        assert!(
-            javac_exec_for_home(&tmp).is_none(),
-            "JRE layout has no javac"
-        );
+        stamp(&tmp.join(if cfg!(windows) { "bin/java.exe" } else { "bin/java" }));
+        assert!(javac_exec_for_home(&tmp).is_none(), "JRE layout has no javac");
         let _ = fs::remove_dir_all(&tmp);
     }
 
@@ -413,11 +398,7 @@ mod tests {
             "gw_jdk_disc_{}",
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
-        stamp(&home.join(if cfg!(windows) {
-            "bin/java.exe"
-        } else {
-            "bin/java"
-        }));
+        stamp(&home.join(if cfg!(windows) { "bin/java.exe" } else { "bin/java" }));
         // 直接调用 probe_into_installation 验证：有 java 可执行 -> 录入；
         // fork 会失败（空文件非可执行 ELF/PE）-> is_valid=false。
         let inst = probe_into_installation(&home, JdkDiscoverySource::System);
@@ -426,10 +407,7 @@ mod tests {
         assert_eq!(inst.source, JdkDiscoverySource::System);
         assert!(inst.java_exec.is_some());
         // 空文件 fork 不会产出版本 -> is_valid=false，但不阻断录入。
-        assert!(
-            !inst.is_valid,
-            "non-executable java probe is invalid but recorded"
-        );
+        assert!(!inst.is_valid, "non-executable java probe is invalid but recorded");
 
         let _ = fs::remove_dir_all(&home);
     }
@@ -469,14 +447,11 @@ mod tests {
     #[test]
     fn real_java_version_probe_roundtrip() {
         // PATH 兜底 JAVA_HOME，再无则跳过。
-        let java = find_in_path("java")
-            .or_else(|| env_home("JAVA_HOME").and_then(|h| java_exec_for_home(&h)));
+        let java = find_in_path("java").or_else(|| env_home("JAVA_HOME").and_then(|h| java_exec_for_home(&h)));
         let java = match java {
             Some(p) => p,
             None => {
-                eprintln!(
-                    "R-04: no `java` on PATH / JAVA_HOME; skipping real probe integration test"
-                );
+                eprintln!("R-04: no `java` on PATH / JAVA_HOME; skipping real probe integration test");
                 return;
             }
         };

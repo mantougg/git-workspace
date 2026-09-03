@@ -27,10 +27,7 @@ pub enum GitAssistantScenario {
 
 impl GitAssistantScenario {
     pub fn is_review(self) -> bool {
-        matches!(
-            self,
-            Self::CodeReview | Self::SecurityReview | Self::BugDetection
-        )
+        matches!(self, Self::CodeReview | Self::SecurityReview | Self::BugDetection)
     }
 
     pub fn requires_structured_output(self) -> bool {
@@ -345,28 +342,21 @@ pub fn parse_result(
                 if task_kind == AiTaskKind::Conflict && git_scenario.is_none() {
                     if let Ok(proposal) = serde_json::from_value::<ConflictProposal>(v) {
                         return AiResult::ConflictProposal {
-                            payload: serde_json::to_value(proposal)
-                                .expect("ConflictProposal must serialize"),
+                            payload: serde_json::to_value(proposal).expect("ConflictProposal must serialize"),
                         };
                     }
                     // Do not expose an incomplete conflict proposal as an
                     // applyable suggestion. The caller renders this as a
                     // non-actionable answer and keeps the worktree untouched.
-                    return AiResult::Answer {
-                        text: text.to_string(),
-                    };
+                    return AiResult::Answer { text: text.to_string() };
                 }
                 return structured_variant_for(task_kind, git_scenario)(v);
             }
         }
     }
     match task_kind {
-        AiTaskKind::CommitMessage if git_scenario.is_none() => AiResult::GeneratedText {
-            text: text.to_string(),
-        },
-        _ => AiResult::Answer {
-            text: text.to_string(),
-        },
+        AiTaskKind::CommitMessage if git_scenario.is_none() => AiResult::GeneratedText { text: text.to_string() },
+        _ => AiResult::Answer { text: text.to_string() },
     }
 }
 
@@ -391,12 +381,7 @@ mod tests {
             AiResult::ReviewReport { .. }
         ));
         assert!(matches!(
-            parse_result(
-                AiTaskKind::RuntimeDiagnostic,
-                None,
-                ResponseFormat::Json,
-                json
-            ),
+            parse_result(AiTaskKind::RuntimeDiagnostic, None, ResponseFormat::Json, json),
             AiResult::DiagnosticReport { .. }
         ));
         assert!(matches!(
@@ -428,9 +413,7 @@ mod tests {
         let bad = "这不是 JSON";
         assert_eq!(
             parse_result(AiTaskKind::GitReview, None, ResponseFormat::Json, bad),
-            AiResult::Answer {
-                text: bad.to_string()
-            }
+            AiResult::Answer { text: bad.to_string() }
         );
         // JSON 数组不是 object，同样降级
         assert!(matches!(
@@ -451,12 +434,7 @@ mod tests {
     #[test]
     fn parse_result_text_tasks() {
         assert_eq!(
-            parse_result(
-                AiTaskKind::CommitMessage,
-                None,
-                ResponseFormat::Text,
-                "feat: x"
-            ),
+            parse_result(AiTaskKind::CommitMessage, None, ResponseFormat::Text, "feat: x"),
             AiResult::GeneratedText {
                 text: "feat: x".to_string()
             }
@@ -511,12 +489,7 @@ mod tests {
             GitAssistantScenario::BugDetection,
         ] {
             assert!(matches!(
-                parse_result(
-                    AiTaskKind::GitReview,
-                    Some(scenario),
-                    ResponseFormat::Json,
-                    json
-                ),
+                parse_result(AiTaskKind::GitReview, Some(scenario), ResponseFormat::Json, json),
                 AiResult::ReviewReport { .. }
             ));
         }
@@ -534,12 +507,7 @@ mod tests {
             GitAssistantScenario::FileExplanation,
         ] {
             assert!(matches!(
-                parse_result(
-                    AiTaskKind::GitReview,
-                    Some(scenario),
-                    ResponseFormat::Json,
-                    json
-                ),
+                parse_result(AiTaskKind::GitReview, Some(scenario), ResponseFormat::Json, json),
                 AiResult::Explanation { .. }
             ));
         }
@@ -547,10 +515,7 @@ mod tests {
 
     #[test]
     fn context_kind_serde_names_match_design() {
-        assert_eq!(
-            serde_json::to_value(ContextKind::Runtime).unwrap(),
-            "runtime"
-        );
+        assert_eq!(serde_json::to_value(ContextKind::Runtime).unwrap(), "runtime");
         assert_eq!(serde_json::to_value(ContextKind::Diff).unwrap(), "diff");
     }
 }

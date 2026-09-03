@@ -72,33 +72,19 @@ pub fn remove_node_executable(conn: &Connection, id: i64) -> AppResult<()> {
     Ok(())
 }
 
-pub fn apply_node_probe(
-    conn: &Connection,
-    id: i64,
-    entry: &NodeExecutable,
-    checked_at: &str,
-) -> AppResult<()> {
+pub fn apply_node_probe(conn: &Connection, id: i64, entry: &NodeExecutable, checked_at: &str) -> AppResult<()> {
     conn.execute(
         "UPDATE node_executables SET version = ?2, raw_output = ?3,
          is_valid = ?4, last_checked = ?5, updated_at = ?5 WHERE id = ?1",
-        params![
-            id,
-            entry.version,
-            entry.raw_output,
-            entry.is_valid as i64,
-            checked_at
-        ],
+        params![id, entry.version, entry.raw_output, entry.is_valid as i64, checked_at],
     )?;
     Ok(())
 }
 
 pub fn prune_invalid_paths(conn: &mut Connection) -> AppResult<usize> {
     let now = chrono::Utc::now().to_rfc3339();
-    let mut stmt =
-        conn.prepare("SELECT id, executable_path FROM node_executables WHERE is_valid = 1")?;
-    let rows = stmt.query_map([], |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-    })?;
+    let mut stmt = conn.prepare("SELECT id, executable_path FROM node_executables WHERE is_valid = 1")?;
+    let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
     let stale: Vec<i64> = rows
         .filter_map(Result::ok)
         .filter(|(_, path)| !std::path::Path::new(path).is_file())
@@ -123,10 +109,7 @@ pub fn find_valid_node(conn: &Connection) -> AppResult<Option<NodeExecutable>> {
     find_valid(conn, NodeExecutableKind::Node, None)
 }
 
-pub fn find_valid_package_manager(
-    conn: &Connection,
-    manager: PackageManager,
-) -> AppResult<Option<NodeExecutable>> {
+pub fn find_valid_package_manager(conn: &Connection, manager: PackageManager) -> AppResult<Option<NodeExecutable>> {
     find_valid(conn, NodeExecutableKind::PackageManager, Some(manager))
 }
 

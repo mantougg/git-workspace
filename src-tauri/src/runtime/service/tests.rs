@@ -6,10 +6,9 @@ use crate::runtime::build::runner::{FakeMavenRunner, FakeRun};
 use crate::runtime::build::{BuildOutputSink, RunStrategy};
 use crate::runtime::config::{CreateRuntimeConfigRequest, RuntimeApplicationConfig};
 use crate::runtime::events::{
-    VecEmitter, EVENT_BUILD_COMPLETED, EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED,
-    EVENT_DEPENDENCY_RESOLVED, EVENT_ENVIRONMENT_COMPLETED, EVENT_ENVIRONMENT_PROGRESS,
-    EVENT_HEALTH_CHANGED, EVENT_PROCESS_STARTED, EVENT_PROCESS_STOPPED, EVENT_PROJECT_DISCOVERED,
-    EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
+    VecEmitter, EVENT_BUILD_COMPLETED, EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED, EVENT_DEPENDENCY_RESOLVED,
+    EVENT_ENVIRONMENT_COMPLETED, EVENT_ENVIRONMENT_PROGRESS, EVENT_HEALTH_CHANGED, EVENT_PROCESS_STARTED,
+    EVENT_PROCESS_STOPPED, EVENT_PROJECT_DISCOVERED, EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
 };
 use crate::runtime::launch::launcher::FakeLaunchRunner;
 use crate::runtime::launch::LifecycleStatus;
@@ -122,12 +121,7 @@ fn test_service(
     )
 }
 
-fn runtime_task(
-    op: RuntimeOp,
-    workspace_id: i64,
-    name: &str,
-    options: RuntimeTaskOptions,
-) -> TaskType {
+fn runtime_task(op: RuntimeOp, workspace_id: i64, name: &str, options: RuntimeTaskOptions) -> TaskType {
     TaskType::Runtime {
         op,
         workspace_id,
@@ -169,11 +163,7 @@ fn build_op_succeeds_and_emits_event_sequence() {
 
     assert_eq!(
         emitter.names(),
-        vec![
-            EVENT_BUILD_STARTED,
-            EVENT_BUILD_PROGRESS,
-            EVENT_BUILD_COMPLETED
-        ]
+        vec![EVENT_BUILD_STARTED, EVENT_BUILD_PROGRESS, EVENT_BUILD_COMPLETED]
     );
     let completed = &emitter.collected()[2];
     assert_eq!(completed.payload["success"], serde_json::json!(true));
@@ -226,10 +216,7 @@ fn start_op_emits_full_lifecycle_sequence() {
         .filter(|e| e.name == EVENT_BUILD_PROGRESS)
         .map(|e| e.payload["stage"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(
-        stages,
-        vec!["preparing", "resolving", "building", "starting"]
-    );
+    assert_eq!(stages, vec!["preparing", "resolving", "building", "starting"]);
 
     // 进程行进入 Running。
     let info = service
@@ -270,12 +257,7 @@ fn stop_op_stops_running_app() {
 
     service
         .execute(
-            &runtime_task(
-                RuntimeOp::Stop,
-                fixture.workspace_id,
-                "app",
-                Default::default(),
-            ),
+            &runtime_task(RuntimeOp::Stop, fixture.workspace_id, "app", Default::default()),
             cancel,
         )
         .unwrap();
@@ -311,12 +293,7 @@ fn restart_op_wraps_start_with_restart_events() {
 
     service
         .execute(
-            &runtime_task(
-                RuntimeOp::Restart,
-                fixture.workspace_id,
-                "app",
-                Default::default(),
-            ),
+            &runtime_task(RuntimeOp::Restart, fixture.workspace_id, "app", Default::default()),
             cancel,
         )
         .unwrap();
@@ -386,10 +363,7 @@ fn cancel_during_start_aborts_build_and_finalizes() {
         rows[0].status
     );
     assert!(
-        matches!(
-            rows[0].status,
-            LifecycleStatus::Stopped | LifecycleStatus::Failed
-        ),
+        matches!(rows[0].status, LifecycleStatus::Stopped | LifecycleStatus::Failed),
         "cancelled start must end Stopped (stop semantics) or Failed (abort)"
     );
     // 构建确实被终止：build_completed(failure) 或 process_stopped 必居其一。
@@ -417,8 +391,7 @@ fn resolve_op_syncs_index_and_emits_summary() {
         let conn = fixture.db.lock().unwrap();
         conn.execute("DELETE FROM maven_dependencies", []).unwrap();
         conn.execute("DELETE FROM maven_modules", []).unwrap();
-        conn.execute("DELETE FROM maven_source_mappings", [])
-            .unwrap();
+        conn.execute("DELETE FROM maven_source_mappings", []).unwrap();
         conn.execute("DELETE FROM maven_projects", []).unwrap();
     }
 
@@ -428,9 +401,7 @@ fn resolve_op_syncs_index_and_emits_summary() {
         "",
         Default::default(),
     );
-    let output = service
-        .execute(&task, Arc::new(AtomicBool::new(false)))
-        .unwrap();
+    let output = service.execute(&task, Arc::new(AtomicBool::new(false))).unwrap();
     assert!(output.unwrap().contains("依赖解析完成"));
 
     let names = emitter.names();
@@ -439,9 +410,7 @@ fn resolve_op_syncs_index_and_emits_summary() {
     assert_eq!(payload["projects"], serde_json::json!(3));
 
     // 再同步一次：索引无变化，known 非空且无新项目 → 仍只有汇总事件。
-    service
-        .execute(&task, Arc::new(AtomicBool::new(false)))
-        .unwrap();
+    service.execute(&task, Arc::new(AtomicBool::new(false))).unwrap();
     assert_eq!(
         emitter
             .names()
@@ -454,13 +423,9 @@ fn resolve_op_syncs_index_and_emits_summary() {
     // 查询侧：3 个项目、app → lib 依赖边。
     let projects = service.list_projects(fixture.workspace_id).unwrap();
     assert_eq!(projects.len(), 3);
-    let inspection = service
-        .inspect_project(fixture.workspace_id, "app")
-        .unwrap();
+    let inspection = service.inspect_project(fixture.workspace_id, "app").unwrap();
     assert_eq!(inspection.dependencies.len(), 1);
-    let graph = service
-        .dependency_graph(fixture.workspace_id, None, None)
-        .unwrap();
+    let graph = service.dependency_graph(fixture.workspace_id, None, None).unwrap();
     assert!(!graph.truncated);
     assert_eq!(graph.total_dependencies, graph.dependencies.len());
 }
@@ -525,16 +490,8 @@ fn closure_preview_computes_scope_and_reports_cache_hit() {
         Arc::new(FakeMavenRunner::successful()),
         Arc::new(FakeLaunchRunner::staying_alive()),
     );
-    let project = fixture
-        .root
-        .join("repo/app/pom.xml")
-        .to_string_lossy()
-        .to_string();
-    let lib_project = fixture
-        .root
-        .join("repo/lib/pom.xml")
-        .to_string_lossy()
-        .to_string();
+    let project = fixture.root.join("repo/app/pom.xml").to_string_lossy().to_string();
+    let lib_project = fixture.root.join("repo/lib/pom.xml").to_string_lossy().to_string();
 
     // Auto：闭包 = app + lib（lib 是 app 的源码依赖，parent 不进闭包）。
     let auto = service
@@ -555,26 +512,18 @@ fn closure_preview_computes_scope_and_reports_cache_hit() {
     let cached = service
         .closure_preview(fixture.workspace_id, &project, &RuntimeScope::Auto)
         .unwrap();
-    assert!(
-        cached.cache_hit,
-        "second auto preview must hit the closure cache"
-    );
+    assert!(cached.cache_hit, "second auto preview must hit the closure cache");
 
     // Manual 空集：闭包收缩为仅 root（root 不可被排除，R-03 语义）。
     let empty = service
         .closure_preview(
             fixture.workspace_id,
             &project,
-            &RuntimeScope::Manual {
-                project_ids: vec![],
-            },
+            &RuntimeScope::Manual { project_ids: vec![] },
         )
         .unwrap();
     assert_eq!(empty.closure.projects.len(), 1);
-    assert_eq!(
-        empty.closure.projects[0].project_id,
-        auto.closure.root_project_id
-    );
+    assert_eq!(empty.closure.projects[0].project_id, auto.closure.root_project_id);
 
     // Hybrid：include=[root]，排除 lib → 闭包仅 app。
     let lib_id = service
@@ -593,10 +542,7 @@ fn closure_preview_computes_scope_and_reports_cache_hit() {
         )
         .unwrap();
     assert_eq!(hybrid.closure.projects.len(), 1);
-    assert_eq!(
-        hybrid.closure.projects[0].project_id,
-        auto.closure.root_project_id
-    );
+    assert_eq!(hybrid.closure.projects[0].project_id, auto.closure.root_project_id);
 
     // 未知项目 → ProjectNotFound 可行动错误。
     let err = service
@@ -616,9 +562,7 @@ fn environment_requests_cover_configs() {
         Arc::new(FakeMavenRunner::successful()),
         Arc::new(FakeLaunchRunner::staying_alive()),
     );
-    let start = service
-        .start_environment_requests(fixture.workspace_id)
-        .unwrap();
+    let start = service.start_environment_requests(fixture.workspace_id).unwrap();
     assert_eq!(start.len(), 1);
     assert!(matches!(
         start[0].task_type,
@@ -649,10 +593,7 @@ fn environment_requests_cover_configs() {
         )
         .unwrap();
     assert_eq!(
-        service
-            .stop_environment_requests(fixture.workspace_id)
-            .unwrap()
-            .len(),
+        service.stop_environment_requests(fixture.workspace_id).unwrap().len(),
         1
     );
 }
@@ -679,11 +620,7 @@ fn health_probe_transitions_with_lifecycle() {
                 name: "app".into(),
                 config: RuntimeApplicationConfig {
                     name: "app".into(),
-                    project: fixture
-                        .root
-                        .join("repo/app/pom.xml")
-                        .to_string_lossy()
-                        .to_string(),
+                    project: fixture.root.join("repo/app/pom.xml").to_string_lossy().to_string(),
                     main_class: Some("com.example.app.Application".into()),
                     health_check: Some(crate::runtime::health::HealthCheckConfig {
                         kind: crate::runtime::health::HealthCheckKind::Port,
@@ -725,8 +662,7 @@ fn health_probe_transitions_with_lifecycle() {
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut healthy_seen = false;
     while Instant::now() < deadline {
-        if let Some(snapshot) =
-            service.get_health(service.list_processes(fixture.workspace_id).unwrap()[0].process_id)
+        if let Some(snapshot) = service.get_health(service.list_processes(fixture.workspace_id).unwrap()[0].process_id)
         {
             if snapshot.phase == crate::runtime::events::HealthStatus::Healthy {
                 healthy_seen = true;
@@ -740,20 +676,14 @@ fn health_probe_transitions_with_lifecycle() {
     // Stop：进程退出收口探针 → Stopped。
     service
         .execute(
-            &runtime_task(
-                RuntimeOp::Stop,
-                fixture.workspace_id,
-                "app",
-                Default::default(),
-            ),
+            &runtime_task(RuntimeOp::Stop, fixture.workspace_id, "app", Default::default()),
             Arc::new(AtomicBool::new(false)),
         )
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut stopped_seen = false;
     while Instant::now() < deadline {
-        if let Some(snapshot) =
-            service.get_health(service.list_processes(fixture.workspace_id).unwrap()[0].process_id)
+        if let Some(snapshot) = service.get_health(service.list_processes(fixture.workspace_id).unwrap()[0].process_id)
         {
             if snapshot.phase == crate::runtime::events::HealthStatus::Stopped {
                 stopped_seen = true;
@@ -762,10 +692,7 @@ fn health_probe_transitions_with_lifecycle() {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    assert!(
-        stopped_seen,
-        "probe must be finalized to Stopped after exit"
-    );
+    assert!(stopped_seen, "probe must be finalized to Stopped after exit");
     drop(listener);
 }
 
@@ -813,17 +740,9 @@ struct OrderingRunner {
 }
 
 impl MavenRunner for OrderingRunner {
-    fn resolve_maven(
-        &self,
-        _project_dir: &Path,
-        local_repository: &Path,
-    ) -> AppResult<crate::maven::ResolvedMaven> {
+    fn resolve_maven(&self, _project_dir: &Path, local_repository: &Path) -> AppResult<crate::maven::ResolvedMaven> {
         Ok(crate::maven::ResolvedMaven {
-            executable: crate::maven::MavenExecutable::new(
-                "fake-mvn",
-                crate::maven::MavenSource::System,
-                None,
-            ),
+            executable: crate::maven::MavenExecutable::new("fake-mvn", crate::maven::MavenSource::System, None),
             local_repository: local_repository.to_path_buf(),
             uses_wrapper: false,
         })
@@ -1030,11 +949,7 @@ fn environment_start_follows_topology_and_readies_all() {
         }
     };
     assert_eq!(kind_of(&workdirs[2]), "lib", "wave 1 = auth (lib reactor)");
-    assert_eq!(
-        kind_of(&workdirs[3]),
-        "app",
-        "wave 2 = gateway (app reactor)"
-    );
+    assert_eq!(kind_of(&workdirs[3]), "app", "wave 2 = gateway (app reactor)");
     drop(workdirs);
     let _ = (&lib_dir, &app_dir);
 
@@ -1228,17 +1143,9 @@ struct CountingRunner {
 }
 
 impl MavenRunner for CountingRunner {
-    fn resolve_maven(
-        &self,
-        _project_dir: &Path,
-        local_repository: &Path,
-    ) -> AppResult<crate::maven::ResolvedMaven> {
+    fn resolve_maven(&self, _project_dir: &Path, local_repository: &Path) -> AppResult<crate::maven::ResolvedMaven> {
         Ok(crate::maven::ResolvedMaven {
-            executable: crate::maven::MavenExecutable::new(
-                "fake-mvn",
-                crate::maven::MavenSource::System,
-                None,
-            ),
+            executable: crate::maven::MavenExecutable::new("fake-mvn", crate::maven::MavenSource::System, None),
             local_repository: local_repository.to_path_buf(),
             uses_wrapper: false,
         })
@@ -1336,10 +1243,7 @@ fn concurrent_builds_are_capped_by_scheduler() {
 
 fn maven_available() -> bool {
     let maven = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
-    std::process::Command::new(maven)
-        .arg("-version")
-        .output()
-        .is_ok()
+    std::process::Command::new(maven).arg("-version").output().is_ok()
 }
 
 /// 单仓 Spring Boot fixture（对齐 R-09 `setup_single_repo_boot`，
@@ -1499,16 +1403,9 @@ fn build_op_with_real_maven_builds_synthetic_reactor() {
     let names = emitter.names();
     assert_eq!(
         names,
-        vec![
-            EVENT_BUILD_STARTED,
-            EVENT_BUILD_PROGRESS,
-            EVENT_BUILD_COMPLETED
-        ]
+        vec![EVENT_BUILD_STARTED, EVENT_BUILD_PROGRESS, EVENT_BUILD_COMPLETED]
     );
-    assert_eq!(
-        emitter.collected()[2].payload["success"],
-        serde_json::json!(true)
-    );
+    assert_eq!(emitter.collected()[2].payload["success"], serde_json::json!(true));
 
     let _ = std::fs::remove_dir_all(&fixture.root);
 }

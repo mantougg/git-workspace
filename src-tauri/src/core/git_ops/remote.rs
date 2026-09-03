@@ -7,12 +7,7 @@ impl super::GitOps {
     /// destination directory itself must not exist yet (git errors
     /// otherwise); its parent is created when missing. Credentials / SSH
     /// follow the user's git installation (system CLI).
-    pub(super) fn clone_repo(
-        &self,
-        dest: &Path,
-        url: &str,
-        branch: Option<&str>,
-    ) -> AppResult<String> {
+    pub(super) fn clone_repo(&self, dest: &Path, url: &str, branch: Option<&str>) -> AppResult<String> {
         let parent = dest
             .parent()
             .ok_or_else(|| AppError::Other(format!("clone 目标 {:?} 没有父目录", dest)))?;
@@ -80,12 +75,7 @@ impl super::GitOps {
             None => (self.find_default_remote_name(&repo)?, branch.to_string()),
         };
 
-        log::info!(
-            "Pushing branch '{}' to '{}' for {:?}",
-            branch,
-            remote_name,
-            repo_path
-        );
+        log::info!("Pushing branch '{}' to '{}' for {:?}", branch, remote_name, repo_path);
         let out = run_git(repo_path, &["push", &remote_name, &refspec])?;
         log::info!("Push branch completed for {:?}", repo_path);
         Ok(out)

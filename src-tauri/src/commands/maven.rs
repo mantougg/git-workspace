@@ -24,8 +24,7 @@ use crate::maven::exec_model::{MavenExecutable, MavenExecutionRequest, MavenSour
 use crate::maven::executor::{build_command, preview_command};
 use crate::maven::registry::{
     apply_version as apply_maven_version, get_maven_executable, list_maven_executables,
-    mark_validity as mark_maven_validity, prune_invalid_paths, remove_maven_executable,
-    upsert_maven_executable,
+    mark_validity as mark_maven_validity, prune_invalid_paths, remove_maven_executable, upsert_maven_executable,
 };
 use crate::maven::settings::resolve_local_repository_effective;
 use crate::state::AppState;
@@ -62,11 +61,8 @@ pub fn detect_maven(
         )));
     }
     let local_repo = resolve_local_repository_effective(None);
-    let resolved = crate::maven::detect_exec::resolve_maven_for_project(
-        project,
-        configured_path.as_deref(),
-        &local_repo,
-    );
+    let resolved =
+        crate::maven::detect_exec::resolve_maven_for_project(project, configured_path.as_deref(), &local_repo);
     let resolved = resolved.ok_or_else(|| {
         AppError::MavenNotFound(format!(
             "未在项目 {project_dir} 找到可用的 Maven（wrapper / 配置 / 系统三者皆缺）。\
@@ -89,25 +85,18 @@ pub fn list_maven_executables_cmd(state: State<'_, AppState>) -> AppResult<Vec<M
 
 /// 按 id 取单条 Maven 可执行体。
 #[tauri::command]
-pub fn get_maven_executable_cmd(
-    state: State<'_, AppState>,
-    id: i64,
-) -> AppResult<Option<MavenExecutable>> {
+pub fn get_maven_executable_cmd(state: State<'_, AppState>, id: i64) -> AppResult<Option<MavenExecutable>> {
     let conn = lock_db(&state)?;
     get_maven_executable(&conn, id)
 }
 
 /// 强制复检单条 Maven：重新 fork `mvn -v` 并更新版本字段与有效性。
 #[tauri::command]
-pub fn validate_maven_executable(
-    state: State<'_, AppState>,
-    id: i64,
-) -> AppResult<MavenExecutable> {
+pub fn validate_maven_executable(state: State<'_, AppState>, id: i64) -> AppResult<MavenExecutable> {
     let existing = {
         let conn = lock_db(&state)?;
-        get_maven_executable(&conn, id)?.ok_or_else(|| {
-            AppError::MavenNotFound(format!("Maven 可执行体 id={id} 不在注册表中"))
-        })?
+        get_maven_executable(&conn, id)?
+            .ok_or_else(|| AppError::MavenNotFound(format!("Maven 可执行体 id={id} 不在注册表中")))?
     };
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -123,11 +112,7 @@ pub fn validate_maven_executable(
     probed.full_version = info.full_version;
     probed.is_valid = is_valid;
     probed.last_checked = now.clone();
-    probed.raw_version = if info.raw.is_empty() {
-        None
-    } else {
-        Some(info.raw)
-    };
+    probed.raw_version = if info.raw.is_empty() { None } else { Some(info.raw) };
     let conn = lock_db(&state)?;
     apply_maven_version(&conn, id, &probed, &now)?;
     Ok(probed)
@@ -159,8 +144,7 @@ pub fn resolve_local_repo(global_settings_path: Option<String>) -> AppResult<Pat
 /// F-16：查询应用级本地仓库覆盖（None = 未覆盖，按 settings.xml 探测）。
 #[tauri::command]
 pub fn get_maven_local_repo_override() -> Option<String> {
-    crate::maven::settings::local_repository_override()
-        .map(|p| p.to_string_lossy().to_string())
+    crate::maven::settings::local_repository_override().map(|p| p.to_string_lossy().to_string())
 }
 
 /// F-16：设置/清除应用级本地仓库覆盖（None = 恢复 settings.xml 探测）。
@@ -191,11 +175,7 @@ pub fn scan_maven_installations(state: State<'_, AppState>) -> AppResult<Vec<Mav
         exe.full_version = info.full_version;
         exe.is_valid = is_valid;
         exe.last_checked = now.clone();
-        exe.raw_version = if info.raw.is_empty() {
-            None
-        } else {
-            Some(info.raw)
-        };
+        exe.raw_version = if info.raw.is_empty() { None } else { Some(info.raw) };
         let id = upsert_maven_executable(&conn, &exe)?;
         exe.id = Some(id);
         out.push(exe);
@@ -206,10 +186,7 @@ pub fn scan_maven_installations(state: State<'_, AppState>) -> AppResult<Vec<Mav
 /// F-16：手动添加 Maven 可执行路径（source=configured）。`mvn -v` 探测失败
 /// 返回可行动错误（不入库）。
 #[tauri::command]
-pub fn add_maven_executable(
-    state: State<'_, AppState>,
-    path: String,
-) -> AppResult<MavenExecutable> {
+pub fn add_maven_executable(state: State<'_, AppState>, path: String) -> AppResult<MavenExecutable> {
     let p = Path::new(&path);
     if !p.is_file() {
         return Err(AppError::MavenNotFound(format!(
@@ -232,11 +209,7 @@ pub fn add_maven_executable(
     exe.full_version = info.full_version;
     exe.is_valid = true;
     exe.last_checked = chrono::Utc::now().to_rfc3339();
-    exe.raw_version = if info.raw.is_empty() {
-        None
-    } else {
-        Some(info.raw)
-    };
+    exe.raw_version = if info.raw.is_empty() { None } else { Some(info.raw) };
     let conn = lock_db(&state)?;
     let id = upsert_maven_executable(&conn, &exe)?;
     exe.id = Some(id);
@@ -268,7 +241,6 @@ pub fn build_maven_command(req: MavenExecutionRequest) -> AppResult<Vec<String>>
 }
 
 fn existing_after_update(conn: &Connection, id: i64) -> AppResult<MavenExecutable> {
-    get_maven_executable(conn, id)?.ok_or_else(|| {
-        AppError::MavenNotFound(format!("Maven 可执行体 id={id} 不在注册表中"))
-    })
+    get_maven_executable(conn, id)?
+        .ok_or_else(|| AppError::MavenNotFound(format!("Maven 可执行体 id={id} 不在注册表中")))
 }

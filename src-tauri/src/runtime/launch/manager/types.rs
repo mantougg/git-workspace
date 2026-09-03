@@ -124,11 +124,7 @@ impl ActiveProcess {
 /// - 退出码 0 → Stopped（自然终止）；
 /// - adopted 且无码 → Stopped（非父进程拿不到码，宽容处理并记日志）；
 /// - 其余（非零 / 被信号杀）→ Failed（ProcessCrashed 语义）。
-pub(super) fn classify_exit(
-    from: LifecycleStatus,
-    outcome: &MonitorOutcome,
-    adopted: bool,
-) -> (LifecycleStatus, bool) {
+pub(super) fn classify_exit(from: LifecycleStatus, outcome: &MonitorOutcome, adopted: bool) -> (LifecycleStatus, bool) {
     if from == LifecycleStatus::Stopping {
         return (LifecycleStatus::Stopped, false);
     }

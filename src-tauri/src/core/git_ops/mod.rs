@@ -68,15 +68,12 @@ impl GitOps {
             }
             // Clone into a new directory (T-33 batch clone): network op via
             // the system git CLI (credentials/SSH follow the user's git).
-            TaskType::Clone { url, branch } => {
-                self.clone_repo(repo_path, url, branch.as_deref()).map(Some)
-            }
+            TaskType::Clone { url, branch } => self.clone_repo(repo_path, url, branch.as_deref()).map(Some),
             // Pipeline Build/Test shell step (T-23): run in the repo dir,
             // killed after `timeout_secs` (worker timeout is the hard bound).
-            TaskType::ShellCommand {
-                command,
-                timeout_secs,
-            } => run_shell_command(repo_path, command, *timeout_secs).map(Some),
+            TaskType::ShellCommand { command, timeout_secs } => {
+                run_shell_command(repo_path, command, *timeout_secs).map(Some)
+            }
             TaskType::Commit { then_push, .. } => {
                 let outcome = self.commit(repo_path, &CommitOptions::from_task(task_type))?;
                 if !then_push {
@@ -112,10 +109,10 @@ impl GitOps {
             TaskType::Runtime { .. } => Err(AppError::Task(
                 "Runtime 任务不应由 GitOps 执行（worker 分发错误）".into(),
             )),
-            TaskType::ConflictApply { .. }
-            | TaskType::RuntimeUpdateConfig { .. }
-            | TaskType::NodeInstall { .. } => {
-                Err(AppError::Task("AI Action Proposal 任务应由 worker 专用执行路径处理".into()))
+            TaskType::ConflictApply { .. } | TaskType::RuntimeUpdateConfig { .. } | TaskType::NodeInstall { .. } => {
+                Err(AppError::Task(
+                    "AI Action Proposal 任务应由 worker 专用执行路径处理".into(),
+                ))
             }
         }
     }

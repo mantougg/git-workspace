@@ -74,11 +74,7 @@ impl BudgetStrategy {
                 _ => 4,
             },
             S::CodeReview => match role {
-                R::FileList
-                | R::HunkStructure
-                | R::ChangeSummary
-                | R::UserNote
-                | R::ConflictState => 0,
+                R::FileList | R::HunkStructure | R::ChangeSummary | R::UserNote | R::ConflictState => 0,
                 R::FullDiff | R::ConflictContent => 1,
                 R::History | R::Dependency => 2,
                 _ => 3,
@@ -127,8 +123,7 @@ pub fn apply_budget(
     estimator: &TokenEstimator,
 ) -> BudgetOutcome {
     // 已被前置阶段（用户/Secret）排除的条目不参与预算，直接进 Manifest。
-    let (pre_excluded, includable): (Vec<_>, Vec<_>) =
-        drafts.into_iter().partition(|d| d.exclusion.is_some());
+    let (pre_excluded, includable): (Vec<_>, Vec<_>) = drafts.into_iter().partition(|d| d.exclusion.is_some());
 
     // 按 (tier, 原顺序) 稳定排序：tier 小者优先占用预算。
     let mut ordered: Vec<(usize, DraftContextItem)> = includable.into_iter().enumerate().collect();
@@ -216,9 +211,9 @@ fn truncate_content(content: &str, max_chars: usize, keep: Option<TruncateKeep>)
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::context::TruncateKeep;
     use super::super::request::ContextKind;
+    use super::*;
 
     fn draft(role: ContextRole, source: &str, chars: usize) -> DraftContextItem {
         DraftContextItem {
@@ -233,20 +228,12 @@ mod tests {
         }
     }
 
-    fn outcome(
-        strategy: BudgetStrategy,
-        drafts: Vec<DraftContextItem>,
-        budget_tokens: i64,
-    ) -> BudgetOutcome {
+    fn outcome(strategy: BudgetStrategy, drafts: Vec<DraftContextItem>, budget_tokens: i64) -> BudgetOutcome {
         apply_budget(drafts, strategy, budget_tokens, &TokenEstimator::default())
     }
 
     fn state(o: &BudgetOutcome, source: &str) -> (bool, bool) {
-        let item = o
-            .manifest
-            .iter()
-            .find(|i| i.source_id == source)
-            .expect("in manifest");
+        let item = o.manifest.iter().find(|i| i.source_id == source).expect("in manifest");
         (item.truncated, item.excluded)
     }
 
@@ -269,11 +256,7 @@ mod tests {
         assert_eq!(state(&o, "env"), (false, true), "环境摘要应被排除");
         assert_eq!(o.budget_excluded_sources, vec!["env"]);
         // Manifest 顺序 = tier 序。
-        let order: Vec<&str> = o
-            .manifest
-            .iter()
-            .map(|i| i.source_id.as_str())
-            .collect();
+        let order: Vec<&str> = o.manifest.iter().map(|i| i.source_id.as_str()).collect();
         assert_eq!(order, vec!["struct", "errlog", "tail", "env"]);
     }
 
@@ -375,11 +358,7 @@ mod tests {
         d.truncate_keep = Some(TruncateKeep::Tail);
         d.content = format!("{}\n{}", "head".repeat(50), "tail".repeat(50));
         let o = outcome(BudgetStrategy::ErrorDiagnosis, vec![d], 40);
-        let item = o
-            .items
-            .iter()
-            .find(|i| i.source_id == "tail")
-            .expect("item");
+        let item = o.items.iter().find(|i| i.source_id == "tail").expect("item");
         assert!(item.content.contains("tailtail"));
         assert!(!item.content.contains("headhead"), "尾部优先应丢弃头部");
     }
@@ -387,7 +366,11 @@ mod tests {
     /// budget <= 0 = 不限预算。
     #[test]
     fn zero_budget_means_unlimited() {
-        let o = outcome(BudgetStrategy::CodeReview, vec![draft(ContextRole::FullDiff, "d", 9999)], 0);
+        let o = outcome(
+            BudgetStrategy::CodeReview,
+            vec![draft(ContextRole::FullDiff, "d", 9999)],
+            0,
+        );
         assert_eq!(state(&o, "d"), (false, false));
     }
 

@@ -31,11 +31,7 @@ pub fn classpath_cache_dir(workspace_root: &Path, runtime_name: &str) -> PathBuf
 }
 
 /// 缓存 key：根模块 pom_hash + 依赖图指纹 + 本地仓库路径。
-pub fn classpath_cache_key(
-    root: &MavenProjectNode,
-    graph_fingerprint: &str,
-    local_repository: &Path,
-) -> String {
+pub fn classpath_cache_key(root: &MavenProjectNode, graph_fingerprint: &str, local_repository: &Path) -> String {
     let material = format!(
         "{}\0{}\0{}",
         root.pom_hash,
@@ -113,17 +109,11 @@ pub fn build_classpath_request(
     if reactor.module_paths.len() > 1 {
         extra_args.extend([
             "-pl".into(),
-            format!(
-                "{}:{}",
-                root.coordinates.group_id, root.coordinates.artifact_id
-            ),
+            format!("{}:{}", root.coordinates.group_id, root.coordinates.artifact_id),
             "-am".into(),
         ]);
     }
-    extra_args.push(format!(
-        "-Dmdep.outputFile={}",
-        output_file.to_string_lossy()
-    ));
+    extra_args.push(format!("-Dmdep.outputFile={}", output_file.to_string_lossy()));
     extra_args.push(format!("-Dmdep.includeScope={CLASSPATH_INCLUDE_SCOPE}"));
     if offline {
         extra_args.push("-o".into());
@@ -131,10 +121,7 @@ pub fn build_classpath_request(
     executor::build_request(
         executable,
         workspace_root,
-        vec![
-            "process-classes".into(),
-            "dependency:build-classpath".into(),
-        ],
+        vec!["process-classes".into(), "dependency:build-classpath".into()],
         extra_args,
         local_repository,
     )
@@ -185,10 +172,7 @@ mod tests {
         let entries = vec![root_dir.join("m2/a.jar"), root_dir.join("m2/b.jar")];
         fs::write(
             &target,
-            std::env::join_paths(&entries)
-                .unwrap()
-                .to_string_lossy()
-                .as_ref(),
+            std::env::join_paths(&entries).unwrap().to_string_lossy().as_ref(),
         )
         .unwrap();
 
@@ -223,11 +207,7 @@ mod tests {
                 "-am".into(),
             ],
         };
-        let exe = MavenExecutable::new(
-            "/usr/bin/mvn",
-            crate::maven::exec_model::MavenSource::System,
-            None,
-        );
+        let exe = MavenExecutable::new("/usr/bin/mvn", crate::maven::exec_model::MavenSource::System, None);
         let request = build_classpath_request(
             &exe,
             Path::new("/ws"),
@@ -257,11 +237,7 @@ mod tests {
             module_paths: vec![PathBuf::from("/ws/repo/app")],
             arguments: vec!["-f".into(), "/ws/repo/app/pom.xml".into()],
         };
-        let exe = MavenExecutable::new(
-            "/usr/bin/mvn",
-            crate::maven::exec_model::MavenSource::System,
-            None,
-        );
+        let exe = MavenExecutable::new("/usr/bin/mvn", crate::maven::exec_model::MavenSource::System, None);
         let request = build_classpath_request(
             &exe,
             Path::new("/ws"),

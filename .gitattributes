@@ -1,0 +1,41 @@
+# Git 行尾归一化 — 跨平台一致性
+#
+# 核心规则：所有文本文件在仓库中统一存储为 LF，
+# Windows checkout 时也不转 CRLF（由 eol=lf 强制）。
+# 这与 rustfmt.toml 的 newline_style = "Unix" 形成双保险。
+
+# 默认：自动检测文本/二进制，文本文件统一 LF
+* text=auto eol=lf
+
+# 显式标注常见文本类型（eol=lf 强制 LF，不随 OS 变化）
+*.rs    text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.vue   text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+*.scss  text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.sh    text eol=lf
+
+# Windows 脚本保留 CRLF（.cmd/.bat 必须用 CRLF）
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+# 二进制文件（不做行尾转换）
+*.png   binary
+*.ico   binary
+*.icns  binary
+*.exe   binary
+*.dll   binary
+*.so    binary
+*.dylib binary
+*.lock  text eol=lf

@@ -169,10 +169,7 @@ impl RuntimeLogEngine {
             worker: Mutex::new(Some(worker)),
             finished: AtomicBool::new(false),
         });
-        self.sessions
-            .lock()
-            .unwrap()
-            .insert(process_id, Arc::clone(&session));
+        self.sessions.lock().unwrap().insert(process_id, Arc::clone(&session));
         Ok(session)
     }
 
@@ -197,13 +194,7 @@ impl Default for RuntimeLogEngine {
 
 impl Drop for RuntimeLogEngine {
     fn drop(&mut self) {
-        let sessions: Vec<Arc<LogSession>> = self
-            .sessions
-            .lock()
-            .unwrap()
-            .drain()
-            .map(|(_, s)| s)
-            .collect();
+        let sessions: Vec<Arc<LogSession>> = self.sessions.lock().unwrap().drain().map(|(_, s)| s).collect();
         for session in sessions {
             session.finish();
         }

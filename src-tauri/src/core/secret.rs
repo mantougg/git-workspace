@@ -42,13 +42,11 @@ fn regexes() -> &'static [(SecretKind, Regex)] {
             (SecretKind::AwsKey, Regex::new(r#"AKIA[0-9A-Z]{16}"#).unwrap()),
             (
                 SecretKind::GithubToken,
-                Regex::new(r#"(?i)(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}"#)
-                    .unwrap(),
+                Regex::new(r#"(?i)(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}"#).unwrap(),
             ),
             (
                 SecretKind::Jwt,
-                Regex::new(r#"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"#)
-                    .unwrap(),
+                Regex::new(r#"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"#).unwrap(),
             ),
             (
                 SecretKind::PrivateKey,
@@ -56,8 +54,7 @@ fn regexes() -> &'static [(SecretKind, Regex)] {
             ),
             (
                 SecretKind::DatabaseUrl,
-                Regex::new(r#"(?i)(postgres|postgresql|mysql|mongodb|redis)://[^\s"']+"#)
-                    .unwrap(),
+                Regex::new(r#"(?i)(postgres|postgresql|mysql|mongodb|redis)://[^\s"']+"#).unwrap(),
             ),
             (
                 SecretKind::Password,
@@ -134,10 +131,7 @@ pub fn is_forbidden_file(path: &str) -> bool {
     ) {
         return true;
     }
-    lower.ends_with(".pem")
-        || lower.ends_with(".key")
-        || lower.ends_with(".p12")
-        || lower.ends_with(".pfx")
+    lower.ends_with(".pem") || lower.ends_with(".key") || lower.ends_with(".p12") || lower.ends_with(".pfx")
 }
 
 #[cfg(test)]

@@ -55,17 +55,13 @@ impl PomCache {
     }
 
     /// 命中或解析并缓存。
-    pub fn get_or_parse(
-        &self,
-        path: &Path,
-    ) -> Result<MavenProject, crate::maven::parser::PomParseError> {
+    pub fn get_or_parse(&self, path: &Path) -> Result<MavenProject, crate::maven::parser::PomParseError> {
         let key = path_key(path);
         // 读文件计算 hash（IO 必做：判定内容是否变更的唯一可靠依据）。
-        let content =
-            std::fs::read(path).map_err(|source| crate::maven::parser::PomParseError::Io {
-                path: path.display().to_string(),
-                source,
-            })?;
+        let content = std::fs::read(path).map_err(|source| crate::maven::parser::PomParseError::Io {
+            path: path.display().to_string(),
+            source,
+        })?;
         let hash = crate::maven::parser::hex_hash(&content);
 
         if let Some((cached_hash, model)) = self.inner.get(&key) {
@@ -89,10 +85,7 @@ impl PomCache {
     }
 
     /// 同 [`get_or_parse`]，但直接从文件路径开始（等价；保留以便调用方语义清晰）。
-    pub fn parse_file(
-        &self,
-        path: &Path,
-    ) -> Result<MavenProject, crate::maven::parser::PomParseError> {
+    pub fn parse_file(&self, path: &Path) -> Result<MavenProject, crate::maven::parser::PomParseError> {
         self.get_or_parse(path)
     }
 
@@ -139,9 +132,7 @@ fn path_key(path: &Path) -> String {
 }
 
 /// 不走缓存的直接解析（兼容旧 API / 测试）。
-pub fn parse_pom_file_uncached(
-    path: &Path,
-) -> Result<MavenProject, crate::maven::parser::PomParseError> {
+pub fn parse_pom_file_uncached(path: &Path) -> Result<MavenProject, crate::maven::parser::PomParseError> {
     parse_pom_file(path)
 }
 

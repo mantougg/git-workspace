@@ -64,8 +64,7 @@ pub fn transition_status(
     to: LifecycleStatus,
     exit_code: Option<Option<i32>>,
 ) -> AppResult<(LifecycleStatus, LifecycleStatus)> {
-    let row = get_process(conn, id)?
-        .ok_or_else(|| AppError::NotFound(format!("runtime_processes 行 {id} 不存在")))?;
+    let row = get_process(conn, id)?.ok_or_else(|| AppError::NotFound(format!("runtime_processes 行 {id} 不存在")))?;
     let from = row.status;
     from.transition(to)?;
     let now = now();
@@ -106,12 +105,7 @@ pub fn set_launched_meta(
 }
 
 /// spawn 成功后回填进程身份（pid + start_time，后者防 PID 复用）。
-pub fn set_pid(
-    conn: &Connection,
-    id: i64,
-    pid: u32,
-    pid_start_time: Option<u64>,
-) -> AppResult<()> {
+pub fn set_pid(conn: &Connection, id: i64, pid: u32, pid_start_time: Option<u64>) -> AppResult<()> {
     conn.execute(
         "UPDATE runtime_processes
          SET pid = ?2, pid_start_time = ?3, updated_at = ?4
@@ -122,12 +116,7 @@ pub fn set_pid(
 }
 
 /// 指标采样落库（节流调用，非每次采样都写）。
-pub fn set_metrics(
-    conn: &Connection,
-    id: i64,
-    cpu_percent: f32,
-    memory_bytes: u64,
-) -> AppResult<()> {
+pub fn set_metrics(conn: &Connection, id: i64, cpu_percent: f32, memory_bytes: u64) -> AppResult<()> {
     conn.execute(
         "UPDATE runtime_processes
          SET cpu_percent = ?2, memory_bytes = ?3, last_seen_at = ?4, updated_at = ?4
@@ -187,11 +176,7 @@ pub fn list_unfinished(conn: &Connection, workspace_id: i64) -> AppResult<Vec<Ru
 }
 
 /// 某 Runtime 当前活跃（非终态）的最新一行；Start 的重复启动守卫用。
-pub fn find_active(
-    conn: &Connection,
-    workspace_id: i64,
-    runtime_name: &str,
-) -> AppResult<Option<RuntimeProcessRow>> {
+pub fn find_active(conn: &Connection, workspace_id: i64, runtime_name: &str) -> AppResult<Option<RuntimeProcessRow>> {
     conn.query_row(
         &format!(
             "SELECT {COLUMNS} FROM runtime_processes

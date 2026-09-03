@@ -13,12 +13,7 @@ use super::*;
 /// R-11：开启本次 Start 的日志会话（构建 + 运行输出统一进同一文件）。
 /// 脱敏秘密值取自五层合并环境（与构建/启动环境同源）；仅在内存持有。
 impl RuntimeProcessManager {
-    pub(super) fn open_log_session(
-        &self,
-        workspace_id: i64,
-        runtime_name: &str,
-        process_id: i64,
-    ) -> AppResult<()> {
+    pub(super) fn open_log_session(&self, workspace_id: i64, runtime_name: &str, process_id: i64) -> AppResult<()> {
         let (workspace_root, secrets) = {
             let conn = self.db.lock().unwrap();
             let root = config::workspace_root(&conn, workspace_id)?;
@@ -73,11 +68,11 @@ pub(super) fn startup_ports(kind: RuntimeKind, line: &str) -> Vec<u16> {
     static SPRING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     static NODE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let regex = match kind {
-        RuntimeKind::SpringBoot => SPRING
-            .get_or_init(|| regex::Regex::new(r"started on port(?:\(s\))?:?\s+(\d+)").unwrap()),
+        RuntimeKind::SpringBoot => {
+            SPRING.get_or_init(|| regex::Regex::new(r"started on port(?:\(s\))?:?\s+(\d+)").unwrap())
+        }
         RuntimeKind::Node => NODE.get_or_init(|| {
-            regex::Regex::new(r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)")
-                .unwrap()
+            regex::Regex::new(r"https?://(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)").unwrap()
         }),
     };
     let mut ports = Vec::new();
@@ -107,16 +102,10 @@ mod tests {
             "Started Application in 3.2 seconds (process running)"
         ));
         assert_eq!(
-            startup_port(
-                RuntimeKind::SpringBoot,
-                "Tomcat started on port(s): 8080 (http)"
-            ),
+            startup_port(RuntimeKind::SpringBoot, "Tomcat started on port(s): 8080 (http)"),
             Some(8080)
         );
-        assert!(!startup_banner(
-            RuntimeKind::Node,
-            "Started Application in 3.2 seconds"
-        ));
+        assert!(!startup_banner(RuntimeKind::Node, "Started Application in 3.2 seconds"));
     }
 
     #[test]
@@ -133,10 +122,7 @@ mod tests {
             startup_port(RuntimeKind::Node, "Network: http://192.168.1.20:5173/"),
             None
         );
-        assert_eq!(
-            startup_port(RuntimeKind::Node, "compiled successfully"),
-            None
-        );
+        assert_eq!(startup_port(RuntimeKind::Node, "compiled successfully"), None);
     }
 
     #[test]

@@ -73,11 +73,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
 pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("NodeProjectNode", "types/node.ts", "NodeProjectNode"),
     ("NodeExecutable", "types/node.ts", "NodeExecutable"),
-    (
-        "NodeExecutableRequest",
-        "types/node.ts",
-        "NodeExecutableRequest",
-    ),
+    ("NodeExecutableRequest", "types/node.ts", "NodeExecutableRequest"),
     ("NodeInstallRequest", "types/node.ts", "NodeInstallRequest"),
     ("NodeScanCandidate", "types/node.ts", "NodeScanCandidate"),
 ];

@@ -13,10 +13,7 @@ use crate::models::workspace::{CreateWorkspaceRequest, UpdateWorkspaceRequest, W
 // ---------------------------------------------------------------------------
 
 /// Insert a new workspace and return the created record.
-pub fn insert_workspace(
-    conn: &Connection,
-    req: &CreateWorkspaceRequest,
-) -> AppResult<Workspace> {
+pub fn insert_workspace(conn: &Connection, req: &CreateWorkspaceRequest) -> AppResult<Workspace> {
     let now = Utc::now().to_rfc3339();
     let scan_depth = req.scan_depth.unwrap_or(5);
 
@@ -38,9 +35,8 @@ pub fn insert_workspace(
 
 /// List all workspaces, ordered by name.
 pub fn list_workspaces(conn: &Connection) -> AppResult<Vec<Workspace>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, name, path, scan_depth, created_at, updated_at FROM workspaces ORDER BY name",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT id, name, path, scan_depth, created_at, updated_at FROM workspaces ORDER BY name")?;
 
     let workspaces = stmt
         .query_map([], |row| {
@@ -75,9 +71,7 @@ pub fn get_workspace(conn: &Connection, id: i64) -> AppResult<Workspace> {
         },
     )
     .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => {
-            AppError::NotFound(format!("Workspace {} not found", id))
-        }
+        rusqlite::Error::QueryReturnedNoRows => AppError::NotFound(format!("Workspace {} not found", id)),
         other => AppError::Db(other),
     })
 }
@@ -89,11 +83,7 @@ pub fn delete_workspace(conn: &Connection, id: i64) -> AppResult<()> {
 }
 
 /// Update workspace name and/or scan_depth.
-pub fn update_workspace(
-    conn: &Connection,
-    id: i64,
-    req: &UpdateWorkspaceRequest,
-) -> AppResult<Workspace> {
+pub fn update_workspace(conn: &Connection, id: i64, req: &UpdateWorkspaceRequest) -> AppResult<Workspace> {
     let current = get_workspace(conn, id)?;
     let now = Utc::now().to_rfc3339();
     let name = req.name.as_ref().unwrap_or(&current.name);
@@ -121,11 +111,7 @@ pub fn update_workspace(
 /// Insert or update a batch of repositories (upsert by path) in a single
 /// transaction. Avoids the per-row implicit-transaction overhead of calling
 /// `upsert_repository` in a loop.
-pub fn upsert_repositories_batch(
-    conn: &mut Connection,
-    workspace_id: i64,
-    repos: &[ScannedRepo],
-) -> AppResult<()> {
+pub fn upsert_repositories_batch(conn: &mut Connection, workspace_id: i64, repos: &[ScannedRepo]) -> AppResult<()> {
     if repos.is_empty() {
         return Ok(());
     }
@@ -164,13 +150,9 @@ pub fn upsert_repositories_batch(
 /// a workspace. This is the incremental-scan cache: the scanner skips libgit2
 /// validation for a repo whose path is present and whose mtime is unchanged.
 /// Soft-deleted repositories are excluded.
-pub fn list_repository_paths(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<HashMap<String, Option<i64>>> {
-    let mut stmt = conn.prepare(
-        "SELECT path, git_dir_mtime FROM repositories WHERE workspace_id = ?1 AND is_deleted = 0",
-    )?;
+pub fn list_repository_paths(conn: &Connection, workspace_id: i64) -> AppResult<HashMap<String, Option<i64>>> {
+    let mut stmt =
+        conn.prepare("SELECT path, git_dir_mtime FROM repositories WHERE workspace_id = ?1 AND is_deleted = 0")?;
     let rows = stmt.query_map(params![workspace_id], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
     })?;
@@ -184,10 +166,7 @@ pub fn list_repository_paths(
 }
 
 /// List all repositories for a given workspace (excluding soft-deleted ones).
-pub fn list_repositories_by_workspace(
-    conn: &Connection,
-    workspace_id: i64,
-) -> AppResult<Vec<Repository>> {
+pub fn list_repositories_by_workspace(conn: &Connection, workspace_id: i64) -> AppResult<Vec<Repository>> {
     let mut stmt = conn.prepare(
         r#"SELECT id, workspace_id, path, name, relative_path, is_favorite, tags, group_id
            FROM repositories
@@ -198,8 +177,7 @@ pub fn list_repositories_by_workspace(
     let repos = stmt
         .query_map(params![workspace_id], |row| {
             let tags_str: String = row.get(6).unwrap_or_else(|_| "[]".to_string());
-            let tags: Vec<String> =
-                serde_json::from_str(&tags_str).unwrap_or_default();
+            let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
             Ok(Repository {
                 id: Some(row.get(0)?),
                 workspace_id: row.get(1)?,
@@ -221,11 +199,7 @@ pub fn list_repositories_by_workspace(
 /// Rows are marked `is_deleted = 1` instead of being hard-deleted, so tags,
 /// groups, favorites and cached metadata survive a temporary move/removal and
 /// are restored on the next successful scan (see `upsert_repositories_batch`).
-pub fn cleanup_stale_repositories(
-    conn: &Connection,
-    workspace_id: i64,
-    existing_paths: &[String],
-) -> AppResult<()> {
+pub fn cleanup_stale_repositories(conn: &Connection, workspace_id: i64, existing_paths: &[String]) -> AppResult<()> {
     let now = Utc::now().to_rfc3339();
     // Build placeholder string for the IN clause. The first two bound params
     // are workspace_id and now, so the IN placeholders start at ?3.
@@ -235,22 +209,18 @@ pub fn cleanup_stale_repositories(
             params![workspace_id, now],
         )?;
     } else {
-        let placeholders: Vec<String> = (0..existing_paths.len())
-            .map(|i| format!("?{}", i + 3))
-            .collect();
+        let placeholders: Vec<String> = (0..existing_paths.len()).map(|i| format!("?{}", i + 3)).collect();
         let sql = format!(
             "UPDATE repositories SET is_deleted = 1, updated_at = ?2 WHERE workspace_id = ?1 AND is_deleted = 0 AND path NOT IN ({})",
             placeholders.join(", ")
         );
 
-        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
-            vec![Box::new(workspace_id), Box::new(now)];
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(workspace_id), Box::new(now)];
         for path in existing_paths {
             params_vec.push(Box::new(path.clone()));
         }
 
-        let params_ref: Vec<&dyn rusqlite::ToSql> =
-            params_vec.iter().map(|p| p.as_ref()).collect();
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
 
         conn.execute(&sql, params_ref.as_slice())?;
     }
@@ -259,31 +229,23 @@ pub fn cleanup_stale_repositories(
 
 /// Soft-delete a specific set of repositories (used by Scan Selected / subtree
 /// scans so repositories outside the scanned subtree are never touched).
-pub fn soft_delete_repositories(
-    conn: &Connection,
-    workspace_id: i64,
-    paths: &[String],
-) -> AppResult<()> {
+pub fn soft_delete_repositories(conn: &Connection, workspace_id: i64, paths: &[String]) -> AppResult<()> {
     if paths.is_empty() {
         return Ok(());
     }
     let now = Utc::now().to_rfc3339();
-    let placeholders: Vec<String> = (0..paths.len())
-        .map(|i| format!("?{}", i + 3))
-        .collect();
+    let placeholders: Vec<String> = (0..paths.len()).map(|i| format!("?{}", i + 3)).collect();
     let sql = format!(
         "UPDATE repositories SET is_deleted = 1, updated_at = ?2 WHERE workspace_id = ?1 AND is_deleted = 0 AND path IN ({})",
         placeholders.join(", ")
     );
 
-    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
-        vec![Box::new(workspace_id), Box::new(now)];
+    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(workspace_id), Box::new(now)];
     for path in paths {
         params_vec.push(Box::new(path.clone()));
     }
 
-    let params_ref: Vec<&dyn rusqlite::ToSql> =
-        params_vec.iter().map(|p| p.as_ref()).collect();
+    let params_ref: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
 
     conn.execute(&sql, params_ref.as_slice())?;
     Ok(())
@@ -384,11 +346,7 @@ pub fn delete_group(conn: &Connection, id: i64) -> AppResult<()> {
 }
 
 /// Assign a repository to a group by repo path.
-pub fn assign_group_by_path(
-    conn: &Connection,
-    repo_path: &str,
-    group_id: Option<i64>,
-) -> AppResult<()> {
+pub fn assign_group_by_path(conn: &Connection, repo_path: &str, group_id: Option<i64>) -> AppResult<()> {
     conn.execute(
         "UPDATE repositories SET group_id = ?1 WHERE path = ?2",
         params![group_id, repo_path],
@@ -414,11 +372,7 @@ pub fn get_repository_id_by_path(conn: &Connection, path: &str) -> AppResult<Opt
 
 /// Upsert a batch of commit metadata plus parent edges in one transaction.
 /// Existing commits (by `repo_id` + `oid`) are refreshed in place.
-pub fn upsert_commits_batch(
-    conn: &mut Connection,
-    repo_id: i64,
-    commits: &[CommitRecord],
-) -> AppResult<()> {
+pub fn upsert_commits_batch(conn: &mut Connection, repo_id: i64, commits: &[CommitRecord]) -> AppResult<()> {
     if commits.is_empty() {
         return Ok(());
     }
@@ -461,11 +415,7 @@ pub fn upsert_commits_batch(
 }
 
 /// Read a single cached commit record (metadata + parents) for a repository.
-pub fn get_commit_record(
-    conn: &Connection,
-    repo_id: i64,
-    oid: &str,
-) -> AppResult<Option<CommitRecord>> {
+pub fn get_commit_record(conn: &Connection, repo_id: i64, oid: &str) -> AppResult<Option<CommitRecord>> {
     use rusqlite::OptionalExtension;
 
     let meta = conn
@@ -576,7 +526,10 @@ pub fn insert_task_history(
 
 /// List recent task history records.
 #[allow(dead_code)]
-pub fn list_task_history(conn: &Connection, limit: i64) -> AppResult<Vec<(i64, String, String, String, Option<String>, String, Option<String>)>> {
+pub fn list_task_history(
+    conn: &Connection,
+    limit: i64,
+) -> AppResult<Vec<(i64, String, String, String, Option<String>, String, Option<String>)>> {
     let mut stmt = conn.prepare(
         "SELECT id, task_type, repo_path, status, message, started_at, finished_at FROM task_history ORDER BY started_at DESC LIMIT ?1",
     )?;
@@ -628,21 +581,12 @@ pub fn replace_branches(
 }
 
 /// Replace the remote-tracking-branch snapshot of a repository.
-pub fn replace_remote_branches(
-    conn: &mut Connection,
-    repo_id: i64,
-    names: &[String],
-) -> AppResult<()> {
+pub fn replace_remote_branches(conn: &mut Connection, repo_id: i64, names: &[String]) -> AppResult<()> {
     let now = Utc::now().to_rfc3339();
     let tx = conn.transaction()?;
-    tx.execute(
-        "DELETE FROM remote_branches WHERE repo_id = ?1",
-        params![repo_id],
-    )?;
+    tx.execute("DELETE FROM remote_branches WHERE repo_id = ?1", params![repo_id])?;
     {
-        let mut stmt = tx.prepare(
-            "INSERT INTO remote_branches (repo_id, name, updated_at) VALUES (?1, ?2, ?3)",
-        )?;
+        let mut stmt = tx.prepare("INSERT INTO remote_branches (repo_id, name, updated_at) VALUES (?1, ?2, ?3)")?;
         for name in names {
             stmt.execute(params![repo_id, name, now])?;
         }
@@ -653,18 +597,13 @@ pub fn replace_remote_branches(
 
 /// Replace the tag snapshot of a repository.
 /// `tags` items are `(name, target_oid)`.
-pub fn replace_tags(
-    conn: &mut Connection,
-    repo_id: i64,
-    tags: &[(String, Option<String>)],
-) -> AppResult<()> {
+pub fn replace_tags(conn: &mut Connection, repo_id: i64, tags: &[(String, Option<String>)]) -> AppResult<()> {
     let now = Utc::now().to_rfc3339();
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM tags WHERE repo_id = ?1", params![repo_id])?;
     {
-        let mut stmt = tx.prepare(
-            "INSERT INTO tags (repo_id, name, target_oid, updated_at) VALUES (?1, ?2, ?3, ?4)",
-        )?;
+        let mut stmt =
+            tx.prepare("INSERT INTO tags (repo_id, name, target_oid, updated_at) VALUES (?1, ?2, ?3, ?4)")?;
         for (name, target_oid) in tags {
             stmt.execute(params![repo_id, name, target_oid, now])?;
         }
@@ -690,9 +629,8 @@ pub fn replace_stashes(
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM stashes WHERE repo_id = ?1", params![repo_id])?;
     {
-        let mut stmt = tx.prepare(
-            "INSERT INTO stashes (repo_id, stash_ref, message, created_at) VALUES (?1, ?2, ?3, ?4)",
-        )?;
+        let mut stmt =
+            tx.prepare("INSERT INTO stashes (repo_id, stash_ref, message, created_at) VALUES (?1, ?2, ?3, ?4)")?;
         for (stash_ref, message, created_at) in stashes {
             stmt.execute(params![repo_id, stash_ref, message, created_at])?;
         }
@@ -703,12 +641,7 @@ pub fn replace_stashes(
 
 /// Set or clear the per-repository commit identity override (T-11 §54).
 /// Both `None` clears the override (fall back to group/git default).
-pub fn set_repo_identity(
-    conn: &Connection,
-    repo_path: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-) -> AppResult<()> {
+pub fn set_repo_identity(conn: &Connection, repo_path: &str, name: Option<&str>, email: Option<&str>) -> AppResult<()> {
     conn.execute(
         "UPDATE repositories SET author_name = ?1, author_email = ?2, updated_at = ?3 WHERE path = ?4",
         rusqlite::params![name, email, chrono::Utc::now().to_rfc3339(), repo_path],
@@ -717,12 +650,7 @@ pub fn set_repo_identity(
 }
 
 /// Set or clear the per-group commit identity override (T-11 §54).
-pub fn set_group_identity(
-    conn: &Connection,
-    group_id: i64,
-    name: Option<&str>,
-    email: Option<&str>,
-) -> AppResult<()> {
+pub fn set_group_identity(conn: &Connection, group_id: i64, name: Option<&str>, email: Option<&str>) -> AppResult<()> {
     conn.execute(
         "UPDATE repo_groups SET author_name = ?1, author_email = ?2 WHERE id = ?3",
         rusqlite::params![name, email, group_id],
@@ -787,7 +715,11 @@ pub fn resolve_commit_identity(
             )
             .optional()?
             .unwrap_or(false);
-        if from_group { "group" } else { "mixed" }
+        if from_group {
+            "group"
+        } else {
+            "mixed"
+        }
     };
 
     Ok(Some(crate::models::commit::CommitIdentity {
@@ -797,21 +729,15 @@ pub fn resolve_commit_identity(
     }))
 }
 
-
 /// Replace the worktree snapshot of a repository (T-17).
 /// `worktrees` items are `(path, branch)`.
-pub fn replace_worktrees(
-    conn: &mut Connection,
-    repo_id: i64,
-    worktrees: &[(String, Option<String>)],
-) -> AppResult<()> {
+pub fn replace_worktrees(conn: &mut Connection, repo_id: i64, worktrees: &[(String, Option<String>)]) -> AppResult<()> {
     let now = Utc::now().to_rfc3339();
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM worktrees WHERE repo_id = ?1", params![repo_id])?;
     {
-        let mut stmt = tx.prepare(
-            "INSERT INTO worktrees (repo_id, path, branch, created_at) VALUES (?1, ?2, ?3, ?4)",
-        )?;
+        let mut stmt =
+            tx.prepare("INSERT INTO worktrees (repo_id, path, branch, created_at) VALUES (?1, ?2, ?3, ?4)")?;
         for (path, branch) in worktrees {
             stmt.execute(params![repo_id, path, branch, now])?;
         }

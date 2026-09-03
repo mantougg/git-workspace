@@ -48,9 +48,7 @@ pub struct DiffConfig {
 impl DiffConfig {
     /// Bit flags for cache keys (revision-diff LRU, T-12).
     pub fn bits(&self) -> u8 {
-        (self.ignore_whitespace as u8)
-            | ((self.ignore_whitespace_eol as u8) << 1)
-            | ((self.ignore_case as u8) << 2)
+        (self.ignore_whitespace as u8) | ((self.ignore_whitespace_eol as u8) << 1) | ((self.ignore_case as u8) << 2)
     }
 }
 
@@ -79,10 +77,7 @@ pub fn get_workdir_diff(repo_path: &Path) -> AppResult<Vec<FileDiff>> {
 }
 
 /// Like [`get_workdir_diff`], but with explicit diff rendering options.
-pub fn get_workdir_diff_with_config(
-    repo_path: &Path,
-    config: &DiffConfig,
-) -> AppResult<Vec<FileDiff>> {
+pub fn get_workdir_diff_with_config(repo_path: &Path, config: &DiffConfig) -> AppResult<Vec<FileDiff>> {
     let repo = git2::Repository::open(repo_path)?;
 
     // Get HEAD tree (or None if no commits exist)
@@ -98,8 +93,7 @@ pub fn get_workdir_diff_with_config(
     // (Roadmap §9) has no libgit2 equivalent, so it is applied as a
     // post-processing pass after the diff is computed.
 
-    let diff =
-        repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))?;
+    let diff = repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))?;
 
     let mut files = files_from_diff(&diff, Some(repo_path));
 
@@ -125,10 +119,7 @@ pub fn head_or_empty_tree(repo: &git2::Repository) -> AppResult<git2::Tree<'_>> 
 /// Unstaged changes only (T-12): index → working directory, including
 /// untracked files. This is the diff hunk/line staging operates on, so the UI
 /// must show exactly this set when offering "Stage" actions.
-pub fn get_unstaged_diff_with_config(
-    repo_path: &Path,
-    config: &DiffConfig,
-) -> AppResult<Vec<FileDiff>> {
+pub fn get_unstaged_diff_with_config(repo_path: &Path, config: &DiffConfig) -> AppResult<Vec<FileDiff>> {
     let repo = git2::Repository::open(repo_path)?;
     let mut diff_opts = base_diff_opts(config);
     diff_opts.include_untracked(true);
@@ -145,10 +136,7 @@ pub fn get_unstaged_diff_with_config(
 
 /// Staged changes only (T-12): HEAD tree → index. This is the diff
 /// "Unstage" actions operate on.
-pub fn get_staged_diff_with_config(
-    repo_path: &Path,
-    config: &DiffConfig,
-) -> AppResult<Vec<FileDiff>> {
+pub fn get_staged_diff_with_config(repo_path: &Path, config: &DiffConfig) -> AppResult<Vec<FileDiff>> {
     let repo = git2::Repository::open(repo_path)?;
     let head_tree = head_or_empty_tree(&repo)?;
     let mut diff_opts = base_diff_opts(config);
@@ -173,8 +161,7 @@ pub fn diff_trees_with_config(
     config: &DiffConfig,
 ) -> AppResult<Vec<FileDiff>> {
     let mut diff_opts = base_diff_opts(config);
-    let diff =
-        repo.diff_tree_to_tree(Some(old_tree), Some(new_tree), Some(&mut diff_opts))?;
+    let diff = repo.diff_tree_to_tree(Some(old_tree), Some(new_tree), Some(&mut diff_opts))?;
     let mut files = files_from_diff(&diff, None);
 
     if config.ignore_case {
@@ -203,11 +190,7 @@ pub fn diff_commit(repo: &git2::Repository, oid_spec: &str) -> AppResult<Vec<Fil
 /// Compute the diff between two revisions (branch / tag / oid specs) of an
 /// already-open repository, e.g. `main` vs `feature` for Branch Compare.
 /// Tracked-modification truncation (`extract_hunks` budget) applies as usual.
-pub fn diff_revisions(
-    repo: &git2::Repository,
-    base: &str,
-    other: &str,
-) -> AppResult<Vec<FileDiff>> {
+pub fn diff_revisions(repo: &git2::Repository, base: &str, other: &str) -> AppResult<Vec<FileDiff>> {
     let base_tree = repo.revparse_single(base)?.peel_to_tree()?;
     let other_tree = repo.revparse_single(other)?.peel_to_tree()?;
     let diff = repo.diff_tree_to_tree(Some(&base_tree), Some(&other_tree), None)?;
@@ -285,11 +268,8 @@ fn apply_ignore_case_to_files(files: &mut Vec<FileDiff>) {
         }
         // Keep only hunks that still contain add/delete lines; a hunk left with
         // only context lines (case-only change fully ignored) is meaningless.
-        file.hunks.retain(|h| {
-            h.lines
-                .iter()
-                .any(|l| l.line_type == "add" || l.line_type == "delete")
-        });
+        file.hunks
+            .retain(|h| h.lines.iter().any(|l| l.line_type == "add" || l.line_type == "delete"));
         // Files that already had no hunks (e.g. binary) stay untouched; files
         // whose diffs were fully filtered out disappear, matching how
         // `ignore_whitespace` removes whitespace-only deltas.
@@ -371,10 +351,7 @@ fn full_add_hunk_for_file(repo_path: &Path, new_path: &str) -> Option<Hunk> {
     if total_lines > MAX_DIFF_LINES_PER_FILE {
         lines.push(DiffLine {
             line_type: "context".to_string(),
-            content: format!(
-                "... ({} more lines truncated)",
-                total_lines - MAX_DIFF_LINES_PER_FILE
-            ),
+            content: format!("... ({} more lines truncated)", total_lines - MAX_DIFF_LINES_PER_FILE),
             old_line: None,
             new_line: None,
         });
@@ -407,9 +384,7 @@ fn extract_hunks(diff: &git2::Diff, delta_index: usize) -> Vec<Hunk> {
 
     // Total line count from patch metadata (no content extraction), used for
     // the truncation marker's "N more lines" count.
-    let total_lines: usize = (0..num_hunks)
-        .map(|h| patch.num_lines_in_hunk(h).unwrap_or(0))
-        .sum();
+    let total_lines: usize = (0..num_hunks).map(|h| patch.num_lines_in_hunk(h).unwrap_or(0)).sum();
     let mut budget = MAX_DIFF_LINES_PER_FILE;
 
     for hunk_idx in 0..num_hunks {
@@ -433,24 +408,9 @@ fn extract_hunks(diff: &git2::Diff, delta_index: usize) -> Vec<Hunk> {
             }
             if let Ok(line) = patch.line_in_hunk(hunk_idx, line_idx) {
                 let (line_type, content, old_line, new_line) = match line.origin() {
-                    '+' => (
-                        "add",
-                        line.content(),
-                        None,
-                        line.new_lineno(),
-                    ),
-                    '-' => (
-                        "delete",
-                        line.content(),
-                        line.old_lineno(),
-                        None,
-                    ),
-                    ' ' => (
-                        "context",
-                        line.content(),
-                        line.old_lineno(),
-                        line.new_lineno(),
-                    ),
+                    '+' => ("add", line.content(), None, line.new_lineno()),
+                    '-' => ("delete", line.content(), line.old_lineno(), None),
+                    ' ' => ("context", line.content(), line.old_lineno(), line.new_lineno()),
                     // Skip `\ No newline at end of file` marker lines (origins
                     // '>' / '<' / '='): they carry no content of their own,
                     // and keeping them would shift hunk line indices away from

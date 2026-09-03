@@ -13,9 +13,7 @@ use tauri::State;
 use crate::commands::batch;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
-use crate::symbols::index::{
-    self, parse_filters, CallHit, IndexStats, RefHit, RepoScope, SymbolHit,
-};
+use crate::symbols::index::{self, parse_filters, CallHit, IndexStats, RefHit, RepoScope, SymbolHit};
 
 /// 从符号/引用表把仓库级过滤解析成 `RepoScope`。
 /// `@repo` / `@group` 走 DB；`@status` 复用 T-20 facet（需 workspace_id）。
@@ -58,16 +56,9 @@ fn resolve_scope(
 
     for status in &filters.statuses {
         let ws_id = workspace_id.ok_or_else(|| {
-            AppError::Other(
-                "@status: 过滤需要当前工作区上下文（请在工作区内使用该过滤器）".to_string(),
-            )
+            AppError::Other("@status: 过滤需要当前工作区上下文（请在工作区内使用该过滤器）".to_string())
         })?;
-        let paths = batch::facet_repo_paths(
-            conn,
-            &state.status_cache,
-            ws_id,
-            &format!("@status:{status}"),
-        )?;
+        let paths = batch::facet_repo_paths(conn, &state.status_cache, ws_id, &format!("@status:{status}"))?;
         sets.push(paths);
     }
 
@@ -76,17 +67,14 @@ fn resolve_scope(
     let first = iter.next().unwrap_or_default();
     let mut acc = first;
     for set in iter {
-        let set_norm: std::collections::HashSet<String> =
-            set.into_iter().map(|p| p.replace('\\', "/")).collect();
+        let set_norm: std::collections::HashSet<String> = set.into_iter().map(|p| p.replace('\\', "/")).collect();
         acc.retain(|p| set_norm.contains(&p.replace('\\', "/")));
         if acc.is_empty() {
             break;
         }
     }
 
-    Ok(RepoScope {
-        repo_paths: Some(acc),
-    })
+    Ok(RepoScope { repo_paths: Some(acc) })
 }
 
 fn index_repo_common(
@@ -182,12 +170,5 @@ pub fn symbol_call_hierarchy(
         .lock()
         .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
     let scope = resolve_scope(&conn, &state, &filters, workspace_id)?;
-    index::call_hierarchy(
-        &conn,
-        &name,
-        &direction,
-        &scope,
-        &filters.exts,
-        &filters.paths,
-    )
+    index::call_hierarchy(&conn, &name, &direction, &scope, &filters.exts, &filters.paths)
 }

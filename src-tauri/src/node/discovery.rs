@@ -90,11 +90,7 @@ impl NodePackageCache {
         self.parse_count.load(Ordering::Relaxed)
     }
 
-    fn get_or_parse(
-        &self,
-        path: &Path,
-        bytes: &[u8],
-    ) -> Result<(String, ParsedPackageJson, bool), NodeDiscoveryError> {
+    fn get_or_parse(&self, path: &Path, bytes: &[u8]) -> Result<(String, ParsedPackageJson, bool), NodeDiscoveryError> {
         let key = path_key(path);
         let hash = hex_hash(bytes);
         if let Ok(entries) = self.entries.lock() {
@@ -139,9 +135,7 @@ pub fn discover_package_jsons(
 
     let mut paths = HashSet::new();
     for repo in repos {
-        if let Some(found) =
-            collect_package_json_paths(Path::new(&repo.path), workspace_root, cancel)
-        {
+        if let Some(found) = collect_package_json_paths(Path::new(&repo.path), workspace_root, cancel) {
             paths.extend(found.into_iter().map(|path| path_key(&path)));
         }
     }
@@ -195,11 +189,7 @@ fn parse_project(
     })?;
     let (hash, parsed, cache_hit) = match cache {
         Some(cache) => cache.get_or_parse(manifest, &bytes)?,
-        None => (
-            hex_hash(&bytes),
-            parse_package_json_bytes(manifest, &bytes)?,
-            false,
-        ),
+        None => (hex_hash(&bytes), parse_package_json_bytes(manifest, &bytes)?, false),
     };
     let dir = manifest.parent().unwrap_or_else(|| Path::new(""));
     let decision = decide_package_manager(&DecisionInput {
@@ -223,10 +213,7 @@ fn parse_project(
     ))
 }
 
-fn parse_package_json_bytes(
-    path: &Path,
-    bytes: &[u8],
-) -> Result<ParsedPackageJson, NodeDiscoveryError> {
+fn parse_package_json_bytes(path: &Path, bytes: &[u8]) -> Result<ParsedPackageJson, NodeDiscoveryError> {
     let value: Value = serde_json::from_slice(bytes).map_err(|source| NodeDiscoveryError {
         code: "InvalidPackageJson".into(),
         path: path.display().to_string(),
@@ -244,10 +231,7 @@ fn parse_package_json_bytes(
     } else {
         "{}".into()
     };
-    let package_manager = object
-        .get("packageManager")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let package_manager = object.get("packageManager").and_then(Value::as_str).map(str::to_string);
     Ok(ParsedPackageJson {
         name,
         version,
@@ -277,10 +261,7 @@ fn extract_raw_object(bytes: &[u8], key: &str) -> Option<String> {
                 in_string = false;
                 if depth == 1 {
                     if let Some(start) = key_start {
-                        let is_key = text[offset + 1..]
-                            .chars()
-                            .find(|next| !next.is_whitespace())
-                            == Some(':');
+                        let is_key = text[offset + 1..].chars().find(|next| !next.is_whitespace()) == Some(':');
                         if is_key && text[start..offset + 1] == marker {
                             marker_pos = Some(start);
                             break;
@@ -339,18 +320,10 @@ fn extract_raw_object(bytes: &[u8], key: &str) -> Option<String> {
 }
 
 fn string_field(object: &serde_json::Map<String, Value>, key: &str) -> String {
-    object
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
+    object.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
-fn collect_package_json_paths(
-    root: &Path,
-    workspace_root: &Path,
-    cancel: Option<&AtomicBool>,
-) -> Option<Vec<PathBuf>> {
+fn collect_package_json_paths(root: &Path, workspace_root: &Path, cancel: Option<&AtomicBool>) -> Option<Vec<PathBuf>> {
     let workspace_ignore = IgnoreRules::load(workspace_root);
     let local_ignore = IgnoreRules::load(root);
     let mut walker = WalkDir::new(root).follow_links(false).into_iter();
@@ -364,8 +337,7 @@ fn collect_package_json_paths(
                 if entry.file_type().is_dir() {
                     let name = entry.file_name();
                     if entry.path() != root
-                        && (entry.path().join(".git").is_dir()
-                            || entry.path().join(".git").is_file())
+                        && (entry.path().join(".git").is_dir() || entry.path().join(".git").is_file())
                     {
                         walker.skip_current_dir();
                         continue;
@@ -381,9 +353,7 @@ fn collect_package_json_paths(
                     {
                         walker.skip_current_dir();
                     }
-                } else if entry.file_type().is_file()
-                    && entry.file_name() == OsStr::new("package.json")
-                {
+                } else if entry.file_type().is_file() && entry.file_name() == OsStr::new("package.json") {
                     paths.push(entry.path().to_path_buf());
                 }
             }
@@ -477,8 +447,8 @@ pub fn list_node_projects(conn: &Connection, workspace_id: i64) -> AppResult<Vec
     let mut projects = rows.collect::<Result<Vec<_>, _>>()?;
     // N-09：逐项向上推断 workspace 归属（几级 stat/read，量级可忽略）。
     for project in &mut projects {
-        project.workspace_root = super::workspace::find_workspace_root(&project.path, 4)
-            .map(|root| root.to_string_lossy().into_owned());
+        project.workspace_root =
+            super::workspace::find_workspace_root(&project.path, 4).map(|root| root.to_string_lossy().into_owned());
     }
     Ok(projects)
 }
@@ -567,10 +537,7 @@ mod tests {
         );
         let parsed = parse_package_json_bytes(&path, &std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(parsed.name, "web");
-        assert_eq!(
-            parsed.scripts_json,
-            r#"{"dev":"vite","build":"vite build"}"#
-        );
+        assert_eq!(parsed.scripts_json, r#"{"dev":"vite","build":"vite build"}"#);
         assert!(!parsed.scripts_json.contains("dependencies"));
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -582,10 +549,7 @@ mod tests {
             &root.join("app/package.json"),
             r#"{"name":"app","scripts":{"dev":"vite"}}"#,
         );
-        write(
-            &root.join("node_modules/pkg/package.json"),
-            r#"{"name":"bad"}"#,
-        );
+        write(&root.join("node_modules/pkg/package.json"), r#"{"name":"bad"}"#);
         write(&root.join("dist/package.json"), r#"{"name":"bad"}"#);
         write(&root.join(".hidden/package.json"), r#"{"name":"bad"}"#);
         let result = discover_package_jsons(&root, 5, None, None);
@@ -638,10 +602,7 @@ mod tests {
     #[test]
     fn sync_is_idempotent_and_replaces_stale_rows() {
         let root = std::env::temp_dir().join(format!("gw_node_sync_{}", uuid::Uuid::new_v4()));
-        write(
-            &root.join("app/package.json"),
-            r#"{"name":"app","version":"1"}"#,
-        );
+        write(&root.join("app/package.json"), r#"{"name":"app","version":"1"}"#);
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         crate::db::init_db(&mut conn).unwrap();
         conn.execute(
@@ -684,11 +645,7 @@ mod tests {
         }
         let result = discover_package_jsons(&root, 5, Some(&NodePackageCache::new()), None);
         assert_eq!(result.projects.len(), 100);
-        assert!(
-            result.elapsed_ms < 500,
-            "discovery took {}ms",
-            result.elapsed_ms
-        );
+        assert!(result.elapsed_ms < 500, "discovery took {}ms", result.elapsed_ms);
         let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -210,9 +210,7 @@ const COLS: &str = "id, request_id, action_kind, risk_level, target_scope_json,
 
 pub fn get(conn: &Connection, proposal_id: &str) -> AppResult<Option<ProposalRecord>> {
     let mut stmt = conn.prepare(&format!("SELECT {COLS} FROM ai_proposals WHERE id = ?1"))?;
-    Ok(stmt
-        .query_row(params![proposal_id], row_to_record)
-        .optional()?)
+    Ok(stmt.query_row(params![proposal_id], row_to_record).optional()?)
 }
 
 pub fn list(conn: &Connection, status: Option<ProposalStatus>) -> AppResult<Vec<ActionProposal>> {
@@ -251,9 +249,11 @@ fn expiry_check(conn: &Connection, record: &ProposalRecord) -> AppResult<()> {
 }
 
 pub fn confirm(conn: &Connection, proposal_id: &str, second_confirmation: bool) -> AppResult<ActionProposal> {
-    let record = get(conn, proposal_id)?.ok_or_else(|| AppError::Ai(AiError::ProposalNotFound {
-        proposal_id: proposal_id.to_string(),
-    }))?;
+    let record = get(conn, proposal_id)?.ok_or_else(|| {
+        AppError::Ai(AiError::ProposalNotFound {
+            proposal_id: proposal_id.to_string(),
+        })
+    })?;
     expiry_check(conn, &record)?;
     if record.proposal.risk_level == RiskLevel::High && !second_confirmation {
         return Err(AppError::Ai(AiError::ActionConfirmationRequired {
@@ -284,9 +284,11 @@ pub fn confirm(conn: &Connection, proposal_id: &str, second_confirmation: bool) 
 }
 
 pub fn reject(conn: &Connection, proposal_id: &str) -> AppResult<ActionProposal> {
-    let record = get(conn, proposal_id)?.ok_or_else(|| AppError::Ai(AiError::ProposalNotFound {
-        proposal_id: proposal_id.to_string(),
-    }))?;
+    let record = get(conn, proposal_id)?.ok_or_else(|| {
+        AppError::Ai(AiError::ProposalNotFound {
+            proposal_id: proposal_id.to_string(),
+        })
+    })?;
     expiry_check(conn, &record)?;
     conn.execute(
         "UPDATE ai_proposals SET status = 'rejected' WHERE id = ?1 AND status = 'pending'",
@@ -298,9 +300,11 @@ pub fn reject(conn: &Connection, proposal_id: &str) -> AppResult<ActionProposal>
 }
 
 pub fn mark_executed(conn: &Connection, proposal_id: &str, task_id: &str) -> AppResult<ActionProposal> {
-    let record = get(conn, proposal_id)?.ok_or_else(|| AppError::Ai(AiError::ProposalNotFound {
-        proposal_id: proposal_id.to_string(),
-    }))?;
+    let record = get(conn, proposal_id)?.ok_or_else(|| {
+        AppError::Ai(AiError::ProposalNotFound {
+            proposal_id: proposal_id.to_string(),
+        })
+    })?;
     if record.proposal.status != ProposalStatus::Confirmed {
         return Err(AppError::Ai(AiError::ProposalStateInvalid {
             proposal_id: proposal_id.to_string(),
@@ -397,17 +401,32 @@ mod tests {
     fn state_machine_covers_confirm_execute_reject() {
         let conn = db();
         let p = sample(&conn, RiskLevel::Medium);
-        assert_eq!(confirm(&conn, &p.proposal_id, false).unwrap().status, ProposalStatus::Confirmed);
-        assert_eq!(mark_executed(&conn, &p.proposal_id, "task-1").unwrap().status, ProposalStatus::Executed);
-        assert!(matches!(reject(&conn, &p.proposal_id), Err(AppError::Ai(AiError::ProposalStateInvalid { .. }))));
+        assert_eq!(
+            confirm(&conn, &p.proposal_id, false).unwrap().status,
+            ProposalStatus::Confirmed
+        );
+        assert_eq!(
+            mark_executed(&conn, &p.proposal_id, "task-1").unwrap().status,
+            ProposalStatus::Executed
+        );
+        assert!(matches!(
+            reject(&conn, &p.proposal_id),
+            Err(AppError::Ai(AiError::ProposalStateInvalid { .. }))
+        ));
     }
 
     #[test]
     fn high_risk_requires_second_confirmation() {
         let conn = db();
         let p = sample(&conn, RiskLevel::High);
-        assert!(matches!(confirm(&conn, &p.proposal_id, false), Err(AppError::Ai(AiError::ActionConfirmationRequired { .. }))));
-        assert_eq!(confirm(&conn, &p.proposal_id, true).unwrap().status, ProposalStatus::Confirmed);
+        assert!(matches!(
+            confirm(&conn, &p.proposal_id, false),
+            Err(AppError::Ai(AiError::ActionConfirmationRequired { .. }))
+        ));
+        assert_eq!(
+            confirm(&conn, &p.proposal_id, true).unwrap().status,
+            ProposalStatus::Confirmed
+        );
     }
 
     #[test]
@@ -415,8 +434,18 @@ mod tests {
         let conn = db();
         let mut p = sample(&conn, RiskLevel::Low);
         p.expires_at = (Utc::now() - Duration::minutes(1)).to_rfc3339();
-        conn.execute("UPDATE ai_proposals SET expires_at = ?1 WHERE id = ?2", params![p.expires_at, p.proposal_id]).unwrap();
-        assert!(matches!(confirm(&conn, &p.proposal_id, false), Err(AppError::Ai(AiError::ProposalExpired { .. }))));
-        assert_eq!(get(&conn, &p.proposal_id).unwrap().unwrap().proposal.status, ProposalStatus::Expired);
+        conn.execute(
+            "UPDATE ai_proposals SET expires_at = ?1 WHERE id = ?2",
+            params![p.expires_at, p.proposal_id],
+        )
+        .unwrap();
+        assert!(matches!(
+            confirm(&conn, &p.proposal_id, false),
+            Err(AppError::Ai(AiError::ProposalExpired { .. }))
+        ));
+        assert_eq!(
+            get(&conn, &p.proposal_id).unwrap().unwrap().proposal.status,
+            ProposalStatus::Expired
+        );
     }
 }

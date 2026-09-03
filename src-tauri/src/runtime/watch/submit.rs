@@ -20,16 +20,9 @@ impl WatchTaskSubmitter for crate::task::manager::TaskManager {
 impl super::RuntimeWatchEngine {
     /// 提交 RebuildRestart 任务。返回是否成功提交；失败时调用方负责把
     /// `modules` 放回 pending（本方法不再动 in_flight 状态）。
-    pub(super) fn submit_rebuild(
-        &self,
-        workspace_id: i64,
-        runtime_name: &str,
-        modules: &[String],
-    ) -> bool {
+    pub(super) fn submit_rebuild(&self, workspace_id: i64, runtime_name: &str, modules: &[String]) -> bool {
         let Some(submitter) = self.task_manager.lock().unwrap().clone() else {
-            log::debug!(
-                "R-17: task manager not attached yet; rebuild for '{runtime_name}' kept pending"
-            );
+            log::debug!("R-17: task manager not attached yet; rebuild for '{runtime_name}' kept pending");
             return false;
         };
         let request = TaskRequest {
@@ -47,9 +40,7 @@ impl super::RuntimeWatchEngine {
         };
         match submitter.submit(request) {
             Ok(task_id) => {
-                log::info!(
-                    "R-17: auto rebuild+restart submitted for '{runtime_name}' (task {task_id})"
-                );
+                log::info!("R-17: auto rebuild+restart submitted for '{runtime_name}' (task {task_id})");
                 true
             }
             Err(e) => {

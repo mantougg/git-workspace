@@ -18,10 +18,7 @@ use crate::state::AppState;
 /// Submit a dependency DAG of tasks (T-24). `dependsOn` entries are indices
 /// into `request.nodes`. Returns the DAG id (also the nodes' `batchId`).
 #[tauri::command]
-pub fn submit_dag_tasks(
-    request: DagSubmitRequest,
-    state: State<'_, AppState>,
-) -> AppResult<String> {
+pub fn submit_dag_tasks(request: DagSubmitRequest, state: State<'_, AppState>) -> AppResult<String> {
     state.task_manager.submit_dag(&request)
 }
 
@@ -98,12 +95,8 @@ pub fn run_pipeline(
     on_failure: Option<FailurePolicy>,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
-    let request = pipeline::compile_pipeline(
-        &pipeline,
-        &repos,
-        on_failure.unwrap_or_default(),
-    )
-    .map_err(AppError::Task)?;
+    let request =
+        pipeline::compile_pipeline(&pipeline, &repos, on_failure.unwrap_or_default()).map_err(AppError::Task)?;
     state.task_manager.submit_dag(&request)
 }
 

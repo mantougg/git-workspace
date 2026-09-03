@@ -146,10 +146,7 @@ pub fn record_finish(conn: &Connection, request_id: &str, finish: &AuditFinish<'
 }
 
 pub fn get_audit(conn: &Connection, request_id: &str) -> AppResult<Option<AiRequestAudit>> {
-    let mut stmt = conn.prepare(&format!(
-        "SELECT {} FROM ai_requests WHERE id = ?1",
-        AUDIT_COLS
-    ))?;
+    let mut stmt = conn.prepare(&format!("SELECT {} FROM ai_requests WHERE id = ?1", AUDIT_COLS))?;
     let mut rows = stmt.query_map(params![request_id], row_to_audit)?;
     match rows.next() {
         Some(row) => Ok(Some(row?)),
@@ -158,11 +155,7 @@ pub fn get_audit(conn: &Connection, request_id: &str) -> AppResult<Option<AiRequ
 }
 
 /// 会话维度的审计列表（最近的在前，Drawer 的「请求历史」用）。
-pub fn list_session_audits(
-    conn: &Connection,
-    session_id: &str,
-    limit: i64,
-) -> AppResult<Vec<AiRequestAudit>> {
+pub fn list_session_audits(conn: &Connection, session_id: &str, limit: i64) -> AppResult<Vec<AiRequestAudit>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {} FROM ai_requests WHERE session_id = ?1
          ORDER BY created_at DESC, id DESC LIMIT ?2",

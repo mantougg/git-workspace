@@ -23,10 +23,7 @@ pub enum AiError {
 
     /// 引用的模型不存在（或所属 Provider 不存在）。
     #[error("AI 模型不存在: {provider_id}/{model_id}")]
-    ModelNotFound {
-        provider_id: String,
-        model_id: String,
-    },
+    ModelNotFound { provider_id: String, model_id: String },
 
     /// 模型不具备任务所需能力（§6.3：请求前报错，不等 Provider 模糊失败）。
     #[error("模型 {model_id} 不支持所需能力 {capability}")]
@@ -61,10 +58,7 @@ pub enum AiError {
 
     /// 请求内容估算 token 超出预算/模型上下文限制（§6.3 请求前报错）。
     #[error("请求内容超出上下文预算（估算 {estimated_tokens} token > 预算 {budget_tokens}）")]
-    ContextTooLarge {
-        estimated_tokens: i64,
-        budget_tokens: i64,
-    },
+    ContextTooLarge { estimated_tokens: i64, budget_tokens: i64 },
 
     /// Provider 响应不是合法协议数据（非法 JSON / 缺字段 / 流式协议违规）。
     #[error("AI 响应无法解析: {message}")]
@@ -180,10 +174,9 @@ impl AiError {
             AiError::NotConfigured { .. } => {
                 vec!["打开 AI 设置添加 Provider 与模型", "配置任务默认模型"]
             }
-            AiError::CredentialUnavailable { .. } => vec![
-                "在 AI 设置-凭证中录入 API Key",
-                "凭证存储不可用时选择仅本次会话保存",
-            ],
+            AiError::CredentialUnavailable { .. } => {
+                vec!["在 AI 设置-凭证中录入 API Key", "凭证存储不可用时选择仅本次会话保存"]
+            }
             AiError::ModelNotFound { .. } => {
                 vec!["在 AI 设置-模型中检查模型配置", "重新选择任务默认模型"]
             }
@@ -240,7 +233,10 @@ impl AiError {
             AiError::ProposalStateInvalid { .. } => vec!["刷新 Proposal 状态"],
             AiError::ActionConfirmationRequired { .. } => vec!["检查影响范围后进行二次确认"],
             AiError::ExternalConfirmationRequired { .. } => {
-                vec!["由外部调用方显式携带确认标记后重试", "在 GitWorkspace 中确认生成的 Proposal"]
+                vec![
+                    "由外部调用方显式携带确认标记后重试",
+                    "在 GitWorkspace 中确认生成的 Proposal",
+                ]
             }
         }
     }
@@ -249,10 +245,7 @@ impl AiError {
     /// suggestedActions 后作为 `ErrorResponse.details` 的 JSON 字符串。
     pub fn details_json(&self) -> String {
         let mut details = match self {
-            AiError::ModelNotFound {
-                provider_id,
-                model_id,
-            } => serde_json::json!({
+            AiError::ModelNotFound { provider_id, model_id } => serde_json::json!({
                 "providerId": provider_id,
                 "modelId": model_id,
             }),
@@ -368,9 +361,7 @@ mod tests {
                 "AiProviderUnavailable",
             ),
             (
-                AiError::AuthenticationFailed {
-                    message: "401".into(),
-                },
+                AiError::AuthenticationFailed { message: "401".into() },
                 "AiAuthenticationFailed",
             ),
             (
@@ -379,12 +370,7 @@ mod tests {
                 },
                 "AiSecretDetected",
             ),
-            (
-                AiError::RateLimited {
-                    message: "429".into(),
-                },
-                "AiRateLimited",
-            ),
+            (AiError::RateLimited { message: "429".into() }, "AiRateLimited"),
             (
                 AiError::RequestCancelled {
                     request_id: "r1".into(),
@@ -466,8 +452,7 @@ mod tests {
                 "{} must carry suggested actions",
                 code
             );
-            let details: serde_json::Value =
-                serde_json::from_str(&err.details_json()).expect("details must be JSON");
+            let details: serde_json::Value = serde_json::from_str(&err.details_json()).expect("details must be JSON");
             assert!(details["suggestedActions"].is_array());
         }
     }
@@ -476,19 +461,12 @@ mod tests {
     /// 直接失败。
     #[test]
     fn retryable_classification_matches_design() {
-        assert!(
-            AiError::ProviderUnavailable {
-                message: "connect reset".into(),
-                transient: true
-            }
-            .is_retryable()
-        );
-        assert!(
-            AiError::RateLimited {
-                message: "429".into()
-            }
-            .is_retryable()
-        );
+        assert!(AiError::ProviderUnavailable {
+            message: "connect reset".into(),
+            transient: true
+        }
+        .is_retryable());
+        assert!(AiError::RateLimited { message: "429".into() }.is_retryable());
         assert!(
             !AiError::ProviderUnavailable {
                 message: "请求超时".into(),
@@ -497,25 +475,16 @@ mod tests {
             .is_retryable(),
             "超时不自动重试，避免长等待翻倍"
         );
-        assert!(
-            !AiError::AuthenticationFailed {
-                message: "401".into()
-            }
-            .is_retryable()
-        );
-        assert!(
-            !AiError::ModelNotFound {
-                provider_id: "p".into(),
-                model_id: "m".into()
-            }
-            .is_retryable()
-        );
-        assert!(
-            !AiError::PolicyRejected {
-                message: "policy".into()
-            }
-            .is_retryable()
-        );
+        assert!(!AiError::AuthenticationFailed { message: "401".into() }.is_retryable());
+        assert!(!AiError::ModelNotFound {
+            provider_id: "p".into(),
+            model_id: "m".into()
+        }
+        .is_retryable());
+        assert!(!AiError::PolicyRejected {
+            message: "policy".into()
+        }
+        .is_retryable());
     }
 
     /// 结构化变体的 details 必须带上下文字段（不含敏感内容）。

@@ -173,9 +173,7 @@ pub fn settings_fingerprint(request: &AiRequest) -> String {
                 i.redacted,
                 i.excluded,
                 i.truncated,
-                i.exclusion_reason
-                    .map(|r| r.as_str())
-                    .unwrap_or("-")
+                i.exclusion_reason.map(|r| r.as_str()).unwrap_or("-")
             )
         })
         .collect();
@@ -340,10 +338,7 @@ impl AiResultCache {
                 memory.order.retain(|k| *k != key);
             }
         }
-        if let Err(e) = conn.execute(
-            "DELETE FROM ai_result_cache WHERE session_id = ?1",
-            params![session_id],
-        ) {
+        if let Err(e) = conn.execute("DELETE FROM ai_result_cache WHERE session_id = ?1", params![session_id]) {
             log::warn!("ai cache invalidate session failed: {}", e);
         }
     }
@@ -374,8 +369,7 @@ impl AiResultCache {
 
     /// 持久层条目数（诊断用）。
     pub fn persisted_count(&self, conn: &Connection) -> AppResult<usize> {
-        let count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM ai_result_cache", [], |r| r.get(0))?;
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM ai_result_cache", [], |r| r.get(0))?;
         Ok(count as usize)
     }
 
@@ -425,9 +419,7 @@ fn row_to_cached(row: &rusqlite::Row) -> rusqlite::Result<CachedResult> {
         context_hash: row.get("context_hash")?,
         settings_hash: row.get("settings_hash")?,
         // 损坏或版本不兼容的行按未命中处理（不因缓存阻断请求）。
-        result: serde_json::from_str(&result_json).unwrap_or(super::request::AiResult::Answer {
-            text: String::new(),
-        }),
+        result: serde_json::from_str(&result_json).unwrap_or(super::request::AiResult::Answer { text: String::new() }),
         session_id: row.get("session_id")?,
         created_at: row.get("created_at")?,
     })
@@ -437,8 +429,7 @@ fn row_to_cached(row: &rusqlite::Row) -> rusqlite::Result<CachedResult> {
 mod tests {
     use super::*;
     use crate::ai::request::{
-        AiMessage, ContextItem, ContextKind, ExclusionReason, MessageRole, ResponseFormat,
-        ToolPolicy,
+        AiMessage, ContextItem, ContextKind, ExclusionReason, MessageRole, ResponseFormat, ToolPolicy,
     };
 
     fn open_db() -> Connection {
@@ -639,8 +630,7 @@ mod tests {
             .unwrap();
         assert_eq!(cache.persisted_count(&conn).unwrap(), 1);
 
-        conn.execute("DELETE FROM ai_sessions WHERE id = 's1'", [])
-            .unwrap();
+        conn.execute("DELETE FROM ai_sessions WHERE id = 's1'", []).unwrap();
         // 内存层必须与 DB 同步失效（否则会话已删仍可能命中内存旧结果）。
         cache.invalidate_session(&conn, "s1");
         assert_eq!(cache.persisted_count(&conn).unwrap(), 0);
@@ -695,20 +685,14 @@ mod tests {
             redacted: true,
             ..item.clone()
         }]);
-        assert_ne!(
-            settings_fingerprint(&with_item),
-            settings_fingerprint(&with_redacted)
-        );
+        assert_ne!(settings_fingerprint(&with_item), settings_fingerprint(&with_redacted));
 
         let with_excluded = request_with(vec![ContextItem {
             excluded: true,
             exclusion_reason: Some(ExclusionReason::User),
             ..item
         }]);
-        assert_ne!(
-            settings_fingerprint(&with_item),
-            settings_fingerprint(&with_excluded)
-        );
+        assert_ne!(settings_fingerprint(&with_item), settings_fingerprint(&with_excluded));
     }
 
     /// 清空缓存（§12.2 设置页「清除缓存」）。
@@ -718,10 +702,7 @@ mod tests {
         let cache = AiResultCache::new(4);
         for i in 0..3 {
             cache
-                .put(
-                    &conn,
-                    &entry(&parts(&format!("ctx-{i}")), "v", "2026-01-01T00:00:00Z"),
-                )
+                .put(&conn, &entry(&parts(&format!("ctx-{i}")), "v", "2026-01-01T00:00:00Z"))
                 .unwrap();
         }
         let removed = cache.clear(&conn).unwrap();

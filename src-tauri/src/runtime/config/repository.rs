@@ -13,32 +13,23 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::error::{AppError, AppResult};
 
 use super::model::{
-    CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeKind,
-    UpdateRuntimeConfigRequest,
+    CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeConfigSummary, RuntimeKind, UpdateRuntimeConfigRequest,
 };
 use super::storage::{
-    config_path, ensure_runtime_dir, normalized_for_storage, normalized_loaded_config,
-    read_config_file, write_bytes_atomic, write_config_file,
+    config_path, ensure_runtime_dir, normalized_for_storage, normalized_loaded_config, read_config_file,
+    write_bytes_atomic, write_config_file,
 };
-use super::validation::{
-    preserve_masked_values, redact_config, reject_symlink, validate_runtime_name,
-};
+use super::validation::{preserve_masked_values, redact_config, reject_symlink, validate_runtime_name};
 
 /// Create a Runtime config. The JSON document is written before the index row.
-pub fn create_config(
-    conn: &Connection,
-    request: &CreateRuntimeConfigRequest,
-) -> AppResult<RuntimeApplicationConfig> {
+pub fn create_config(conn: &Connection, request: &CreateRuntimeConfigRequest) -> AppResult<RuntimeApplicationConfig> {
     request.config.validate()?;
     let root = workspace_root(conn, request.workspace_id)?;
     validate_for_workspace(conn, request.workspace_id, &request.config)?;
     ensure_runtime_dir(&root)?;
     let path = config_path(&root, &request.config.name)?;
     if path.exists() {
-        return Err(AppError::Conflict(format!(
-            "Runtime 配置已存在：{}",
-            path.display()
-        )));
+        return Err(AppError::Conflict(format!("Runtime 配置已存在：{}", path.display())));
     }
     if runtime_name_exists(conn, request.workspace_id, &request.config.name)? {
         return Err(AppError::Conflict(format!(
@@ -85,11 +76,7 @@ pub fn list_configs(conn: &Connection, workspace_id: i64) -> AppResult<Vec<Runti
     rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
 }
 
-pub fn get_config(
-    conn: &Connection,
-    workspace_id: i64,
-    name: &str,
-) -> AppResult<RuntimeApplicationConfig> {
+pub fn get_config(conn: &Connection, workspace_id: i64, name: &str) -> AppResult<RuntimeApplicationConfig> {
     let config = load_config_unredacted(conn, workspace_id, name)?;
     Ok(redact_config(config))
 }
@@ -113,10 +100,7 @@ pub(crate) fn load_config_unredacted(
     Ok(config)
 }
 
-pub fn update_config(
-    conn: &Connection,
-    request: &UpdateRuntimeConfigRequest,
-) -> AppResult<RuntimeApplicationConfig> {
+pub fn update_config(conn: &Connection, request: &UpdateRuntimeConfigRequest) -> AppResult<RuntimeApplicationConfig> {
     validate_runtime_name(&request.name)?;
     let current = get_summary(conn, request.workspace_id, &request.name)?
         .ok_or_else(|| AppError::NotFound(format!("Runtime 配置 '{}' 不存在", request.name)))?;
@@ -138,8 +122,7 @@ pub fn update_config(
     validate_for_workspace(conn, request.workspace_id, &config)?;
     ensure_runtime_dir(&root)?;
     let new_path = config_path(&root, &config.name)?;
-    if config.name != request.name && runtime_name_exists(conn, request.workspace_id, &config.name)?
-    {
+    if config.name != request.name && runtime_name_exists(conn, request.workspace_id, &config.name)? {
         return Err(AppError::Conflict(format!(
             "工作区中已存在名为 '{}' 的 Runtime",
             config.name
@@ -223,15 +206,11 @@ pub fn delete_config(conn: &Connection, workspace_id: i64, name: &str) -> AppRes
 
 pub(crate) fn workspace_root(conn: &Connection, workspace_id: i64) -> AppResult<PathBuf> {
     let path: Option<String> = conn
-        .query_row(
-            "SELECT path FROM workspaces WHERE id = ?1",
-            [workspace_id],
-            |row| row.get(0),
-        )
+        .query_row("SELECT path FROM workspaces WHERE id = ?1", [workspace_id], |row| {
+            row.get(0)
+        })
         .optional()?;
-    let path = path.ok_or_else(|| {
-        AppError::ProjectNotFound(format!("workspace id={} 不存在", workspace_id))
-    })?;
+    let path = path.ok_or_else(|| AppError::ProjectNotFound(format!("workspace id={} 不存在", workspace_id)))?;
     let root = PathBuf::from(path);
     if !root.is_dir() {
         return Err(AppError::ProjectNotFound(format!(
@@ -251,11 +230,7 @@ fn runtime_name_exists(conn: &Connection, workspace_id: i64, name: &str) -> AppR
     Ok(exists != 0)
 }
 
-fn resolve_root_project_id(
-    conn: &Connection,
-    workspace_id: i64,
-    project: &str,
-) -> AppResult<Option<i64>> {
+fn resolve_root_project_id(conn: &Connection, workspace_id: i64, project: &str) -> AppResult<Option<i64>> {
     conn.query_row(
         "SELECT id FROM maven_projects
          WHERE workspace_id = ?1 AND (path = ?2 OR artifact_id = ?2)
@@ -297,11 +272,7 @@ fn insert_metadata(
     Ok(conn.last_insert_rowid())
 }
 
-pub(super) fn get_summary(
-    conn: &Connection,
-    workspace_id: i64,
-    name: &str,
-) -> AppResult<Option<RuntimeConfigSummary>> {
+pub(super) fn get_summary(conn: &Connection, workspace_id: i64, name: &str) -> AppResult<Option<RuntimeConfigSummary>> {
     conn.query_row(
         "SELECT id, workspace_id, name, project, kind, main_class, jdk, profile,
                 build_engine, config_path, created_at, updated_at
@@ -378,19 +349,14 @@ fn parse_runtime_kind(value: String) -> RuntimeKind {
 
 /// Validate Node script references against the indexed manifest, with a disk
 /// fallback when the discovery index is stale or not yet populated.
-fn validate_for_workspace(
-    conn: &Connection,
-    workspace_id: i64,
-    config: &RuntimeApplicationConfig,
-) -> AppResult<()> {
+fn validate_for_workspace(conn: &Connection, workspace_id: i64, config: &RuntimeApplicationConfig) -> AppResult<()> {
     if config.kind != RuntimeKind::Node {
         return Ok(());
     }
     let script = config.node_script.as_deref().unwrap_or_default().trim();
     let project_key = normalize_path(Path::new(&config.project));
     let indexed = {
-        let mut stmt =
-            conn.prepare("SELECT path, scripts_json FROM node_projects WHERE workspace_id = ?1")?;
+        let mut stmt = conn.prepare("SELECT path, scripts_json FROM node_projects WHERE workspace_id = ?1")?;
         let rows = stmt.query_map([workspace_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
@@ -429,11 +395,7 @@ fn validate_for_workspace(
     Ok(())
 }
 
-fn read_scripts_from_disk(
-    conn: &Connection,
-    workspace_id: i64,
-    project: &str,
-) -> Option<serde_json::Value> {
+fn read_scripts_from_disk(conn: &Connection, workspace_id: i64, project: &str) -> Option<serde_json::Value> {
     let root = workspace_root(conn, workspace_id).ok()?;
     let mut path = PathBuf::from(project);
     if !path.is_absolute() {

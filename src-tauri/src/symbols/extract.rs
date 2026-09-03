@@ -142,14 +142,9 @@ fn extract_from_tree(lang: &LangConfig, tree: &Tree, code: &str) -> FileExtracti
     }
     out.refs = merged
         .into_iter()
-        .map(|((name, line), is_call)| RefRec {
-            name,
-            line,
-            is_call,
-        })
+        .map(|((name, line), is_call)| RefRec { name, line, is_call })
         .collect();
-    out.refs
-        .sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
+    out.refs.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
     out
 }
 
@@ -221,10 +216,9 @@ fn find_first_descendant<'a>(root: Node<'a>, kind: &str) -> Option<Node<'a>> {
 /// 按定义节点推断 (kind, container)。容器优先走祖先，Go method 用 receiver。
 fn classify(lang_id: &str, def_node: Node, src: &[u8]) -> (&'static str, Option<String>) {
     let kind = match def_node.kind() {
-        "function_item"
-        | "function_declaration"
-        | "function_definition"
-        | "generator_function_declaration" => "function",
+        "function_item" | "function_declaration" | "function_definition" | "generator_function_declaration" => {
+            "function"
+        }
         "method_definition" | "method_declaration" | "constructor_declaration" => "method",
         "struct_item" | "type_spec" => "struct",
         "enum_item" | "enum_declaration" => "enum",
@@ -271,11 +265,7 @@ fn classify(lang_id: &str, def_node: Node, src: &[u8]) -> (&'static str, Option<
         || (lang_id == "python" && def_node.kind() == "function_definition")
     {
         let container = container_from_ancestor(def_node, src);
-        let kind = if container.is_some() {
-            "method"
-        } else {
-            "function"
-        };
+        let kind = if container.is_some() { "method" } else { "function" };
         return (kind, container);
     }
 
@@ -307,11 +297,7 @@ fn free_fn(x: u32) -> u32 { x }
 const MAX: u32 = 3;
 "#;
         let out = extract_one("rs", code);
-        let names: Vec<(&str, &str)> = out
-            .symbols
-            .iter()
-            .map(|s| (s.name.as_str(), s.kind))
-            .collect();
+        let names: Vec<(&str, &str)> = out.symbols.iter().map(|s| (s.name.as_str(), s.kind)).collect();
         assert!(names.contains(&("Foo", "struct")));
         assert!(names.contains(&("Color", "enum")));
         assert!(names.contains(&("Speak", "trait")));
@@ -346,11 +332,7 @@ export function make(): Service { return new Service(); }
 const fnExpr = () => 1;
 "#;
         let out = extract_one("ts", code);
-        let names: Vec<(&str, &str)> = out
-            .symbols
-            .iter()
-            .map(|s| (s.name.as_str(), s.kind))
-            .collect();
+        let names: Vec<(&str, &str)> = out.symbols.iter().map(|s| (s.name.as_str(), s.kind)).collect();
         assert!(names.contains(&("User", "interface")));
         assert!(names.contains(&("Maybe", "type")));
         assert!(names.contains(&("Service", "class")));

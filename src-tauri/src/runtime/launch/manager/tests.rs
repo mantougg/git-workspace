@@ -3,9 +3,7 @@ use crate::process::streaming::OutputStream;
 use crate::runtime::build::runner::{FakeMavenRunner, FakeRun};
 use crate::runtime::build::BuildOptions;
 use crate::runtime::build::RunStrategy;
-use crate::runtime::config::{
-    create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeKind,
-};
+use crate::runtime::config::{create_config, CreateRuntimeConfigRequest, RuntimeApplicationConfig, RuntimeKind};
 use crate::runtime::launch::launcher::{FakeBehavior, FakeLaunch, FakeLaunchRunner};
 use crate::runtime::launch::VecEventSink;
 use crate::runtime::logs::LogPhase;
@@ -57,11 +55,7 @@ fn mini_fixture(name: &str) -> MiniFixture {
         )
         .unwrap();
     }
-    MiniFixture {
-        root,
-        db,
-        workspace_id,
-    }
+    MiniFixture { root, db, workspace_id }
 }
 
 /// Maven 构建路径 fixture：单仓 parent(pom) + lib(jar) + app(jar→lib)，
@@ -134,8 +128,7 @@ fn maven_fixture(name: &str, spring_boot: bool) -> MavenFixture {
     .unwrap();
     let discovery = crate::maven::discover_poms(&root, 5, None, None);
     assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
-        .unwrap();
+    crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2")).unwrap();
 
     let config = RuntimeApplicationConfig {
         name: "app".into(),
@@ -143,14 +136,7 @@ fn maven_fixture(name: &str, spring_boot: bool) -> MavenFixture {
         main_class: (!spring_boot).then(|| "com.example.app.Application".to_string()),
         ..Default::default()
     };
-    create_config(
-        &conn,
-        &CreateRuntimeConfigRequest {
-            workspace_id,
-            config,
-        },
-    )
-    .unwrap();
+    create_config(&conn, &CreateRuntimeConfigRequest { workspace_id, config }).unwrap();
     MavenFixture {
         root,
         db: Arc::new(Mutex::new(conn)),
@@ -177,10 +163,7 @@ fn test_manager(
     ))
 }
 
-fn lifecycle_chain(
-    events: &VecEventSink,
-    process_id: i64,
-) -> Vec<(LifecycleStatus, LifecycleStatus)> {
+fn lifecycle_chain(events: &VecEventSink, process_id: i64) -> Vec<(LifecycleStatus, LifecycleStatus)> {
     events
         .collected()
         .iter()
@@ -242,9 +225,7 @@ fn start_stop_full_cycle_emits_lifecycle_events() {
             (OutputStream::Stdout, TOMCAT.into()),
             (OutputStream::Stdout, BANNER.into()),
         ],
-        behavior: FakeBehavior::StayAlive {
-            on_terminate: Some(0),
-        },
+        behavior: FakeBehavior::StayAlive { on_terminate: Some(0) },
         ..Default::default()
     }]));
     let manager = test_manager(
@@ -335,18 +316,10 @@ fn node_start_detects_first_localhost_url_within_grace() {
     let launcher = Arc::new(FakeLaunchRunner::new(vec![FakeLaunch {
         lines: vec![
             (OutputStream::Stdout, "Local: http://localhost:5173/".into()),
-            (
-                OutputStream::Stdout,
-                "Network: http://192.168.1.20:5173/".into(),
-            ),
-            (
-                OutputStream::Stdout,
-                "Inspector: http://127.0.0.1:9229/".into(),
-            ),
+            (OutputStream::Stdout, "Network: http://192.168.1.20:5173/".into()),
+            (OutputStream::Stdout, "Inspector: http://127.0.0.1:9229/".into()),
         ],
-        behavior: FakeBehavior::StayAlive {
-            on_terminate: Some(0),
-        },
+        behavior: FakeBehavior::StayAlive { on_terminate: Some(0) },
         ..Default::default()
     }]));
     let manager = test_manager(
@@ -392,10 +365,7 @@ fn build_and_run_output_flow_into_masked_log_session() {
         crate::runtime::set_workspace_environment(
             &conn,
             fixture.workspace_id,
-            std::collections::BTreeMap::from([(
-                "DB_PASSWORD".to_string(),
-                "topsecret-value".to_string(),
-            )]),
+            std::collections::BTreeMap::from([("DB_PASSWORD".to_string(), "topsecret-value".to_string())]),
         )
         .unwrap();
     }
@@ -415,15 +385,12 @@ fn build_and_run_output_flow_into_masked_log_session() {
         lines: vec![
             (
                 OutputStream::Stdout,
-                "2026-08-23 12:00:00.123  INFO 1 --- [main] c.e.App : connecting with topsecret-value"
-                    .into(),
+                "2026-08-23 12:00:00.123  INFO 1 --- [main] c.e.App : connecting with topsecret-value".into(),
             ),
             (OutputStream::Stdout, TOMCAT.into()),
             (OutputStream::Stdout, BANNER.into()),
         ],
-        behavior: FakeBehavior::StayAlive {
-            on_terminate: Some(0),
-        },
+        behavior: FakeBehavior::StayAlive { on_terminate: Some(0) },
         ..Default::default()
     }]));
     let manager = Arc::new(RuntimeProcessManager::with_deps(
@@ -452,32 +419,22 @@ fn build_and_run_output_flow_into_masked_log_session() {
         .join(".gitworkspace/logs/app")
         .join(format!("{}.log", info.process_id));
     let on_disk = std::fs::read_to_string(&log_file).unwrap();
-    assert!(
-        on_disk.contains("[INFO] BUILD SUCCESS"),
-        "构建输出进同一日志"
-    );
+    assert!(on_disk.contains("[INFO] BUILD SUCCESS"), "构建输出进同一日志");
     assert!(on_disk.contains("Started Application"), "运行输出落盘");
-    assert!(
-        !on_disk.contains("topsecret-value"),
-        "磁盘上不得有明文 secret"
-    );
+    assert!(!on_disk.contains("topsecret-value"), "磁盘上不得有明文 secret");
 
     // 聚合事件：Build / Run 两阶段都经 RuntimeEvent::Logs 推送且已脱敏。
     let log_lines: Vec<_> = events
         .collected()
         .into_iter()
         .flat_map(|event| match event {
-            RuntimeEvent::Logs {
-                process_id, lines, ..
-            } if process_id == info.process_id => lines,
+            RuntimeEvent::Logs { process_id, lines, .. } if process_id == info.process_id => lines,
             _ => Vec::new(),
         })
         .collect();
     assert!(log_lines.iter().any(|l| l.phase == LogPhase::Build));
     assert!(log_lines.iter().any(|l| l.phase == LogPhase::Run));
-    assert!(log_lines
-        .iter()
-        .all(|l| !l.line.contains("topsecret-value")));
+    assert!(log_lines.iter().all(|l| !l.line.contains("topsecret-value")));
     assert!(log_lines
         .iter()
         .any(|l| l.level == Some(crate::runtime::logs::LogLevel::Info)));
@@ -731,32 +688,20 @@ fn restart_reuses_cached_artifacts_without_rebuilding() {
         start_grace: Duration::from_millis(200),
         ..Default::default()
     };
-    let first = manager
-        .start(fixture.workspace_id, "app", options())
-        .unwrap();
+    let first = manager.start(fixture.workspace_id, "app", options()).unwrap();
     assert_eq!(first.status, LifecycleStatus::Running);
     assert_eq!(maven.request_count(), 1, "首次 start 构建一次");
 
-    let second = manager
-        .restart(fixture.workspace_id, "app", options())
-        .unwrap();
+    let second = manager.restart(fixture.workspace_id, "app", options()).unwrap();
     assert_eq!(second.status, LifecycleStatus::Running);
     assert_ne!(second.process_id, first.process_id, "restart 建新行");
-    assert_eq!(
-        maven.request_count(),
-        1,
-        "restart 复用缓存产物，不再调 Maven"
-    );
+    assert_eq!(maven.request_count(), 1, "restart 复用缓存产物，不再调 Maven");
     // skip-build 路径：Preparing 直达 Starting。
     use LifecycleStatus::*;
     let chain = lifecycle_chain(&events, second.process_id);
     assert_eq!(
         chain[..3],
-        [
-            (Created, Preparing),
-            (Preparing, Starting),
-            (Starting, Running)
-        ]
+        [(Created, Preparing), (Preparing, Starting), (Starting, Running)]
     );
 
     let first_row = manager.get_process(first.process_id).unwrap().unwrap();
@@ -785,9 +730,7 @@ fn missing_main_class_is_inferred_via_spring_boot_detection() {
     ]));
     let launcher = Arc::new(FakeLaunchRunner::new(vec![FakeLaunch {
         lines: vec![(OutputStream::Stdout, BANNER.into())],
-        behavior: FakeBehavior::StayAlive {
-            on_terminate: Some(0),
-        },
+        behavior: FakeBehavior::StayAlive { on_terminate: Some(0) },
         ..Default::default()
     }]));
     let manager = test_manager(
@@ -827,16 +770,12 @@ fn bound_jdk_is_used_for_launch_command() {
     let fixture = maven_fixture("jdkbind", false);
     {
         let conn = fixture.db.lock().unwrap();
-        let mut jdk = crate::java::model::JdkInstallation::new(
-            "/jdk-21",
-            crate::java::model::JdkDiscoverySource::System,
-        );
+        let mut jdk =
+            crate::java::model::JdkInstallation::new("/jdk-21", crate::java::model::JdkDiscoverySource::System);
         jdk.major_version = Some(21);
         jdk.is_valid = true;
         crate::java::registry::upsert_jdk(&conn, &jdk).unwrap();
-        let mut config =
-            crate::runtime::config::load_config_unredacted(&conn, fixture.workspace_id, "app")
-                .unwrap();
+        let mut config = crate::runtime::config::load_config_unredacted(&conn, fixture.workspace_id, "app").unwrap();
         config.jdk = Some("21".into());
         crate::runtime::config::update_config(
             &conn,
@@ -860,9 +799,7 @@ fn bound_jdk_is_used_for_launch_command() {
     ]));
     let launcher = Arc::new(FakeLaunchRunner::new(vec![FakeLaunch {
         lines: vec![(OutputStream::Stdout, BANNER.into())],
-        behavior: FakeBehavior::StayAlive {
-            on_terminate: Some(0),
-        },
+        behavior: FakeBehavior::StayAlive { on_terminate: Some(0) },
         ..Default::default()
     }]));
     let manager = test_manager(
@@ -970,11 +907,7 @@ mod real_process {
         )
     }
 
-    fn start_sh(
-        manager: &Arc<RuntimeProcessManager>,
-        fixture: &MiniFixture,
-        script: &str,
-    ) -> RuntimeProcessInfo {
+    fn start_sh(manager: &Arc<RuntimeProcessManager>, fixture: &MiniFixture, script: &str) -> RuntimeProcessInfo {
         manager.seed_cached_launch(
             fixture.workspace_id,
             "app",
@@ -997,11 +930,7 @@ mod real_process {
     #[test]
     fn force_kill_requires_confirmation_and_leaves_no_orphan() {
         let fixture = mini_fixture("fkill");
-        let manager = real_manager(
-            &fixture,
-            Arc::new(VecEventSink::default()),
-            Duration::from_millis(50),
-        );
+        let manager = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_millis(50));
         let info = start_sh(&manager, &fixture, "sleep 300 & wait");
         assert_eq!(info.status, LifecycleStatus::Running);
 
@@ -1023,32 +952,19 @@ mod real_process {
             .values()
             .filter(|p| p.name() == "sleep" && p.cmd().iter().any(|a| a == "300"))
             .collect();
-        assert!(
-            survivors.is_empty(),
-            "sleep 300 must be killed: {survivors:?}"
-        );
+        assert!(survivors.is_empty(), "sleep 300 must be killed: {survivors:?}");
         let _ = std::fs::remove_dir_all(&fixture.root);
     }
 
     #[test]
     fn stop_escalates_to_tree_kill_when_sigterm_is_ignored() {
         let fixture = mini_fixture("escalate");
-        let manager = real_manager(
-            &fixture,
-            Arc::new(VecEventSink::default()),
-            Duration::from_millis(50),
-        );
+        let manager = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_millis(50));
         // 忽略 SIGTERM 的进程：grace 超时后必须升级杀树。
-        let info = start_sh(
-            &manager,
-            &fixture,
-            "trap '' TERM; while true; do sleep 0.05; done",
-        );
+        let info = start_sh(&manager, &fixture, "trap '' TERM; while true; do sleep 0.05; done");
         let pid = info.pid.unwrap();
 
-        let stopped = manager
-            .stop(info.process_id, Some(Duration::from_millis(500)))
-            .unwrap();
+        let stopped = manager.stop(info.process_id, Some(Duration::from_millis(500))).unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         std::thread::sleep(Duration::from_millis(200));
         assert!(
@@ -1064,11 +980,7 @@ mod real_process {
     #[test]
     fn stop_kills_sigterm_ignoring_process_that_closed_streams() {
         let fixture = mini_fixture("f12unix");
-        let manager = real_manager(
-            &fixture,
-            Arc::new(VecEventSink::default()),
-            Duration::from_millis(50),
-        );
+        let manager = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_millis(50));
         let info = start_sh(
             &manager,
             &fixture,
@@ -1076,9 +988,7 @@ mod real_process {
         );
         let pid = info.pid.unwrap();
 
-        let stopped = manager
-            .stop(info.process_id, Some(Duration::from_millis(500)))
-            .unwrap();
+        let stopped = manager.stop(info.process_id, Some(Duration::from_millis(500))).unwrap();
         std::thread::sleep(Duration::from_millis(200));
         let alive = process_alive(pid, None);
         if alive {
@@ -1095,11 +1005,7 @@ mod real_process {
         let events = Arc::new(VecEventSink::default());
         let manager = real_manager(&fixture, events.clone(), Duration::from_millis(50));
         // trap TERM → 记录并 exit 0：若先收到 SIGTERM 则优雅退出码 0。
-        let info = start_sh(
-            &manager,
-            &fixture,
-            "trap 'exit 0' TERM; while true; do sleep 0.1; done",
-        );
+        let info = start_sh(&manager, &fixture, "trap 'exit 0' TERM; while true; do sleep 0.1; done");
 
         let stopped = manager.stop(info.process_id, None).unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
@@ -1115,11 +1021,7 @@ mod real_process {
     fn reconcile_adopts_live_orphan_and_fails_gone_rows() {
         let fixture = mini_fixture("orphan");
         // 会话 A：启动真实 sleep 后「崩溃」（drop manager，不 stop）。
-        let manager_a = real_manager(
-            &fixture,
-            Arc::new(VecEventSink::default()),
-            Duration::from_secs(3600),
-        );
+        let manager_a = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_secs(3600));
         let info = start_sh(&manager_a, &fixture, "sleep 300");
         let pid = info.pid.unwrap();
         let pid_start = process_start_time(pid).unwrap();
@@ -1145,14 +1047,8 @@ mod real_process {
         };
 
         // 会话 B：reconcile 接管。
-        let manager_b = real_manager(
-            &fixture,
-            Arc::new(VecEventSink::default()),
-            Duration::from_secs(3600),
-        );
-        let adopted = manager_b
-            .reconcile_on_startup(fixture.workspace_id)
-            .unwrap();
+        let manager_b = real_manager(&fixture, Arc::new(VecEventSink::default()), Duration::from_secs(3600));
+        let adopted = manager_b.reconcile_on_startup(fixture.workspace_id).unwrap();
         assert_eq!(adopted.len(), 1);
         assert_eq!(adopted[0].process_id, info.process_id);
         assert!(adopted[0].adopted);
@@ -1164,15 +1060,10 @@ mod real_process {
         assert_eq!(created.status, LifecycleStatus::Failed);
 
         // 接管后可正常 Stop（SIGTERM 杀 sleep）。
-        let stopped = manager_b
-            .stop(info.process_id, Some(Duration::from_secs(5)))
-            .unwrap();
+        let stopped = manager_b.stop(info.process_id, Some(Duration::from_secs(5))).unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         std::thread::sleep(Duration::from_millis(200));
-        assert!(
-            !process_alive(pid, Some(pid_start)),
-            "adopted orphan must be stopped"
-        );
+        assert!(!process_alive(pid, Some(pid_start)), "adopted orphan must be stopped");
         let _ = std::fs::remove_dir_all(&fixture.root);
     }
 
@@ -1267,9 +1158,7 @@ mod real_process_windows {
         assert_eq!(info.status, LifecycleStatus::Running);
         let pid = info.pid.expect("spawn 后应有 pid");
 
-        let stopped = manager
-            .stop(info.process_id, Some(Duration::from_secs(2)))
-            .unwrap();
+        let stopped = manager.stop(info.process_id, Some(Duration::from_secs(2))).unwrap();
         std::thread::sleep(Duration::from_millis(300));
         let alive = process_alive(pid, None);
         if alive {
@@ -1295,10 +1184,7 @@ mod real_maven {
 
     fn maven_available() -> bool {
         let maven = if cfg!(windows) { "mvn.cmd" } else { "mvn" };
-        std::process::Command::new(maven)
-            .arg("-version")
-            .output()
-            .is_ok()
+        std::process::Command::new(maven).arg("-version").output().is_ok()
     }
 
     fn parent_pom() -> String {
@@ -1394,8 +1280,7 @@ mod real_maven {
         .unwrap();
         let discovery = crate::maven::discover_poms(&root, 5, None, None);
         assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-        crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2"))
-            .unwrap();
+        crate::maven::sync_workspace_index(&mut conn, workspace_id, &discovery, &root.join("m2")).unwrap();
         // 真实集成测试前提：JDK 17+（Spring Boot 3.2.5 class 61）。把
         // 当前 JAVA_HOME 注册为 JDK 并绑定到配置——启动 JVM 与构建
         // 同源，避免「构建 17、运行 8」的版本错配（R-14 修复）。
@@ -1419,10 +1304,7 @@ mod real_maven {
                     project: root.join("repo/app/pom.xml").to_string_lossy().to_string(),
                     main_class: Some("com.r10.app.Application".into()),
                     jdk: bound_jdk.clone(),
-                    program_arguments: program_arguments
-                        .iter()
-                        .map(|arg| arg.to_string())
-                        .collect(),
+                    program_arguments: program_arguments.iter().map(|arg| arg.to_string()).collect(),
                     vm_options: vm_options.iter().map(|opt| opt.to_string()).collect(),
                     ..Default::default()
                 },
@@ -1432,10 +1314,7 @@ mod real_maven {
         (root, Arc::new(Mutex::new(conn)), workspace_id)
     }
 
-    fn real_manager(
-        db: Arc<Mutex<Connection>>,
-        events: Arc<VecEventSink>,
-    ) -> Arc<RuntimeProcessManager> {
+    fn real_manager(db: Arc<Mutex<Connection>>, events: Arc<VecEventSink>) -> Arc<RuntimeProcessManager> {
         Arc::new(RuntimeProcessManager::with_deps(
             db,
             RuntimeProcessDeps {
@@ -1492,15 +1371,10 @@ mod real_maven {
         };
         assert!(!ports.is_empty(), "启动日志应探测到随机端口");
 
-        let stopped = manager
-            .stop(info.process_id, Some(Duration::from_secs(30)))
-            .unwrap();
+        let stopped = manager.stop(info.process_id, Some(Duration::from_secs(30))).unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         std::thread::sleep(Duration::from_millis(300));
-        assert!(
-            !crate::process::process_alive(pid, None),
-            "stop 后 JVM 不应残留"
-        );
+        assert!(!crate::process::process_alive(pid, None), "stop 后 JVM 不应残留");
 
         use LifecycleStatus::*;
         assert_eq!(
@@ -1538,8 +1412,7 @@ mod real_maven {
             "-Dmanagement.endpoints.jmx.exposure.include=*",
             "-Dfile.encoding=UTF-8",
         ];
-        let (root, db, workspace_id) =
-            boot_fixture("bootpreset", &["--server.port=0"], IDEA_PRESET_VM_OPTIONS);
+        let (root, db, workspace_id) = boot_fixture("bootpreset", &["--server.port=0"], IDEA_PRESET_VM_OPTIONS);
         let manager = real_manager(db.clone(), Arc::new(VecEventSink::default()));
 
         let info = manager
@@ -1547,9 +1420,7 @@ mod real_maven {
             .unwrap_or_else(|error| panic!("F-04 preset start failed: {error}"));
         assert_eq!(info.status, LifecycleStatus::Running);
 
-        let stopped = manager
-            .stop(info.process_id, Some(Duration::from_secs(30)))
-            .unwrap();
+        let stopped = manager.stop(info.process_id, Some(Duration::from_secs(30))).unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1565,9 +1436,7 @@ mod real_maven {
         let (root, db, workspace_id) = boot_fixture("bootcrash", &["--server.port=99999"], &[]);
         let manager = real_manager(db.clone(), Arc::new(VecEventSink::default()));
 
-        let error = manager
-            .start(workspace_id, "app", classpath_options())
-            .unwrap_err();
+        let error = manager.start(workspace_id, "app", classpath_options()).unwrap_err();
         assert_eq!(error.code(), "ProcessStartFailed");
 
         let row = store::list_processes(&db.lock().unwrap(), workspace_id)
@@ -1622,10 +1491,8 @@ mod real_maven {
 
         // 构建与运行同源 JDK（R-14）：hussar 场景绑 JAVA_HOME（temurin-8）。
         let jdk_home = std::env::var("JAVA_HOME").expect("manual 测试需要 JAVA_HOME（temurin-8）");
-        let mut jdk = crate::java::model::JdkInstallation::new(
-            jdk_home.clone(),
-            crate::java::model::JdkDiscoverySource::System,
-        );
+        let mut jdk =
+            crate::java::model::JdkInstallation::new(jdk_home.clone(), crate::java::model::JdkDiscoverySource::System);
         jdk.is_valid = true;
         crate::java::registry::upsert_jdk(&conn, &jdk).unwrap();
 
@@ -1645,19 +1512,14 @@ mod real_maven {
         )
         .unwrap();
 
-        let manager = real_manager(
-            Arc::new(Mutex::new(conn)),
-            Arc::new(VecEventSink::default()),
-        );
+        let manager = real_manager(Arc::new(Mutex::new(conn)), Arc::new(VecEventSink::default()));
         let info = manager
             .start(workspace_id, "app", classpath_options())
             .unwrap_or_else(|error| panic!("F-12 manual: start failed: {error}"));
         assert_eq!(info.status, LifecycleStatus::Running);
         let pid = info.pid.expect("Running 应有 pid");
 
-        let stopped = manager
-            .stop(info.process_id, Some(Duration::from_secs(15)))
-            .unwrap();
+        let stopped = manager.stop(info.process_id, Some(Duration::from_secs(15))).unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         std::thread::sleep(Duration::from_millis(500));
         assert!(
@@ -1702,14 +1564,7 @@ mod real_node_vite {
 
         // 1. 真实 Vite 模板工程（spec 固定样例：npm create vite 产物）。
         let scaffold = std::process::Command::new(&npm)
-            .args([
-                "create",
-                "vite@latest",
-                "web",
-                "--",
-                "--template",
-                "vanilla",
-            ])
+            .args(["create", "vite@latest", "web", "--", "--template", "vanilla"])
             .current_dir(&root)
             .output()
             .expect("spawn npm create vite");
@@ -1743,9 +1598,7 @@ mod real_node_vite {
         let workspace_id = conn.last_insert_rowid();
         let discovery = crate::node::discovery::discover_package_jsons(&root, 5, None, None);
         assert!(discovery.errors.is_empty(), "{:?}", discovery.errors);
-        let projects =
-            crate::node::discovery::sync_node_projects(&mut conn, workspace_id, &discovery)
-                .unwrap();
+        let projects = crate::node::discovery::sync_node_projects(&mut conn, workspace_id, &discovery).unwrap();
         let web_project = projects
             .iter()
             .find(|project| project.name == "web")
@@ -1798,10 +1651,7 @@ mod real_node_vite {
         assert_eq!(info.status, LifecycleStatus::Running);
         assert_eq!(info.run_strategy, Some(RunStrategy::NodeScript));
         assert!(
-            info.command_preview
-                .as_deref()
-                .unwrap_or_default()
-                .contains("npm"),
+            info.command_preview.as_deref().unwrap_or_default().contains("npm"),
             "preview should mention npm: {:?}",
             info.command_preview
         );
@@ -1816,10 +1666,7 @@ mod real_node_vite {
             .ok()
         };
         assert!(
-            persisted_preview
-                .as_deref()
-                .unwrap_or_default()
-                .contains("npm"),
+            persisted_preview.as_deref().unwrap_or_default().contains("npm"),
             "command_preview must be persisted, got {persisted_preview:?}"
         );
 
@@ -1857,15 +1704,10 @@ mod real_node_vite {
             }
             std::thread::sleep(Duration::from_millis(200));
         };
-        assert!(
-            has_vite_log,
-            "日志流应包含真实 vite 输出（VITE 横幅 / Local: 行）"
-        );
+        assert!(has_vite_log, "日志流应包含真实 vite 输出（VITE 横幅 / Local: 行）");
 
         // 8. 停止 + 端口真实释放（§9：kill_tree 整树终止 npm → vite 孙子进程）。
-        let stopped = manager
-            .stop(info.process_id, Some(Duration::from_secs(15)))
-            .unwrap();
+        let stopped = manager.stop(info.process_id, Some(Duration::from_secs(15))).unwrap();
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         let release_deadline = Instant::now() + Duration::from_secs(10);
         loop {

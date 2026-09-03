@@ -34,10 +34,7 @@ pub(super) fn segment_paths(dir: &Path, process_id: i64, keep: u32) -> Vec<PathB
 
 pub(super) fn logs_dir(workspace_root: &Path, runtime_name: &str) -> AppResult<PathBuf> {
     validate_runtime_name(runtime_name)?;
-    Ok(workspace_root
-        .join(".gitworkspace")
-        .join(LOGS_DIR)
-        .join(runtime_name))
+    Ok(workspace_root.join(".gitworkspace").join(LOGS_DIR).join(runtime_name))
 }
 
 /// 创建日志目录（写路径）；先校验名再落任何目录，沿用 R-07 配置的

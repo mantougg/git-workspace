@@ -11,8 +11,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 
 use crate::maven::model::{
-    ManagedDependency, MavenDependency, MavenModule, MavenParent, MavenPlugin, MavenProfile,
-    MavenProject,
+    ManagedDependency, MavenDependency, MavenModule, MavenParent, MavenPlugin, MavenProfile, MavenProject,
 };
 
 /// POM 解析错误。对应全局约束 §9 的 `InvalidPom`。
@@ -55,11 +54,7 @@ pub fn parse_pom_file(path: &Path) -> Result<MavenProject, PomParseError> {
 ///
 /// `path` 仅用于填充 `MavenProject.path`，不在此读取文件。
 /// `file_hash` 由调用方提供（cache 复用同一份 hash，避免重复计算）。
-pub fn parse_pom(
-    path: &Path,
-    content: &[u8],
-    file_hash: &str,
-) -> Result<MavenProject, PomParseError> {
+pub fn parse_pom(path: &Path, content: &[u8], file_hash: &str) -> Result<MavenProject, PomParseError> {
     let path_str = path.display().to_string();
     let mut reader = Reader::from_reader(content);
     reader.config_mut().trim_text(true);
@@ -175,11 +170,7 @@ fn parse_project_body<R: std::io::BufRead>(
                         parse_deps(reader, &mut model.dependencies, path)?;
                     }
                     "dependencyManagement" => {
-                        parse_dependency_management(
-                            reader,
-                            &mut model.dependency_management,
-                            path,
-                        )?;
+                        parse_dependency_management(reader, &mut model.dependency_management, path)?;
                     }
                     "profiles" => {
                         parse_profiles(reader, &mut model.profiles, path)?;
@@ -240,11 +231,10 @@ fn read_text<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<String, PomP
                     path: String::new(),
                     reason: "invalid XML text encoding",
                 })?;
-                let unescaped =
-                    quick_xml::escape::unescape(&decoded).map_err(|_| PomParseError::Invalid {
-                        path: String::new(),
-                        reason: "invalid XML entity",
-                    })?;
+                let unescaped = quick_xml::escape::unescape(&decoded).map_err(|_| PomParseError::Invalid {
+                    path: String::new(),
+                    reason: "invalid XML entity",
+                })?;
                 out.push_str(&unescaped);
             }
             Ok(Event::CData(c)) => {
@@ -266,9 +256,7 @@ fn read_text<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<String, PomP
 }
 
 /// 读取标签文本，并消费一个可能存在的空标签 / 属性。`read_text` 的别名用于语义清晰。
-fn read_text_opt<R: std::io::BufRead>(
-    reader: &mut Reader<R>,
-) -> Result<Option<String>, PomParseError> {
+fn read_text_opt<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<Option<String>, PomParseError> {
     let text = read_text(reader)?;
     if text.is_empty() {
         Ok(None)
@@ -299,10 +287,7 @@ fn skip_element<R: std::io::BufRead>(reader: &mut Reader<R>) -> Result<(), PomPa
     Ok(())
 }
 
-fn parse_parent<R: std::io::BufRead>(
-    reader: &mut Reader<R>,
-    path: &str,
-) -> Result<MavenParent, PomParseError> {
+fn parse_parent<R: std::io::BufRead>(reader: &mut Reader<R>, path: &str) -> Result<MavenParent, PomParseError> {
     let mut group = String::new();
     let mut artifact = String::new();
     let mut version = String::new();
@@ -424,10 +409,7 @@ fn parse_deps<R: std::io::BufRead>(
     Ok(())
 }
 
-fn parse_dependency<R: std::io::BufRead>(
-    reader: &mut Reader<R>,
-    path: &str,
-) -> Result<MavenDependency, PomParseError> {
+fn parse_dependency<R: std::io::BufRead>(reader: &mut Reader<R>, path: &str) -> Result<MavenDependency, PomParseError> {
     let mut group = String::new();
     let mut artifact = String::new();
     let mut version: Option<String> = None;
@@ -588,10 +570,7 @@ fn parse_profiles<R: std::io::BufRead>(
     Ok(())
 }
 
-fn parse_profile<R: std::io::BufRead>(
-    reader: &mut Reader<R>,
-    path: &str,
-) -> Result<MavenProfile, PomParseError> {
+fn parse_profile<R: std::io::BufRead>(reader: &mut Reader<R>, path: &str) -> Result<MavenProfile, PomParseError> {
     let mut id = String::new();
     let mut properties = BTreeMap::new();
     let mut dependencies = Vec::new();
@@ -797,10 +776,7 @@ mod tests {
         let dm = &m.dependency_management[0];
         assert_eq!(dm.version.as_deref(), Some("${project.version}"));
 
-        assert_eq!(
-            m.properties.get("java.version").map(|s| s.as_str()),
-            Some("17")
-        );
+        assert_eq!(m.properties.get("java.version").map(|s| s.as_str()), Some("17"));
 
         assert_eq!(m.plugins.len(), 1);
         assert_eq!(m.plugins[0].artifact_id, "spring-boot-maven-plugin");
@@ -834,10 +810,7 @@ mod tests {
         assert_eq!(m.profiles.len(), 1);
         let prof = &m.profiles[0];
         assert_eq!(prof.id, "prod");
-        assert_eq!(
-            prof.properties.get("env").map(|s| s.as_str()),
-            Some("production")
-        );
+        assert_eq!(prof.properties.get("env").map(|s| s.as_str()), Some("production"));
         assert_eq!(prof.dependencies.len(), 1);
     }
 

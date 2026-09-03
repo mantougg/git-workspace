@@ -10,18 +10,13 @@ use crate::core::scanner::RepoScanner;
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
 use crate::models::group::{CreateGroupRequest, RepoGroup};
-use crate::models::repository::{
-    RepoChanges, RepoStatus, Repository, RepositoryWithStatus, ScanProgress,
-};
+use crate::models::repository::{RepoChanges, RepoStatus, Repository, RepositoryWithStatus, ScanProgress};
 use crate::state::AppState;
 
 /// Get the file-level change list for every repository in a workspace.
 /// Used to build the change tree on the home page.
 #[tauri::command]
-pub fn get_workspace_changes(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<RepoChanges>> {
+pub fn get_workspace_changes(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<RepoChanges>> {
     log::info!("get_workspace_changes called for workspace_id={}", workspace_id);
     let repos = {
         let conn = state
@@ -30,10 +25,7 @@ pub fn get_workspace_changes(
             .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
         dao::list_repositories_by_workspace(&conn, workspace_id)?
     };
-    log::info!(
-        "get_workspace_changes: {} repos loaded from DB",
-        repos.len()
-    );
+    log::info!("get_workspace_changes: {} repos loaded from DB", repos.len());
 
     let mut result = Vec::with_capacity(repos.len());
     for repo in repos {
@@ -86,11 +78,7 @@ pub fn scan_repositories(
             .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
         let workspace = dao::get_workspace(&conn, workspace_id)?;
         let known = dao::list_repository_paths(&conn, workspace_id)?;
-        (
-            workspace.path.clone(),
-            workspace.scan_depth as usize,
-            known,
-        )
+        (workspace.path.clone(), workspace.scan_depth as usize, known)
     };
 
     // 2. Scan without holding the DB lock (blocking disk IO + libgit2), so the
@@ -116,8 +104,7 @@ pub fn scan_repositories(
             .db
             .lock()
             .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
-        let found_paths: Vec<String> =
-            scanned.iter().map(|s| s.path.clone()).collect();
+        let found_paths: Vec<String> = scanned.iter().map(|s| s.path.clone()).collect();
         dao::cleanup_stale_repositories(&conn, workspace_id, &found_paths)?;
         dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned)?;
         dao::list_repositories_by_workspace(&conn, workspace_id)?
@@ -159,18 +146,12 @@ pub fn scan_repository_subtree(
         // Resolve both to canonical paths (resolving `..` and symlinks); if
         // either cannot be resolved, reject rather than fall back to a raw
         // prefix comparison that could let `D:/ws/../x` through.
-        let canonical_root = workspace_root.canonicalize().map_err(|e| {
-            AppError::Other(format!(
-                "Cannot resolve workspace root {:?}: {}",
-                workspace.path, e
-            ))
-        })?;
-        let canonical_sub = sub_root.canonicalize().map_err(|e| {
-            AppError::Other(format!(
-                "Cannot resolve subtree {:?}: {}",
-                sub_path, e
-            ))
-        })?;
+        let canonical_root = workspace_root
+            .canonicalize()
+            .map_err(|e| AppError::Other(format!("Cannot resolve workspace root {:?}: {}", workspace.path, e)))?;
+        let canonical_sub = sub_root
+            .canonicalize()
+            .map_err(|e| AppError::Other(format!("Cannot resolve subtree {:?}: {}", sub_path, e)))?;
         let rel = canonical_sub.strip_prefix(&canonical_root).map_err(|_| {
             AppError::Other(format!(
                 "Subtree {:?} is outside workspace {:?}",
@@ -217,13 +198,8 @@ pub fn scan_repository_subtree(
             .lock()
             .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
 
-        let scanned_paths: std::collections::HashSet<String> =
-            scanned.iter().map(|s| s.path.clone()).collect();
-        let stale: Vec<String> = known
-            .keys()
-            .filter(|p| !scanned_paths.contains(*p))
-            .cloned()
-            .collect();
+        let scanned_paths: std::collections::HashSet<String> = scanned.iter().map(|s| s.path.clone()).collect();
+        let stale: Vec<String> = known.keys().filter(|p| !scanned_paths.contains(*p)).cloned().collect();
         dao::soft_delete_repositories(&conn, workspace_id, &stale)?;
         dao::upsert_repositories_batch(&mut conn, workspace_id, &scanned)?;
 
@@ -242,20 +218,14 @@ pub fn scan_repository_subtree(
 /// repository list after a scan — newly discovered repos are mounted and
 /// removed ones are unmounted automatically.
 fn sync_watcher(state: &AppState, app_handle: &tauri::AppHandle, repos: &[Repository]) {
-    let running = state
-        .watcher
-        .lock()
-        .map(|w| w.is_running())
-        .unwrap_or(false);
+    let running = state.watcher.lock().map(|w| w.is_running()).unwrap_or(false);
     if !running {
         return;
     }
 
     let paths: Vec<PathBuf> = repos.iter().map(|r| PathBuf::from(&r.path)).collect();
     if let Ok(mut watcher) = state.watcher.lock() {
-        if let Err(e) =
-            watcher.watch_repositories(paths, Arc::clone(&state.status_cache), app_handle.clone())
-        {
+        if let Err(e) = watcher.watch_repositories(paths, Arc::clone(&state.status_cache), app_handle.clone()) {
             log::warn!("Failed to sync watcher after scan: {}", e);
         }
     }
@@ -275,16 +245,13 @@ fn repos_with_status(
     repos
         .into_par_iter()
         .map(|repo| {
-            let (status, error) =
-                match git_status::get_repo_status(Path::new(&repo.path)) {
-                    Ok(s) => {
-                        state
-                            .status_cache
-                            .insert(repo.path.clone(), s.clone());
-                        (Some(s), None)
-                    }
-                    Err(e) => (None, Some(e.to_string())),
-                };
+            let (status, error) = match git_status::get_repo_status(Path::new(&repo.path)) {
+                Ok(s) => {
+                    state.status_cache.insert(repo.path.clone(), s.clone());
+                    (Some(s), None)
+                }
+                Err(e) => (None, Some(e.to_string())),
+            };
 
             let current = done.fetch_add(1, Ordering::Relaxed) + 1;
             let _ = app_handle.emit(
@@ -332,10 +299,7 @@ fn is_within(path: &str, root: &str) -> bool {
 /// Statuses are read from the in-memory cache first, falling back to
 /// live Git status if not cached.
 #[tauri::command]
-pub fn list_repositories(
-    workspace_id: i64,
-    state: State<'_, AppState>,
-) -> AppResult<Vec<RepositoryWithStatus>> {
+pub fn list_repositories(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<RepositoryWithStatus>> {
     let repos = {
         let conn = state
             .db
@@ -356,16 +320,13 @@ pub fn list_repositories(
                 };
             }
             // Fall back to live status
-            let (status, error) =
-                match git_status::get_repo_status(Path::new(&repo.path)) {
-                    Ok(s) => {
-                        state
-                            .status_cache
-                            .insert(repo.path.clone(), s.clone());
-                        (Some(s), None)
-                    }
-                    Err(e) => (None, Some(e.to_string())),
-                };
+            let (status, error) = match git_status::get_repo_status(Path::new(&repo.path)) {
+                Ok(s) => {
+                    state.status_cache.insert(repo.path.clone(), s.clone());
+                    (Some(s), None)
+                }
+                Err(e) => (None, Some(e.to_string())),
+            };
             RepositoryWithStatus {
                 repository: repo,
                 status,
@@ -380,14 +341,9 @@ pub fn list_repositories(
 /// Refresh the Git status of a single repository.
 /// Updates the in-memory cache and returns the fresh status.
 #[tauri::command]
-pub fn refresh_repository_status(
-    repo_path: String,
-    state: State<'_, AppState>,
-) -> AppResult<RepoStatus> {
+pub fn refresh_repository_status(repo_path: String, state: State<'_, AppState>) -> AppResult<RepoStatus> {
     let status = git_status::get_repo_status(Path::new(&repo_path))?;
-    state
-        .status_cache
-        .insert(repo_path, status.clone());
+    state.status_cache.insert(repo_path, status.clone());
     Ok(status)
 }
 
@@ -427,11 +383,7 @@ pub fn delete_group(id: i64, state: State<'_, AppState>) -> AppResult<()> {
 
 /// Assign a repository to a group by repo path.
 #[tauri::command]
-pub fn assign_group(
-    repo_path: String,
-    group_id: Option<i64>,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn assign_group(repo_path: String, group_id: Option<i64>, state: State<'_, AppState>) -> AppResult<()> {
     let conn = state
         .db
         .lock()

@@ -73,12 +73,7 @@ pub fn workspace_heatmap(repo_paths: &[String], since: i64) -> CommitHeatmap {
 }
 
 /// 单仓库按天提交数。email 优先匹配（大小写不敏感），无 email 时按 name。
-fn repo_commit_counts(
-    repo_path: &Path,
-    name: Option<&str>,
-    email: Option<&str>,
-    since: i64,
-) -> BTreeMap<String, u32> {
+fn repo_commit_counts(repo_path: &Path, name: Option<&str>, email: Option<&str>, since: i64) -> BTreeMap<String, u32> {
     let mut counts = BTreeMap::new();
     let Ok(repo) = git2::Repository::open(repo_path) else {
         return counts;
@@ -138,15 +133,8 @@ mod tests {
             Err(_) => vec![],
         };
         let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            "commit",
-            &tree,
-            &parent_refs,
-        )
-        .unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "commit", &tree, &parent_refs)
+            .unwrap();
     }
 
     #[test]

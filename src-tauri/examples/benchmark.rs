@@ -20,9 +20,8 @@
 //! (override with `--baseline-dir <dir>`, skip with `--no-save`).
 
 use git_workspace_lib::benchmark::runtime::{
-    build_to_json, format_build_report, format_runtime_comparison, format_runtime_report,
-    load_runtime_baseline, run_build_benchmark, run_runtime, runtime_baseline_path,
-    runtime_to_json, save_runtime_baseline,
+    build_to_json, format_build_report, format_runtime_comparison, format_runtime_report, load_runtime_baseline,
+    run_build_benchmark, run_runtime, runtime_baseline_path, runtime_to_json, save_runtime_baseline,
 };
 use git_workspace_lib::benchmark::{diff_graph_to_json, format_diff_graph_report, GRAPH_BIG_REPO_COMMITS};
 
@@ -71,10 +70,7 @@ fn main() {
         return;
     }
 
-    let count = args
-        .iter()
-        .find_map(|a| a.parse::<usize>().ok())
-        .unwrap_or(100);
+    let count = args.iter().find_map(|a| a.parse::<usize>().ok()).unwrap_or(100);
 
     let result = git_workspace_lib::benchmark::run(count);
 

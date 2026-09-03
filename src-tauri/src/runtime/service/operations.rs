@@ -12,9 +12,9 @@ use crate::runtime::build::{BuildRequest, RingTail};
 use crate::runtime::config;
 use crate::runtime::events::{
     BuildCompletedPayload, BuildProgressPayload, BuildStartedPayload, DependencyResolvedPayload,
-    ProjectDiscoveredPayload, RestartCompletedPayload, RestartStartedPayload, RuntimeStage,
-    EVENT_BUILD_COMPLETED, EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED, EVENT_DEPENDENCY_RESOLVED,
-    EVENT_PROJECT_DISCOVERED, EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
+    ProjectDiscoveredPayload, RestartCompletedPayload, RestartStartedPayload, RuntimeStage, EVENT_BUILD_COMPLETED,
+    EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED, EVENT_DEPENDENCY_RESOLVED, EVENT_PROJECT_DISCOVERED,
+    EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
 };
 use crate::runtime::launch::RuntimeProcessInfo;
 use crate::runtime::script_approval::{self, ScriptApproval};
@@ -24,21 +24,15 @@ use super::*;
 impl RuntimeService {
     /// R-21 §49 Stop & Switch：同步优雅停止（带默认宽限），供保护确认后
     /// 在切换分支前调用；进程不存在返回 None。
-    pub fn stop_blocking(
-        &self,
-        workspace_id: i64,
-        runtime_name: &str,
-    ) -> AppResult<Option<RuntimeProcessInfo>> {
-        self.processes
-            .stop_runtime(workspace_id, runtime_name, None)
+    pub fn stop_blocking(&self, workspace_id: i64, runtime_name: &str) -> AppResult<Option<RuntimeProcessInfo>> {
+        self.processes.stop_runtime(workspace_id, runtime_name, None)
     }
 
     /// 调整并发上限：立即作用于两个 permit 池并持久化。
     pub fn set_scheduler_config(&self, config: &SchedulerConfig) -> AppResult<()> {
         let config = config.sanitized();
         self.build_scheduler.set_max(config.max_concurrent_builds);
-        self.resolve_scheduler
-            .set_max(config.max_concurrent_resolves);
+        self.resolve_scheduler.set_max(config.max_concurrent_resolves);
         config.save(&self.scheduler_config_path)?;
         log::info!("R-12: scheduler config updated: {:?}", config);
         Ok(())
@@ -72,9 +66,7 @@ impl RuntimeService {
             _ => config.post_build_script.as_deref(),
         }
         .ok_or_else(|| {
-            AppError::RuntimeConfig(format!(
-                "Runtime '{runtime_name}' 没有配置 {script_type}_build_script"
-            ))
+            AppError::RuntimeConfig(format!("Runtime '{runtime_name}' 没有配置 {script_type}_build_script"))
         })?;
         let hash = script_approval::script_hash(script);
         let preview = script_approval::script_preview(script);
@@ -93,21 +85,13 @@ impl RuntimeService {
 
     /// `runtime_reset_script_approvals`：按范围撤销确认（「不再询问」可重置）。
     /// 返回删除条数。
-    pub fn reset_script_approvals(
-        &self,
-        workspace_id: Option<i64>,
-        runtime_name: Option<&str>,
-    ) -> AppResult<usize> {
+    pub fn reset_script_approvals(&self, workspace_id: Option<i64>, runtime_name: Option<&str>) -> AppResult<usize> {
         self.script_approvals.reset(workspace_id, runtime_name)
     }
 
     /// `runtime_build` / `runtime_start` / `runtime_stop` / `runtime_restart`
     /// 共用的单配置任务组装。
-    pub fn operation_task_request(
-        &self,
-        req: &RuntimeOperationRequest,
-        op: RuntimeOp,
-    ) -> TaskRequest {
+    pub fn operation_task_request(&self, req: &RuntimeOperationRequest, op: RuntimeOp) -> TaskRequest {
         TaskRequest {
             task_type: TaskType::Runtime {
                 op,
@@ -253,15 +237,8 @@ impl RuntimeService {
         )))
     }
 
-    pub(super) fn exec_stop(
-        &self,
-        workspace_id: i64,
-        runtime_name: &str,
-    ) -> AppResult<Option<String>> {
-        match self
-            .processes
-            .stop_runtime(workspace_id, runtime_name, None)?
-        {
+    pub(super) fn exec_stop(&self, workspace_id: i64, runtime_name: &str) -> AppResult<Option<String>> {
+        match self.processes.stop_runtime(workspace_id, runtime_name, None)? {
             Some(info) => Ok(Some(format!(
                 "'{}' 已停止（进程记录 #{}，状态 {}）",
                 runtime_name,
@@ -290,18 +267,12 @@ impl RuntimeService {
             },
         );
         let _watch = CancelWatch::start(&self.processes, workspace_id, runtime_name, cancel);
-        if self
-            .processes
-            .stop_runtime(workspace_id, runtime_name, None)?
-            .is_some()
-        {
+        if self.processes.stop_runtime(workspace_id, runtime_name, None)?.is_some() {
             log::info!("R-17: rebuild-restart stopped previous instance of '{runtime_name}'");
         }
         let mut start_options = start_options_of(options);
         start_options.skip_build = false;
-        let result = self
-            .processes
-            .start(workspace_id, runtime_name, start_options);
+        let result = self.processes.start(workspace_id, runtime_name, start_options);
         let (success, error) = match &result {
             Ok(_) => (true, None),
             Err(e) => (false, Some(e.to_string())),
@@ -317,10 +288,7 @@ impl RuntimeService {
             },
         );
         let info = result?;
-        Ok(Some(format!(
-            "'{}' 已重建并重启（pid {:?}）",
-            runtime_name, info.pid
-        )))
+        Ok(Some(format!("'{}' 已重建并重启（pid {:?}）", runtime_name, info.pid)))
     }
 
     pub(super) fn exec_restart(
@@ -357,19 +325,12 @@ impl RuntimeService {
             },
         );
         let info = result?;
-        Ok(Some(format!(
-            "'{}' 已重启（pid {:?}）",
-            runtime_name, info.pid
-        )))
+        Ok(Some(format!("'{}' 已重启（pid {:?}）", runtime_name, info.pid)))
     }
 
     /// §63 `resolve_dependencies`：发现 + 索引同步，全程本地（全局约束 §10
     /// 网络边界；远程解析发生在 Build，不在此）。
-    pub(super) fn exec_resolve(
-        &self,
-        workspace_id: i64,
-        cancel: &Arc<AtomicBool>,
-    ) -> AppResult<Option<String>> {
+    pub(super) fn exec_resolve(&self, workspace_id: i64, cancel: &Arc<AtomicBool>) -> AppResult<Option<String>> {
         // §66：Dependency Resolve 并发限流（默认 4）；排队可取消。
         let _permit = self
             .resolve_scheduler
@@ -398,8 +359,7 @@ impl RuntimeService {
         if cancel.load(Ordering::Relaxed) {
             return Err(AppError::Task("依赖解析已取消".into()));
         }
-        let discovery =
-            maven::discover_poms(&root, scan_depth, Some(&self.pom_cache), Some(cancel));
+        let discovery = maven::discover_poms(&root, scan_depth, Some(&self.pom_cache), Some(cancel));
         if cancel.load(Ordering::Relaxed) {
             return Err(AppError::Task("依赖解析已取消".into()));
         }
@@ -433,10 +393,7 @@ impl RuntimeService {
                     &ProjectDiscoveredPayload {
                         workspace_id,
                         path: display_path(&root, &project.path),
-                        coordinates: format!(
-                            "{}:{}:{}",
-                            project.group_id, project.artifact_id, project.version
-                        ),
+                        coordinates: format!("{}:{}:{}", project.group_id, project.artifact_id, project.version),
                         packaging: project.packaging.clone(),
                         at: Self::now(),
                     },
@@ -484,8 +441,5 @@ fn display_path(root: &std::path::Path, pom_path: &std::path::Path) -> String {
         .unwrap_or(pom_path)
         .to_string_lossy()
         .to_string();
-    relative
-        .strip_suffix("/pom.xml")
-        .unwrap_or(&relative)
-        .to_string()
+    relative.strip_suffix("/pom.xml").unwrap_or(&relative).to_string()
 }

@@ -88,8 +88,7 @@ pub fn next_run_at(
             Ok(now + chrono::Duration::minutes(minutes))
         }
         "daily" => {
-            let t =
-                daily_time.ok_or_else(|| AppError::Other("daily 调度需要 HH:MM".to_string()))?;
+            let t = daily_time.ok_or_else(|| AppError::Other("daily 调度需要 HH:MM".to_string()))?;
             let (h, m) = t
                 .split_once(':')
                 .and_then(|(h, m)| Some((h.parse::<u32>().ok()?, m.parse::<u32>().ok()?)))
@@ -138,9 +137,7 @@ struct ProcOutput {
 }
 
 fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppResult<ProcOutput> {
-    fn read_all<R: std::io::Read + Send + 'static>(
-        stream: Option<R>,
-    ) -> std::thread::JoinHandle<String> {
+    fn read_all<R: std::io::Read + Send + 'static>(stream: Option<R>) -> std::thread::JoinHandle<String> {
         std::thread::spawn(move || {
             let mut buf = String::new();
             if let Some(mut s) = stream {
@@ -161,10 +158,7 @@ fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppRe
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err(AppError::Other(format!(
-                        "脚本超时（{}s），已终止",
-                        timeout.as_secs()
-                    )));
+                    return Err(AppError::Other(format!("脚本超时（{}s），已终止", timeout.as_secs())));
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
@@ -173,11 +167,7 @@ fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppRe
     };
     let stdout = out_t.join().unwrap_or_default();
     let stderr = err_t.join().unwrap_or_default();
-    Ok(ProcOutput {
-        code,
-        stdout,
-        stderr,
-    })
+    Ok(ProcOutput { code, stdout, stderr })
 }
 
 /// 运行脚本动作（cwd 由调用方按 scope 传入）。
@@ -185,10 +175,7 @@ fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppRe
 pub fn run_plugin_action(cwd: String, action: PluginAction) -> AppResult<String> {
     let timeout = Duration::from_secs(action.timeout_secs.max(1));
     let mut command = script_command(&action.command);
-    command
-        .current_dir(&cwd)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    command.current_dir(&cwd).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -233,9 +220,7 @@ pub fn run_plugin_action(cwd: String, action: PluginAction) -> AppResult<String>
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn list_plugin_actions(
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<Vec<PluginAction>> {
+pub fn list_plugin_actions(state: tauri::State<'_, crate::state::AppState>) -> AppResult<Vec<PluginAction>> {
     let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let mut stmt = conn.prepare(
         "SELECT id, name, command, scope, timeout_secs, created_at, updated_at \
@@ -264,9 +249,7 @@ pub fn save_plugin_action(
         return Err(AppError::Other("动作名称与命令不能为空".to_string()));
     }
     if action.scope != "repo" && action.scope != "workspace" {
-        return Err(AppError::Other(
-            "scope 只能为 repo 或 workspace".to_string(),
-        ));
+        return Err(AppError::Other("scope 只能为 repo 或 workspace".to_string()));
     }
     if action.timeout_secs == 0 {
         action.timeout_secs = 120;
@@ -277,7 +260,14 @@ pub fn save_plugin_action(
         conn.execute(
             "INSERT INTO plugin_actions (name, command, scope, timeout_secs, created_at, updated_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![action.name, action.command, action.scope, action.timeout_secs as i64, now, now],
+            params![
+                action.name,
+                action.command,
+                action.scope,
+                action.timeout_secs as i64,
+                now,
+                now
+            ],
         )?;
         action.id = conn.last_insert_rowid();
     } else {
@@ -299,10 +289,7 @@ pub fn save_plugin_action(
 }
 
 #[tauri::command]
-pub fn delete_plugin_action(
-    action_id: i64,
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<()> {
+pub fn delete_plugin_action(action_id: i64, state: tauri::State<'_, crate::state::AppState>) -> AppResult<()> {
     let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
     // 引用检查：定时任务挂在动作上时拒绝删除
     let refs: i64 = conn.query_row(
@@ -315,10 +302,7 @@ pub fn delete_plugin_action(
             "该动作被 {refs} 个定时任务引用，请先删除对应定时任务"
         )));
     }
-    conn.execute(
-        "DELETE FROM plugin_actions WHERE id = ?1",
-        params![action_id],
-    )?;
+    conn.execute("DELETE FROM plugin_actions WHERE id = ?1", params![action_id])?;
     Ok(())
 }
 
@@ -327,9 +311,7 @@ pub fn delete_plugin_action(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn list_scheduled_tasks(
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<Vec<ScheduledTask>> {
+pub fn list_scheduled_tasks(state: tauri::State<'_, crate::state::AppState>) -> AppResult<Vec<ScheduledTask>> {
     let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
     query_scheduled(&conn)
 }
@@ -369,9 +351,7 @@ pub fn save_scheduled_task(
         return Err(AppError::Other("任务名称不能为空".to_string()));
     }
     if task.kind != "script_action" && task.kind != "pipeline" {
-        return Err(AppError::Other(
-            "kind 只能为 script_action 或 pipeline".to_string(),
-        ));
+        return Err(AppError::Other("kind 只能为 script_action 或 pipeline".to_string()));
     }
     let now_local = Local::now();
     let next = next_run_at(
@@ -389,9 +369,17 @@ pub fn save_scheduled_task(
                                          payload, enabled, next_run, created_at, updated_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
-                task.name, task.kind, task.target_id, task.schedule_kind,
-                task.interval_minutes, task.daily_time, task.payload,
-                task.enabled as i64, next_str, now, now
+                task.name,
+                task.kind,
+                task.target_id,
+                task.schedule_kind,
+                task.interval_minutes,
+                task.daily_time,
+                task.payload,
+                task.enabled as i64,
+                next_str,
+                now,
+                now
             ],
         )?;
         task.id = conn.last_insert_rowid();
@@ -401,9 +389,17 @@ pub fn save_scheduled_task(
                                         interval_minutes = ?6, daily_time = ?7, payload = ?8, \
                                         enabled = ?9, next_run = ?10, updated_at = ?11 WHERE id = ?1",
             params![
-                task.id, task.name, task.kind, task.target_id, task.schedule_kind,
-                task.interval_minutes, task.daily_time, task.payload,
-                task.enabled as i64, next_str, now
+                task.id,
+                task.name,
+                task.kind,
+                task.target_id,
+                task.schedule_kind,
+                task.interval_minutes,
+                task.daily_time,
+                task.payload,
+                task.enabled as i64,
+                next_str,
+                now
             ],
         )?;
         if changed == 0 {
@@ -439,15 +435,9 @@ pub fn set_scheduled_task_enabled(
 }
 
 #[tauri::command]
-pub fn delete_scheduled_task(
-    task_id: i64,
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<()> {
+pub fn delete_scheduled_task(task_id: i64, state: tauri::State<'_, crate::state::AppState>) -> AppResult<()> {
     let conn = state.db.lock().unwrap_or_else(|e| e.into_inner());
-    conn.execute(
-        "DELETE FROM scheduled_tasks WHERE id = ?1",
-        params![task_id],
-    )?;
+    conn.execute("DELETE FROM scheduled_tasks WHERE id = ?1", params![task_id])?;
     Ok(())
 }
 
@@ -456,10 +446,7 @@ pub fn delete_scheduled_task(
 // ---------------------------------------------------------------------------
 
 /// 启动调度线程（lib.rs setup 调用）；每 tick 检查到期任务。
-pub fn spawn_scheduler(
-    db: Arc<Mutex<Connection>>,
-    task_manager: Arc<crate::task::manager::TaskManager>,
-) {
+pub fn spawn_scheduler(db: Arc<Mutex<Connection>>, task_manager: Arc<crate::task::manager::TaskManager>) {
     std::thread::Builder::new()
         .name("scheduled-tasks".into())
         .spawn(move || loop {
@@ -471,10 +458,7 @@ pub fn spawn_scheduler(
         .expect("failed to spawn scheduled-tasks thread");
 }
 
-fn tick(
-    db: &Arc<Mutex<Connection>>,
-    task_manager: &Arc<crate::task::manager::TaskManager>,
-) -> AppResult<()> {
+fn tick(db: &Arc<Mutex<Connection>>, task_manager: &Arc<crate::task::manager::TaskManager>) -> AppResult<()> {
     let now = Local::now();
     let due: Vec<ScheduledTask> = {
         let conn = db.lock().unwrap_or_else(|e| e.into_inner());
@@ -559,10 +543,7 @@ fn execute_scheduled(
             };
             let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
             let mut command = script_command(&action.command);
-            command
-                .current_dir(&cwd)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
+            command.current_dir(&cwd).stdout(Stdio::piped()).stderr(Stdio::piped());
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
@@ -572,19 +553,13 @@ fn execute_scheduled(
                 .spawn()
                 .map_err(|e| AppError::Other(format!("脚本启动失败：{e}")))?;
             let output = wait_with_streams(child, Duration::from_secs(action.timeout_secs.max(1)))?;
-            Ok(format!(
-                "exit={:?} out_len={}",
-                output.code,
-                output.stdout.len()
-            ))
+            Ok(format!("exit={:?} out_len={}", output.code, output.stdout.len()))
         }
         "pipeline" => {
             let template = crate::core::pipeline::load_templates()
                 .into_iter()
                 .find(|p| p.id == task.target_id)
-                .ok_or_else(|| {
-                    AppError::NotFound(format!("Pipeline 模板 {} 不存在", task.target_id))
-                })?;
+                .ok_or_else(|| AppError::NotFound(format!("Pipeline 模板 {} 不存在", task.target_id)))?;
             let repos: Vec<RepoSelection> = task
                 .payload
                 .as_deref()
@@ -593,9 +568,8 @@ fn execute_scheduled(
                 .transpose()
                 .map_err(|e| AppError::Other(format!("payload 仓库选择解析失败：{e}")))?
                 .unwrap_or_default();
-            let request =
-                crate::core::pipeline::compile_pipeline(&template, &repos, Default::default())
-                    .map_err(AppError::Task)?;
+            let request = crate::core::pipeline::compile_pipeline(&template, &repos, Default::default())
+                .map_err(AppError::Task)?;
             let run_id = task_manager.submit_dag(&request)?;
             Ok(format!("pipeline run {run_id}"))
         }
@@ -626,8 +600,8 @@ pub fn export_pipeline_template(template_id: String, file_path: String) -> AppRe
 #[tauri::command]
 pub fn import_pipeline_template(file_path: String) -> AppResult<Pipeline> {
     let content = std::fs::read_to_string(&file_path)?;
-    let mut template: Pipeline = serde_json::from_str(&content)
-        .map_err(|e| AppError::Other(format!("模板 JSON 解析失败：{e}")))?;
+    let mut template: Pipeline =
+        serde_json::from_str(&content).map_err(|e| AppError::Other(format!("模板 JSON 解析失败：{e}")))?;
     crate::core::pipeline::validate_pipeline(&template).map_err(AppError::Task)?;
     let mut all = crate::core::pipeline::load_templates();
     let now = chrono::Utc::now().to_rfc3339();

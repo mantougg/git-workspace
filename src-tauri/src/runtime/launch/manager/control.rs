@@ -13,11 +13,7 @@ impl RuntimeProcessManager {
     /// 优雅停止：SIGTERM（Unix）→ grace 等待 → 超时升级杀进程树。
     /// Windows 无 SIGTERM 语义：`terminate` 返回 false，直接升级强杀。
     /// 幂等：终态行直接返回当前快照。
-    pub fn stop(
-        self: &Arc<Self>,
-        process_id: i64,
-        grace: Option<Duration>,
-    ) -> AppResult<RuntimeProcessInfo> {
+    pub fn stop(self: &Arc<Self>, process_id: i64, grace: Option<Duration>) -> AppResult<RuntimeProcessInfo> {
         let grace = grace.unwrap_or(DEFAULT_STOP_GRACE);
         let row = self.row(process_id)?;
         if row.status.is_terminal() {
@@ -93,11 +89,7 @@ impl RuntimeProcessManager {
 
     /// Force Kill（全局约束 §3 二次确认）：`confirmed=false` 直接拒绝。
     /// 立即杀整棵进程树，不发优雅信号。
-    pub fn kill(
-        self: &Arc<Self>,
-        process_id: i64,
-        confirmed: bool,
-    ) -> AppResult<RuntimeProcessInfo> {
+    pub fn kill(self: &Arc<Self>, process_id: i64, confirmed: bool) -> AppResult<RuntimeProcessInfo> {
         if !confirmed {
             return Err(AppError::Permission(format!(
                 "Force Kill 会直接终止 runtime_processes #{process_id} 的整棵进程树 \
@@ -145,10 +137,7 @@ impl RuntimeProcessManager {
         runtime_name: &str,
         mut options: StartOptions,
     ) -> AppResult<RuntimeProcessInfo> {
-        if self
-            .stop_runtime(workspace_id, runtime_name, None)?
-            .is_some()
-        {
+        if self.stop_runtime(workspace_id, runtime_name, None)?.is_some() {
             log::info!("R-10: restart stopped previous instance of '{runtime_name}'");
         }
         options.skip_build = true;
@@ -163,10 +152,7 @@ impl RuntimeProcessManager {
     ///   记 None）；Stopping 落 Stopped。
     /// - 从未 spawn 的行（Created/Preparing/Resolving/Building）→ Failed
     ///   （启动被 GitWorkspace 退出打断）。
-    pub fn reconcile_on_startup(
-        self: &Arc<Self>,
-        workspace_id: i64,
-    ) -> AppResult<Vec<RuntimeProcessInfo>> {
+    pub fn reconcile_on_startup(self: &Arc<Self>, workspace_id: i64) -> AppResult<Vec<RuntimeProcessInfo>> {
         self.ensure_sampler();
         let rows = {
             let conn = self.db.lock().unwrap();
@@ -176,13 +162,9 @@ impl RuntimeProcessManager {
         for row in rows {
             let name = row.runtime_name.clone();
             match row.status {
-                LifecycleStatus::Starting
-                | LifecycleStatus::Running
-                | LifecycleStatus::Stopping => {
+                LifecycleStatus::Starting | LifecycleStatus::Running | LifecycleStatus::Stopping => {
                     let alive = match (row.pid, row.pid_start_time) {
-                        (Some(pid), Some(start_time)) => {
-                            self.deps.launch_runner.alive(pid, Some(start_time))
-                        }
+                        (Some(pid), Some(start_time)) => self.deps.launch_runner.alive(pid, Some(start_time)),
                         _ => false,
                     };
                     if !alive {

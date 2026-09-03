@@ -16,17 +16,15 @@ use super::audit;
 use super::cache::{self, AiResultCache, PROMPT_VERSION};
 use super::credentials::{CredentialManager, SessionStore};
 use super::gateway::{AiGateway, GatewayConfig};
+use super::model::AiTaskKind;
 use super::model::{save_model, AiModelDefaults, ModelCapability, SaveAiModelRequest};
 use super::provider::{save_provider, ApiType, NetworkPolicy, SaveAiProviderRequest};
-use super::model::AiTaskKind;
-use super::request::{
-    AiMessage, AiRequest, ContextItem, ContextKind, MessageRole, ResponseFormat, ToolPolicy,
-};
+use super::request::{AiMessage, AiRequest, ContextItem, ContextKind, MessageRole, ResponseFormat, ToolPolicy};
 use super::session;
 
 // 复用 gateway_tests 的 fake transport（同 crate 内测试模块）。
-use super::gateway_tests::{FakeTransport, Step, Body, CaptureSink};
 use super::events::AiEventSink;
+use super::gateway_tests::{Body, CaptureSink, FakeTransport, Step};
 
 const KEY: &str = "sk-fake-key-DO-NOT-LOG";
 
@@ -94,11 +92,7 @@ fn harness(steps: Vec<Step>) -> Harness {
     let provider_id = provider.id.clone();
     let credentials = Arc::new(CredentialManager::with_store(Arc::new(SessionStore::new())));
     credentials
-        .set(
-            provider.credential_ref.as_deref().unwrap(),
-            KEY,
-            true,
-        )
+        .set(provider.credential_ref.as_deref().unwrap(), KEY, true)
         .unwrap();
 
     let db = Arc::new(std::sync::Mutex::new(conn));
@@ -338,10 +332,7 @@ async fn deleting_session_leaves_no_prompt_or_key() {
 
         // 全库扫描：不得残留完整 Prompt 或 API Key。
         let dumped = dump_ai_tables(&conn);
-        assert!(
-            !dumped.contains(PROMPT_BODY),
-            "删除会话后不得残留完整 Prompt"
-        );
+        assert!(!dumped.contains(PROMPT_BODY), "删除会话后不得残留完整 Prompt");
         assert!(!dumped.contains(KEY), "任何表中都不得出现 API Key");
     }
 
@@ -405,10 +396,7 @@ async fn audit_records_secret_counts_without_raw_values() {
 
     let conn = h.conn();
     let row = audit::get_audit(&conn, "r1").unwrap().expect("审计");
-    assert!(
-        !row.secret_counts.is_empty(),
-        "Secret 命中必须记入审计（§10.4）"
-    );
+    assert!(!row.secret_counts.is_empty(), "Secret 命中必须记入审计（§10.4）");
     let serialized = serde_json::to_string(&row.secret_counts).unwrap();
     assert!(
         !serialized.contains("AKIAIOSFODNN7EXAMPLE"),

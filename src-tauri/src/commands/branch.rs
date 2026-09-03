@@ -31,8 +31,7 @@ pub fn list_branches(repo_path: String, state: State<'_, AppState>) -> AppResult
             .collect();
         dao::replace_branches(&mut conn, repo_id, &locals)?;
 
-        let remote_names: Vec<String> =
-            overview.remotes.iter().map(|r| r.name.clone()).collect();
+        let remote_names: Vec<String> = overview.remotes.iter().map(|r| r.name.clone()).collect();
         dao::replace_remote_branches(&mut conn, repo_id, &remote_names)?;
 
         let tags: Vec<(String, Option<String>)> = overview
@@ -56,11 +55,7 @@ pub fn create_branch(repo_path: String, name: String, target: Option<String>) ->
 /// R-21 §48：成功后通知 Runtime Git 联动引擎做依赖模型重算与 POM 变化复核
 /// （不阻塞 checkout 本身，通知开销为一次 DB 读 + 一次任务提交）。
 #[tauri::command]
-pub fn checkout_branch(
-    repo_path: String,
-    name: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
+pub fn checkout_branch(repo_path: String, name: String, state: State<'_, AppState>) -> AppResult<()> {
     branch::checkout_branch(Path::new(&repo_path), &name)?;
     state.git_link.notify_branch_switched(&repo_path);
     Ok(())
@@ -81,11 +76,7 @@ pub fn rename_branch(repo_path: String, old_name: String, new_name: String) -> A
 /// Set (or clear) the upstream of a local branch. `upstream` is an existing
 /// remote-tracking branch name like "origin/main"; None clears it.
 #[tauri::command]
-pub fn set_upstream(
-    repo_path: String,
-    branch_name: String,
-    upstream: Option<String>,
-) -> AppResult<()> {
+pub fn set_upstream(repo_path: String, branch_name: String, upstream: Option<String>) -> AppResult<()> {
     branch::set_upstream(Path::new(&repo_path), &branch_name, upstream.as_deref())
 }
 

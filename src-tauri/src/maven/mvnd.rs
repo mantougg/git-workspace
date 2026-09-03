@@ -51,7 +51,11 @@ pub fn detect_mvnd() -> MvndDetection {
     };
     let (info, is_valid) = probe_version(&path.to_string_lossy());
     if !is_valid {
-        log::warn!("R-18: mvnd found at {} but version probe failed: {}", path.display(), info.raw);
+        log::warn!(
+            "R-18: mvnd found at {} but version probe failed: {}",
+            path.display(),
+            info.raw
+        );
         return MvndDetection {
             available: false,
             executable_path: Some(path.to_string_lossy().into_owned()),
@@ -109,9 +113,7 @@ mod tests {
         assert!(looks_like_daemon_failure(
             "the daemon disappeared unexpectedly mid-build"
         ));
-        assert!(!looks_like_daemon_failure(
-            "[ERROR] COMPILATION ERROR on module app"
-        ));
+        assert!(!looks_like_daemon_failure("[ERROR] COMPILATION ERROR on module app"));
         assert!(!looks_like_daemon_failure(""));
     }
 
@@ -122,7 +124,8 @@ mod tests {
 
     #[test]
     fn parse_mvnd_version_extracts_apache_maven_line() {
-        let output = "mvnd native client 1.0.2 (64b3a1f)\nTerminal: native\nApache Maven 3.9.9 (e5d0f4)\nJava version: 21\n";
+        let output =
+            "mvnd native client 1.0.2 (64b3a1f)\nTerminal: native\nApache Maven 3.9.9 (e5d0f4)\nJava version: 21\n";
         let info = parse_mvnd_version(output);
         assert_eq!(info.major_version, Some(3));
     }

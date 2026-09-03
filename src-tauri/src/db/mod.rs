@@ -45,11 +45,8 @@ pub fn migrate(conn: &mut Connection) -> AppResult<()> {
                 conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
                 conn.execute_batch(sql)?;
                 conn.execute_batch(&format!("PRAGMA user_version = {};", target))?;
-                let violations: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM pragma_foreign_key_check",
-                    [],
-                    |row| row.get(0),
-                )?;
+                let violations: i64 =
+                    conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| row.get(0))?;
                 conn.execute_batch("PRAGMA foreign_keys = ON;")?;
                 if violations > 0 {
                     return Err(crate::error::AppError::Other(format!(
@@ -93,9 +90,7 @@ mod tests {
         let mut conn = open_memory();
         init_db(&mut conn).unwrap();
 
-        let version: i64 = conn
-            .query_row("PRAGMA user_version", [], |r| r.get(0))
-            .unwrap();
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(version, schema::MIGRATIONS.len() as i64);
 
         for table in [
@@ -162,9 +157,7 @@ mod tests {
         init_db(&mut conn).unwrap();
         init_db(&mut conn).unwrap();
 
-        let version: i64 = conn
-            .query_row("PRAGMA user_version", [], |r| r.get(0))
-            .unwrap();
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(version, schema::MIGRATIONS.len() as i64);
     }
 
@@ -184,11 +177,9 @@ mod tests {
         )
         .unwrap();
         let kind: String = conn
-            .query_row(
-                "SELECT kind FROM runtime_projects WHERE name='boot'",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT kind FROM runtime_projects WHERE name='boot'", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(kind, "springBoot");
         init_db(&mut conn).unwrap();
@@ -220,9 +211,7 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1, "existing data must survive migration");
 
-        let version: i64 = conn
-            .query_row("PRAGMA user_version", [], |r| r.get(0))
-            .unwrap();
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(version, schema::MIGRATIONS.len() as i64);
 
         let has_branches: i64 = conn
@@ -316,8 +305,7 @@ mod tests {
         dao::upsert_repositories_batch(&mut conn, ws_id, &repos).unwrap();
 
         // "b" was moved away — only "a" still exists on disk.
-        dao::cleanup_stale_repositories(&conn, ws_id, &["D:/w/a".to_string()])
-            .unwrap();
+        dao::cleanup_stale_repositories(&conn, ws_id, &["D:/w/a".to_string()]).unwrap();
 
         let listed = dao::list_repositories_by_workspace(&conn, ws_id).unwrap();
         assert_eq!(listed.len(), 1);
@@ -375,9 +363,7 @@ mod tests {
 
         apply_pragmas(&conn).unwrap();
 
-        let mode: String = conn
-            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
-            .unwrap();
+        let mode: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0)).unwrap();
         assert_eq!(mode.to_lowercase(), "wal");
 
         drop(conn);
@@ -465,20 +451,12 @@ mod tests {
         assert_eq!(n, 2, "t1 (queued) + t2 (running) must be interrupted");
 
         let t1_status: String = conn
-            .query_row(
-                "SELECT status FROM tasks WHERE task_uuid = 't1'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT status FROM tasks WHERE task_uuid = 't1'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(t1_status, "interrupted");
 
         let t3_status: String = conn
-            .query_row(
-                "SELECT status FROM tasks WHERE task_uuid = 't3'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT status FROM tasks WHERE task_uuid = 't3'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(t3_status, "success", "finished task must be untouched");
     }
@@ -496,23 +474,27 @@ mod tests {
         )
         .unwrap();
         let ws_id = conn.last_insert_rowid();
-        conn.execute(
-            "INSERT INTO repo_groups (workspace_id, name) VALUES (?1, 'g')",
-            [ws_id],
-        )
-        .unwrap();
+        conn.execute("INSERT INTO repo_groups (workspace_id, name) VALUES (?1, 'g')", [ws_id])
+            .unwrap();
         let gid = conn.last_insert_rowid();
 
         let repos = vec![
-            ScannedRepo { path: "D:/w/a".into(), name: "a".into(), relative_path: "a".into(), git_dir_mtime: None },
-            ScannedRepo { path: "D:/w/b".into(), name: "b".into(), relative_path: "b".into(), git_dir_mtime: None },
+            ScannedRepo {
+                path: "D:/w/a".into(),
+                name: "a".into(),
+                relative_path: "a".into(),
+                git_dir_mtime: None,
+            },
+            ScannedRepo {
+                path: "D:/w/b".into(),
+                name: "b".into(),
+                relative_path: "b".into(),
+                git_dir_mtime: None,
+            },
         ];
         dao::upsert_repositories_batch(&mut conn, ws_id, &repos).unwrap();
-        conn.execute(
-            "UPDATE repositories SET group_id = ?1 WHERE path = 'D:/w/a'",
-            [gid],
-        )
-        .unwrap();
+        conn.execute("UPDATE repositories SET group_id = ?1 WHERE path = 'D:/w/a'", [gid])
+            .unwrap();
 
         // Nothing configured -> None (git default is used by the caller).
         assert!(dao::resolve_commit_identity(&conn, "D:/w/a").unwrap().is_none());
@@ -571,8 +553,7 @@ mod tests {
         )
         .unwrap();
 
-        conn.execute("DELETE FROM ai_sessions WHERE id = 's1'", [])
-            .unwrap();
+        conn.execute("DELETE FROM ai_sessions WHERE id = 's1'", []).unwrap();
 
         let messages: i64 = conn
             .query_row("SELECT COUNT(*) FROM ai_messages", [], |r| r.get(0))
@@ -618,11 +599,9 @@ mod tests {
         migrate(&mut conn).unwrap();
 
         let (api_type, base_url): (String, String) = conn
-            .query_row(
-                "SELECT api_type, base_url FROM ai_providers WHERE id = 'p1'",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
+            .query_row("SELECT api_type, base_url FROM ai_providers WHERE id = 'p1'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
             .unwrap();
         assert_eq!(
             api_type, "openaiChatCompletions",
@@ -631,11 +610,9 @@ mod tests {
         assert_eq!(base_url, "http://localhost:11434");
 
         let models: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM ai_models WHERE provider_id = 'p1'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM ai_models WHERE provider_id = 'p1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(models, 1, "重建表不得级联删除 ai_models 行");
 
@@ -648,9 +625,7 @@ mod tests {
         assert!(bad.is_err(), "厂商枚举值必须被新 CHECK 约束拒绝");
 
         // Foreign keys must be re-enabled after the FK-sensitive migration.
-        let fk: i64 = conn
-            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
-            .unwrap();
+        let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
         assert_eq!(fk, 1);
     }
 }

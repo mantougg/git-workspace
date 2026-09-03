@@ -81,16 +81,13 @@ const COMPARE_MAX_COMMITS: usize = 200;
 pub fn list_branches(repo_path: &Path) -> AppResult<BranchOverview> {
     let repo = git2::Repository::open(repo_path)?;
 
-    let current = repo
-        .head()
-        .ok()
-        .and_then(|h| {
-            if h.is_branch() {
-                h.shorthand().map(String::from)
-            } else {
-                None
-            }
-        });
+    let current = repo.head().ok().and_then(|h| {
+        if h.is_branch() {
+            h.shorthand().map(String::from)
+        } else {
+            None
+        }
+    });
 
     let mut locals = Vec::new();
     let mut remotes = Vec::new();
@@ -137,9 +134,7 @@ pub fn list_branches(repo_path: &Path) -> AppResult<BranchOverview> {
     for name in tag_names.iter().flatten() {
         let reference = format!("refs/tags/{}", name);
         if let Ok(obj) = repo.revparse_single(&reference) {
-            let message = obj
-                .as_tag()
-                .and_then(|t| t.message().map(String::from));
+            let message = obj.as_tag().and_then(|t| t.message().map(String::from));
             let target_oid = obj
                 .peel_to_commit()
                 .map(|c| c.id().to_string())
@@ -178,10 +173,7 @@ fn last_commit(repo: &git2::Repository, branch: &git2::Branch) -> (String, Strin
 
 /// Upstream name and local ahead/behind counts for a local branch.
 /// Uses only the local remote-tracking ref — never fetches.
-fn upstream_info(
-    repo: &git2::Repository,
-    branch: &git2::Branch,
-) -> (Option<String>, usize, usize) {
+fn upstream_info(repo: &git2::Repository, branch: &git2::Branch) -> (Option<String>, usize, usize) {
     let upstream = match branch.upstream() {
         Ok(u) => u,
         Err(_) => return (None, 0, 0),
@@ -251,8 +243,7 @@ pub fn delete_branch(repo_path: &Path, name: &str, force: bool) -> AppResult<()>
         // tip reachable from HEAD => the branch is fully merged. Note:
         // graph_descendant_of treats a commit as NOT its own descendant, so
         // an identical tip (branch at HEAD) must be allowed explicitly.
-        let merged =
-            tip == head || repo.graph_descendant_of(head, tip).unwrap_or(false);
+        let merged = tip == head || repo.graph_descendant_of(head, tip).unwrap_or(false);
         if !merged {
             return Err(AppError::Conflict(format!(
                 "branch '{}' is not fully merged; deleting it may lose commits — retry with force",
@@ -277,11 +268,7 @@ pub fn rename_branch(repo_path: &Path, old_name: &str, new_name: &str) -> AppRes
 
 /// Set (or clear, when `upstream` is None) the upstream of a local branch.
 /// The upstream must be an existing remote-tracking branch, e.g. "origin/main".
-pub fn set_upstream(
-    repo_path: &Path,
-    branch_name: &str,
-    upstream: Option<&str>,
-) -> AppResult<()> {
+pub fn set_upstream(repo_path: &Path, branch_name: &str, upstream: Option<&str>) -> AppResult<()> {
     let repo = git2::Repository::open(repo_path)?;
     let mut branch = repo
         .find_branch(branch_name, git2::BranchType::Local)
@@ -290,9 +277,7 @@ pub fn set_upstream(
     match upstream {
         Some(u) => {
             repo.find_branch(u, git2::BranchType::Remote)
-                .map_err(|_| {
-                    AppError::NotFound(format!("remote branch '{}' not found", u))
-                })?;
+                .map_err(|_| AppError::NotFound(format!("remote branch '{}' not found", u)))?;
             branch.set_upstream(Some(u))?;
         }
         // git2 0.19 has no dedicated unset; None clears the upstream config.
@@ -314,9 +299,7 @@ pub fn track_remote_branch(repo_path: &Path, remote_name: &str) -> AppResult<()>
         .splitn(2, '/')
         .nth(1)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            AppError::Other(format!("invalid remote branch name '{}'", remote_name))
-        })?;
+        .ok_or_else(|| AppError::Other(format!("invalid remote branch name '{}'", remote_name)))?;
 
     let commit = remote
         .get()
@@ -330,11 +313,7 @@ pub fn track_remote_branch(repo_path: &Path, remote_name: &str) -> AppResult<()>
 
 /// Compare two revisions (branch / tag / oid specs): commit差集 in both
 /// directions plus the tree diff from `base` to `other`.
-pub fn compare_branches(
-    repo_path: &Path,
-    base: &str,
-    other: &str,
-) -> AppResult<CompareResult> {
+pub fn compare_branches(repo_path: &Path, base: &str, other: &str) -> AppResult<CompareResult> {
     let repo = git2::Repository::open(repo_path)?;
     let base_commit = repo
         .revparse_single(base)
@@ -413,8 +392,7 @@ mod tests {
             .and_then(|h| h.target())
             .map(|oid| repo.find_commit(oid).unwrap());
         let parents: Vec<&git2::Commit> = parent.iter().collect();
-        repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
-            .unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents).unwrap();
     }
 
     fn init_repo(dir: &Path) -> git2::Repository {
