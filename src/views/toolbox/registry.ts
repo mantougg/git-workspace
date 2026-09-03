@@ -13,6 +13,7 @@ import {
   TextOutline,
   CodeSlashOutline,
   LanguageOutline,
+  GlobeOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -64,6 +65,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["route", "路由", "分流", "双网卡", "内网", "外网", "wifi", "metric"],
     icon: markRaw(GitNetworkOutline),
     component: defineAsyncComponent(() => import("./tools/RouteSplitTool.vue")),
+  },
+  {
+    id: "ip-address",
+    title: "IP 地址查询",
+    description: "查询 IP 地址的地理位置、ISP 信息，支持查询本机公网 IP",
+    category: "网络",
+    keywords: ["ip", "地址", "查询", "地理位置", "isp", "公网", "本机"],
+    icon: markRaw(GlobeOutline),
+    component: defineAsyncComponent(() => import("./tools/IpAddressTool.vue")),
   },
   // ── 编码解码 ──
   {
