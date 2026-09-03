@@ -49,13 +49,16 @@ impl BuildOutputSink for BuildLogSink {
 
 /// 检测启动横幅 / 端口（只读日志流，不做端口扫描；端口管理归 R-16）。
 /// Node 横幅 / 端口检测：从运行输出中检测 dev server 就绪横幅与 localhost URL 端口。
+/// 检测一律在 [`strip_ansi`] 后的文本上进行：vite 8 起管道输出仍带 ANSI 色码，
+/// 端口数字会被加粗序列从中间劈开（F-32）。日志会话存储的仍是原始行。
 pub(super) fn startup_banner(kind: RuntimeKind, line: &str) -> bool {
     static SPRING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     static NODE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let line = strip_ansi(line);
     match kind {
         RuntimeKind::SpringBoot => SPRING
             .get_or_init(|| regex::Regex::new(r"Started \S+ in [\d.]+ seconds").unwrap())
-            .is_match(line),
+            .is_match(&line),
         // Node dev servers: vite prints "VITE vX.x  ready", webpack prints
         // "compiled successfully", Next prints "Ready in"; match broadly so
         // the process is flagged Running as soon as the dev server is ready.
@@ -63,7 +66,7 @@ pub(super) fn startup_banner(kind: RuntimeKind, line: &str) -> bool {
             .get_or_init(|| {
                 regex::Regex::new(r"(?i)(?:VITE\b.*ready|ready in \d|compiled successfully|listening on)").unwrap()
             })
-            .is_match(line),
+            .is_match(&line),
     }
 }
 
@@ -77,6 +80,7 @@ pub(super) fn startup_port(kind: RuntimeKind, line: &str) -> Option<u16> {
 pub(super) fn startup_ports(kind: RuntimeKind, line: &str) -> Vec<u16> {
     static SPRING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     static NODE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let line = strip_ansi(line);
     let regex = match kind {
         RuntimeKind::SpringBoot => {
             SPRING.get_or_init(|| regex::Regex::new(r"started on port(?:\(s\))?:?\s+(\d+)").unwrap())
@@ -86,7 +90,7 @@ pub(super) fn startup_ports(kind: RuntimeKind, line: &str) -> Vec<u16> {
         }),
     };
     let mut ports = Vec::new();
-    for captures in regex.captures_iter(line) {
+    for captures in regex.captures_iter(&line) {
         let Some(port) = captures
             .get(1)
             .and_then(|value| value.as_str().parse::<u16>().ok())
@@ -99,6 +103,64 @@ pub(super) fn startup_ports(kind: RuntimeKind, line: &str) -> Vec<u16> {
         }
     }
     ports
+}
+
+/// 剥除 ANSI 转义序列（F-32）。vite 8 在管道（非 TTY）输出下仍打印彩色
+/// 横幅（`CI=true`/`TERM=dumb` 亦发色，仅 NO_COLOR 关闭），`Local:`
+/// 行的端口号被 `\x1b[1m5176\x1b[22m` 劈开。覆盖两类序列：
+/// - CSI：`ESC [` … `@`~``（含 SGR 色码）
+/// - OSC：`ESC ]` … `BEL` 或 `ESC \`（终端标题一类）
+/// 无转义时返回原切片（零拷贝）。
+pub(super) fn strip_ansi(line: &str) -> std::borrow::Cow<'_, str> {
+    if !line.contains('\u{1b}') {
+        return std::borrow::Cow::Borrowed(line);
+    }
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(pos) = rest.find('\u{1b}') {
+        out.push_str(&rest[..pos]);
+        rest = &rest[pos + 1..];
+        let Some(after_esc) = rest.chars().next() else {
+            break;
+        };
+        match after_esc {
+            '[' => {
+                // CSI：参数与中间字节（0x30..=0x3F）到最终字节（0x40..=0x7E）。
+                let end = rest
+                    .char_indices()
+                    .skip(1)
+                    .find(|(_, ch)| ('@'..='~').contains(ch))
+                    .map(|(idx, ch)| idx + ch.len_utf8());
+                match end {
+                    Some(end) => rest = &rest[end..],
+                    None => {
+                        rest = "";
+                        break;
+                    }
+                }
+            }
+            ']' => {
+                // OSC：BEL 或 ST（ESC \）结尾。
+                let end = rest
+                    .find('\u{7}')
+                    .map(|idx| idx + 1)
+                    .or_else(|| rest.find("\u{1b}\\").map(|idx| idx + 2));
+                match end {
+                    Some(end) => rest = &rest[end..],
+                    None => {
+                        rest = "";
+                        break;
+                    }
+                }
+            }
+            _ => {
+                // 其余两字符转义（如 ESC c）跳过 ESC 后的这一个字符。
+                rest = &rest[after_esc.len_utf8()..];
+            }
+        }
+    }
+    out.push_str(rest);
+    std::borrow::Cow::Owned(out)
 }
 
 #[cfg(test)]
@@ -159,5 +221,41 @@ mod tests {
             ),
             vec![5173]
         );
+    }
+
+    /// F-32 回归：vite 8 起的 dev server 在管道（非 TTY）输出下仍打印彩色
+    /// 横幅（实测 `CI=true TERM=dumb` 亦发色，仅 NO_COLOR 关闭），端口号被
+    /// `\x1b[1m5176\x1b[22m` 一类加粗序列从中间劈开。以下字节序列取自真实
+    /// vite 8.2.2 vanilla 模板输出。
+    #[test]
+    fn node_detectors_parse_ansi_colored_vite8_output() {
+        let banner =
+            "  \u{1b}[32m\u{1b}[1mVITE\u{1b}[22m v8.2.2\u{1b}[39m  \u{1b}[2mready in \u{1b}[0m\u{1b}[1m317\u{1b}[22m\u{1b}[2m\u{1b}[0m ms\u{1b}[22m";
+        assert!(startup_banner(RuntimeKind::Node, banner));
+        let local = "  \u{1b}[32m➜\u{1b}[39m  \u{1b}[1mLocal\u{1b}[22m:   \u{1b}[36mhttp://localhost:\u{1b}[1m5176\u{1b}[22m/\u{1b}[39m";
+        assert_eq!(startup_ports(RuntimeKind::Node, local), vec![5176]);
+        // OSC 序列（终端标题）同样不得干扰端口提取。
+        assert_eq!(
+            startup_ports(RuntimeKind::Node, "\u{1b}]0;vite\u{7}http://localhost:3000"),
+            vec![3000]
+        );
+    }
+
+    #[test]
+    fn strip_ansi_removes_csi_and_osc_sequences() {
+        // vite 8.2.2 真实 Local 行（od 实测字节）。
+        assert_eq!(
+            strip_ansi("\u{1b}[36mhttp://localhost:\u{1b}[1m5176\u{1b}[22m/"),
+            "http://localhost:5176/"
+        );
+        // OSC BEL / ST 两种结尾。
+        assert_eq!(strip_ansi("\u{1b}]0;vite\u{7}ok"), "ok");
+        assert_eq!(strip_ansi("\u{1b}]0;vite\u{1b}\\ok"), "ok");
+        // 非法 UTF-8 已被 lossy 解码为 U+FFFD（F-12 链路），不得误伤。
+        assert_eq!(strip_ansi("\u{FFFD}gb"), "\u{FFFD}gb");
+        // 无转义：零拷贝借用原串。
+        assert!(matches!(strip_ansi("plain"), std::borrow::Cow::Borrowed("plain")));
+        // 行尾截断的未完成序列：丢弃残余，不 panic。
+        assert_eq!(strip_ansi("ok\u{1b}[3"), "ok");
     }
 }
