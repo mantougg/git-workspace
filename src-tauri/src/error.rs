@@ -160,6 +160,10 @@ pub enum AppError {
     #[error("Permission error: {0}")]
     Permission(String),
 
+    /// LAN Chat 错误：面向用户的中文提示，禁止携带 secret / 明文等敏感内容。
+    #[error("{0}")]
+    LanChat(String),
+
     #[error("{0}")]
     Other(String),
 }
@@ -197,6 +201,7 @@ impl AppError {
             AppError::ProcessCrashed { .. } => "ProcessCrashed",
             AppError::Ai(e) => e.code(),
             AppError::Permission(_) => "PermissionError",
+            AppError::LanChat(_) => "LanChatError",
             AppError::Other(_) => "Other",
         }
     }

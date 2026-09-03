@@ -27,6 +27,7 @@ import {
   EyeOutline,
   CreateOutline,
   PeopleOutline,
+  ChatbubblesOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -96,6 +97,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["subnet", "子网", "掩码", "cidr", "网络", "广播", "计算"],
     icon: markRaw(CalculatorOutline),
     component: defineAsyncComponent(() => import("./tools/SubnetCalculatorTool.vue")),
+  },
+  {
+    id: "lan-chat",
+    title: "LAN 加密聊天",
+    description: "无需服务器的局域网 P2P 端到端加密临时聊天室，消息只存内存、关闭即销毁",
+    category: "网络",
+    keywords: ["chat", "聊天", "lan", "局域网", "p2p", "加密", "encrypted"],
+    icon: markRaw(ChatbubblesOutline),
+    component: defineAsyncComponent(() => import("./tools/LanChatTool.vue")),
   },
   // ── 编码解码 ──
   {

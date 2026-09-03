@@ -1,7 +1,10 @@
 pub mod ai;
 mod commands;
 mod core;
+pub mod chat;
+pub mod crypto;
 mod db;
+pub mod discovery;
 mod error;
 pub mod java;
 pub mod maven;
@@ -14,6 +17,7 @@ pub mod runtime;
 mod state;
 pub mod symbols;
 mod task;
+pub mod transport;
 
 pub mod benchmark;
 
@@ -229,6 +233,10 @@ pub fn run() {
             commands::automation::spawn_scheduler(Arc::clone(&db), Arc::clone(&state.task_manager));
 
             app.manage(state);
+
+            // LAN Chat：长驻聊天引擎状态（当前房间 + 附近房间浏览器），
+            // 退出时在 RunEvent::Exit 钩子里清理（§29）。
+            app.manage(crate::chat::LanChatState::new());
 
             // AI-12：启动本地 MCP 端点（仅 127.0.0.1，生命周期随应用启停；
             // Offline First——失败只记日志，不影响应用启动）。
@@ -539,6 +547,15 @@ pub fn run() {
             commands::toolbox::toolbox_list_net_interfaces,
             commands::toolbox::toolbox_route_plan_preview,
             commands::toolbox::toolbox_route_apply,
+            // LAN Chat：局域网 P2P 加密聊天
+            commands::chat::lan_chat_generate_secret,
+            commands::chat::lan_chat_create_room,
+            commands::chat::lan_chat_join_room,
+            commands::chat::lan_chat_leave_room,
+            commands::chat::lan_chat_send_message,
+            commands::chat::lan_chat_room_state,
+            commands::chat::lan_chat_start_discovery,
+            commands::chat::lan_chat_stop_discovery,
             // Terminal / IDE integration commands (T-31)
             commands::integration::open_in_terminal,
             commands::integration::open_in_ide,
@@ -590,10 +607,14 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             // AI-12：应用退出时停止外部 Agent 端点并清理 discovery 文件。
             if matches!(event, tauri::RunEvent::Exit) {
                 crate::ai::external::server::shutdown();
+                // LAN Chat（§29）：退出时关连接、清内存、清零密钥（尽力而为）。
+                if let Some(chat_state) = app_handle.try_state::<crate::chat::LanChatState>() {
+                    chat_state.shutdown_on_exit();
+                }
             }
         });
 }

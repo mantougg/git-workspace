@@ -57,6 +57,15 @@ tree-sitter-python = "0.23"
 tree-sitter-go = "0.23"
 tree-sitter-java = "0.23"
 sha2 = "0.10"
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+zeroize = "1"
+base64 = "0.22"
+rcgen = "0.13"
+quinn = { version = "0.11", default-features = false, features = ["rustls", "ring", "runtime-tokio", "log"] }
+postcard = { version = "1", features = ["alloc"] }
+mdns-sd = "0.21.1"
 
 # F-06：仅 Windows 需要——tao/Tauri 的 set_icon 只设置窗口小图标
 # （WM_SETICON ICON_SMALL），任务栏大图标（ICON_BIG）需自己发消息设置。
