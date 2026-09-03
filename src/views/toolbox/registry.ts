@@ -210,6 +210,15 @@ export const TOOLS: ToolboxTool[] = [
     component: defineAsyncComponent(() => import("./tools/UlidNanoidTool.vue")),
   },
   {
+    id: "secret-generator",
+    title: "密钥生成器",
+    description: "生成 128/192/256-bit 加密安全随机密钥，输出 Hex / Base64 / Base64URL",
+    category: "时间与生成",
+    keywords: ["secret", "key", "密钥", "密码", "随机", "token", "hex", "base64"],
+    icon: markRaw(ShieldCheckmarkOutline),
+    component: defineAsyncComponent(() => import("./tools/SecretGeneratorTool.vue")),
+  },
+  {
     id: "cron-generator",
     title: "Cron 表达式生成器",
     description: "可视化生成 Cron 表达式，预览下次执行时间",

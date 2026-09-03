@@ -31,3 +31,15 @@ export function toolboxRoutePlanPreview(plan: SplitPlan, restore: boolean) {
 export function toolboxRouteApply(commands: string[]) {
   return invoke<void>("toolbox_route_apply", { commands, confirmed: true });
 }
+
+/** 随机密钥（三种编码同源，对齐 crypto/secret.rs 的 camelCase 序列化）。 */
+export interface GeneratedSecret {
+  hex: string;
+  base64: string;
+  base64Url: string;
+}
+
+/** 生成随机密钥（bits 可选 128 / 192 / 256，缺省 256）。 */
+export function toolboxGenerateSecret(bits?: number) {
+  return invoke<GeneratedSecret>("toolbox_generate_secret", { bits });
+}

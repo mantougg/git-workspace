@@ -547,6 +547,7 @@ pub fn run() {
             commands::toolbox::toolbox_list_net_interfaces,
             commands::toolbox::toolbox_route_plan_preview,
             commands::toolbox::toolbox_route_apply,
+            commands::toolbox::toolbox_generate_secret,
             // LAN Chat：局域网 P2P 加密聊天
             commands::chat::lan_chat_generate_secret,
             commands::chat::lan_chat_create_room,

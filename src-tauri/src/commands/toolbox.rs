@@ -1,7 +1,8 @@
-//! 工具箱后端命令：路由分流（双网卡：内网走网线、外网走 WiFi/热点）。
+//! 工具箱后端命令：路由分流（双网卡：内网走网线、外网走 WiFi/热点）、随机密钥生成。
 
 use tauri::command;
 
+use crate::crypto::secret::{self, RandomSecret};
 use crate::error::{AppError, AppResult};
 use crate::network::route_split::{self, NetInterface, SplitPlan};
 
@@ -33,4 +34,20 @@ pub fn toolbox_route_apply(commands: Vec<String>, confirmed: bool) -> AppResult<
         ));
     }
     route_split::run_elevated(&commands)
+}
+
+/// 支持的密钥位数（对应 16/24/32 字节）。
+const SECRET_BITS: [u32; 3] = [128, 192, 256];
+
+/// 生成随机密钥（设计文档 §39），默认 256-bit，输出 hex / base64 / base64url。
+#[command]
+pub fn toolbox_generate_secret(bits: Option<u32>) -> AppResult<RandomSecret> {
+    let bits = bits.unwrap_or(256);
+    if !SECRET_BITS.contains(&bits) {
+        return Err(AppError::Other(format!(
+            "不支持的密钥位数 {bits}（可选 {}）",
+            SECRET_BITS.map(|b| b.to_string()).join(" / ")
+        )));
+    }
+    Ok(secret::random_secret((bits / 8) as usize))
 }
