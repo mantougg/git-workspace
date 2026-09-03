@@ -2329,6 +2329,7 @@ function viewConflicts() {
   border: 1px solid var(--gw-border);
   border-radius: 4px;
   overflow: hidden;
+  min-height: 0;
 }
 
 .diff-pane-header {
