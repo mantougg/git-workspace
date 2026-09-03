@@ -21,7 +21,6 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::error::AppResult;
 use crate::maven::index::{DependencyGraph, MavenProjectNode};
 
 pub const BUILD_CACHE_FILE: &str = "build-cache.json";

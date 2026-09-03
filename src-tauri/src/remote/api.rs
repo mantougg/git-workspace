@@ -4,7 +4,7 @@
 //! - 请求体构造与响应解析均为纯函数（可直接单测，不依赖网络）；
 //! - 401/403/404 映射为可行动错误（带平台与操作语义）。
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 

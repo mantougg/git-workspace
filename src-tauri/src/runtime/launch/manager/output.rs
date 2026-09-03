@@ -62,6 +62,7 @@ pub(super) fn startup_banner(kind: RuntimeKind, line: &str) -> bool {
             .is_match(line)
 }
 
+#[allow(dead_code)]
 pub(super) fn startup_port(kind: RuntimeKind, line: &str) -> Option<u16> {
     startup_ports(kind, line).into_iter().next()
 }

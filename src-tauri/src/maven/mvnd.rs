@@ -9,8 +9,6 @@
 //! - 回退：调用方（R-09 流水线）在 mvnd 不可用或构建输出出现 daemon 异常
 //!   标记时回退普通 mvn，并经日志行向用户提示。
 
-use std::path::Path;
-
 use crate::maven::detect_exec::{parse_mvn_version, probe_version};
 use crate::maven::exec_model::{MavenExecutable, MavenVersionInfo};
 

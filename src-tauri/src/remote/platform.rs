@@ -87,7 +87,7 @@ pub fn parse_remote_url(url: &str) -> Option<RemoteRepo> {
     };
 
     let host = host.split('@').next_back().unwrap_or(&host).to_string();
-    let mut path = path
+    let path = path
         .trim_end_matches('/')
         .trim_end_matches(".git")
         .to_string();

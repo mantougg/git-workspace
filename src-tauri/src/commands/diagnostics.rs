@@ -98,6 +98,7 @@ pub fn install_panic_hook(app: tauri::AppHandle, version: &'static str) {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(non_snake_case)]
 pub struct CrashReportInfo {
     pub file: String,
     pub created: String,
@@ -199,6 +200,7 @@ pub fn collect_feedback_bundle(app: tauri::AppHandle, note: Option<String>) -> A
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[allow(non_snake_case)]
 pub struct TelemetryConfig {
     /// 默认关闭（§69 数据安全）
     pub enabled: bool,
@@ -290,6 +292,7 @@ fn append_telemetry_file(app: &tauri::AppHandle, lines: &[String]) {
 }
 
 /// 上报端点：仅当环境变量显式配置才启用（默认空 = 本地留存）。
+#[allow(dead_code)]
 fn telemetry_endpoint() -> Option<String> {
     std::env::var("GW_TELEMETRY_ENDPOINT")
         .ok()

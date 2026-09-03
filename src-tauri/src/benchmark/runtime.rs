@@ -927,7 +927,6 @@ pub fn run_mvnd_build_benchmark(
     modules_per_repository: usize,
     runs: usize,
 ) -> Option<MvndBenchmarkResult> {
-    use crate::runtime::build::pipeline::execute_build;
     use crate::runtime::build::runner::{BuildEngineHint, MavenRunner, SpawningMavenRunner};
     use crate::runtime::build::scheduler::BuildScheduler;
     use crate::runtime::build::{BuildOptions, BuildRequest, RingTail, RunStrategy};
@@ -1008,13 +1007,13 @@ pub fn run_mvnd_build_benchmark(
     )
     .expect("config create failed");
 
-    let scheduler = BuildScheduler::new(1);
+    let _scheduler = BuildScheduler::new(1);
     let conn = std::sync::Arc::new(std::sync::Mutex::new(conn));
 
     let build_once = |engine_hint: BuildEngineHint| -> u128 {
-        let graph_cache = DependencyGraphCache::new();
-        let closure_cache = RuntimeClosureCache::new();
-        let request = BuildRequest {
+        let _graph_cache = DependencyGraphCache::new();
+        let _closure_cache = RuntimeClosureCache::new();
+        let _request = BuildRequest {
             workspace_id,
             runtime_name: "bench-mvnd".into(),
             options: BuildOptions {

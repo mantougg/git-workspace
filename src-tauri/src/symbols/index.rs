@@ -288,7 +288,7 @@ pub fn reindex_files(
 fn process_file(
     conn: &mut Connection,
     repo_id: i64,
-    repo_root: &Path,
+    _repo_root: &Path,
     rel: &str,
     abs: &Path,
 ) -> AppResult<bool> {

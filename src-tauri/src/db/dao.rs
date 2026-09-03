@@ -290,6 +290,7 @@ pub fn soft_delete_repositories(
 }
 
 /// Toggle favorite status of a repository.
+#[allow(dead_code)]
 pub fn toggle_favorite(conn: &Connection, repo_id: i64) -> AppResult<()> {
     conn.execute(
         "UPDATE repositories SET is_favorite = CASE WHEN is_favorite = 0 THEN 1 ELSE 0 END WHERE id = ?1",
@@ -299,6 +300,7 @@ pub fn toggle_favorite(conn: &Connection, repo_id: i64) -> AppResult<()> {
 }
 
 /// Update tags for a repository.
+#[allow(dead_code)]
 pub fn update_tags(conn: &Connection, repo_id: i64, tags: &[String]) -> AppResult<()> {
     let tags_json = serde_json::to_string(tags)?;
     conn.execute(
@@ -309,6 +311,7 @@ pub fn update_tags(conn: &Connection, repo_id: i64, tags: &[String]) -> AppResul
 }
 
 /// Assign a repository to a group.
+#[allow(dead_code)]
 pub fn assign_group(conn: &Connection, repo_id: i64, group_id: Option<i64>) -> AppResult<()> {
     conn.execute(
         "UPDATE repositories SET group_id = ?1 WHERE id = ?2",

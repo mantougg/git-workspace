@@ -22,6 +22,7 @@ use crate::error::{AppError, AppResult};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[allow(dead_code)]
 const ACTION_TIMEOUT: Duration = Duration::from_secs(300);
 /// 调度器轮询间隔。
 const SCHEDULER_TICK: Duration = Duration::from_secs(30);
@@ -143,7 +144,6 @@ fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppRe
         std::thread::spawn(move || {
             let mut buf = String::new();
             if let Some(mut s) = stream {
-                use std::io::Read;
                 let mut raw = Vec::new();
                 let _ = s.read_to_end(&mut raw);
                 buf.push_str(&String::from_utf8_lossy(&raw));

@@ -83,6 +83,7 @@ impl SpawnPlan {
         }
     }
 
+    #[allow(dead_code)]
     fn with_cwd(mut self, cwd: &str) -> Self {
         self.cwd = Some(cwd.to_string());
         self
@@ -119,7 +120,7 @@ pub(crate) fn cmd_plan(dir: &str) -> SpawnPlan {
 
 /// Windows Terminal：`wt -d <dir>`。
 #[cfg(any(windows, test))]
-pub(crate) fn windows_terminal_plan(exe: &Path, dir: &str) -> SpawnPlan {
+pub(crate) fn wt_plan(exe: &Path, dir: &str) -> SpawnPlan {
     SpawnPlan::new(exe.to_string_lossy().to_string(), vec!["-d".to_string(), dir.to_string()])
 }
 
@@ -144,6 +145,7 @@ pub(crate) fn git_bash_from_git_exe(git_exe: &Path) -> Option<PathBuf> {
 /// Linux 按探测链构造终端启动计划（`dirs` 注入便于单测）。
 /// 顺序：gnome-terminal → konsole → xfce4-terminal → alacritty → kitty →
 /// wezterm → x-terminal-emulator → xterm。
+#[allow(dead_code)]
 pub(crate) fn linux_terminal_plan_in_dirs(dir: &str, dirs: &[PathBuf]) -> Option<SpawnPlan> {
     use crate::java::detect::find_executable_in_dirs;
 
@@ -346,12 +348,12 @@ fn windows_terminal_plan(kind: TerminalKind, dir: &str) -> AppResult<SpawnPlan> 
                     "未找到 Windows Terminal（wt.exe）。可从 Microsoft Store 安装".to_string(),
                 )
             })?;
-            windows_terminal_plan(&exe, dir)
+            wt_plan(&exe, dir)
         }
         // Windows 下的「系统默认」：WT → Git Bash → PowerShell 依次回退。
         TerminalKind::System => {
             if let Some(exe) = find_in_path("wt") {
-                windows_terminal_plan(&exe, dir)
+                wt_plan(&exe, dir)
             } else if let Some(exe) = locate_git_bash() {
                 git_bash_plan(&exe, dir)
             } else if let Some(exe) = find_in_path("powershell") {

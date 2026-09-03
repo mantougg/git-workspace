@@ -315,7 +315,7 @@ fn dry_run_repo(repo_path: &str, op: &str) -> DryRunItem {
                     // Diverged: predict conflicts with an in-memory merge.
                     let local_commit = repo.find_commit(local_oid)?;
                     let their_commit = repo.find_commit(upstream_oid)?;
-                    let mut merge_index =
+                    let merge_index =
                         repo.merge_commits(&local_commit, &their_commit, None)?;
                     if merge_index.has_conflicts() {
                         item.category = "conflict".to_string();

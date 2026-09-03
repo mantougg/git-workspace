@@ -186,6 +186,7 @@ pub fn diff_trees_with_config(
 
 /// Diff of a single commit (T-12 Commit Diff): first parent → commit, or
 /// empty tree → commit for a root commit.
+#[allow(dead_code)]
 pub fn diff_commit(repo: &git2::Repository, oid_spec: &str) -> AppResult<Vec<FileDiff>> {
     let commit = repo.revparse_single(oid_spec)?.peel_to_commit()?;
     let new_tree = commit.tree()?;

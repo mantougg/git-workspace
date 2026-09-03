@@ -157,7 +157,7 @@ fn git_credential_fill(host: &str) -> AppResult<Option<String>> {
         return Ok(None);
     }
     let text = String::from_utf8_lossy(&output.stdout);
-    let mut username_none = false;
+    let username_none = false;
     for line in text.lines() {
         if let Some(password) = line.strip_prefix("password=") {
             if password.is_empty() {

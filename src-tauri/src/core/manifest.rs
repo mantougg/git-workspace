@@ -21,6 +21,7 @@ use crate::error::{AppError, AppResult};
 pub const MANIFEST_VERSION: u32 = 1;
 
 /// Default file name offered by the export save-dialog.
+#[allow(dead_code)]
 pub const MANIFEST_FILE_NAME: &str = "gitworkspace.json";
 
 /// One repository entry inside the manifest. `path` is relative to the

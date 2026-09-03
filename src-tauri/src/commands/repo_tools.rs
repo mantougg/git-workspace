@@ -61,7 +61,6 @@ fn wait_with_streams(mut child: std::process::Child, timeout: Duration) -> AppRe
         std::thread::spawn(move || {
             let mut buf = String::new();
             if let Some(mut s) = stream {
-                use std::io::Read;
                 let mut raw = Vec::new();
                 let _ = s.read_to_end(&mut raw);
                 buf.push_str(&String::from_utf8_lossy(&raw));
@@ -208,7 +207,6 @@ pub fn list_submodules(repo_path: String) -> AppResult<Vec<SubmoduleEntry>> {
     let mut metas: Vec<(String, String, Option<String>)> = meta
         .into_iter()
         .map(|(_, (path, url))| {
-            let len = path.len();
             (path.clone(), path, url)
         })
         .collect();

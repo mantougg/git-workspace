@@ -2,7 +2,7 @@
 //! lock (the single-writer connection stays responsive); the association
 //! record is then written in one transaction.
 
-use std::sync::{MutexGuard, Mutex};
+use std::sync::MutexGuard;
 
 use rusqlite::Connection;
 use tauri::State;
