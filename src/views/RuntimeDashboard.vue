@@ -258,14 +258,26 @@
       </n-spin>
     </Panel>
 
-    <!-- Processes -->
-    <Panel title="Processes">
+    <!-- F-35：Processes 表格分页（默认 5 条/页，最新在前） -->
+    <Panel>
+      <template #header>
+        <span>Processes</span>
+        <n-tag
+          v-if="store.processes.length > 0"
+          size="small"
+          type="info"
+          :bordered="false"
+        >
+          共 {{ store.processes.length }} 条
+        </n-tag>
+      </template>
       <n-spin :show="store.loading">
         <n-data-table
           :columns="processColumns"
-          :data="store.processes"
+          :data="sortedProcesses"
           size="small"
           :single-line="false"
+          :pagination="processPagination"
         />
       </n-spin>
     </Panel>
@@ -364,7 +376,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NTag, NIcon, NTooltip, NDropdown, useMessage, useDialog, type DropdownOption } from "naive-ui";
 import {
@@ -415,6 +427,12 @@ const selectedConfigKey = ref<string | number | null>(null);
 /** 完整配置（按需加载）。 */
 const configDetail = ref<RuntimeApplicationConfig | null>(null);
 const scheduler = ref<SchedulerConfig>({ maxConcurrentBuilds: 2, maxConcurrentResolves: 4 });
+
+// F-35：Processes 表格分页（默认 5 条/页，最新在前）
+const processPagination = reactive({ page: 1, pageSize: 5, showSizePicker: true, pageSizes: [5, 10, 20] });
+const sortedProcesses = computed(() =>
+  [...store.processes].sort((a, b) => b.processId - a.processId),
+);
 const savingScheduler = ref(false);
 const nodeProjects = ref<NodeProjectNode[]>([]);
 

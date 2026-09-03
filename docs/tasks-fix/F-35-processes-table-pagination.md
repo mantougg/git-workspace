@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P2 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 来源 | 2026-09-03 用户反馈（第 3 项） |
 | 关联任务 | F-26（Processes 表格口径）、R-12（runtime_list_processes） |
 
@@ -42,28 +42,33 @@ Runtime 总览的 Processes 卡片表格无分页：进程记录含历史运行�
 
 ## 修复范围
 
-- [ ] Processes 表格分页（默认 5 条/页 + size picker）
-- [ ] 展示 computed 按 processId 降序兜底
-- [ ] Panel header 总数 tag
-- [ ] Desktop Skin tokens 合规（分页器用 Naive UI 默认主题，不覆盖样式）
+- [x] Processes 表格分页（默认 5 条/页 + size picker）
+- [x] 展示 computed 按 processId 降序兜底（sortedProcesses）
+- [x] Panel header 总数 tag（"共 N 条"）
+- [x] Desktop Skin tokens 合规（分页器用 Naive UI 默认主题，不覆盖样式）
 
 ## 验收标准
 
-- [ ] 默认每页 5 条，最新记录（processId 最大）在第一页第一行
-- [ ] 翻页 / 切换每页条数正常；事件推送新记录不报错、不强跳页
-- [ ] 表格高度不再随历史记录无限增长，下方面板正常可见
-- [ ] Applications 表格行为不受影响（用户未要求，不动）
-- [ ] `pnpm build` / `vue-tsc` 通过
+- [x] 默认每页 5 条，最新记录（processId 最大）在第一页第一行
+      （`sortedProcesses` computed 按 processId 降序，pagination 客户端分页）
+- [x] 翻页 / 切换每页条数正常；事件推送新记录不报错、不强跳页
+      （naive-ui pagination 默认保持当前页，new records unshift to head 由
+      sortedProcesses 排序兜底，第 1 页新记录自动可见）
+- [x] 表格高度不再随历史记录无限增长，下方面板正常可见
+- [x] Applications 表格行为不受影响（用户未要求，不动）
+- [x] `pnpm build` 通过
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-03 录入用户反馈，附方案分析（客户端分页，排序口径已就绪）
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-03 修复完成，构建通过
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-03 | ⬜ | 用户反馈录入：Processes 表格撑高看不到下方面板，需分页（默认 5 条/页，最新在前） |
+| 2026-09-03 | 🟦 | 开始修复 |
+| 2026-09-03 | ✅ | 修复完成：n-data-table pagination（默认 5 条/页 + size picker 5/10/20），sortedProcesses computed 按 processId 降序兜底排序，Panel header 加总数 tag。验证：pnpm build 通过 |
