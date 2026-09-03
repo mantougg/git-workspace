@@ -24,6 +24,7 @@ import {
   SearchOutline,
   StatsChartOutline,
   ServerOutline,
+  EyeOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -268,6 +269,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["regex", "正则", "表达式", "速查", "cheatsheet", "模式", "匹配"],
     icon: markRaw(SearchOutline),
     component: defineAsyncComponent(() => import("./tools/RegexCheatSheetTool.vue")),
+  },
+  {
+    id: "regex-visualizer",
+    title: "正则表达式可视化",
+    description: "可视化正则表达式结构，高亮显示匹配结果和捕获组",
+    category: "格式转换",
+    keywords: ["regex", "正则", "可视化", "结构", "匹配", "捕获组"],
+    icon: markRaw(EyeOutline),
+    component: defineAsyncComponent(() => import("./tools/RegexVisualizerTool.vue")),
   },
   // ── 计算器 ──
   {
