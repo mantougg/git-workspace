@@ -21,6 +21,7 @@ import {
   ColorPaletteOutline,
   LogoJavascript,
   TerminalOutline,
+  SearchOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -238,6 +239,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["linux", "命令", "速查", "cheatsheet", "bash", "shell", "终端"],
     icon: markRaw(TerminalOutline),
     component: defineAsyncComponent(() => import("./tools/LinuxCheatSheetTool.vue")),
+  },
+  {
+    id: "regex-cheatsheet",
+    title: "正则表达式速查表",
+    description: "常用正则表达式语法和模式速查，支持搜索和分类",
+    category: "速查表",
+    keywords: ["regex", "正则", "表达式", "速查", "cheatsheet", "模式", "匹配"],
+    icon: markRaw(SearchOutline),
+    component: defineAsyncComponent(() => import("./tools/RegexCheatSheetTool.vue")),
   },
   // ── 计算器 ──
   {
