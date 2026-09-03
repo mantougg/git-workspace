@@ -6,6 +6,7 @@ mod error;
 pub mod java;
 pub mod maven;
 mod models;
+mod network;
 pub mod node;
 pub mod process;
 pub mod remote;
@@ -534,6 +535,10 @@ pub fn run() {
             commands::runtime::runtime_apply_template,
             // Application lifecycle commands
             commands::app::restart_app,
+            // 工具箱：路由分流（双网卡）
+            commands::toolbox::toolbox_list_net_interfaces,
+            commands::toolbox::toolbox_route_plan_preview,
+            commands::toolbox::toolbox_route_apply,
             // Terminal / IDE integration commands (T-31)
             commands::integration::open_in_terminal,
             commands::integration::open_in_ide,

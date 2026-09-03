@@ -30,9 +30,12 @@
         class="tool-card"
         @click="activeTool = tool"
       >
-        <n-icon :size="22" class="tool-card-icon">
-          <component :is="tool.icon" />
-        </n-icon>
+        <div class="tool-card-head">
+          <n-icon :size="22" class="tool-card-icon">
+            <component :is="tool.icon" />
+          </n-icon>
+          <span class="tool-card-cat">{{ tool.category }}</span>
+        </div>
         <span class="tool-card-title">{{ tool.title }}</span>
         <span class="tool-card-desc">{{ tool.description }}</span>
       </button>
@@ -48,18 +51,21 @@
     <div v-else class="toolbox-body">
       <Panel class="fill-panel tool-list-panel">
         <div class="tool-list">
-          <button
-            v-for="tool in filtered"
-            :key="tool.id"
-            class="tool-item"
-            :class="{ active: tool.id === activeTool.id }"
-            @click="activeTool = tool"
-          >
-            <n-icon :size="16" class="tool-icon">
-              <component :is="tool.icon" />
-            </n-icon>
-            <span class="tool-title">{{ tool.title }}</span>
-          </button>
+          <div v-for="group in grouped" :key="group.category" class="tool-group">
+            <div class="tool-group-label">{{ group.category }}</div>
+            <button
+              v-for="tool in group.tools"
+              :key="tool.id"
+              class="tool-item"
+              :class="{ active: tool.id === activeTool.id }"
+              @click="activeTool = tool"
+            >
+              <n-icon :size="16" class="tool-icon">
+                <component :is="tool.icon" />
+              </n-icon>
+              <span class="tool-title">{{ tool.title }}</span>
+            </button>
+          </div>
           <n-empty
             v-if="filtered.length === 0"
             size="small"
@@ -81,7 +87,7 @@ import { NButton, NEmpty, NIcon, NInput } from "naive-ui";
 import { ChevronBackOutline, SearchOutline } from "@vicons/ionicons5";
 import Panel from "@/components/shell/Panel.vue";
 import Toolbar from "@/components/shell/Toolbar.vue";
-import { TOOLS, type ToolboxTool } from "./registry";
+import { TOOLS, TOOL_CATEGORIES, type ToolCategory, type ToolboxTool } from "./registry";
 
 const keyword = ref("");
 /** null = 卡片首页；非空 = 详情态（左列表 + 右面板）。 */
@@ -95,6 +101,20 @@ const filtered = computed(() => {
       t.title.toLowerCase().includes(kw) ||
       t.keywords.some((k) => k.toLowerCase().includes(kw)),
   );
+});
+
+/** 左侧列表按类型分组（顺序固定为 TOOL_CATEGORIES）。 */
+const grouped = computed(() => {
+  const byCat = new Map<ToolCategory, ToolboxTool[]>();
+  for (const t of filtered.value) {
+    const list = byCat.get(t.category) ?? [];
+    list.push(t);
+    byCat.set(t.category, list);
+  }
+  return TOOL_CATEGORIES.filter((c) => byCat.has(c)).map((c) => ({
+    category: c,
+    tools: byCat.get(c)!,
+  }));
 });
 </script>
 
@@ -145,8 +165,23 @@ const filtered = computed(() => {
   border-color: var(--gw-accent);
 }
 
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .tool-card-icon {
   color: var(--gw-accent);
+}
+
+.tool-card-cat {
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+  border: 1px solid var(--gw-border);
+  border-radius: var(--gw-radius-sm);
+  padding: 0 var(--gw-space-1);
 }
 
 .tool-card-title {
@@ -195,6 +230,22 @@ const filtered = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--gw-space-1);
+}
+
+.tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gw-space-1);
+}
+
+.tool-group + .tool-group {
+  margin-top: var(--gw-space-2);
+}
+
+.tool-group-label {
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+  padding: 0 var(--gw-space-2);
 }
 
 .tool-item {
