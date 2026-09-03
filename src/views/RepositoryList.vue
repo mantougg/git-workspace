@@ -2378,6 +2378,16 @@ function viewConflicts() {
   flex-direction: column;
 }
 
+/* 同 F-20 树区模式：高度链经 .n-spin-content 打通到 .diff-pane-body，
+   否则大文档（如未跟踪文件全文 diff）会把 .virtual-list 撑出可视区——
+   竖向无滚动，横向滚动条被 .diff-pane 的 overflow:hidden 裁掉。 */
+.diff-pane-spin :deep(.n-spin-content) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .stats-bar {
   font-size: 13px;
   color: var(--gw-text-dim);
