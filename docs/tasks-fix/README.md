@@ -21,7 +21,7 @@
 ## 总体进度
 
 - 任务总数：**35**
-- 已完成：**32** · 修复中：**1** · 未开始：**2** · 仅讨论：**0**
+- 已完成：**33** · 修复中：**0** · 未开始：**2** · 仅讨论：**0**
 
 ---
 
@@ -60,7 +60,7 @@
 | F-29 | Runtime 总览脚本确认区默认折叠并提示更新 | P2 | ✅ | [F-29-runtime-script-approvals-collapsed.md](./F-29-runtime-script-approvals-collapsed.md) |
 | F-30 | StatusBar 工作区右侧 watcher 点接入真实状态 | P2 | ✅ | [F-30-statusbar-watcher-state.md](./F-30-statusbar-watcher-state.md) |
 | F-31 | Runtime 总览 Applications 删除项危险样式强化 | P2 | ✅ | [F-31-runtime-delete-action-danger-style.md](./F-31-runtime-delete-action-danger-style.md) |
-| F-32 | vite 8 管道输出带 ANSI 色码，端口探测正则不命中（CI e2e 失败） | P1 | 🟦 | [F-32-vite8-ansi-port-detection.md](./F-32-vite8-ansi-port-detection.md) |
+| F-32 | vite 8 ANSI 色码 + IPv6 环回绑定（CI e2e 失败） | P1 | ✅ | [F-32-vite8-ansi-port-detection.md](./F-32-vite8-ansi-port-detection.md) |
 | F-33 | 左侧菜单可见性配置（低频入口收纳：符号/仓库工具/自动化/Reflog/Pipeline/多服务环境） | P2 | ✅ | [F-33-sidenav-menu-visibility.md](./F-33-sidenav-menu-visibility.md) |
 | F-34 | 前端多服务启动的 PID/端口归属错误（PID 单值 + 误收后端端口） | P1 | ⬜ | [F-34-node-multi-service-pid-port-attribution.md](./F-34-node-multi-service-pid-port-attribution.md) |
 | F-35 | Runtime 总览 Processes 表格分页（默认 5 条/页，最新在前） | P2 | ⬜ | [F-35-processes-table-pagination.md](./F-35-processes-table-pagination.md) |
