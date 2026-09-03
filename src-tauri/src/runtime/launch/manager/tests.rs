@@ -340,7 +340,18 @@ fn node_start_detects_first_localhost_url_within_grace() {
         )
         .unwrap();
     assert_eq!(info.status, LifecycleStatus::Running);
-    assert_eq!(info.ports, vec![5173, 9229]);
+    // F-34 起 Running 在首条 localhost 行命中时立即翻转，后续端口（9229）由
+    // monitor 线程异步落库——info 快照与 set_ports 存在调度竞态（CI 实测只读
+    // 到 [5173]）。与 wait_for_status 同模式轮询等端口落定。
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let ports = manager.get_process(info.process_id).unwrap().unwrap().ports;
+        if ports == vec![5173, 9229] {
+            break;
+        }
+        assert!(Instant::now() < deadline, "ports did not settle, last {ports:?}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
     assert_eq!(info.run_strategy, Some(RunStrategy::NodeScript));
     assert!(info.command_preview.as_deref().unwrap().contains("npm"));
     manager.stop(info.process_id, None).unwrap();
