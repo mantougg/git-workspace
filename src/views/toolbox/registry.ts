@@ -9,6 +9,7 @@ import {
   PulseOutline,
   SwapVerticalOutline,
   TimeOutline,
+  ShieldCheckmarkOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -79,6 +80,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["url", "编码", "解码", "encode", "decode", "uri", "转义"],
     icon: markRaw(LinkOutline),
     component: defineAsyncComponent(() => import("./tools/UrlCodecTool.vue")),
+  },
+  {
+    id: "jwt-parser",
+    title: "JWT 解析器",
+    description: "解析 JWT Token，查看 Header、Payload 和过期时间",
+    category: "编码解码",
+    keywords: ["jwt", "token", "解析", "parse", "header", "payload", "过期"],
+    icon: markRaw(ShieldCheckmarkOutline),
+    component: defineAsyncComponent(() => import("./tools/JwtParserTool.vue")),
   },
   // ── 格式转换 ──
   {
