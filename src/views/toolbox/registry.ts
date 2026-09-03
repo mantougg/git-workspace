@@ -10,6 +10,7 @@ import {
   SwapVerticalOutline,
   TimeOutline,
   ShieldCheckmarkOutline,
+  TextOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -99,6 +100,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["json", "格式化", "压缩", "排序", "format", "minify", "sort"],
     icon: markRaw(CodeOutline),
     component: defineAsyncComponent(() => import("./tools/JsonFormatTool.vue")),
+  },
+  {
+    id: "regex-tester",
+    title: "正则表达式测试器",
+    description: "实时测试正则表达式，高亮显示匹配结果和捕获组",
+    category: "格式转换",
+    keywords: ["regex", "正则", "表达式", "匹配", "测试", "pattern"],
+    icon: markRaw(TextOutline),
+    component: defineAsyncComponent(() => import("./tools/RegexTesterTool.vue")),
   },
   // ── 时间与生成 ──
   {
