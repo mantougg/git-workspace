@@ -12,6 +12,7 @@ import {
   ShieldCheckmarkOutline,
   TextOutline,
   CodeSlashOutline,
+  LanguageOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -100,6 +101,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["html", "实体", "编码", "解码", "entity", "转义", "special"],
     icon: markRaw(CodeSlashOutline),
     component: defineAsyncComponent(() => import("./tools/HtmlEntityTool.vue")),
+  },
+  {
+    id: "unicode-codec",
+    title: "Unicode 编解码",
+    description: "Unicode / HTML / CSS / JS 编解码，查看字符详细信息",
+    category: "编码解码",
+    keywords: ["unicode", "编码", "解码", "html", "css", "js", "字符", "codepoint"],
+    icon: markRaw(LanguageOutline),
+    component: defineAsyncComponent(() => import("./tools/UnicodeCodecTool.vue")),
   },
   // ── 格式转换 ──
   {
