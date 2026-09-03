@@ -145,7 +145,7 @@ import {
 } from "@vicons/ionicons5";
 import Panel from "@/components/shell/Panel.vue";
 // Source: src-tauri/icons/128x128.png, copied for frontend bundling.
-import appIcon from "@/assets/app-icon.png";
+import appIcon from "@/assets/app-icon.svg";
 import { useUpdater } from "@/composables/useUpdater";
 
 const appVersion = __APP_VERSION__;
