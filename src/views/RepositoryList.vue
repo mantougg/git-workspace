@@ -1476,17 +1476,14 @@ async function onFileDblClick(node: ChangeNode) {
   if (!node.repoPath || !node.relPath) return;
   diffLoading.value = true;
   try {
+    const normRel = node.relPath.replace(/^\.?\/+/, "").replace(/\\/g, "/");
     let files = await getDiff(node.repoPath);
-    let match = files.find(
-      (f) => f.newPath === node.relPath || f.oldPath === node.relPath,
-    );
-    // Untracked files are absent from HEAD-vs-workdir diff; fall back to
-    // index-vs-workdir (getUnstagedDiff) which includes untracked content.
-    if (!match && node.status === "untracked") {
+    let match = files.find((f) => norm(f.newPath) === normRel || norm(f.oldPath) === normRel);
+    // Untracked / newly added files may be absent from the default diff;
+    // fall back to unstaged diff (index → workdir, includes untracked).
+    if (!match) {
       files = await getUnstagedDiff(node.repoPath);
-      match = files.find(
-        (f) => f.newPath === node.relPath || f.oldPath === node.relPath,
-      );
+      match = files.find((f) => norm(f.newPath) === normRel || norm(f.oldPath) === normRel);
     }
     if (match) {
       selectedDiff.value = {
@@ -1503,6 +1500,11 @@ async function onFileDblClick(node: ChangeNode) {
   } finally {
     diffLoading.value = false;
   }
+}
+
+/** 归一化路径：统一正斜杠、去前导 ./ 和尾部 /。 */
+function norm(p: string | undefined): string {
+  return (p ?? "").replace(/^\.?\/+/, "").replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
 function statusText(status: string): string {
