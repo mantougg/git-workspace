@@ -26,6 +26,7 @@ import {
   ServerOutline,
   EyeOutline,
   CreateOutline,
+  PeopleOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -307,5 +308,14 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["system", "系统", "信息", "浏览器", "硬件", "网络", "os"],
     icon: markRaw(InformationCircleOutline),
     component: defineAsyncComponent(() => import("./tools/SystemInfoTool.vue")),
+  },
+  {
+    id: "contributors",
+    title: "贡献者统计",
+    description: "查看 GitHub 仓库的贡献者列表和提交统计",
+    category: "计算器",
+    keywords: ["github", "贡献者", "统计", "仓库", "commits", "contributors"],
+    icon: markRaw(PeopleOutline),
+    component: defineAsyncComponent(() => import("./tools/ContributorsTool.vue")),
   },
 ];
