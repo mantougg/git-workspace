@@ -165,11 +165,13 @@ const router = createRouter({
       meta: { group: "设置", title: "Node 工具链" },
     },
     {
-      path: "/port-tool",
-      name: "port-tool",
-      component: () => import("@/views/PortToolView.vue"),
-      meta: { group: "设置", title: "端口工具" },
+      path: "/toolbox",
+      name: "toolbox",
+      component: () => import("@/views/toolbox/ToolboxView.vue"),
+      meta: { group: "设置", title: "工具箱" },
     },
+    // 旧入口重定向（无 meta → 不进 SideNav），历史链接/书签不失效。
+    { path: "/port-tool", redirect: "/toolbox" },
     {
       path: "/ai-settings",
       name: "ai-settings",

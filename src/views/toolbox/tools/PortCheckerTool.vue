@@ -1,8 +1,8 @@
 <template>
-  <div class="port-tool-view">
+  <div class="port-checker-tool">
     <!-- 查询区 -->
-    <div class="toolbar">
-      <div class="toolbar-left">
+    <div class="query-bar">
+      <div class="query-bar-left">
         <n-input-number
           v-model:value="port"
           :min="1"
@@ -17,7 +17,7 @@
           查询占用进程
         </n-button>
       </div>
-      <div class="toolbar-right hint">查询该端口当前活动进程（PID / 进程名 / 可执行路径），并可选择终止</div>
+      <div class="hint">查询该端口当前活动进程（PID / 进程名 / 可执行路径），并可选择终止</div>
     </div>
 
     <div v-if="result" class="result-area">
@@ -160,20 +160,19 @@ async function openContainingFolder() {
 </script>
 
 <style scoped>
-.port-tool-view {
-  padding: 16px 24px;
+.port-checker-tool {
   display: flex;
   flex-direction: column;
   gap: var(--gw-space-3);
 }
-.toolbar {
+.query-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--gw-space-2);
 }
-.toolbar-left {
+.query-bar-left {
   display: flex;
   gap: var(--gw-space-2);
   align-items: center;

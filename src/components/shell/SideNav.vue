@@ -106,7 +106,7 @@ import {
   BuildOutline,
   OptionsOutline,
   HardwareChipOutline,
-  PulseOutline,
+  AppsOutline,
   InformationCircleOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
@@ -229,7 +229,7 @@ const ICON_MAP: Record<string, any> = {
   "jdk-manager": BuildOutline,
   "maven-settings": OptionsOutline,
   "node-toolchain": HardwareChipOutline,
-  "port-tool": PulseOutline,
+  toolbox: AppsOutline,
   about: InformationCircleOutline,
 };
 
