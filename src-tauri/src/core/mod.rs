@@ -30,9 +30,7 @@ pub mod worktree;
 ///
 /// In production this avoids a hard crash for users who haven't configured
 /// git identity yet; a warning is logged so the user knows to set it.
-pub(crate) fn signature_or_default(
-    repo: &git2::Repository,
-) -> crate::error::AppResult<git2::Signature<'static>> {
+pub(crate) fn signature_or_default(repo: &git2::Repository) -> crate::error::AppResult<git2::Signature<'static>> {
     repo.signature().or_else(|_| {
         log::warn!("git config user.name/user.email not set; using fallback identity");
         git2::Signature::now("Git Multi", "git-multi@localhost")
