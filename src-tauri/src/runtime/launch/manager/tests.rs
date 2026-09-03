@@ -1686,8 +1686,8 @@ mod real_node_vite {
         assert!(!ports.is_empty(), "启动日志应探测到 vite 端口");
         let port = ports[0];
         assert!(
-            TcpStream::connect(("127.0.0.1", port)).is_ok(),
-            "探测端口 {port} 必须真实可连（= vite 实际服务端口）"
+            loopback_reachable(port),
+            "探测端口 {port} 必须真实可连（IPv4 或 IPv6 环回，vite 8 仅绑 ::1）"
         );
 
         // 7. 日志流：真实 vite 输出经日志引擎（含脱敏）进入事件流。
@@ -1711,7 +1711,7 @@ mod real_node_vite {
         assert_eq!(stopped.status, LifecycleStatus::Stopped);
         let release_deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            let still_listening = TcpStream::connect(("127.0.0.1", port)).is_ok();
+            let still_listening = loopback_reachable(port);
             if !still_listening {
                 break;
             }
@@ -1747,5 +1747,17 @@ mod real_node_vite {
             },
             Err(_) => false,
         }
+    }
+
+    /// vite 8 起在 Node 17+ verbatim DNS 下仅绑定 `::1`（IPv6 环回），连接
+    /// `127.0.0.1` 必然失败（F-32）。探测同时尝试两种环回族，任一可达即可。
+    fn loopback_reachable(port: u16) -> bool {
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+        [
+            SocketAddr::new(IpAddr::from(Ipv4Addr::LOCALHOST), port),
+            SocketAddr::new(IpAddr::from(Ipv6Addr::LOCALHOST), port),
+        ]
+        .iter()
+        .any(|addr| TcpStream::connect(addr).is_ok())
     }
 }
