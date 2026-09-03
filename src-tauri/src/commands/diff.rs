@@ -60,6 +60,38 @@ pub fn get_staged_diff(repo_path: String, options: Option<DiffOptionsParam>) -> 
     diff::get_staged_diff_with_config(Path::new(&repo_path), &opt.to_config())
 }
 
+/// Read a file from the working directory and return it as a synthetic "added"
+/// diff. Used for untracked files that the diff APIs may not include (e.g.
+/// libgit2 `diff_tree_to_workdir_with_index` edge cases on Windows).
+#[tauri::command]
+pub fn read_file_as_diff(repo_path: String, file_path: String) -> AppResult<Vec<FileDiff>> {
+    let full = Path::new(&repo_path).join(&file_path);
+    let content = std::fs::read_to_string(&full)
+        .map_err(|e| crate::error::AppError::Other(format!("读取文件失败: {e}")))?;
+    let lines: Vec<diff::DiffLine> = content
+        .lines()
+        .enumerate()
+        .map(|(i, line)| diff::DiffLine {
+            line_type: "add".to_string(),
+            content: line.to_string(),
+            old_line: None,
+            new_line: Some(i as u32 + 1),
+        })
+        .collect();
+    Ok(vec![diff::FileDiff {
+        old_path: String::new(),
+        new_path: file_path,
+        status: "untracked".to_string(),
+        hunks: vec![diff::Hunk {
+            old_start: 0,
+            old_lines: 0,
+            new_start: 1,
+            new_lines: lines.len() as u32,
+            lines,
+        }],
+    }])
+}
+
 /// Diff between two arbitrary revisions (T-12 双点 Diff): branch / tag /
 /// commit specs, e.g. `main` vs `feature`, `v1.0` vs `v1.1`, or two oids.
 ///

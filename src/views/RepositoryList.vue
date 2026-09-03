@@ -743,7 +743,7 @@ import type {
   WorkspaceStashItemEntry,
   WorkspaceStashSummary,
 } from "@/types/workspaceStash";
-import { getDiff, getUnstagedDiff } from "@/api/git";
+import { getDiff, getUnstagedDiff, readFileAsDiff } from "@/api/git";
 import { batchAdd, batchRestore, getWorkspaceChanges, type AddRequest, type RestoreRequest } from "@/api/changes";
 import type { CommitRequest } from "@/types/task";
 import type { RepoChanges } from "@/types/changes";
@@ -1484,6 +1484,16 @@ async function onFileDblClick(node: ChangeNode) {
     if (!match) {
       files = await getUnstagedDiff(node.repoPath);
       match = files.find((f) => norm(f.newPath) === normRel || norm(f.oldPath) === normRel);
+    }
+    // Final fallback: read the file directly and return as synthetic diff.
+    // Covers libgit2 edge cases where diff APIs omit untracked files.
+    if (!match && node.status === "untracked") {
+      try {
+        files = await readFileAsDiff(node.repoPath, node.relPath);
+        match = files.find((f) => norm(f.newPath) === normRel || norm(f.oldPath) === normRel);
+      } catch {
+        // readFileAsDiff failed (binary file, permission, etc.) — fall through
+      }
     }
     if (match) {
       selectedDiff.value = {

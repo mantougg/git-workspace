@@ -23,6 +23,15 @@ export function getUnstagedDiff(
   return invoke<FileDiff[]>("get_unstaged_diff", { repoPath, options });
 }
 
+/** Read a working-directory file and return it as a synthetic "added" diff.
+ *  Used for untracked files that the diff APIs may not include. */
+export function readFileAsDiff(
+  repoPath: string,
+  filePath: string,
+): Promise<FileDiff[]> {
+  return invoke<FileDiff[]>("read_file_as_diff", { repoPath, filePath });
+}
+
 /** Staged changes only (HEAD tree → index), matching `git diff --cached`. */
 export function getStagedDiff(
   repoPath: string,
