@@ -23,6 +23,7 @@ import {
   TerminalOutline,
   SearchOutline,
   StatsChartOutline,
+  ServerOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -203,6 +204,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["lorem", "ipsum", "占位", "文本", "生成", "随机", "测试"],
     icon: markRaw(DocumentTextOutline),
     component: defineAsyncComponent(() => import("./tools/LoremIpsumTool.vue")),
+  },
+  {
+    id: "mock-data",
+    title: "Mock 数据工厂",
+    description: "生成测试数据，支持自定义字段、多种格式（JSON/CSV/SQL）",
+    category: "时间与生成",
+    keywords: ["mock", "数据", "生成", "测试", "json", "csv", "sql", "工厂"],
+    icon: markRaw(ServerOutline),
+    component: defineAsyncComponent(() => import("./tools/MockDataTool.vue")),
   },
   // ── 速查表 ──
   {
