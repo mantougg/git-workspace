@@ -18,6 +18,7 @@ import {
   CalendarOutline,
   InformationCircleOutline,
   DocumentTextOutline,
+  ColorPaletteOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -208,6 +209,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["git", "命令", "速查", "cheatsheet", "撤销", "变基"],
     icon: markRaw(GitNetworkOutline),
     component: defineAsyncComponent(() => import("./tools/GitCheatSheetTool.vue")),
+  },
+  {
+    id: "css-cheatsheet",
+    title: "CSS 速查表",
+    description: "常用 CSS 属性、值和代码片段速查，支持搜索和分类",
+    category: "速查表",
+    keywords: ["css", "属性", "速查", "cheatsheet", "样式", "布局", "flex", "grid"],
+    icon: markRaw(ColorPaletteOutline),
+    component: defineAsyncComponent(() => import("./tools/CssCheatSheetTool.vue")),
   },
   // ── 计算器 ──
   {
