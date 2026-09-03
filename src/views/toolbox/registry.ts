@@ -17,6 +17,7 @@ import {
   CalculatorOutline,
   CalendarOutline,
   InformationCircleOutline,
+  DocumentTextOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -179,6 +180,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["cron", "定时", "任务", "表达式", "生成", "调度"],
     icon: markRaw(CalendarOutline),
     component: defineAsyncComponent(() => import("./tools/CronGeneratorTool.vue")),
+  },
+  {
+    id: "lorem-ipsum",
+    title: "Lorem Ipsum 生成",
+    description: "生成占位文本，支持拉丁文、中文、英文，可生成段落、句子、单词",
+    category: "时间与生成",
+    keywords: ["lorem", "ipsum", "占位", "文本", "生成", "随机", "测试"],
+    icon: markRaw(DocumentTextOutline),
+    component: defineAsyncComponent(() => import("./tools/LoremIpsumTool.vue")),
   },
   // ── 速查表 ──
   {
