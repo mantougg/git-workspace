@@ -11,6 +11,7 @@ import {
   TimeOutline,
   ShieldCheckmarkOutline,
   TextOutline,
+  CodeSlashOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -90,6 +91,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["jwt", "token", "解析", "parse", "header", "payload", "过期"],
     icon: markRaw(ShieldCheckmarkOutline),
     component: defineAsyncComponent(() => import("./tools/JwtParserTool.vue")),
+  },
+  {
+    id: "html-entity",
+    title: "HTML 实体编解码",
+    description: "HTML 实体编码 / 解码，支持常用实体和数字实体",
+    category: "编码解码",
+    keywords: ["html", "实体", "编码", "解码", "entity", "转义", "special"],
+    icon: markRaw(CodeSlashOutline),
+    component: defineAsyncComponent(() => import("./tools/HtmlEntityTool.vue")),
   },
   // ── 格式转换 ──
   {
