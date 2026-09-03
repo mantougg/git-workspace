@@ -195,6 +195,7 @@ fn open_db_with_migrated_legacy_provider() -> Connection {
     conn
 }
 
+#[allow(dead_code)]
 fn credentials_with_key(key: &str) -> Arc<CredentialManager> {
     credentials_for_ref("ai-provider:p1", key)
 }
@@ -437,7 +438,7 @@ async fn three_protocols_complete_success() {
         assert!(req.url.ends_with(endpoint.as_str()), "{}", req.url);
         if api_type == ApiType::AnthropicMessages {
             assert!(req.headers.iter().any(|(k, v)| k == "x-api-key" && v == KEY));
-            assert!(req.headers.iter().any(|(k, v)| k == "anthropic-version"));
+            assert!(req.headers.iter().any(|(k, _v)| k == "anthropic-version"));
             assert!(!req.headers.iter().any(|(k, _)| k == "Authorization"));
         } else {
             assert!(req

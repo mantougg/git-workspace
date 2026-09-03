@@ -368,7 +368,7 @@ mod tests {
     #[test]
     fn dry_run_categorizes_pull_and_push() {
         let dir = tmpdir("full");
-        let bare = dir.join("remote.git");
+        let _bare = dir.join("remote.git");
         let a = dir.join("a");
         let b = dir.join("b");
 
@@ -436,7 +436,7 @@ mod tests {
     #[test]
     fn dry_run_push_fast_forward_when_ahead() {
         let dir = tmpdir("pushff");
-        let bare = dir.join("remote.git");
+        let _bare = dir.join("remote.git");
         let a = dir.join("a");
         git(&dir, &["init", "--bare", "-b", "main", "remote.git"]);
         git(&dir, &["clone", "-q", "remote.git", "a"]);

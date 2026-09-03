@@ -151,7 +151,6 @@ mod tests {
     use super::*;
     use crate::ai::context::ContextRole;
     use crate::ai::request::{ContextKind, ExclusionReason};
-    use crate::core::secret::SecretKind;
 
     fn item(source: &str, content: &str) -> DraftContextItem {
         DraftContextItem::supplementary(ContextRole::FullDiff, ContextKind::Diff, source, source, content)

@@ -479,11 +479,13 @@ mod tests {
     }
 
     /// 单仓 parent + lib + app（app 依赖 lib）+ 依赖图索引 + 运行中进程。
+    #[allow(dead_code)]
     struct Fixture {
         root: std::path::PathBuf,
         db: Arc<Mutex<Connection>>,
         workspace_id: i64,
         repo_path: String,
+        #[allow(dead_code)]
         auto_restart: bool,
     }
 

@@ -104,6 +104,7 @@ pub fn parse_mvnd_version(output: &str) -> MavenVersionInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn daemon_failure_markers_match_case_insensitively() {
