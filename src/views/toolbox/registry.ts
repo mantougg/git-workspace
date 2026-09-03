@@ -14,6 +14,7 @@ import {
   CodeSlashOutline,
   LanguageOutline,
   GlobeOutline,
+  CalculatorOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -74,6 +75,15 @@ export const TOOLS: ToolboxTool[] = [
     keywords: ["ip", "地址", "查询", "地理位置", "isp", "公网", "本机"],
     icon: markRaw(GlobeOutline),
     component: defineAsyncComponent(() => import("./tools/IpAddressTool.vue")),
+  },
+  {
+    id: "subnet-calculator",
+    title: "子网计算器",
+    description: "计算子网掩码、网络地址、广播地址、可用主机数，支持子网划分",
+    category: "网络",
+    keywords: ["subnet", "子网", "掩码", "cidr", "网络", "广播", "计算"],
+    icon: markRaw(CalculatorOutline),
+    component: defineAsyncComponent(() => import("./tools/SubnetCalculatorTool.vue")),
   },
   // ── 编码解码 ──
   {
