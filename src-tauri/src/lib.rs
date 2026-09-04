@@ -557,6 +557,7 @@ pub fn run() {
             commands::chat::lan_chat_room_state,
             commands::chat::lan_chat_start_discovery,
             commands::chat::lan_chat_stop_discovery,
+            commands::chat::lan_chat_local_addrs,
             // Terminal / IDE integration commands (T-31)
             commands::integration::open_in_terminal,
             commands::integration::open_in_ide,

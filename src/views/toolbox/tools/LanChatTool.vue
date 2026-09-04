@@ -81,11 +81,19 @@
             </div>
             <div class="field">
               <div class="field-label">Bootstrap 地址（IP:Port，可选）</div>
-              <n-input
-                v-model:value="joinForm.bootstrap"
-                class="mono-input"
-                placeholder="如 192.168.1.5:45678，跨子网时填写"
-              />
+              <div class="bootstrap-row">
+                <n-input
+                  v-model:value="joinForm.bootstrap"
+                  class="mono-input"
+                  placeholder="同子网可留空（自动发现）；跨子网填房间任一员地址，如 192.168.1.5:45678"
+                />
+                <n-button
+                  :disabled="nearbyRooms.length === 0"
+                  @click="onAutoFillBootstrap"
+                >
+                  自动填入
+                </n-button>
+              </div>
             </div>
             <div class="field">
               <div class="field-label">加密 Secret（Shared Secret）</div>
@@ -151,6 +159,33 @@
         </div>
         <div class="room-meta">
           <span class="hint">● {{ room.members.length }} 成员 · {{ room.connectedPeers }} 连接 · P2P Mesh</span>
+          <span class="hint mono">ID: {{ room.roomId }}</span>
+          <n-button size="tiny" tertiary @click="copyText(room.roomId, '房间 ID')">
+            复制 ID
+          </n-button>
+          <n-popover trigger="click" placement="bottom-end">
+            <template #trigger>
+              <n-button size="tiny" tertiary>本机地址</n-button>
+            </template>
+            <div class="share-panel">
+              <div v-for="addr in listenAddrs" :key="addr" class="share-row">
+                <span class="mono share-value">{{ addr }}</span>
+                <n-button
+                  size="tiny"
+                  tertiary
+                  @click="copyText(addr, 'Bootstrap 地址')"
+                >
+                  复制
+                </n-button>
+              </div>
+              <div v-if="listenAddrs.length === 0" class="hint">
+                未获取到本机局域网 IP，请手动告知：本机IP:{{ room.port }}
+              </div>
+              <div class="hint">
+                跨子网成员加入时需要：房间 ID + 任一 Bootstrap 地址 + 相同 Secret。
+              </div>
+            </div>
+          </n-popover>
           <n-button
             size="small"
             type="error"
@@ -242,6 +277,7 @@ import {
   lanChatGenerateSecret,
   lanChatJoinRoom,
   lanChatLeaveRoom,
+  lanChatLocalAddrs,
   lanChatRoomState,
   lanChatSendMessage,
   lanChatStartDiscovery,
@@ -260,6 +296,8 @@ const room = ref<LanChatRoomState | null>(null);
 const messages = ref<LanChatMessage[]>([]);
 const seenMessageIds = new Set<string>();
 const nearbyRooms = ref<LanChatNearbyRoom[]>([]);
+// 本机局域网 IPv4 列表（进房后拉取一次，用于拼「IP:Port」分享地址）。
+const localAddrs = ref<string[]>([]);
 
 const entryTab = ref<"create" | "join">("create");
 const createForm = reactive({ roomName: "", secret: "", nickname: "" });
@@ -285,10 +323,35 @@ const canJoin = computed(
     joinForm.secret.trim() !== "" &&
     joinForm.nickname.trim() !== "",
 );
+// 可分享的 Bootstrap 地址：本机每个局域网 IP × 房间监听端口。
+const listenAddrs = computed(() =>
+  room.value ? localAddrs.value.map((ip) => `${ip}:${room.value!.port}`) : [],
+);
 
 function applyRoomState(state: LanChatRoomState | null) {
   room.value = state;
-  if (!state) messages.value = [];
+  if (state) {
+    void refreshLocalAddrs();
+  } else {
+    messages.value = [];
+  }
+}
+
+async function refreshLocalAddrs() {
+  try {
+    localAddrs.value = await lanChatLocalAddrs();
+  } catch {
+    localAddrs.value = [];
+  }
+}
+
+async function copyText(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success(`${label}已复制`);
+  } catch {
+    message.error("复制失败，请手动选择复制");
+  }
 }
 
 async function onGenerateSecret() {
@@ -325,6 +388,25 @@ async function onCreateRoom() {
 function onSelectNearby(r: LanChatNearbyRoom) {
   joinForm.roomId = r.roomId;
   joinForm.bootstrap = `${r.addr}:${r.port}`;
+}
+
+/** 「自动填入」：优先按已输入的房间 ID 匹配附近房间，否则取发现的第一个。 */
+function onAutoFillBootstrap() {
+  const typedId = joinForm.roomId.trim();
+  const match = typedId
+    ? nearbyRooms.value.find((r) => r.roomId === typedId)
+    : nearbyRooms.value[0];
+  if (!match) {
+    message.warning(
+      typedId
+        ? "附近未发现该房间 ID，请确认与创建者在同一子网"
+        : "暂未发现附近房间",
+    );
+    return;
+  }
+  joinForm.roomId = match.roomId;
+  joinForm.bootstrap = `${match.addr}:${match.port}`;
+  message.success(`已填入「${match.roomName}」的地址`);
 }
 
 async function onJoinRoom() {
@@ -476,6 +558,30 @@ onUnmounted(() => {
 .secret-row {
   display: flex;
   gap: var(--gw-space-2);
+}
+
+.bootstrap-row {
+  display: flex;
+  gap: var(--gw-space-2);
+}
+
+.share-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gw-space-2);
+  max-width: 420px;
+}
+
+.share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gw-space-2);
+}
+
+.share-value {
+  font-size: var(--gw-text-sm);
+  word-break: break-all;
 }
 
 .hint {

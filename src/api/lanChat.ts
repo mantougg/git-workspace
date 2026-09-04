@@ -87,3 +87,8 @@ export function lanChatStartDiscovery() {
 export function lanChatStopDiscovery() {
   return invoke<void>("lan_chat_stop_discovery");
 }
+
+/** 本机局域网 IPv4 地址列表（房间头部分享监听地址用）。 */
+export function lanChatLocalAddrs() {
+  return invoke<string[]>("lan_chat_local_addrs");
+}

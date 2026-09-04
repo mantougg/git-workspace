@@ -172,6 +172,26 @@ pub fn lan_chat_stop_discovery(app: AppHandle, state: State<'_, LanChatState>) -
     Ok(())
 }
 
+/// 本机局域网 IPv4 地址列表（房间头部分享监听地址用；多网卡时会有多个，
+/// 前端逐一拼 `IP:Port` 展示）。失败时返回空列表，不报错——展示层降级即可。
+#[tauri::command]
+pub fn lan_chat_local_addrs() -> Vec<String> {
+    let mut addrs: Vec<String> = if_addrs::get_if_addrs()
+        .map(|ifs| {
+            ifs.into_iter()
+                .filter(|i| !i.is_loopback())
+                .filter_map(|i| match i.addr.ip() {
+                    std::net::IpAddr::V4(v4) => Some(v4.to_string()),
+                    std::net::IpAddr::V6(_) => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    addrs.sort();
+    addrs.dedup();
+    addrs
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

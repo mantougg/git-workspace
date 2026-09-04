@@ -1402,6 +1402,7 @@ dependencies = [
  "dashmap",
  "dirs 5.0.1",
  "git2",
+ "if-addrs",
  "keyring",
  "libc",
  "log",

@@ -66,6 +66,9 @@ rcgen = "0.13"
 quinn = { version = "0.11", default-features = false, features = ["rustls", "ring", "runtime-tokio", "log"] }
 postcard = { version = "1", features = ["alloc"] }
 mdns-sd = "0.21.1"
+# LAN Chat 房间头部分享本机监听地址（多网卡时枚举 IPv4）。mdns-sd 的传递
+# 依赖，提升为直接依赖无新增编译量。
+if-addrs = "0.15"
 
 # F-06：仅 Windows 需要——tao/Tauri 的 set_icon 只设置窗口小图标
 # （WM_SETICON ICON_SMALL），任务栏大图标（ICON_BIG）需自己发消息设置。
