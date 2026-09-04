@@ -158,6 +158,22 @@ pub fn set_port_attribution(
     Ok(())
 }
 
+/// 只落 `port_pids_json`（端口归属确权线程退出前的最终 flush 用）：
+/// 不碰 `ports_json`，避免把「探测到但未确权成功、按 F-26 回退保留展示」
+/// 的端口在进程退出后抹掉。
+pub fn set_port_pids(
+    conn: &Connection,
+    id: i64,
+    port_pids: &std::collections::BTreeMap<u16, u32>,
+) -> AppResult<()> {
+    let pids_json = serde_json::to_string(port_pids)?;
+    conn.execute(
+        "UPDATE runtime_processes SET port_pids_json = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, pids_json, now()],
+    )?;
+    Ok(())
+}
+
 /// 标记该行为「重启后接管的孤儿进程」。
 pub fn set_adopted(conn: &Connection, id: i64) -> AppResult<()> {
     conn.execute(

@@ -282,6 +282,7 @@ fn run_verifier(
     // 线程退出前：确保最终状态落库（finalize 阶段 row 已是终态但
     // port_pids_json 未写——多发生在 dev server 正常退出、attribution
     // 线程被 stop 后的 flush；写 DB 对终态行 idempotent，不会触发事件。
+    // flush 只落 port_pids_json，不覆盖 ports_json（F-26 回退保留）。
     drop(guard);
     flush_on_stop(&manager, process_id, &state);
 }
@@ -309,8 +310,10 @@ fn persist_and_emit(
     }
 }
 
-/// 线程退出前的最终 flush：把残余 dirty 状态落库（不发事件——进程已退出，
-/// 前端已收到 Exited 事件，不会再看 Ports 事件）。
+/// 线程退出前的最终 flush：把残余的已确认映射落 `port_pids_json`（不发
+/// 事件——进程已退出，前端已收到 Exited 事件，不会再看 Ports 事件）。
+/// 故意不写 `ports_json`：未确权成功的候选端口按 F-26 回退保留展示，
+/// 不能用 confirmed 集合在此覆盖（否则 stop 后端口被竞态抹掉）。
 fn flush_on_stop(
     manager: &Arc<super::RuntimeProcessManager>,
     process_id: i64,
@@ -322,7 +325,7 @@ fn flush_on_stop(
     }
     let confirmed = state.0.lock().unwrap().confirmed.clone();
     let conn = manager.db.lock().unwrap();
-    if let Err(e) = store::set_port_attribution(&conn, process_id, &confirmed) {
+    if let Err(e) = store::set_port_pids(&conn, process_id, &confirmed) {
         log::warn!("F-34: final flush of port attribution for process #{process_id} failed: {e}");
     }
 }
