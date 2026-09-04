@@ -51,7 +51,7 @@
           <div class="match-header">
             <span class="match-index">匹配 {{ index + 1 }}</span>
             <span class="match-position">
-              位置: {{ match.index }} - {{ match.index + match[0].length }}
+              位置: {{ match.index }} - {{ (match.index ?? 0) + match[0].length }}
             </span>
           </div>
           <div class="match-content">

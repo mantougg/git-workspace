@@ -73,7 +73,7 @@
           <div class="match-header">
             <span class="match-index">匹配 {{ index + 1 }}</span>
             <span class="match-position">
-              位置: {{ match.index }} - {{ match.index + match[0].length }}
+              位置: {{ match.index }} - {{ (match.index ?? 0) + match[0].length }}
             </span>
           </div>
           <div class="match-content">
@@ -354,9 +354,10 @@ const highlightedParts = computed(() => {
   let lastIndex = 0
 
   for (const match of matches.value) {
-    if (match.index > lastIndex) {
+    const matchIndex = match.index ?? 0
+    if (matchIndex > lastIndex) {
       parts.push({
-        text: testString.value.slice(lastIndex, match.index),
+        text: testString.value.slice(lastIndex, matchIndex),
         isMatch: false,
         isGroup: false,
       })
@@ -366,7 +367,7 @@ const highlightedParts = computed(() => {
       isMatch: true,
       isGroup: false,
     })
-    lastIndex = match.index + match[0].length
+    lastIndex = matchIndex + match[0].length
   }
 
   if (lastIndex < testString.value.length) {

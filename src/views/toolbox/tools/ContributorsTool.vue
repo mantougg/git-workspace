@@ -110,9 +110,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useMessage } from 'naive-ui'
 
-const message = useMessage()
 const repoUrl = ref('')
 const loading = ref(false)
 const error = ref('')

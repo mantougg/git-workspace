@@ -164,8 +164,6 @@ const patterns = [
   },
 ]
 
-const asciiChars = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@']
-
 function generateArt() {
   if (!inputText.value) {
     asciiArt.value = ''

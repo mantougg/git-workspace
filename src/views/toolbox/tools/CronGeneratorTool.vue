@@ -254,9 +254,9 @@ function getNextRunTime(
   from: Date,
   minExpr: string,
   hourExpr: string,
-  domExpr: string,
-  monExpr: string,
-  dowExpr: string
+  _domExpr: string,
+  _monExpr: string,
+  _dowExpr: string
 ): Date {
   let next = new Date(from)
 
