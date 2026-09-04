@@ -1327,7 +1327,8 @@ const pushColumns = [
     render: (row: RepoChanges) =>
       h("div", { class: "push-repo-cell" }, [
         h("span", { class: "push-repo-name" }, row.repoName),
-        h("span", { class: "push-repo-rel" }, row.relativePath),
+        // 工作区根本身是仓库时 relativePath 为空，显示 "." 表示工作区根。
+        h("span", { class: "push-repo-rel" }, row.relativePath || "."),
       ]),
   },
   {

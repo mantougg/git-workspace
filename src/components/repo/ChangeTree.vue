@@ -131,7 +131,29 @@ function buildTree(changes: RepoChanges[], viewMode: "tree" | "flat"): ChangeNod
   }
 
   for (const repo of changes) {
-    const parts = normalizeRel(repo.relativePath).split("/").filter(Boolean);
+    const rel = normalizeRel(repo.relativePath);
+    const parts = rel.split("/").filter(Boolean);
+
+    // 工作区根本身就是 git 仓库时 relativePath 为空：没有目录层级可挂，
+    // repo 节点直接放在顶层（用 repoName 作显示名，否则 label 为空）。
+    if (parts.length === 0) {
+      const node: ChangeNode = {
+        key: "repo:",
+        label: repo.repoName,
+        type: "repo",
+        children: [],
+      };
+      attachRepoProps(node, repo);
+      roots.push(node);
+      dirMap.set(rel, node);
+      if (viewMode === "flat") {
+        buildRepoFileTreeFlat(node, repo);
+      } else {
+        buildRepoFileTree(node, repo);
+      }
+      continue;
+    }
+
     let parentChildren = roots;
     let curRel = "";
     for (const part of parts) {

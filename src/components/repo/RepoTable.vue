@@ -63,7 +63,8 @@ const columns: DataTableColumns<RepositoryWithStatus> = [
       parts.push(h("span", null, row.repository.name));
       return h("div", [
         h("div", { class: "repo-name" }, parts),
-        h("div", { class: "repo-path" }, row.repository.relativePath),
+        // 工作区根本身是仓库时 relativePath 为空，显示 "." 表示工作区根。
+        h("div", { class: "repo-path" }, row.repository.relativePath || "."),
       ]);
     },
   },
