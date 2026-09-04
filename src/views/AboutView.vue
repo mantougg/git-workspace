@@ -129,6 +129,28 @@
           </div>
         </div>
       </section>
+      <!-- F-38：数据管理（清除历史与缓存，配置保留，二次确认） -->
+      <n-divider />
+
+      <section class="about-section" aria-labelledby="data-title">
+        <h2 id="data-title">数据</h2>
+        <div class="about-info-list">
+          <div class="about-info-row">
+            <span class="about-info-label">
+              本地数据<span class="about-telemetry-hint">（清除历史与缓存；工作区、JDK、Runtime 配置等保留）</span>
+            </span>
+            <span class="about-info-value" />
+            <n-button
+              text
+              type="error"
+              :loading="clearingData"
+              @click="confirmClearData"
+            >
+              清除数据
+            </n-button>
+          </div>
+        </div>
+      </section>
     </Panel>
   </div>
 </template>
@@ -147,6 +169,7 @@ import Panel from "@/components/shell/Panel.vue";
 // Source: src-tauri/icons/128x128.png, copied for frontend bundling.
 import appIcon from "@/assets/app-icon.svg";
 import { useUpdater } from "@/composables/useUpdater";
+import { clearCachedData } from "@/api/app";
 
 const appVersion = __APP_VERSION__;
 const appAuthor = __APP_AUTHOR__;
@@ -187,7 +210,7 @@ async function openExternalUrl(url: string) {
 
 // ── T-35：诊断与反馈 ─────────────────────────────────────────
 import { onMounted, ref } from "vue";
-import { NAlert, NDivider, NProgress, NSwitch } from "naive-ui";
+import { NAlert, NDivider, NProgress, NSwitch, useDialog } from "naive-ui";
 import {
   clearCrashReports,
   collectFeedbackBundle,
@@ -248,6 +271,33 @@ async function saveTelemetry(enabled: boolean) {
   } catch (e) {
     message.error("保存失败: " + (e instanceof Error ? e.message : String(e)));
   }
+}
+
+// ── F-38：清除数据（历史与缓存，配置保留，二次确认）────────────
+const dialog = useDialog();
+const clearingData = ref(false);
+
+function confirmClearData() {
+  dialog.error({
+    title: "确认清除数据",
+    content:
+      "将清除运行历史、仓库 / 符号 / Maven 索引、AI 历史与缓存等可重建数据；" +
+      "工作区、JDK、Runtime 配置等手动配置保留。清除后可通过重新扫描 / 解析依赖重建索引。确定继续吗？",
+    positiveText: "清除",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      clearingData.value = true;
+      try {
+        const results = await clearCachedData();
+        const total = results.reduce((sum, r) => sum + r.deleted, 0);
+        message.success(`已清除 ${total} 行历史与缓存数据`);
+      } catch (e) {
+        message.error("清除失败: " + (e instanceof Error ? e.message : String(e)));
+      } finally {
+        clearingData.value = false;
+      }
+    },
+  });
 }
 </script>
 

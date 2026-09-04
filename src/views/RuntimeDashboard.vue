@@ -653,6 +653,19 @@ function processOf(name: string): RuntimeProcessInfo | undefined {
 }
 
 // F-34：应用详情 PID 行 attribution（computed 随选中应用联动）
+// F-40：tooltip 除「端口 → PID」映射外，先列出进程树全部 PID。
+function pidTooltipLines(p: RuntimeProcessInfo): string[] {
+  const lines: string[] = [];
+  const allPids = p.pids ?? (p.pid != null ? [p.pid] : []);
+  if (allPids.length > 0) {
+    lines.push(`进程树 PID：${allPids.join(", ")}`);
+  }
+  for (const [port, pid] of Object.entries(p.portPids ?? {})) {
+    lines.push(`端口 ${port} → PID ${pid}`);
+  }
+  return lines;
+}
+
 const selectedPidDisplay = computed(() => {
   const p = processOf(selectedConfig.value?.name ?? "");
   if (!p?.pid) return "—";
@@ -663,13 +676,8 @@ const selectedPidDisplay = computed(() => {
 
 const selectedPortPidsLines = computed(() => {
   const p = processOf(selectedConfig.value?.name ?? "");
-  if (!p) return "";
-  const portPids = p.portPids ?? {};
-  const lines: string[] = [];
-  for (const [port, pid] of Object.entries(portPids)) {
-    lines.push(`端口 ${port} → PID ${pid}`);
-  }
-  return lines.join("\n");
+  if (!p || p.pid == null) return "";
+  return pidTooltipLines(p).join("\n");
 });
 
 function isBusy(name: string): boolean {
@@ -921,16 +929,11 @@ const configColumns = [
       if (!p?.pid) return h("span", { class: "muted" }, "—");
       const rootPid = p.pid;
       const extraPids = (p.pids ?? []).filter((pid) => pid !== rootPid);
-      const portPids = p.portPids ?? {};
-      const hasAttribution = Object.keys(portPids).length > 0 || extraPids.length > 0;
-      if (!hasAttribution) {
+      const lines = pidTooltipLines(p);
+      if (lines.length === 0 && extraPids.length === 0) {
         return h("span", { class: "mono" }, String(rootPid));
       }
       const label = extraPids.length > 0 ? `${rootPid} (+${extraPids.length})` : String(rootPid);
-      const lines: string[] = [];
-      for (const [port, pid] of Object.entries(portPids)) {
-        lines.push(`端口 ${port} → PID ${pid}`);
-      }
       return h(
         NTooltip,
         { trigger: "hover" },
@@ -961,7 +964,7 @@ const configColumns = [
     width: 260,
     fixed: "right" as const,
     render(row: RuntimeConfigSummary) {
-      // 核心操作平铺；构建/日志/配置/删除 收进「更多」下拉，避免列过宽误点。
+      // F-39：平铺 启动/停止/日志；重启/构建/配置/删除 收进「更多」下拉。
       const primary = [
         h(
           NButton,
@@ -986,10 +989,9 @@ const configColumns = [
           NButton,
           {
             size: "small",
-            disabled: !isRunning(row.name),
-            onClick: () => onRestart(row.name),
+            onClick: () => openLogs(row.name),
           },
-          { default: () => "重启" },
+          { default: () => "日志" },
         ),
         ...(row.kind === "node"
           ? [
@@ -1006,8 +1008,8 @@ const configColumns = [
           : []),
       ];
       const moreOptions: DropdownOption[] = [
+        { label: "重启", key: "restart", disabled: !isRunning(row.name) },
         { label: "构建", key: "build", disabled: isBusy(row.name) },
-        { label: "日志", key: "logs" },
         { label: "配置", key: "config" },
         { type: "divider", key: "d1" },
         {
@@ -1022,11 +1024,11 @@ const configColumns = [
       ];
       const onMore = (key: string | number) => {
         switch (key) {
+          case "restart":
+            onRestart(row.name);
+            break;
           case "build":
             onBuild(row.name);
-            break;
-          case "logs":
-            openLogs(row.name);
             break;
           case "config":
             openWizard(row.name);
@@ -1072,16 +1074,11 @@ const processColumns = [
       if (row.pid == null) return h("span", { class: "muted" }, "—");
       const rootPid = row.pid;
       const extraPids = (row.pids ?? []).filter((pid) => pid !== rootPid);
-      const portPids = row.portPids ?? {};
-      const hasAttribution = Object.keys(portPids).length > 0 || extraPids.length > 0;
-      if (!hasAttribution) {
+      const lines = pidTooltipLines(row);
+      if (lines.length === 0 && extraPids.length === 0) {
         return h("span", { class: "mono" }, String(rootPid));
       }
       const label = extraPids.length > 0 ? `${rootPid} (+${extraPids.length})` : String(rootPid);
-      const lines: string[] = [];
-      for (const [port, pid] of Object.entries(portPids)) {
-        lines.push(`端口 ${port} → PID ${pid}`);
-      }
       return h(
         NTooltip,
         { trigger: "hover" },

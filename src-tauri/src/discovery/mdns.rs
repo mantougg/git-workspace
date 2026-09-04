@@ -169,10 +169,13 @@ impl Drop for RoomBrowser {
 
 /// 进房后的房间 peer 浏览器：发现同房间的其他 peer 时回调 (ip, port)。
 /// 用于同子网自动组网（§15/§17）。
+///
+/// `alive` 为 true 时持续运行（调用方传入 ChatManager 的 alive 标志，
+/// 离房置 false 后线程在下一个 tick 退出）。
 pub fn browse_room(
     self_peer_id: String,
     room_id: String,
-    stop: Arc<AtomicBool>,
+    alive: Arc<AtomicBool>,
     on_peer: impl Fn(String, u16) + Send + Sync + 'static,
 ) -> Option<(ServiceDaemon, std::thread::JoinHandle<()>)> {
     let daemon = ServiceDaemon::new().ok()?;
@@ -180,10 +183,12 @@ pub fn browse_room(
     let thread = std::thread::Builder::new()
         .name("lan-chat-room-browse".into())
         .spawn(move || {
-            while !stop.load(Ordering::Relaxed) {
+            while alive.load(Ordering::Relaxed) {
                 let event = match receiver.recv_timeout(Duration::from_millis(500)) {
                     Ok(e) => e,
-                    Err(_) => continue,
+                    Err(mdns_sd::RecvTimeoutError::Timeout) => continue,
+                    // daemon 关闭后 channel 断开：直接退出，避免空转。
+                    Err(mdns_sd::RecvTimeoutError::Disconnected) => break,
                 };
                 if let ServiceEvent::ServiceResolved(info) = event {
                     if let Some((room, _, peer, addr, port)) = parse_resolved(&info) {

@@ -706,6 +706,7 @@ onUnmounted(() => {
   max-width: 70%;
   padding: var(--gw-space-2) var(--gw-space-3);
   background: var(--gw-bg-panel);
+  color: var(--gw-text);
   border-radius: var(--gw-radius-md);
 }
 

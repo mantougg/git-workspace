@@ -543,6 +543,8 @@ pub fn run() {
             commands::runtime::runtime_apply_template,
             // Application lifecycle commands
             commands::app::restart_app,
+            // F-38：关于页清除数据（历史与缓存表，配置保留）
+            commands::app::clear_cached_data,
             // 工具箱：路由分流（双网卡）
             commands::toolbox::toolbox_list_net_interfaces,
             commands::toolbox::toolbox_route_plan_preview,

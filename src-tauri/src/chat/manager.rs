@@ -1154,6 +1154,60 @@ mod tests {
         assert_eq!(b.connected_count(), 0);
     }
 
+    /// F-36 回归：无 bootstrap 手动加入（只填房间 ID + Secret）必须能通过
+    /// mDNS 自动组网并互通消息。环境无组播 / mDNS 不可用时 skip 并打印原因
+    ///（项目测试惯例，同 discovery::mdns 测试）。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn lan_chat_mdns_autoconnect_without_bootstrap_or_skip() {
+        let (sink_a, mut rx_a) = TestSink::new();
+        let a = match ChatManager::create(sink_a, "mDNS自动组网".into(), &test_secret(), "alice".into(), true).await {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("skip mdns autoconnect test: create room unavailable: {e}");
+                return;
+            }
+        };
+        let (sink_b, mut rx_b) = TestSink::new();
+        let b = match ChatManager::join(sink_b, a.room_id().to_string(), &test_secret(), "bob".into(), None, true).await {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("skip mdns autoconnect test: join room unavailable: {e}");
+                a.leave(false).await;
+                return;
+            }
+        };
+
+        // mDNS 解析需要几秒；CI / 容器无组播时判 skip 而非硬失败。
+        let connected = wait_until(|| a.connected_count() >= 1 && b.connected_count() >= 1, 20).await;
+        if !connected {
+            eprintln!(
+                "skip mdns autoconnect test: no multicast resolution in this environment (a.connected={}, b.connected={})",
+                a.connected_count(),
+                b.connected_count()
+            );
+            b.leave(false).await;
+            a.leave(false).await;
+            return;
+        }
+
+        // 组网成功后双向消息互通。
+        a.send_message("hello via mdns").await.unwrap();
+        let echo_a = tokio::time::timeout(Duration::from_secs(2), rx_a.recv())
+            .await
+            .expect("a echo")
+            .expect("channel open");
+        assert!(echo_a.mine);
+        let msg = tokio::time::timeout(Duration::from_secs(10), rx_b.recv())
+            .await
+            .expect("b should receive within 10s")
+            .expect("channel open");
+        assert_eq!(msg.content, "hello via mdns");
+        assert!(!msg.mine);
+
+        b.leave(true).await;
+        a.leave(true).await;
+    }
+
     /// Gossip 中继（§21-§23、§62）：A—B—C 链式组网，A 发的消息经 B 转发到 C，
     /// 且只投递一次。
     #[tokio::test(flavor = "multi_thread", worker_threads = 6)]

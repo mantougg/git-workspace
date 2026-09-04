@@ -3,7 +3,7 @@
     <!-- Toolbar -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <n-button :loading="loading" @click="reload">
+        <n-button :loading="loading" @click="reload(true)">
           <template #icon><n-icon><RefreshOutline /></n-icon></template>
           刷新
         </n-button>
@@ -274,12 +274,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, ref, watch } from "vue";
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useMessage, NTag } from "naive-ui";
 import { RefreshOutline } from "@vicons/ionicons5";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useRuntimeWorkspace } from "@/composables/useRuntimeWorkspace";
 import { errMsg } from "@/utils/error";
 import * as runtimeApi from "@/api/runtime";
+import { RUNTIME_EVENTS } from "@/api/runtime";
 import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
 import type {
   ClosurePreview,
@@ -299,7 +301,7 @@ import {
 } from "@/utils/dependencyTree";
 
 const message = useMessage();
-const { store } = useRuntimeWorkspace();
+const { store, ensureWorkspace } = useRuntimeWorkspace();
 
 const loading = ref(false);
 const graph = ref<DependencyGraphView | null>(null);
@@ -669,16 +671,35 @@ const edgeColumns = [
   },
 ];
 
-async function reload() {
-  if (store.workspaceId == null) return;
+// F-41：workspaceId 为空时先确保全局工作区就绪（应用重启后直达本页时工作区
+// 列表可能仍在加载），不再静默返回；刷新成功后联动刷新选中项目 inspection 与
+// 树视图，避免旧快照残留导致「点了没变化」。
+async function reload(manual = false) {
+  if (store.workspaceId == null) {
+    await ensureWorkspace();
+    if (store.workspaceId == null) {
+      if (manual) message.warning("未选择工作区");
+      return;
+    }
+  }
   loading.value = true;
   try {
     graph.value = await runtimeApi.runtimeGetDependencyGraph(store.workspaceId);
+    if (manual) message.success("依赖图已刷新");
   } catch (e) {
     message.error("加载依赖图失败：请先执行「解析依赖」");
     console.error("R-13: load dependency graph failed:", e);
   } finally {
     loading.value = false;
+  }
+  if (!graph.value) return;
+  if (selectedProjectId.value != null) {
+    const p = projects.value.find((x) => x.projectId === selectedProjectId.value);
+    if (p) await onSelectProject(p);
+    else clearProject();
+  }
+  if (viewMode.value === "tree" && selectedApp.value) {
+    await onTreeAppChange(selectedApp.value);
   }
 }
 
@@ -701,7 +722,21 @@ function clearProject() {
   inspection.value = null;
 }
 
-onMounted(reload);
+// F-41：「解析依赖」任务完成后自动重读依赖图，无需手动点刷新。
+let unlistenResolved: UnlistenFn | null = null;
+onMounted(async () => {
+  await reload();
+  try {
+    unlistenResolved = await listen(RUNTIME_EVENTS.dependencyResolved, () => {
+      void reload();
+    });
+  } catch (e) {
+    console.error("R-13: dependency_resolved subscribe failed:", e);
+  }
+});
+onUnmounted(() => {
+  unlistenResolved?.();
+});
 </script>
 
 <style scoped>

@@ -1,6 +1,6 @@
 # GitWorkspace 问题修复任务总览
 
-> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）；2026-09-03 追加 1 项（F-32，CI 失败）与 3 项（F-33~F-35，用户反馈）。
+> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）；2026-09-03 追加 1 项（F-32，CI 失败）与 3 项（F-33~F-35，用户反馈）；2026-09-04 追加 2 项（F-36~F-37，LAN 加密聊天用户反馈）与 4 项（F-38~F-41，用户反馈）。
 > 拆分原则：**每个问题一个独立文档**（同目录下 `F-XX-<slug>.md`），可独立跟踪修复进度与验收。
 > 本文件是唯一的修复进度索引；每个任务文档内另有自己的「进度」章节。
 >
@@ -20,8 +20,8 @@
 
 ## 总体进度
 
-- 任务总数：**35**
-- 已完成：**35** · 修复中：**0** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**41**
+- 已完成：**41** · 修复中：**0** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -64,6 +64,12 @@
 | F-33 | 左侧菜单可见性配置（低频入口收纳：符号/仓库工具/自动化/Reflog/Pipeline/多服务环境） | P2 | ✅ | [F-33-sidenav-menu-visibility.md](./F-33-sidenav-menu-visibility.md) |
 | F-34 | 前端多服务启动的 PID/端口归属错误（PID 单值 + 误收后端端口） | P1 | ✅ | [F-34-node-multi-service-pid-port-attribution.md](./F-34-node-multi-service-pid-port-attribution.md) |
 | F-35 | Runtime 总览 Processes 表格分页（默认 5 条/页，最新在前） | P2 | ✅ | [F-35-processes-table-pagination.md](./F-35-processes-table-pagination.md) |
+| F-36 | LAN 加密聊天手动输入房间 ID + Secret 无法进入同一房间（无 Bootstrap 自动组网不通） | P0 | ✅ | [F-36-lan-chat-manual-join-no-connection.md](./F-36-lan-chat-manual-join-no-connection.md) |
+| F-37 | LAN 加密聊天深色模式对方消息气泡文字看不清（背景与字色同为深色） | P1 | ✅ | [F-37-lan-chat-dark-bubble-contrast.md](./F-37-lan-chat-dark-bubble-contrast.md) |
+| F-38 | 关于页增加「清除数据」功能（清历史与缓存表，二次确认） | P1 | ✅ | [F-38-about-clear-data.md](./F-38-about-clear-data.md) |
+| F-39 | Runtime 总览操作列：重启/构建收进「更多」，日志放出平铺 | P2 | ✅ | [F-39-runtime-actions-column.md](./F-39-runtime-actions-column.md) |
+| F-40 | 端口检测以 PID 归属为主（正则兜底）+ PID tooltip 列出全部 PID | P1 | ✅ | [F-40-port-detection-by-pid.md](./F-40-port-detection-by-pid.md) |
+| F-41 | Runtime 依赖页「刷新」不好使（静默早退 + 树/详情不联动 + 解析完成不自动同步） | P1 | ✅ | [F-41-deps-view-refresh-button.md](./F-41-deps-view-refresh-button.md) |
 
 ---
 

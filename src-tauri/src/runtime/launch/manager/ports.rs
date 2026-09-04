@@ -2,6 +2,11 @@
 //! 钉死哪些端口真正被本次启动的进程树监听；误收的（后端端口、proxy
 //! 目标等）从口径中移除。
 //!
+//! F-40 端口发现以 PID 归属为主：attribution 线程周期（~2s）枚举 OS
+//! 监听表并按进程树 PID 过滤，树内监听端口直接收进 ports 口径（无需
+//! 日志正则先命中）；日志正则候选保留为兜底/加速首显，命中后仍走
+//! F-34 确权（树外误收剔除）。
+//!
 //! 设计：监听回调侧（monitor output）发现新端口时立即记入候选列表并
 //! 触发去抖（≥2s）后批量确权；确权使用全量 `netstat -ano` / `lsof`
 //! 单次调用解析所有 LISTENING 行（比逐端口调 `detect_port_occupier`
@@ -30,6 +35,8 @@ const ATTRIBUTION_DEBOUNCE: Duration = Duration::from_secs(2);
 /// 每个候选端口的确权重试上限；达到后保留（回退到 F-26 行为，防确权
 /// 机制缺陷导致合法端口被误删——详见 AGENTS.md「最小修复」原则）。
 const ATTRIBUTION_MAX_RETRIES: u32 = 5;
+/// F-40：PID 归属扫描间隔（独立于正则候选，周期收树内监听端口）。
+const PID_SCAN_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone)]
 struct PendingPort {
@@ -142,8 +149,36 @@ impl PortAttribution {
     }
 }
 
-/// Attribution 线程主循环：轮询 + 去抖，每个候选端口检查是否被进程树
-/// 内的进程监听；剔除树外端口（后端端口误收），记录树内映射。
+/// F-40 主路径：把进程树正在监听的端口直接并入 ports 口径并记 confirmed
+///（不依赖日志正则先命中）；已在口径中的补记 PID 归属；同名 pending
+/// 候选清掉（PID 扫描结果更权威）。返回是否有变更。
+fn merge_tree_owned_ports(
+    state: &mut PortState,
+    listening: &[ListeningPort],
+    tree_set: &std::collections::HashSet<u32>,
+) -> bool {
+    let mut changed = false;
+    for lp in listening {
+        if !tree_set.contains(&lp.pid) {
+            continue;
+        }
+        if !state.ports.contains(&lp.port) {
+            state.ports.push(lp.port);
+            changed = true;
+        }
+        state.pending.retain(|p| p.port != lp.port);
+        if state.confirmed.get(&lp.port) != Some(&lp.pid) {
+            state.confirmed.insert(lp.port, lp.pid);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Attribution 线程主循环：轮询 + 去抖。
+/// - F-40 主路径：每 PID_SCAN_INTERVAL 枚举 OS 监听表，进程树内正在
+///   监听的端口直接并入口径（不依赖日志正则命中）；
+/// - F-34 兜底/加速：正则候选端口经去抖后批量确权，树外误收剔除。
 fn run_verifier(
     manager: Arc<super::RuntimeProcessManager>,
     process_id: i64,
@@ -154,6 +189,7 @@ fn run_verifier(
 ) {
     let (lock, cv) = &*state;
     let mut guard = lock.lock().unwrap();
+    let mut last_scan = Instant::now();
     loop {
         // 等待：有 pending 端口，或 500ms 超时轮询。
         let _ = cv.wait_timeout(guard, Duration::from_millis(500)).unwrap();
@@ -161,20 +197,15 @@ fn run_verifier(
         if stop.load(Ordering::Acquire) {
             break;
         }
-        if guard.pending.is_empty() {
+
+        // F-40：周期 PID 归属扫描（与正则候选确权共用本轮的枚举结果）。
+        let scan_due = last_scan.elapsed() >= PID_SCAN_INTERVAL;
+        // F-34：候选确权需先去抖（dev server 端口晚绑定时尽量等待绑定
+        // 完成，减少重试次数）。
+        let pending_due = !guard.pending.is_empty()
+            && guard.last_change.elapsed() >= ATTRIBUTION_DEBOUNCE;
+        if !scan_due && !pending_due {
             continue;
-        }
-        // 去抖：等待至少 DEBOUNCE 间隔再确权（dev server 端口晚绑定时
-        // 尽量等待绑定完成，减少重试次数）。
-        let since_last = guard.last_change.elapsed();
-        if since_last < ATTRIBUTION_DEBOUNCE {
-            let remaining = ATTRIBUTION_DEBOUNCE - since_last;
-            drop(guard);
-            std::thread::sleep(remaining);
-            guard = lock.lock().unwrap();
-            if stop.load(Ordering::Acquire) {
-                break;
-            }
         }
 
         // 取 root pid（spawn 后才填充，尚未就绪时本轮跳过）。
@@ -185,7 +216,11 @@ fn run_verifier(
 
         // 取待确权快照，释放锁（枚举 + netstat 耗时，期间需允许回调
         // 添加新候选端口——新端口会在锁恢复后合并处理）。
-        let pending_snapshot: Vec<PendingPort> = guard.pending.clone();
+        let pending_snapshot: Vec<PendingPort> = if pending_due {
+            guard.pending.clone()
+        } else {
+            Vec::new()
+        };
         drop(guard);
 
         // 进程树枚举：parent 链 DFS（F-34 spec，与 kill_tree 同算法）。
@@ -245,6 +280,15 @@ fn run_verifier(
             break;
         }
         let mut changed = false;
+
+        // F-40 主路径：树内监听端口直接并入（含补记 confirmed、清理同名
+        // pending——PID 扫描结果比正则候选更权威）。
+        if scan_due {
+            last_scan = Instant::now();
+            if merge_tree_owned_ports(&mut guard, &listening, &tree_set) {
+                changed = true;
+            }
+        }
 
         // 确认端口：写入 confirmed 映射。
         for (port, pid) in &to_confirm {
@@ -334,7 +378,6 @@ fn flush_on_stop(
 mod tests {
     use super::*;
     use crate::process::ListeningPort;
-    use std::collections::BTreeMap;
 
     /// 纯函数：给定候选端口、OS 监听快照、进程树，判定哪些确认、
     /// 哪些拒绝、哪些重试（attribution 核心逻辑的单测层）。
@@ -435,5 +478,41 @@ mod tests {
             classify_candidate(8080, 0, &listening, &tree),
             CandidateDecision::Reject(8080, 500)
         );
+    }
+
+    /// F-40：PID 主路径——树内监听端口无需正则命中即并入口径。
+    #[test]
+    fn merge_tree_owned_ports_adds_tree_listeners_without_regex() {
+        let mut state = PortState::new();
+        let listening = vec![
+            ListeningPort { port: 5173, pid: 100 }, // 树内（vite 子进程）
+            ListeningPort { port: 8080, pid: 500 }, // 树外（后端误收场景）
+        ];
+        let tree: std::collections::HashSet<u32> = [100, 101].into_iter().collect();
+        assert!(merge_tree_owned_ports(&mut state, &listening, &tree));
+        assert_eq!(state.ports, vec![5173]);
+        assert_eq!(state.confirmed.get(&5173), Some(&100));
+        assert!(!state.confirmed.contains_key(&8080));
+    }
+
+    /// F-40：已在口径中的端口补记 confirmed；重复扫描幂等（无变更）。
+    #[test]
+    fn merge_tree_owned_ports_idempotent_and_backfills_confirmed() {
+        let mut state = PortState::new();
+        state.ports.push(5173); // 正则候选先收进来（无 PID）
+        state.pending.push(PendingPort {
+            port: 5173,
+            first_seen: Instant::now(),
+            retries: 0,
+        });
+        let listening = vec![ListeningPort { port: 5173, pid: 100 }];
+        let tree: std::collections::HashSet<u32> = [100].into_iter().collect();
+        // 第一次：补记 confirmed + 清 pending，有变更。
+        assert!(merge_tree_owned_ports(&mut state, &listening, &tree));
+        assert_eq!(state.ports, vec![5173]);
+        assert_eq!(state.confirmed.get(&5173), Some(&100));
+        assert!(state.pending.is_empty());
+        // 第二次：幂等，无变更。
+        assert!(!merge_tree_owned_ports(&mut state, &listening, &tree));
     }
 }
