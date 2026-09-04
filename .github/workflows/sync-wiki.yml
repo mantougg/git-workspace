@@ -1,0 +1,42 @@
+# Wiki 同步：主仓库 wiki/ 目录 → GitHub Wiki 仓库
+# 前提：Wiki 仓库已存在（GitHub 网页上随手建过任意一页即初始化）。
+name: Sync Wiki
+
+on:
+  push:
+    branches: [master]
+    paths: ["wiki/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          path: main
+
+      - name: Checkout wiki repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+
+      - name: Sync pages and push
+        shell: bash
+        run: |
+          rsync -av --delete --exclude='.git' main/wiki/ wiki/
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date"
+          else
+            git commit -m "Sync wiki from main@${GITHUB_SHA:0:7}"
+            git push
+          fi
