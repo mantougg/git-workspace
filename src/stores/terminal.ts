@@ -31,6 +31,8 @@ export interface TerminalSession extends TerminalSessionInfo {
   paused: boolean;
   /** xterm 写入回调（XtermView 挂载时注册，卸载时清除）。 */
   writeCallback?: (data: Uint8Array) => void;
+  /** TM-06：是否为「在终端中启动」模式（显示降级提示条）。 */
+  launchedInTerminal?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,7 +368,12 @@ export const useTerminalStore = defineStore("terminal", () => {
   /** TM-06：在终端中启动 runtime（降级模式）。 */
   async function launchInTerminal(command: string, cwd?: string, env?: Record<string, string>) {
     showPanel();
-    await terminalApi.runtimeStartInTerminal(command, cwd, env);
+    const sessionId = await terminalApi.runtimeStartInTerminal(command, cwd, env);
+    // 标记为「在终端中启动」模式
+    const session = sessions.value.find((s) => s.sessionId === sessionId);
+    if (session) {
+      session.launchedInTerminal = true;
+    }
   }
 
   /** 打开新 PTY 会话。 */

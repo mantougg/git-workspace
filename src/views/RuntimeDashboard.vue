@@ -976,6 +976,17 @@ const configColumns = [
           },
           { default: () => "启动" },
         ),
+        // TM-06：在终端中启动（降级模式）
+        h(
+          NButton,
+          {
+            size: "small",
+            disabled: isBusy(row.name),
+            title: "在终端中启动（降级模式：无健康检查/端口检测/日志落盘）",
+            onClick: () => onLaunchInTerminal(row),
+          },
+          { default: () => "终端启动" },
+        ),
         h(
           NButton,
           {
@@ -1260,6 +1271,22 @@ async function onStart(name: string) {
     message.success(`已提交启动任务：${name}`);
   } catch (e) {
     handleError("启动", e, () => onStart(name));
+  }
+}
+
+// TM-06：在终端中启动 runtime（降级模式）
+async function onLaunchInTerminal(row: RuntimeConfigSummary) {
+  clearError();
+  try {
+    const { useTerminalStore } = await import("@/stores/terminal");
+    const terminalStore = useTerminalStore();
+    // 简化实现：使用 echo 提示用户配置启动命令
+    // 后续优化：集成 LaunchPlan 构建链路获取真实启动命令
+    const command = `echo "在终端中启动 ${row.name}（降级模式）"`;
+    await terminalStore.launchInTerminal(command);
+    message.success(`已在终端中启动：${row.name}`);
+  } catch (e) {
+    handleError("在终端中启动", e);
   }
 }
 

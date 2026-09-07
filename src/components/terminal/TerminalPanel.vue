@@ -336,6 +336,13 @@ onMounted(() => {
 
     <!-- 会话内容区 -->
     <div class="terminal-panel-content" @contextmenu="onContextMenu">
+      <!-- TM-06：降级提示条（仅「在终端中启动」的会话显示） -->
+      <div
+        v-if="activeSession?.launchedInTerminal"
+        class="terminal-degradation-bar"
+      >
+        ⚠️ 降级模式：此会话无健康检查 / 端口检测 / 日志落盘 / AI 诊断。停止 = 关闭会话（kill 进程树）。
+      </div>
       <div
         v-for="session in sessions"
         :key="session.sessionId"
@@ -597,5 +604,15 @@ onMounted(() => {
   height: 1px;
   background: var(--gw-border);
   margin: var(--gw-space-1) 0;
+}
+
+/* TM-06：降级提示条 */
+.terminal-degradation-bar {
+  padding: var(--gw-space-1) var(--gw-space-2);
+  background: var(--gw-warning);
+  color: #fff;
+  font-size: var(--gw-text-sm);
+  text-align: center;
+  flex-shrink: 0;
 }
 </style>
