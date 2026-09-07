@@ -11,6 +11,7 @@
           <router-view />
         </AppShell>
         <TaskPanel />
+        <TerminalPanel />
         <CommandPalette v-model:show="showPalette" />
         <!-- AI-10：全局唯一 Assistant Drawer（会话状态在 stores/ai.ts） -->
         <AssistantDrawer />
@@ -25,6 +26,7 @@ import { useRouter } from "vue-router";
 import { zhCN, dateZhCN, darkTheme } from "naive-ui";
 import AppShell from "@/components/shell/AppShell.vue";
 import TaskPanel from "@/views/TaskPanel.vue";
+import TerminalPanel from "@/components/terminal/TerminalPanel.vue";
 import CommandPalette from "@/components/shell/CommandPalette.vue";
 import AssistantDrawer from "@/components/ai/AssistantDrawer.vue";
 import { useTheme } from "@/composables/useTheme";

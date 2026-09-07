@@ -204,8 +204,34 @@ function getGitCommands(ctx: CommandContext): Command[] {
   ];
 }
 
-/** 终端命令（平台专属类型仅 Windows 列出；不可用时报可行动错误）。 */
-function getTerminalCommands(ctx: CommandContext): Command[] {
+/** 内嵌终端面板命令（TM-02）。 */
+function getEmbeddedTerminalCommands(_ctx: CommandContext): Command[] {
+  return [
+    {
+      id: "terminal:toggle",
+      title: "切换终端面板",
+      group: "终端",
+      run: async () => {
+        const { useTerminalStore } = await import("@/stores/terminal");
+        useTerminalStore().togglePanel();
+      },
+    },
+    {
+      id: "terminal:new-shell",
+      title: "新建终端 Shell",
+      group: "终端",
+      run: async () => {
+        const { useTerminalStore } = await import("@/stores/terminal");
+        const store = useTerminalStore();
+        store.showPanel();
+        await store.openSession();
+      },
+    },
+  ];
+}
+
+/** 外部终端命令（平台专属类型仅 Windows 列出；不可用时报可行动错误）。 */
+function getExternalTerminalCommands(ctx: CommandContext): Command[] {
   const kindTitles: Array<[TerminalKind, string]> =
     window.navigator.platform.toLowerCase().includes("win")
       ? [
@@ -215,7 +241,7 @@ function getTerminalCommands(ctx: CommandContext): Command[] {
           ["git-bash", "在 Git Bash 打开当前仓库"],
           ["windows-terminal", "在 Windows Terminal 打开当前仓库"],
         ]
-      : [["system", "在终端打开当前仓库"]];
+      : [["system", "在外部终端打开当前仓库"]];
 
   return kindTitles.map(([kind, title]) => ({
     id: `terminal:${kind}`,
@@ -254,13 +280,14 @@ function getIdeCommands(ctx: CommandContext): Command[] {
   }));
 }
 
-/** 获取所有命令（导航 + 操作 + Git 操作 + 终端 + IDE） */
+/** 获取所有命令（导航 + 操作 + Git 操作 + 内嵌终端 + 外部终端 + IDE） */
 export function getAllCommands(ctx: CommandContext): Command[] {
   return [
     ...getNavigationCommands(ctx),
     ...getActionCommands(ctx),
     ...getGitCommands(ctx),
-    ...getTerminalCommands(ctx),
+    ...getEmbeddedTerminalCommands(ctx),
+    ...getExternalTerminalCommands(ctx),
     ...getIdeCommands(ctx),
   ];
 }

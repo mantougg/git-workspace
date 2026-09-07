@@ -99,9 +99,12 @@ declare module 'vue' {
     SideNav: typeof import('./components/shell/SideNav.vue')['default']
     StatusBadge: typeof import('./components/repo/StatusBadge.vue')['default']
     StatusBar: typeof import('./components/shell/StatusBar.vue')['default']
+    TerminalPanel: typeof import('./components/terminal/TerminalPanel.vue')['default']
+    TerminalTabs: typeof import('./components/terminal/TerminalTabs.vue')['default']
     Toolbar: typeof import('./components/shell/Toolbar.vue')['default']
     UnifiedDiff: typeof import('./components/diff/UnifiedDiff.vue')['default']
     VirtualList: typeof import('./components/common/VirtualList.vue')['default']
     WorkspaceManager: typeof import('./components/common/WorkspaceManager.vue')['default']
+    XtermView: typeof import('./components/terminal/XtermView.vue')['default']
   }
 }

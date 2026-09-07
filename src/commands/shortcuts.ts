@@ -23,6 +23,8 @@ const SHORTCUT_MAP: Record<string, string[]> = {
   "nav:workspaces": ["Ctrl+9"],
   "nav:diff-viewer": ["Ctrl+Shift+D"],
   "action:toggle-assistant": ["Ctrl+I"],
+  "terminal:toggle": ["Ctrl+`"],
+  "terminal:new-shell": ["Ctrl+Shift+`"],
   "action:repo-search": ["Ctrl+P", "Ctrl+Shift+F"],
   "action:refresh": ["F5"],
   "action:commit": ["Ctrl+Enter"],

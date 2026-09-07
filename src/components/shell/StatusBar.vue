@@ -34,6 +34,12 @@
       <span>{{ runningTaskCount > 0 ? `${runningTaskCount} 个任务` : '无任务' }}</span>
     </div>
 
+    <!-- 内嵌终端槽位（TM-02，StatusBar 全局唯一开合入口） -->
+    <div class="statusbar-slot clickable" title="终端（Ctrl+`）" @click="terminalStore.togglePanel()">
+      <n-icon :size="12"><TerminalOutline /></n-icon>
+      <span>终端</span>
+    </div>
+
     <!-- 弹性占位 -->
     <div class="statusbar-spacer" />
 
@@ -85,11 +91,12 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { NIcon, NPopover } from "naive-ui";
-import { ChevronDownOutline, GitBranchOutline, PlayOutline, SparklesOutline } from "@vicons/ionicons5";
+import { ChevronDownOutline, GitBranchOutline, PlayOutline, SparklesOutline, TerminalOutline } from "@vicons/ionicons5";
 import { WATCHER_EVENTS, watcherStatus } from "@/api/git_ops";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
 import { useAiStore } from "@/stores/ai";
+import { useTerminalStore } from "@/stores/terminal";
 import type { Workspace } from "@/types/workspace";
 
 // F-07：构建期注入的全局常量
@@ -100,6 +107,7 @@ const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const taskStore = useTaskStore();
 const aiStore = useAiStore();
+const terminalStore = useTerminalStore();
 
 const showWsPopover = ref(false);
 const wsTriggerRef = ref<HTMLElement | null>(null);
