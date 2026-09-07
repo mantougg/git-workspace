@@ -4,13 +4,22 @@
 -->
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useTerminalStore } from "@/stores/terminal";
 
 const terminalStore = useTerminalStore();
 
 const sessions = computed(() => terminalStore.sessions);
 const activeTabId = computed(() => terminalStore.activeTabId);
+const availableShells = computed(() => terminalStore.availableShells);
+
+// TM-07：Shell profile 选择
+const showShellMenu = ref(false);
+const selectedShell = ref<string | null>(null);
+
+onMounted(() => {
+  terminalStore.loadShells();
+});
 
 function switchTab(sessionId: string) {
   terminalStore.switchTab(sessionId);
@@ -21,8 +30,19 @@ function closeTab(sessionId: string, event: Event) {
   terminalStore.closeTab(sessionId);
 }
 
-async function newShell() {
-  await terminalStore.openSession();
+function toggleShellMenu() {
+  showShellMenu.value = !showShellMenu.value;
+}
+
+async function newShell(shellId?: string) {
+  showShellMenu.value = false;
+  const shell = shellId ?? selectedShell.value ?? undefined;
+  await terminalStore.openSession(shell ? { shell } : undefined);
+}
+
+function selectShell(shellId: string) {
+  selectedShell.value = shellId;
+  newShell(shellId);
 }
 </script>
 
@@ -47,9 +67,26 @@ async function newShell() {
         </button>
       </div>
     </div>
-    <button class="terminal-tabs-new" title="新建 Shell" @click="newShell">
-      +
-    </button>
+    <!-- TM-07：新建 Shell 按钮 + profile 下拉 -->
+    <div class="terminal-new-shell-wrapper">
+      <button class="terminal-tabs-new" title="新建 Shell" @click="toggleShellMenu">
+        +
+      </button>
+      <div v-if="showShellMenu" class="terminal-shell-menu">
+        <div
+          v-for="shell in availableShells"
+          :key="shell.id"
+          class="terminal-shell-item"
+          @click="selectShell(shell.id)"
+        >
+          <span class="terminal-shell-label">{{ shell.label }}</span>
+          <span class="terminal-shell-path">{{ shell.path }}</span>
+        </div>
+        <div v-if="availableShells.length === 0" class="terminal-shell-item disabled">
+          未探测到可用 Shell
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -154,5 +191,51 @@ async function newShell() {
 .terminal-tabs-new:hover {
   background: var(--gw-bg-hover);
   color: var(--gw-text);
+}
+
+/* TM-07：Shell profile 下拉菜单 */
+.terminal-new-shell-wrapper {
+  position: relative;
+}
+
+.terminal-shell-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 200;
+  min-width: 200px;
+  background: var(--gw-bg-panel);
+  border: 1px solid var(--gw-border);
+  border-radius: var(--gw-radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: var(--gw-space-1) 0;
+}
+
+.terminal-shell-item {
+  display: flex;
+  flex-direction: column;
+  padding: var(--gw-space-1) var(--gw-space-2);
+  cursor: pointer;
+  gap: 2px;
+}
+
+.terminal-shell-item:hover:not(.disabled) {
+  background: var(--gw-bg-hover);
+}
+
+.terminal-shell-item.disabled {
+  color: var(--gw-text-dim);
+  cursor: not-allowed;
+}
+
+.terminal-shell-label {
+  font-size: var(--gw-text-sm);
+  color: var(--gw-text);
+}
+
+.terminal-shell-path {
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+  font-family: var(--gw-font-mono);
 }
 </style>

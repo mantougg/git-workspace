@@ -11,6 +11,71 @@ import TerminalTabs from "./TerminalTabs.vue";
 import XtermView from "./XtermView.vue";
 
 const terminalStore = useTerminalStore();
+const activeSession = computed(() => terminalStore.activeSession);
+
+// ---------------------------------------------------------------------------
+// TM-07：搜索
+// ---------------------------------------------------------------------------
+const showSearch = ref(false);
+const searchText = ref("");
+const searchCaseSensitive = ref(false);
+
+function toggleSearch() {
+  showSearch.value = !showSearch.value;
+  if (showSearch.value) {
+    // 聚焦搜索框
+    setTimeout(() => {
+      const input = document.querySelector(".terminal-search-input input") as HTMLInputElement;
+      input?.focus();
+    }, 50);
+  }
+}
+
+function doSearchNext() {
+  if (!searchText.value || !activeTabId.value) return;
+  const xtermRef = xtermRefs.value.get(activeTabId.value);
+  xtermRef?.findNext(searchText.value, { caseSensitive: searchCaseSensitive.value });
+}
+
+function doSearchPrevious() {
+  if (!searchText.value || !activeTabId.value) return;
+  const xtermRef = xtermRefs.value.get(activeTabId.value);
+  xtermRef?.findPrevious(searchText.value, { caseSensitive: searchCaseSensitive.value });
+}
+
+// ---------------------------------------------------------------------------
+// TM-07：清屏 / 重开
+// ---------------------------------------------------------------------------
+function clearScreen() {
+  if (!activeTabId.value) return;
+  const xtermRef = xtermRefs.value.get(activeTabId.value);
+  xtermRef?.clear();
+}
+
+async function reopenSession() {
+  const session = terminalStore.activeSession;
+  if (!session || session.alive) return;
+  // 关闭旧 tab，用同 cwd/shell 重新打开
+  await terminalStore.closeTab(session.sessionId);
+  await terminalStore.openSession({ cwd: session.cwd });
+}
+
+// ---------------------------------------------------------------------------
+// TM-07：面板最大化
+// ---------------------------------------------------------------------------
+const isMaximized = ref(false);
+const savedHeight = ref(320);
+
+function toggleMaximize() {
+  if (isMaximized.value) {
+    panelHeight.value = savedHeight.value;
+    isMaximized.value = false;
+  } else {
+    savedHeight.value = panelHeight.value;
+    panelHeight.value = window.innerHeight - 24; // 减去 StatusBar 高度
+    isMaximized.value = true;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Panel visibility & height
@@ -113,8 +178,47 @@ onMounted(() => {
     <!-- 拖高条 -->
     <div class="terminal-panel-resize-handle" @mousedown="startResize" />
 
-    <!-- Tab 条 -->
-    <TerminalTabs />
+    <!-- Tab 条 + 工具条 -->
+    <div class="terminal-panel-header">
+      <TerminalTabs />
+      <div class="terminal-panel-toolbar">
+        <!-- 搜索按钮 -->
+        <button class="terminal-toolbar-btn" title="搜索（Ctrl+F）" @click="toggleSearch">🔍</button>
+        <!-- 清屏按钮 -->
+        <button class="terminal-toolbar-btn" title="清屏" @click="clearScreen">🗑</button>
+        <!-- 重开按钮（仅已退出会话显示） -->
+        <button
+          v-if="activeSession && !activeSession.alive"
+          class="terminal-toolbar-btn"
+          title="重开会话"
+          @click="reopenSession"
+        >
+          🔄
+        </button>
+        <!-- 最大化按钮 -->
+        <button class="terminal-toolbar-btn" :title="isMaximized ? '还原' : '最大化'" @click="toggleMaximize">
+          {{ isMaximized ? '❐' : '⬜' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 搜索条（TM-07） -->
+    <div v-if="showSearch" class="terminal-search-bar">
+      <input
+        v-model="searchText"
+        class="terminal-search-input"
+        placeholder="搜索..."
+        @keydown.enter="doSearchNext"
+        @keydown.shift.enter="doSearchPrevious"
+      />
+      <label class="terminal-search-option">
+        <input v-model="searchCaseSensitive" type="checkbox" />
+        <span>区分大小写</span>
+      </label>
+      <button class="terminal-search-btn" @click="doSearchPrevious">↑</button>
+      <button class="terminal-search-btn" @click="doSearchNext">↓</button>
+      <button class="terminal-search-btn" @click="showSearch = false">✕</button>
+    </div>
 
     <!-- 会话内容区 -->
     <div class="terminal-panel-content">
@@ -197,5 +301,92 @@ onMounted(() => {
 
 .terminal-panel-empty strong {
   color: var(--gw-accent);
+}
+
+/* TM-07：工具条 */
+.terminal-panel-header {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--gw-border);
+  flex-shrink: 0;
+}
+
+.terminal-panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--gw-space-1);
+  flex-shrink: 0;
+}
+
+.terminal-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--gw-radius-sm);
+  font-size: 12px;
+}
+
+.terminal-toolbar-btn:hover {
+  background: var(--gw-bg-hover);
+}
+
+/* TM-07：搜索条 */
+.terminal-search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--gw-space-1);
+  padding: var(--gw-space-1) var(--gw-space-2);
+  background: var(--gw-bg-panel);
+  border-bottom: 1px solid var(--gw-border);
+  flex-shrink: 0;
+}
+
+.terminal-search-input {
+  flex: 1;
+  height: 24px;
+  padding: 0 var(--gw-space-1);
+  border: 1px solid var(--gw-border);
+  border-radius: var(--gw-radius-sm);
+  background: var(--gw-bg-app);
+  color: var(--gw-text);
+  font-size: var(--gw-text-sm);
+  outline: none;
+}
+
+.terminal-search-input:focus {
+  border-color: var(--gw-accent);
+}
+
+.terminal-search-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+  cursor: pointer;
+}
+
+.terminal-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--gw-border);
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--gw-radius-sm);
+  font-size: 12px;
+  color: var(--gw-text);
+}
+
+.terminal-search-btn:hover {
+  background: var(--gw-bg-hover);
 }
 </style>

@@ -8,6 +8,8 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTerminalStore } from "@/stores/terminal";
 import "@xterm/xterm/css/xterm.css";
 
@@ -40,6 +42,7 @@ const emit = defineEmits<{
 const containerRef = ref<HTMLDivElement>();
 let terminal: Terminal | null = null;
 let fitAddon: FitAddon | null = null;
+let searchAddon: SearchAddon | null = null;
 let resizeObserver: ResizeObserver | null = null;
 
 // ---------------------------------------------------------------------------
@@ -80,6 +83,13 @@ onMounted(() => {
   fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
 
+  // TM-07：搜索 addon
+  searchAddon = new SearchAddon();
+  terminal.loadAddon(searchAddon);
+
+  // TM-07：链接识别 addon（URL 可点击，系统浏览器打开）
+  terminal.loadAddon(new WebLinksAddon());
+
   terminal.open(containerRef.value);
 
   // 注册写入回调（store 收到 terminal_output 时直接写入此 xterm）
@@ -118,6 +128,7 @@ onBeforeUnmount(() => {
   terminalStore.unregisterWriteCallback(props.sessionId);
   resizeObserver?.disconnect();
   resizeObserver = null;
+  searchAddon = null;
   terminal?.dispose();
   terminal = null;
   fitAddon = null;
@@ -163,7 +174,16 @@ function getTerminal(): Terminal | null {
   return terminal;
 }
 
-defineExpose({ write, writeString, clear, getTerminal });
+// TM-07：搜索方法
+function findNext(text: string, options?: { caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean }): boolean {
+  return searchAddon?.findNext(text, options) ?? false;
+}
+
+function findPrevious(text: string, options?: { caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean }): boolean {
+  return searchAddon?.findPrevious(text, options) ?? false;
+}
+
+defineExpose({ write, writeString, clear, getTerminal, findNext, findPrevious });
 </script>
 
 <template>

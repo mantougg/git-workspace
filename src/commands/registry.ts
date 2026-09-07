@@ -204,7 +204,7 @@ function getGitCommands(ctx: CommandContext): Command[] {
   ];
 }
 
-/** 内嵌终端面板命令（TM-02）。 */
+/** 内嵌终端面板命令（TM-02 / TM-07）。 */
 function getEmbeddedTerminalCommands(_ctx: CommandContext): Command[] {
   return [
     {
@@ -225,6 +225,52 @@ function getEmbeddedTerminalCommands(_ctx: CommandContext): Command[] {
         const store = useTerminalStore();
         store.showPanel();
         await store.openSession();
+      },
+    },
+    {
+      id: "terminal:search",
+      title: "终端内搜索",
+      group: "终端",
+      run: async () => {
+        // 搜索条的开关由 TerminalPanel 内部处理，这里触发面板显示
+        const { useTerminalStore } = await import("@/stores/terminal");
+        useTerminalStore().showPanel();
+        // 通过自定义事件通知 TerminalPanel 打开搜索条
+        window.dispatchEvent(new CustomEvent("terminal:toggle-search"));
+      },
+    },
+    // TM-07：复制粘贴（仅终端面板聚焦时生效，不劫持全局）
+    {
+      id: "terminal:copy",
+      title: "终端复制",
+      group: "终端",
+      run: () => {
+        // xterm 的选中文本复制到剪贴板
+        const selection = window.getSelection()?.toString();
+        if (selection) {
+          navigator.clipboard.writeText(selection);
+        }
+      },
+    },
+    {
+      id: "terminal:paste",
+      title: "终端粘贴",
+      group: "终端",
+      run: async () => {
+        // 从剪贴板粘贴到终端（通过 store 写入当前活跃会话）
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          const { useTerminalStore } = await import("@/stores/terminal");
+          const store = useTerminalStore();
+          const sessionId = store.activeTabId;
+          if (sessionId) {
+            // 将文本转为 base64
+            const encoder = new TextEncoder();
+            const bytes = encoder.encode(text);
+            const base64 = btoa(String.fromCharCode(...bytes));
+            await store.writeToSession(sessionId, base64);
+          }
+        }
       },
     },
   ];
