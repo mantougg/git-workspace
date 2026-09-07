@@ -64,4 +64,6 @@
 | 2026-09-08 | ⬜ | 任务拆解录入（来源：terminal-feature-plan.md §6 三期-1） |
 | 2026-09-08 | ⬜ | 范围补充：新增「面板操作工具条」（启动/重启/停止按钮作用于当前 runtime tab，用户需求，方案讨论 2026-09-08） |
 | 2026-09-08 | 🟦 | 开始开发：Runtime tab + App 级订阅 + 面板操作工具条 |
-| 2026-09-08 | ✅ | 开发完成：Runtime tab 自动创建 + App 级 runtime_process_output 订阅 + 启动/重启/停止工具条，pnpm build 通过 |
+| 2026-09-08 | 🟦 | Runtime tab 自动创建 + App 级 runtime_process_output 订阅 + 启动/重启/停止工具条 |
+| 2026-09-08 | 🟦 | phase 分隔行（build → run 切换时插入 cyan 色分隔线）+ 补写缓冲已有内容（logBuffers） |
+| 2026-09-08 | ✅ | 开发完成：RuntimeLogsView 检索/导出/过滤功能不回归，pnpm build 通过 |

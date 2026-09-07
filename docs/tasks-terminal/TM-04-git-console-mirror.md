@@ -55,4 +55,7 @@
 |---|---|---|
 | 2026-09-08 | ⬜ | 任务拆解录入（来源：terminal-feature-plan.md §6 二期） |
 | 2026-09-08 | 🟦 | 开始开发：前端 Git Console tab + 后端 git_op_output 事件 |
-| 2026-09-08 | ✅ | 开发完成：前端 Git Console tab + 后端 run_git_streaming + worker git_op_output 事件，cargo check + pnpm build 通过 |
+| 2026-09-08 | 🟦 | 后端 run_git_streaming 实现（保留 CREATE_NO_WINDOW、cancel/timeout 语义） |
+| 2026-09-08 | 🟦 | worker 集成 git_op_output 事件（任务完成后批量发送 meta 行 + 输出行） |
+| 2026-09-08 | 🟦 | libgit2 操作合成 meta 行（BranchOp/Commit/ConflictApply 描述） |
+| 2026-09-08 | ✅ | 开发完成：回归保障验证（git_command_result 保留、批量操作仓库名标识、cargo test git_ops 9 个测试通过） |

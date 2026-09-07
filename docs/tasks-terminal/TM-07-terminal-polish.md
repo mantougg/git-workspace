@@ -66,4 +66,8 @@
 |---|---|---|
 | 2026-09-08 | ⬜ | 增量任务录入（来源：IDEA/VSCode bottom panel 缺口对照讨论；用户确认六项、明确排除选中即复制） |
 | 2026-09-08 | 🟦 | 开始开发：xterm search/web-links addon + 面板工具条 + profile 下拉 |
-| 2026-09-08 | ✅ | 开发完成：搜索/链接/复制粘贴/profile/清屏重开/最大化，pnpm build 通过 |
+| 2026-09-08 | 🟦 | @xterm/addon-search 接入（搜索条：高亮、大小写、上/下一个）+ @xterm/addon-web-links（URL 可点击） |
+| 2026-09-08 | 🟦 | Shell profile 选择（新建 tab 下拉列出探测到的 shell）+ 清屏/重开 + 面板最大化 |
+| 2026-09-08 | 🟦 | 复制粘贴快捷键（Ctrl+Shift+C/V，命令注册表）+ 搜索快捷键（Ctrl+F） |
+| 2026-09-08 | 🟦 | 右键上下文菜单（复制/粘贴/清屏/关闭 Tab，Teleport 到 body） |
+| 2026-09-08 | ✅ | 开发完成：六项能力全部实现，pnpm build 通过 |

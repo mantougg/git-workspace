@@ -1,4 +1,4 @@
-# TM-06 在终端中启动（LaunchPlan.preview 入 PTY，降级模式）
+# TM-06 在终端中启动（LaunchPlan.preview 入 PTY，完整模式 + 降级模式）
 
 > **开发前必读**：[../terminal-feature-plan.md](../terminal-feature-plan.md) §4.5（TM-06 部分）/ §8（风险：secret 泄露）+ [00-全局开发约束.md](./00-全局开发约束.md) §3；直接依赖：TM-05。关键现状：`LaunchPlan`（`src-tauri/src/runtime/build/mod.rs:140`）各变体均带可读 `preview` 命令串与 `env`/`working_dir`。
 
@@ -12,7 +12,7 @@
 
 ## 目标
 
-提供「在终端中启动」可选模式：构建仍走原链路产出 `LaunchPlan`，随后打开一个可交互 Shell tab 并写入启动命令执行——进程真正运行在 PTY 中，支持 stdin 交互（如需要控制台输入的调试场景）。能力降级在 UI 明示。
+提供「在终端中启动」可选模式：优先使用缓存的 `LaunchPlan` 真实启动命令（完整模式），无缓存时降级提示。构建仍走原链路产出 `LaunchPlan`，随后打开一个可交互 Shell tab 并写入启动命令执行——进程真正运行在 PTY 中，支持 stdin 交互（如需要控制台输入的调试场景）。含脱敏闸门和 env 注入（平台感知）。
 
 ## 需求范围
 
@@ -53,4 +53,8 @@
 |---|---|---|
 | 2026-09-08 | ⬜ | 任务拆解录入（来源：terminal-feature-plan.md §6 三期-2） |
 | 2026-09-08 | 🟦 | 开始开发：后端 runtime_start_in_terminal 命令 + 前端入口 |
-| 2026-09-08 | ✅ | 开发完成：后端命令 + 前端 API + store 方法，cargo check + pnpm build 通过 |
+| 2026-09-08 | 🟦 | 后端 runtime_start_in_terminal 实现（PTY 打开 + 命令写入） |
+| 2026-09-08 | 🟦 | env 注入（平台感知：unix 前缀 / Windows set 命令）+ 脱敏闸门（SECRET/TOKEN/PASSWORD 等） |
+| 2026-09-08 | 🟦 | RuntimeDashboard「终端启动」按钮 + 降级提示条（⚠️ 无健康检查/端口检测/日志落盘） |
+| 2026-09-08 | 🟦 | 非降级模式：后端 runtime_get_launch_preview（从 launch_cache 获取真实启动命令） |
+| 2026-09-08 | ✅ | 开发完成：前端优先使用真实命令（完整模式），无缓存时降级提示，cargo check + pnpm build 通过 |
