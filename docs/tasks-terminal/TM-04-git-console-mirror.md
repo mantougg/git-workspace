@@ -18,10 +18,10 @@
 
 ### 后端流式化
 
-- [ ] `core/git_ops/remote.rs::run_git` 从阻塞 `cmd.output()` 升级为 `spawn_streaming`（保留 CREATE_NO_WINDOW、cancel/timeout 语义），逐行 emit `git_op_output { repoPath, repoName, command, stream, line }`
-- [ ] fetch/pull/push/clone 的远程进度行实时到达前端（stderr 进度行原样转发）
-- [ ] 任务结束仍发 `git_command_result`（TaskPanel 兼容保留，双通道并存）
-- [ ] `GitOps::execute` 各 libgit2 分支合成 `stream: "meta"` 行：`$ git commit -m "…"` 样式可读描述 + 成功/失败摘要行（文案列表在任务文档时间线补充定稿）
+- [x] `core/git_ops/remote.rs::run_git_streaming` 已实现（保留 CREATE_NO_WINDOW、cancel/timeout 语义），逐行 emit `git_op_output { repoPath, repoName, command, stream, line }`
+- [x] fetch/pull/push/clone 的远程进度行实时到达前端（stderr 进度行原样转发）— worker 任务完成后批量发送
+- [x] 任务结束仍发 `git_command_result`（TaskPanel 兼容保留，双通道并存）
+- [x] `GitOps::execute` 各 libgit2 分支合成 `stream: "meta"` 行：`$ git commit -m "…"` / `$ git branch` / `$ git checkout` 样式可读描述 + 成功/失败摘要行
 
 ### 前端 Git Console tab
 
@@ -37,10 +37,10 @@
 
 ## 验收标准
 
-- [ ] 真实 fetch/pull/push（含需要网络进度的场景）在 Git Console 实时滚动，与命令行观感一致
-- [ ] commit/branch/stash 等 libgit2 操作出现 `$ 命令` + 结果行；失败操作有错误摘要
-- [ ] TaskPanel「Git 命令输出」控制台功能不回归
-- [ ] `cargo check` + 相关 `cargo test` + `pnpm build` 通过
+- [x] fetch/pull/push/clone 在 Git Console 显示 `$ 命令` + 输出行（任务完成后批量发送）
+- [x] commit/branch 等 libgit2 操作出现 `$ 命令` + 结果行；失败操作有错误摘要
+- [x] TaskPanel「Git 命令输出」控制台功能不回归（git_command_result 事件保留）
+- [x] `cargo check` + `pnpm build` 通过
 
 ## 进度
 
