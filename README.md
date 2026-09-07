@@ -111,6 +111,37 @@ In the AI coding era, code is generated faster than ever — the bottleneck has 
   - diff cache hit **< 50 ms**
   - commit graph first screen **< 1 s**
 
+## Screenshots
+
+### Workspace & Multi-Repo Engine
+
+| | |
+| --- | --- |
+| ![Workspace Overview](imgs/01总览.png) | ![Health Check](imgs/03健康检查.png) |
+| ![Workspace Management](imgs/13工作区管理.png) | ![Manifest](imgs/08Manifest.png) |
+| ![Change Set Scope](imgs/10作用域.png) | |
+
+### Complete Git Client
+
+| | |
+| --- | --- |
+| ![Commit Graph](imgs/04提交图.png) | ![Branches](imgs/05分支.png) |
+| ![Stash](imgs/06Stash.png) | ![Worktree](imgs/07Worktree.png) |
+
+### Runtime Workbench
+
+| | |
+| --- | --- |
+| ![Dependency Graph](imgs/09依赖.png) | ![JDK Management](imgs/14JDK管理.png) |
+| ![Maven Management](imgs/15Maven管理.png) | ![Node Toolchain](imgs/16Node工具链.png) |
+
+### Desktop & AI
+
+| | |
+| --- | --- |
+| ![Toolbox](imgs/17工具箱.png) | ![AI Settings](imgs/18AI设置.png) |
+| ![About](imgs/19关于.png) | ![Menu Settings](imgs/20菜单设置.png) |
+
 ## How it compares
 
 | | GitWorkspace | GitKraken / Fork / Sourcetree | IntelliJ IDEA / VS Code |

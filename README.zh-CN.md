@@ -111,6 +111,37 @@
   - Diff 缓存命中 **< 50ms**
   - 提交图首屏 **< 1s**
 
+## 截图展示
+
+### 工作区与多仓库引擎
+
+| | |
+| --- | --- |
+| ![总览](imgs/01总览.png) | ![健康检查](imgs/03健康检查.png) |
+| ![工作区管理](imgs/13工作区管理.png) | ![Manifest](imgs/08Manifest.png) |
+| ![作用域](imgs/10作用域.png) | |
+
+### 完整 Git 客户端
+
+| | |
+| --- | --- |
+| ![提交图](imgs/04提交图.png) | ![分支](imgs/05分支.png) |
+| ![Stash](imgs/06Stash.png) | ![Worktree](imgs/07Worktree.png) |
+
+### Runtime 工作台
+
+| | |
+| --- | --- |
+| ![依赖图](imgs/09依赖.png) | ![JDK 管理](imgs/14JDK管理.png) |
+| ![Maven 管理](imgs/15Maven管理.png) | ![Node 工具链](imgs/16Node工具链.png) |
+
+### 桌面体验与 AI
+
+| | |
+| --- | --- |
+| ![工具箱](imgs/17工具箱.png) | ![AI 设置](imgs/18AI设置.png) |
+| ![关于](imgs/19关于.png) | ![菜单设置](imgs/20菜单设置.png) |
+
 ## 与同类工具对比
 
 | | GitWorkspace | GitKraken / Fork / Sourcetree | IntelliJ IDEA / VS Code |
