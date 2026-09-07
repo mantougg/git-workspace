@@ -111,6 +111,59 @@ function toggleMaximize() {
 }
 
 // ---------------------------------------------------------------------------
+// TM-07：右键上下文菜单
+// ---------------------------------------------------------------------------
+const contextMenu = ref({
+  show: false,
+  x: 0,
+  y: 0,
+});
+
+function onContextMenu(e: MouseEvent) {
+  e.preventDefault();
+  contextMenu.value = {
+    show: true,
+    x: e.clientX,
+    y: e.clientY,
+  };
+}
+
+function hideContextMenu() {
+  contextMenu.value.show = false;
+}
+
+async function contextCopy() {
+  hideContextMenu();
+  const selection = window.getSelection()?.toString();
+  if (selection) {
+    await navigator.clipboard.writeText(selection);
+  }
+}
+
+async function contextPaste() {
+  hideContextMenu();
+  const text = await navigator.clipboard.readText();
+  if (text && activeTabId.value) {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(text);
+    const base64 = btoa(String.fromCharCode(...bytes));
+    await terminalStore.writeToSession(activeTabId.value, base64);
+  }
+}
+
+function contextClear() {
+  hideContextMenu();
+  clearScreen();
+}
+
+async function contextCloseTab() {
+  hideContextMenu();
+  if (activeTabId.value) {
+    await terminalStore.closeTab(activeTabId.value);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Panel visibility & height
 // ---------------------------------------------------------------------------
 
@@ -282,7 +335,7 @@ onMounted(() => {
     </div>
 
     <!-- 会话内容区 -->
-    <div class="terminal-panel-content">
+    <div class="terminal-panel-content" @contextmenu="onContextMenu">
       <div
         v-for="session in sessions"
         :key="session.sessionId"
@@ -303,6 +356,40 @@ onMounted(() => {
         <span>点击 <strong>+</strong> 新建 Shell 会话</span>
       </div>
     </div>
+
+    <!-- TM-07：右键上下文菜单 -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenu.show"
+        class="terminal-context-menu"
+        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+        @click="hideContextMenu"
+      >
+        <div class="terminal-context-item" @click="contextCopy">
+          <span class="terminal-context-icon">📋</span>
+          <span>复制</span>
+          <span class="terminal-context-shortcut">Ctrl+Shift+C</span>
+        </div>
+        <div class="terminal-context-item" @click="contextPaste">
+          <span class="terminal-context-icon">📄</span>
+          <span>粘贴</span>
+          <span class="terminal-context-shortcut">Ctrl+Shift+V</span>
+        </div>
+        <div class="terminal-context-divider" />
+        <div class="terminal-context-item" @click="contextClear">
+          <span class="terminal-context-icon">🗑</span>
+          <span>清屏</span>
+        </div>
+        <div
+          v-if="activeTabId && activeTabId !== '__git_console__'"
+          class="terminal-context-item"
+          @click="contextCloseTab"
+        >
+          <span class="terminal-context-icon">✕</span>
+          <span>关闭 Tab</span>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -466,5 +553,49 @@ onMounted(() => {
   height: 16px;
   background: var(--gw-border);
   margin: 0 var(--gw-space-1);
+}
+
+/* TM-07：右键上下文菜单 */
+.terminal-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  background: var(--gw-bg-panel);
+  border: 1px solid var(--gw-border);
+  border-radius: var(--gw-radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: var(--gw-space-1) 0;
+}
+
+.terminal-context-item {
+  display: flex;
+  align-items: center;
+  gap: var(--gw-space-2);
+  padding: var(--gw-space-1) var(--gw-space-2);
+  cursor: pointer;
+  font-size: var(--gw-text-sm);
+  color: var(--gw-text);
+}
+
+.terminal-context-item:hover {
+  background: var(--gw-bg-hover);
+}
+
+.terminal-context-icon {
+  width: 20px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.terminal-context-shortcut {
+  margin-left: auto;
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+}
+
+.terminal-context-divider {
+  height: 1px;
+  background: var(--gw-border);
+  margin: var(--gw-space-1) 0;
 }
 </style>
