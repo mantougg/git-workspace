@@ -107,3 +107,8 @@ export function terminalList(): Promise<TerminalSessionInfo[]> {
 export function terminalListShells(): Promise<ShellInfo[]> {
   return invoke<ShellInfo[]>("terminal_list_shells");
 }
+
+/** TM-06：在终端中启动 runtime（降级模式）。 */
+export function runtimeStartInTerminal(command: string, cwd?: string): Promise<string> {
+  return invoke<string>("runtime_start_in_terminal", { command, cwd });
+}

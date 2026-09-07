@@ -614,13 +614,14 @@ pub fn run() {
             commands::automation::delete_scheduled_task,
             commands::automation::export_pipeline_template,
             commands::automation::import_pipeline_template,
-            // Terminal commands (TM-01)
+            // Terminal commands (TM-01 / TM-06)
             commands::terminal::terminal_open,
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_close,
             commands::terminal::terminal_list,
             commands::terminal::terminal_list_shells,
+            commands::terminal::runtime_start_in_terminal,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")

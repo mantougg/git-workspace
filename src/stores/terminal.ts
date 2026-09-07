@@ -307,6 +307,12 @@ export const useTerminalStore = defineStore("terminal", () => {
     await useRuntimeStore().restart(runtimeName);
   }
 
+  /** TM-06：在终端中启动 runtime（降级模式）。 */
+  async function launchInTerminal(command: string, cwd?: string) {
+    showPanel();
+    await terminalApi.runtimeStartInTerminal(command, cwd);
+  }
+
   /** 打开新 PTY 会话。 */
   async function openSession(params?: {
     cwd?: string;
@@ -507,6 +513,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     startRuntime,
     stopRuntime,
     restartRuntime,
+    launchInTerminal,
     refreshRuntimeProcesses,
     cleanup,
   };

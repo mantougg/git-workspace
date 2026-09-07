@@ -85,3 +85,43 @@ pub async fn terminal_list(
 pub async fn terminal_list_shells(state: State<'_, AppState>) -> Result<Vec<ShellInfo>, String> {
     Ok(state.terminal.list_shells())
 }
+
+/// TM-06：在终端中启动 runtime（降级模式）。
+///
+/// 打开一个可交互 Shell tab 并写入启动命令执行。
+/// 此模式无健康检查/端口检测/日志落盘，UI 需明示降级。
+///
+/// 简化实现：直接打开 PTY 会话并写入用户指定的命令。
+/// 后续优化：集成 LaunchPlan 构建链路。
+#[tauri::command]
+pub async fn runtime_start_in_terminal(
+    state: State<'_, AppState>,
+    command: String,
+    cwd: Option<String>,
+) -> Result<String, String> {
+    // 1. 打开 PTY 会话
+    let default_cwd = cwd.unwrap_or_else(|| {
+        std::env::current_dir()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    });
+
+    let session_id = state.terminal.open(
+        TerminalOpenParams {
+            cwd: Some(default_cwd.clone()),
+            shell: None, // 使用默认 shell
+            cols: 80,
+            rows: 24,
+        },
+        &default_cwd,
+    )?;
+
+    // 2. 写入启动命令 + 回车
+    use base64::Engine;
+    let cmd_bytes = format!("{}\r", command);
+    let cmd_base64 = base64::engine::general_purpose::STANDARD.encode(cmd_bytes.as_bytes());
+    state.terminal.write(&session_id, &cmd_base64)?;
+
+    Ok(session_id)
+}
