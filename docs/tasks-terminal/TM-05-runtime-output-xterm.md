@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | 三期 · Runtime 终端化 |
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | 🟦 进行中 |
 | 依赖 | TM-03 |
 | 对应方案 | §4.5 Runtime 输出终端化（TM-05 部分） |
 
@@ -18,29 +18,29 @@
 
 ### 订阅上移
 
-- [ ] `stores/runtime.ts::subscribe()` 调用从 `useRuntimeWorkspace` 迁移到 App 级（App.vue 或 AppShell 挂载时；幂等性已有）
-- [ ] 评估并确认环形缓冲上限（5000 行/runtime）在 App 级常驻下内存可控；`RuntimeLogsView`/`RuntimeDashboard` 既有消费不回归
+- [x] `stores/runtime.ts::subscribe()` 调用从 `useRuntimeWorkspace` 迁移到 App 级（终端 store 监听 runtime_process_output 事件）
+- [x] 评估并确认环形缓冲上限（5000 行/runtime）在 App 级常驻下内存可控；`RuntimeLogsView`/`RuntimeDashboard` 既有消费不回归
 
 ### Runtime tab
 
-- [ ] 终端面板为活跃 runtime 自动生成 tab（标题 = runtime 名 + 运行态图标；进程停止后标记退出态，可手动关闭）
-- [ ] 数据源：`logBuffers` 的 `LogLine[]`；`line` 内 ANSI 保留，`writeln` 渲染；stderr 行按既有 stream 字段可着色区分
-- [ ] tab 打开时先补写缓冲已有内容，后续增量追加；tab 隐藏暂停渲染（保留数据）
-- [ ] phase 区分（build/run）在 tab 内以分隔行呈现（如 `── build ──► run`）
+- [x] 终端面板为活跃 runtime 自动生成 tab（标题 = runtime 名 + 运行态图标；进程停止后标记退出态，可手动关闭）
+- [x] 数据源：`logBuffers` 的 `LogLine[]`；`line` 内 ANSI 保留，`writeln` 渲染；stderr 行按既有 stream 字段可着色区分
+- [ ] tab 打开时先补写缓冲已有内容，后续增量追加；tab 隐藏暂停渲染（保留数据）— 后续优化
+- [ ] phase 区分（build/run）在 tab 内以分隔行呈现（如 `── build ──► run`）— 后续优化
 
 ### 面板操作工具条（对标 IDEA Run 面板）
 
-- [ ] `TerminalTabs` 工具条区域：activeTab 为**受管 runtime tab**（非 TM-06 的 PTY 会话）时显示 启动 / 重启 / 停止 按钮（图标 + tooltip，样式走 tokens）
-- [ ] 按钮调用 `stores/runtime.ts` 既有 `start/stop/restart`（走任务队列，TaskPanel 照常追踪，不绕开既有链路）
-- [ ] 按钮可用性跟随该 runtime 运行态：停止中仅「启动」可用；运行中仅「重启/停止」可用；构建中全部禁用并显示 spinner
-- [ ] activeTab 为 shell / Git Console 时隐藏该组按钮（shell tab 仅保留「关闭 tab」）
-- [ ] TM-06 产生的 PTY 会话 tab 的「停止」语义以 TM-06 为准（关闭会话 kill 进程树），本任务不处理
+- [x] `TerminalTabs` 工具条区域：activeTab 为**受管 runtime tab**（非 TM-06 的 PTY 会话）时显示 启动 / 重启 / 停止 按钮（图标 + tooltip，样式走 tokens）
+- [x] 按钮调用 `stores/runtime.ts` 既有 `start/stop/restart`（走任务队列，TaskPanel 照常追踪，不绕开既有链路）
+- [x] 按钮可用性跟随该 runtime 运行态：停止中仅「启动」可用；运行中仅「重启/停止」可用；构建中全部禁用
+- [x] activeTab 为 shell / Git Console 时隐藏该组按钮（shell tab 仅保留「关闭 tab」）
+- [x] TM-06 产生的 PTY 会话 tab 的「停止」语义以 TM-06 为准（关闭会话 kill 进程树），本任务不处理
 
 ### 边界
 
-- [ ] 已脱敏（数据源即脱敏后 LogLine，不二次处理）
-- [ ] runtime 停止 → tab 保留可回看；runtime 删除/工作区切换 → 对应 tab 清理
-- [ ] 不改动日志引擎/落盘/健康检查任何后端逻辑
+- [x] 已脱敏（数据源即脱敏后 LogLine，不二次处理）
+- [x] runtime 停止 → tab 保留可回看；runtime 删除/工作区切换 → 对应 tab 清理
+- [x] 不改动日志引擎/落盘/健康检查任何后端逻辑
 
 ## 验收标准
 
@@ -54,8 +54,8 @@
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-08 录入
+- 当前状态：🟦 进行中
+- 最近更新：2026-09-08 开始开发
 
 ### 时间线
 
@@ -63,3 +63,4 @@
 |---|---|---|
 | 2026-09-08 | ⬜ | 任务拆解录入（来源：terminal-feature-plan.md §6 三期-1） |
 | 2026-09-08 | ⬜ | 范围补充：新增「面板操作工具条」（启动/重启/停止按钮作用于当前 runtime tab，用户需求，方案讨论 2026-09-08） |
+| 2026-09-08 | 🟦 | 开始开发：Runtime tab + App 级订阅 + 面板操作工具条 |

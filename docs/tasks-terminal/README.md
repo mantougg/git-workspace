@@ -18,7 +18,7 @@
 ## 总体进度
 
 - 任务总数：**7**
-- 已完成：**4** · 进行中：**1** · 未开始：**2**
+- 已完成：**4** · 进行中：**2** · 未开始：**1**
 - 完成度：**4 / 7（57%）**
 
 ---
@@ -43,7 +43,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| TM-05 | Runtime 输出 xterm tab + App 级订阅 + 面板操作工具条 | P1 | ⬜ | TM-03 | [TM-05-runtime-output-xterm.md](./TM-05-runtime-output-xterm.md) |
+| TM-05 | Runtime 输出 xterm tab + App 级订阅 + 面板操作工具条 | P1 | 🟦 | TM-03 | [TM-05-runtime-output-xterm.md](./TM-05-runtime-output-xterm.md) |
 | TM-06 | 在终端中启动（LaunchPlan.preview 入 PTY，降级模式） | P2 | ⬜ | TM-05 | [TM-06-launch-in-terminal.md](./TM-06-launch-in-terminal.md) |
 
 ### 增量 · 打磨（1 个）

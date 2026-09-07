@@ -13,6 +13,39 @@ import XtermView from "./XtermView.vue";
 const terminalStore = useTerminalStore();
 const activeSession = computed(() => terminalStore.activeSession);
 
+// TM-05：Runtime tab 判断
+const isRuntimeTab = computed(() =>
+  activeTabId.value?.startsWith("__runtime_") ?? false
+);
+const isGitConsoleTab = computed(() =>
+  activeTabId.value === "__git_console__"
+);
+const currentRuntimeName = computed(() => {
+  if (!activeTabId.value?.startsWith("__runtime_")) return null;
+  return activeTabId.value.replace("__runtime_", "");
+});
+const isRuntimeRunningState = computed(() => {
+  const name = currentRuntimeName.value;
+  return name ? terminalStore.isRuntimeRunning(name) : false;
+});
+const isRuntimeBuildingState = computed(() => {
+  const name = currentRuntimeName.value;
+  return name ? terminalStore.isRuntimeBuilding(name) : false;
+});
+
+async function startCurrentRuntime() {
+  const name = currentRuntimeName.value;
+  if (name) await terminalStore.startRuntime(name);
+}
+async function stopCurrentRuntime() {
+  const name = currentRuntimeName.value;
+  if (name) await terminalStore.stopRuntime(name);
+}
+async function restartCurrentRuntime() {
+  const name = currentRuntimeName.value;
+  if (name) await terminalStore.restartRuntime(name);
+}
+
 // ---------------------------------------------------------------------------
 // TM-07：搜索
 // ---------------------------------------------------------------------------
@@ -182,13 +215,41 @@ onMounted(() => {
     <div class="terminal-panel-header">
       <TerminalTabs />
       <div class="terminal-panel-toolbar">
+        <!-- TM-05：Runtime 控制按钮（仅 runtime tab 显示） -->
+        <template v-if="isRuntimeTab">
+          <button
+            class="terminal-toolbar-btn runtime-btn"
+            title="启动"
+            :disabled="isRuntimeBuildingState || isRuntimeRunningState"
+            @click="startCurrentRuntime"
+          >
+            ▶
+          </button>
+          <button
+            class="terminal-toolbar-btn runtime-btn"
+            title="重启"
+            :disabled="isRuntimeBuildingState || !isRuntimeRunningState"
+            @click="restartCurrentRuntime"
+          >
+            🔄
+          </button>
+          <button
+            class="terminal-toolbar-btn runtime-btn"
+            title="停止"
+            :disabled="isRuntimeBuildingState || !isRuntimeRunningState"
+            @click="stopCurrentRuntime"
+          >
+            ⏹
+          </button>
+          <div class="terminal-toolbar-divider" />
+        </template>
         <!-- 搜索按钮 -->
         <button class="terminal-toolbar-btn" title="搜索（Ctrl+F）" @click="toggleSearch">🔍</button>
         <!-- 清屏按钮 -->
         <button class="terminal-toolbar-btn" title="清屏" @click="clearScreen">🗑</button>
         <!-- 重开按钮（仅已退出会话显示） -->
         <button
-          v-if="activeSession && !activeSession.alive"
+          v-if="activeSession && !activeSession.alive && !isRuntimeTab && !isGitConsoleTab"
           class="terminal-toolbar-btn"
           title="重开会话"
           @click="reopenSession"
@@ -388,5 +449,22 @@ onMounted(() => {
 
 .terminal-search-btn:hover {
   background: var(--gw-bg-hover);
+}
+
+/* TM-05：Runtime 控制按钮 */
+.terminal-toolbar-btn.runtime-btn {
+  font-size: 11px;
+}
+
+.terminal-toolbar-btn.runtime-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.terminal-toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--gw-border);
+  margin: 0 var(--gw-space-1);
 }
 </style>

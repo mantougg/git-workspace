@@ -56,15 +56,21 @@ function selectShell(shellId: string) {
         :class="{
           active: session.sessionId === activeTabId,
           'git-console': session.sessionId === '__git_console__',
+          'runtime-tab': session.sessionId.startsWith('__runtime_'),
         }"
         @click="switchTab(session.sessionId)"
       >
         <span
-          v-if="session.sessionId !== '__git_console__'"
+          v-if="session.sessionId === '__git_console__'"
+          class="terminal-tab-icon">🔀</span>
+        <span
+          v-else-if="session.sessionId.startsWith('__runtime_')"
+          class="terminal-tab-icon">▶</span>
+        <span
+          v-else
           class="terminal-tab-dot"
           :class="{ alive: session.alive }"
         />
-        <span v-else class="terminal-tab-icon">🔀</span>
         <span class="terminal-tab-title">{{ session.title }}</span>
         <button
           v-if="session.sessionId !== '__git_console__'"
@@ -162,6 +168,10 @@ function selectShell(shellId: string) {
 
 .terminal-tab.git-console {
   border-left: 2px solid var(--gw-accent);
+}
+
+.terminal-tab.runtime-tab {
+  border-left: 2px solid var(--gw-success);
 }
 
 .terminal-tab-title {

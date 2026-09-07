@@ -16,6 +16,8 @@ import type {
   GitOpOutputEvent,
   ShellInfo,
 } from "@/api/terminal";
+import { RUNTIME_EVENTS } from "@/api/runtime";
+import type { ProcessOutputPayload, RuntimeProcessInfo } from "@/types/runtime";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,10 +48,19 @@ export const useTerminalStore = defineStore("terminal", () => {
   let unlistenOutput: UnlistenFn | null = null;
   let unlistenExit: UnlistenFn | null = null;
   let unlistenGitOp: UnlistenFn | null = null;
+  let unlistenRuntimeOutput: UnlistenFn | null = null;
+  let unlistenRuntimeStarted: UnlistenFn | null = null;
+  let unlistenRuntimeStopped: UnlistenFn | null = null;
   let listenersRegistered = false;
 
   /** Git Console 会话 ID（固定值，不可关闭）。 */
   const GIT_CONSOLE_SESSION_ID = "__git_console__";
+
+  /** Runtime 会话 ID 前缀（自动创建，可关闭）。 */
+  const RUNTIME_SESSION_PREFIX = "__runtime_";
+
+  /** 活跃 runtime 进程列表（用于工具条按钮状态）。 */
+  const runtimeProcesses = ref<RuntimeProcessInfo[]>([]);
 
   // -- Getters --
   const activeSession = computed(() =>
@@ -107,6 +118,41 @@ export const useTerminalStore = defineStore("terminal", () => {
     }).then((unlisten) => {
       unlistenGitOp = unlisten;
     });
+
+    // TM-05：Runtime 输出事件（App 级订阅）
+    listen<ProcessOutputPayload>(RUNTIME_EVENTS.processOutput, (event) => {
+      handleRuntimeOutput(event.payload);
+    }).then((unlisten) => {
+      unlistenRuntimeOutput = unlisten;
+    });
+
+    // TM-05：Runtime 启动/停止事件（更新 runtime 状态）
+    listen(RUNTIME_EVENTS.processStarted, () => {
+      refreshRuntimeProcesses();
+    }).then((unlisten) => {
+      unlistenRuntimeStarted = unlisten;
+    });
+
+    listen(RUNTIME_EVENTS.processStopped, () => {
+      refreshRuntimeProcesses();
+    }).then((unlisten) => {
+      unlistenRuntimeStopped = unlisten;
+    });
+  }
+
+  /** 刷新 runtime 进程列表（用于工具条按钮状态）。 */
+  async function refreshRuntimeProcesses() {
+    try {
+      const { runtimeListProcesses } = await import("@/api/runtime");
+      // 需要 workspaceId，从 workspace store 获取
+      const { useWorkspaceStore } = await import("@/stores/workspace");
+      const wsId = useWorkspaceStore().currentWorkspace?.id;
+      if (wsId) {
+        runtimeProcesses.value = await runtimeListProcesses(wsId);
+      }
+    } catch (e) {
+      console.error("Failed to refresh runtime processes:", e);
+    }
   }
 
   /** 确保 Git Console 会话存在（不可关闭的特殊会话）。 */
@@ -185,6 +231,80 @@ export const useTerminalStore = defineStore("terminal", () => {
     } else {
       session.writeBuffer.push(bytes);
     }
+  }
+
+  /** TM-05：处理 runtime_process_output 事件，写入对应 runtime tab xterm。 */
+  function handleRuntimeOutput(event: ProcessOutputPayload) {
+    const sessionId = `${RUNTIME_SESSION_PREFIX}${event.runtimeName}`;
+    let session = sessions.value.find((s) => s.sessionId === sessionId);
+
+    // 自动创建 runtime tab（如果不存在）
+    if (!session) {
+      session = {
+        sessionId,
+        kind: "runtime",
+        title: event.runtimeName,
+        cwd: "",
+        alive: true,
+        writeBuffer: [],
+        paused: false,
+      };
+      sessions.value.push(session);
+    }
+
+    // 格式化 LogLine 为 ANSI 字符串
+    const encoder = new TextEncoder();
+    for (const logLine of event.lines) {
+      let line = logLine.line;
+      // stderr 行着色区分
+      if (logLine.stream === "stderr") {
+        line = `\x1b[33m${line}\x1b[0m`; // yellow
+      }
+      // phase 分隔（build → run 切换时）
+      // 简单实现：直接输出行，phase 信息通过颜色区分
+      const fullLine = `${line}\r\n`;
+      const bytes = encoder.encode(fullLine);
+
+      if (session.writeCallback) {
+        session.writeCallback(bytes);
+      } else {
+        session.writeBuffer.push(bytes);
+      }
+    }
+  }
+
+  /** TM-05：检查 runtime 是否正在运行。 */
+  function isRuntimeRunning(runtimeName: string): boolean {
+    return runtimeProcesses.value.some(
+      (p) => p.runtimeName === runtimeName && p.status === "running"
+    );
+  }
+
+  /** TM-05：检查 runtime 是否正在构建中。 */
+  function isRuntimeBuilding(runtimeName: string): boolean {
+    return runtimeProcesses.value.some(
+      (p) =>
+        p.runtimeName === runtimeName &&
+        ["preparing", "resolving", "building", "starting"].includes(p.status)
+    );
+  }
+
+  /** TM-05：启动 runtime。 */
+  async function startRuntime(runtimeName: string) {
+    const { useRuntimeStore } = await import("@/stores/runtime");
+    await useRuntimeStore().start(runtimeName);
+  }
+
+  /** TM-05：停止 runtime。 */
+  async function stopRuntime(runtimeName: string) {
+    const { useRuntimeStore } = await import("@/stores/runtime");
+    await useRuntimeStore().stop(runtimeName);
+  }
+
+  /** TM-05：重启 runtime。 */
+  async function restartRuntime(runtimeName: string) {
+    const { useRuntimeStore } = await import("@/stores/runtime");
+    await useRuntimeStore().restart(runtimeName);
   }
 
   /** 打开新 PTY 会话。 */
@@ -345,9 +465,15 @@ export const useTerminalStore = defineStore("terminal", () => {
     unlistenOutput?.();
     unlistenExit?.();
     unlistenGitOp?.();
+    unlistenRuntimeOutput?.();
+    unlistenRuntimeStarted?.();
+    unlistenRuntimeStopped?.();
     unlistenOutput = null;
     unlistenExit = null;
     unlistenGitOp = null;
+    unlistenRuntimeOutput = null;
+    unlistenRuntimeStarted = null;
+    unlistenRuntimeStopped = null;
     listenersRegistered = false;
   }
 
@@ -357,6 +483,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     activeTabId,
     panelVisible,
     availableShells,
+    runtimeProcesses,
     // Getters
     activeSession,
     aliveSessions,
@@ -375,6 +502,12 @@ export const useTerminalStore = defineStore("terminal", () => {
     pauseSession,
     registerWriteCallback,
     unregisterWriteCallback,
+    isRuntimeRunning,
+    isRuntimeBuilding,
+    startRuntime,
+    stopRuntime,
+    restartRuntime,
+    refreshRuntimeProcesses,
     cleanup,
   };
 });
