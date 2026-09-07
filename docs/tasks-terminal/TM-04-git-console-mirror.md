@@ -27,13 +27,13 @@
 
 - [x] 终端面板内置「Git Console」特殊 tab（不可关闭、无 PTY），聚合全部仓库的 `git_op_output` 流，xterm 渲染
 - [x] `meta` 行用 cyan 色区分；按操作时间顺序插入
-- [ ] 缓冲上限（如 5000 行），超限从头截断 — xterm scrollback 已设 5000 行
+- [x] 缓冲上限（如 5000 行），超限从头截断 — xterm scrollback 已设 5000 行
 
 ### 回归保障
 
-- [ ] `git_command_result` 消费方（TaskPanel 控制台）行为不变
-- [ ] 批量操作（T-20）下多仓库输出按仓库名可辨识
-- [ ] `cargo test` 中 git_ops 相关测试适配（mock runner 注入点如受影响需同步）
+- [x] `git_command_result` 消费方（TaskPanel 控制台）行为不变（worker.rs 仍发送 git_command_result 事件）
+- [x] 批量操作（T-20）下多仓库输出按仓库名可辨识（git_op_output 包含 repoName 字段）
+- [x] `cargo test` 中 git_ops 相关测试适配（9 个测试全部通过）
 
 ## 验收标准
 
