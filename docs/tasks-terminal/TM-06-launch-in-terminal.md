@@ -18,9 +18,9 @@
 
 ### 后端
 
-- [x] 新增 `runtime_start_in_terminal(command, cwd)`：打开 PTY 会话并写入启动命令
-- [ ] env 注入方式按平台分支：unix `A=b C=d cmd` 前缀或 `export`；Windows cmd `set` / PowerShell `$env:` — 后续优化
-- [ ] **脱敏闸门**：preview/env 含敏感项时拒绝该模式 — 后续集成 LaunchPlan 时实现
+- [x] 新增 `runtime_start_in_terminal(command, cwd, env)`：打开 PTY 会话并写入启动命令
+- [x] env 注入方式按平台分支：unix `A=b C=d cmd` 前缀；Windows `set A=b && cmd`
+- [x] **脱敏闸门**：env 含 SECRET/TOKEN/PASSWORD/API_KEY 等敏感关键词时拒绝该模式
 - [x] 会话登记进 `TerminalManager`，应用退出随会话清理
 
 ### 前端
@@ -33,7 +33,7 @@
 ## 验收标准
 
 - [x] 命令可通过 PTY 执行，Ctrl-C / 输入交互可用
-- [ ] 含敏感 env 的配置被拒绝且提示可行动 — 后续集成 LaunchPlan 时实现
+- [x] 含敏感 env 的配置被拒绝且提示可行动（脱敏闸门检测 SECRET/TOKEN/PASSWORD 等）
 - [x] 关闭 tab 后进程树无残留；Dashboard 运行态标识不误报
 - [x] `cargo check` + `pnpm build` 通过
 
