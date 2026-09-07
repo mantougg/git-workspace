@@ -1274,17 +1274,32 @@ async function onStart(name: string) {
   }
 }
 
-// TM-06：在终端中启动 runtime（降级模式）
+// TM-06：在终端中启动 runtime（非降级模式：优先使用缓存的 LaunchPlan）
 async function onLaunchInTerminal(row: RuntimeConfigSummary) {
   clearError();
   try {
     const { useTerminalStore } = await import("@/stores/terminal");
+    const { runtimeGetLaunchPreview } = await import("@/api/runtime");
     const terminalStore = useTerminalStore();
-    // 简化实现：使用 echo 提示用户配置启动命令
-    // 后续优化：集成 LaunchPlan 构建链路获取真实启动命令
-    const command = `echo "在终端中启动 ${row.name}（降级模式）"`;
-    await terminalStore.launchInTerminal(command);
-    message.success(`已在终端中启动：${row.name}`);
+
+    // 尝试获取缓存的启动命令（首次成功启动后填充）
+    const preview = await runtimeGetLaunchPreview(row.workspaceId, row.name);
+
+    let command: string;
+    let cwd: string | undefined;
+
+    if (preview) {
+      // 非降级模式：使用真实的启动命令
+      command = preview[0];
+      cwd = preview[1];
+      message.success(`已在终端中启动：${row.name}（完整模式）`);
+    } else {
+      // 降级模式：提示用户需要先正常启动一次
+      command = `echo "请先正常启动 ${row.name} 一次，然后即可使用终端启动模式"`;
+      message.warning(`首次使用请先正常启动 ${row.name}`);
+    }
+
+    await terminalStore.launchInTerminal(command, cwd);
   } catch (e) {
     handleError("在终端中启动", e);
   }

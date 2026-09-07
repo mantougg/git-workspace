@@ -442,3 +442,14 @@ export function runtimeStopNamedEnvironment(
     environment,
   });
 }
+
+/** TM-06：获取缓存的启动命令预览（非降级模式）。 */
+export function runtimeGetLaunchPreview(
+  workspaceId: number,
+  runtimeName: string
+): Promise<[string, string] | null> {
+  return invoke<[string, string] | null>("runtime_get_launch_preview", {
+    workspaceId,
+    runtimeName,
+  });
+}

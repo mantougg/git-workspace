@@ -277,6 +277,23 @@ impl RuntimeProcessManager {
             CachedLaunch { plan, strategy },
         );
     }
+
+    /// TM-06：获取缓存的启动命令预览（非降级模式）。
+    ///
+    /// 返回 (preview, working_dir) 如果缓存存在，否则返回 None。
+    pub fn cached_launch_preview(
+        &self,
+        workspace_id: i64,
+        runtime_name: &str,
+    ) -> Option<(String, String)> {
+        let cache = self.launch_cache.lock().unwrap();
+        let key = (workspace_id, runtime_name.to_string());
+        cache.get(&key).map(|cached| {
+            let preview = crate::runtime::launch::launcher::plan_preview(&cached.plan);
+            let working_dir = crate::runtime::launch::launcher::plan_working_dir(&cached.plan);
+            (preview, working_dir.to_string_lossy().to_string())
+        })
+    }
 }
 
 impl Drop for RuntimeProcessManager {

@@ -664,3 +664,16 @@ pub fn runtime_stop_blocking(
 ) -> AppResult<Option<RuntimeProcessInfo>> {
     state.runtime.stop_blocking(workspace_id, &runtime_name)
 }
+
+/// TM-06：获取缓存的启动命令预览（非降级模式）。
+///
+/// 返回 { preview, workingDir } 如果缓存存在（首次成功启动后填充），
+/// 否则返回 null。缓存在应用重启后丢失。
+#[command]
+pub fn runtime_get_launch_preview(
+    workspace_id: i64,
+    runtime_name: String,
+    state: State<'_, AppState>,
+) -> Option<(String, String)> {
+    state.runtime.get_launch_preview(workspace_id, &runtime_name)
+}

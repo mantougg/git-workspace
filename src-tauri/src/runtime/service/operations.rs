@@ -249,6 +249,18 @@ impl RuntimeService {
         }
     }
 
+    /// TM-06：获取缓存的启动命令预览（非降级模式）。
+    ///
+    /// 返回 (preview, working_dir) 如果缓存存在，否则返回 None。
+    /// 缓存在首次成功启动后填充，重启后丢失。
+    pub fn get_launch_preview(
+        &self,
+        workspace_id: i64,
+        runtime_name: &str,
+    ) -> Option<(String, String)> {
+        self.processes.cached_launch_preview(workspace_id, runtime_name)
+    }
+
     /// R-17/R-21 的 Rebuild & Restart 入口：Stop → 完整构建 → Start
     /// （与 `restart` 的 skip_build 复用相对；源码变更后必须重建）。
     pub(super) fn exec_rebuild_restart(
