@@ -339,19 +339,45 @@ async fn execute_task(
         final_status = TaskStatus::Cancelled;
     }
 
-    // Emit an IDE-style git console event for network operations (and for
-    // Commit & Push, which runs a network push as its second phase).
+    // Emit an IDE-style git console event for all git operations.
+    // Network operations and libgit2 operations both get meta lines in Git Console.
     let console_command = match &task_type {
+        // Network operations
         TaskType::Fetch => Some("git fetch <remote>".to_string()),
         TaskType::Pull => Some("git pull --ff-only".to_string()),
         TaskType::Push => Some("git push".to_string()),
         TaskType::Clone { url, .. } => Some(format!("git clone {}", url)),
+        TaskType::Commit { then_push: true, .. } => Some("git commit && git push".to_string()),
+        // Shell / Node
         TaskType::ShellCommand { command, .. } => Some(command.clone()),
         TaskType::NodeInstall {
             project_dir,
             package_manager,
         } => Some(format!("{} install (cwd {})", package_manager.name(), project_dir)),
-        TaskType::Commit { then_push: true, .. } => Some("git commit && git push".to_string()),
+        // TM-04：libgit2 操作合成 meta 行
+        TaskType::Commit { message, then_push: false, amend, .. } => {
+            if *amend {
+                Some("git commit --amend".to_string())
+            } else {
+                let short_msg = if message.len() > 50 {
+                    format!("{}…", &message[..47])
+                } else {
+                    message.clone()
+                };
+                Some(format!("git commit -m \"{}\"", short_msg))
+            }
+        }
+        TaskType::BranchOp { op, name, .. } => {
+            let desc = match op {
+                crate::models::task::BranchOpKind::Create => format!("git branch {}", name),
+                crate::models::task::BranchOpKind::Delete => format!("git branch -d {}", name),
+                crate::models::task::BranchOpKind::Checkout => format!("git checkout {}", name),
+            };
+            Some(desc)
+        }
+        TaskType::ConflictApply { path, strategy, .. } => {
+            Some(format!("git conflict resolve {} ({})", path, strategy))
+        }
         _ => None,
     };
     if let Some(command) = console_command {
