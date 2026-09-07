@@ -53,12 +53,21 @@ function selectShell(shellId: string) {
         v-for="session in sessions"
         :key="session.sessionId"
         class="terminal-tab"
-        :class="{ active: session.sessionId === activeTabId }"
+        :class="{
+          active: session.sessionId === activeTabId,
+          'git-console': session.sessionId === '__git_console__',
+        }"
         @click="switchTab(session.sessionId)"
       >
-        <span class="terminal-tab-dot" :class="{ alive: session.alive }" />
+        <span
+          v-if="session.sessionId !== '__git_console__'"
+          class="terminal-tab-dot"
+          :class="{ alive: session.alive }"
+        />
+        <span v-else class="terminal-tab-icon">🔀</span>
         <span class="terminal-tab-title">{{ session.title }}</span>
         <button
+          v-if="session.sessionId !== '__git_console__'"
           class="terminal-tab-close"
           title="关闭"
           @click="closeTab(session.sessionId, $event)"
@@ -144,6 +153,15 @@ function selectShell(shellId: string) {
 
 .terminal-tab-dot.alive {
   background: var(--gw-success);
+}
+
+.terminal-tab-icon {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.terminal-tab.git-console {
+  border-left: 2px solid var(--gw-accent);
 }
 
 .terminal-tab-title {

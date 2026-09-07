@@ -13,6 +13,7 @@ import type {
   TerminalSessionInfo,
   TerminalOutputEvent,
   TerminalExitEvent,
+  GitOpOutputEvent,
   ShellInfo,
 } from "@/api/terminal";
 
@@ -44,7 +45,11 @@ export const useTerminalStore = defineStore("terminal", () => {
   /** 事件监听 unlisten 句柄（面板首次打开时注册）。 */
   let unlistenOutput: UnlistenFn | null = null;
   let unlistenExit: UnlistenFn | null = null;
+  let unlistenGitOp: UnlistenFn | null = null;
   let listenersRegistered = false;
+
+  /** Git Console 会话 ID（固定值，不可关闭）。 */
+  const GIT_CONSOLE_SESSION_ID = "__git_console__";
 
   // -- Getters --
   const activeSession = computed(() =>
@@ -81,6 +86,9 @@ export const useTerminalStore = defineStore("terminal", () => {
     if (listenersRegistered) return;
     listenersRegistered = true;
 
+    // 确保 Git Console 会话存在
+    ensureGitConsoleSession();
+
     listen<TerminalOutputEvent>(terminalApi.TERMINAL_EVENTS.OUTPUT, (event) => {
       handleOutput(event.payload);
     }).then((unlisten) => {
@@ -91,6 +99,27 @@ export const useTerminalStore = defineStore("terminal", () => {
       handleExit(event.payload);
     }).then((unlisten) => {
       unlistenExit = unlisten;
+    });
+
+    // TM-04：Git 输出镜像事件
+    listen<GitOpOutputEvent>(terminalApi.TERMINAL_EVENTS.GIT_OP_OUTPUT, (event) => {
+      handleGitOpOutput(event.payload);
+    }).then((unlisten) => {
+      unlistenGitOp = unlisten;
+    });
+  }
+
+  /** 确保 Git Console 会话存在（不可关闭的特殊会话）。 */
+  function ensureGitConsoleSession() {
+    if (sessions.value.some((s) => s.sessionId === GIT_CONSOLE_SESSION_ID)) return;
+    sessions.value.unshift({
+      sessionId: GIT_CONSOLE_SESSION_ID,
+      kind: "shell",
+      title: "Git Console",
+      cwd: "",
+      alive: true,
+      writeBuffer: [],
+      paused: false,
     });
   }
 
@@ -124,6 +153,37 @@ export const useTerminalStore = defineStore("terminal", () => {
     );
     if (session) {
       session.alive = false;
+    }
+  }
+
+  /** TM-04：处理 git_op_output 事件，写入 Git Console xterm。 */
+  function handleGitOpOutput(event: GitOpOutputEvent) {
+    const session = sessions.value.find(
+      (s) => s.sessionId === GIT_CONSOLE_SESSION_ID
+    );
+    if (!session) return;
+
+    // 格式化输出行
+    let line = event.line;
+    if (event.stream === "meta") {
+      // meta 行（$ git commit -m "..." 样式）加前缀标识
+      line = `\x1b[36m${line}\x1b[0m`; // cyan 色
+    } else if (event.stream === "stderr") {
+      line = `\x1b[33m${line}\x1b[0m`; // yellow 色
+    }
+
+    // 追加仓库名标识（批量操作时可辨识）
+    const prefix = event.repoName ? `[${event.repoName}] ` : "";
+    const fullLine = `${prefix}${line}\r\n`;
+
+    // 写入 xterm
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(fullLine);
+
+    if (session.writeCallback) {
+      session.writeCallback(bytes);
+    } else {
+      session.writeBuffer.push(bytes);
     }
   }
 
@@ -174,6 +234,9 @@ export const useTerminalStore = defineStore("terminal", () => {
 
   /** 关闭指定 tab。 */
   async function closeTab(sessionId: string) {
+    // Git Console 不可关闭
+    if (sessionId === GIT_CONSOLE_SESSION_ID) return;
+
     try {
       await terminalApi.terminalClose({ sessionId });
     } catch (e) {
@@ -281,8 +344,10 @@ export const useTerminalStore = defineStore("terminal", () => {
   function cleanup() {
     unlistenOutput?.();
     unlistenExit?.();
+    unlistenGitOp?.();
     unlistenOutput = null;
     unlistenExit = null;
+    unlistenGitOp = null;
     listenersRegistered = false;
   }
 

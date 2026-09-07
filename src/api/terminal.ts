@@ -56,6 +56,14 @@ export interface TerminalExitEvent {
   exitCode: number | null;
 }
 
+export interface GitOpOutputEvent {
+  repoPath: string;
+  repoName: string;
+  command: string;
+  stream: "stdout" | "stderr" | "meta";
+  line: string;
+}
+
 // ---------------------------------------------------------------------------
 // Event names（常量，snake_case，无 `.`）
 // ---------------------------------------------------------------------------
@@ -63,6 +71,7 @@ export interface TerminalExitEvent {
 export const TERMINAL_EVENTS = {
   OUTPUT: "terminal_output",
   EXIT: "terminal_exit",
+  GIT_OP_OUTPUT: "git_op_output",
 } as const;
 
 // ---------------------------------------------------------------------------

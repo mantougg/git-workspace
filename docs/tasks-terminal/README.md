@@ -18,7 +18,7 @@
 ## 总体进度
 
 - 任务总数：**7**
-- 已完成：**3** · 进行中：**1** · 未开始：**3**
+- 已完成：**3** · 进行中：**2** · 未开始：**2**
 - 完成度：**3 / 7（43%）**
 
 ---
@@ -37,7 +37,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| TM-04 | Git 输出流式化 + Git Console 镜像 | P1 | ⬜ | TM-03 | [TM-04-git-console-mirror.md](./TM-04-git-console-mirror.md) |
+| TM-04 | Git 输出流式化 + Git Console 镜像 | P1 | 🟦 | TM-03 | [TM-04-git-console-mirror.md](./TM-04-git-console-mirror.md) |
 
 ### 三期 · Runtime 终端化（2 个）
 
