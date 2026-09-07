@@ -366,11 +366,38 @@ async fn execute_task(
             &GitCommandResult {
                 repo_name: task.repo_name.clone(),
                 repo_path: task.repo_path.clone(),
-                command,
+                command: command.clone(),
                 success,
-                output: out,
+                output: out.clone(),
             },
         );
+
+        // TM-04：Git Console 镜像事件（git_op_output）
+        // 发送 meta 行（命令标题）和输出行到终端面板 Git Console
+        let _ = app.emit(
+            "git_op_output",
+            &serde_json::json!({
+                "repoPath": task.repo_path,
+                "repoName": task.repo_name,
+                "command": command,
+                "stream": "meta",
+                "line": format!("$ {}", command),
+            }),
+        );
+        if !out.is_empty() {
+            for line in out.lines() {
+                let _ = app.emit(
+                    "git_op_output",
+                    &serde_json::json!({
+                        "repoPath": task.repo_path,
+                        "repoName": task.repo_name,
+                        "command": command,
+                        "stream": if success { "stdout" } else { "stderr" },
+                        "line": line,
+                    }),
+                );
+            }
+        }
     }
 
     // Update stored task
