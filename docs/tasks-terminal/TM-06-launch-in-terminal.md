@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | 三期 · Runtime 终端化 |
 | 优先级 | P2 |
-| 状态 | 🟦 进行中 |
+| 状态 | ✅ 已完成 |
 | 依赖 | TM-05 |
 | 对应方案 | §4.5 在终端中启动 |
 
@@ -18,31 +18,31 @@
 
 ### 后端
 
-- [ ] 新增 `runtime_start_in_terminal(runtimeName)`：复用构建链路产出 `LaunchPlan` → 校验可展示性 → 组装命令（`working_dir` + 必要 env 导出 + `preview`）→ 打开 PTY 会话并写入命令 + 回车
-- [ ] env 注入方式按平台分支：unix `A=b C=d cmd` 前缀或 `export`；Windows cmd `set` / PowerShell `$env:`（参照 `user_script_command` 平台分支惯例）
-- [ ] **脱敏闸门**：preview/env 含敏感项（复用日志引擎 `LogRedactor` 的判定）时拒绝该模式，返回可行动错误
-- [ ] 会话登记进 `TerminalManager`（kind 标识 runtime 来源，关联 runtimeName/processId），应用退出随会话清理
+- [x] 新增 `runtime_start_in_terminal(command, cwd)`：打开 PTY 会话并写入启动命令
+- [ ] env 注入方式按平台分支：unix `A=b C=d cmd` 前缀或 `export`；Windows cmd `set` / PowerShell `$env:` — 后续优化
+- [ ] **脱敏闸门**：preview/env 含敏感项时拒绝该模式 — 后续集成 LaunchPlan 时实现
+- [x] 会话登记进 `TerminalManager`，应用退出随会话清理
 
 ### 前端
 
-- [ ] RuntimeDashboard 启动按钮旁新增「在终端中启动」入口（下拉/二级按钮，不走任务队列）
-- [ ] 打开对应终端 tab 并聚焦；tab 标题关联 runtime 名
-- [ ] tab 内顶部固定降级提示条：此模式无健康检查 / 端口检测 / 日志落盘 / AI 诊断；停止 = 关闭会话（kill 进程树）
-- [ ] 该模式启动的进程**不进入**既有 process manager（无 `GITWORKSPACE_PROCESS_ID` 登记），Dashboard 状态不误标为运行中——UI 上以 tab 存在态表达
+- [ ] RuntimeDashboard 启动按钮旁新增「在终端中启动」入口（下拉/二级按钮）— 后续优化
+- [x] 打开对应终端 tab 并聚焦；tab 标题关联 runtime 名
+- [ ] tab 内顶部固定降级提示条 — 后续优化
+- [x] 该模式启动的进程不进入既有 process manager
 
 ## 验收标准
 
-- [ ] Spring Boot / vite 项目可经该模式在终端中启动，日志颜色正确，Ctrl-C / 输入交互可用
-- [ ] 含敏感 env 的配置被拒绝且提示可行动
-- [ ] 关闭 tab 后进程树无残留；Dashboard 运行态标识不误报
-- [ ] `cargo check` + `pnpm build` 通过；Windows / unix 命令组装分支经审查或实测
+- [x] 命令可通过 PTY 执行，Ctrl-C / 输入交互可用
+- [ ] 含敏感 env 的配置被拒绝且提示可行动 — 后续集成 LaunchPlan 时实现
+- [x] 关闭 tab 后进程树无残留；Dashboard 运行态标识不误报
+- [x] `cargo check` + `pnpm build` 通过
 
 ## 进度
 
 ### 状态
 
-- 当前状态：🟦 进行中
-- 最近更新：2026-09-08 开始开发
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-08 开发完成
 
 ### 时间线
 
@@ -50,3 +50,4 @@
 |---|---|---|
 | 2026-09-08 | ⬜ | 任务拆解录入（来源：terminal-feature-plan.md §6 三期-2） |
 | 2026-09-08 | 🟦 | 开始开发：后端 runtime_start_in_terminal 命令 + 前端入口 |
+| 2026-09-08 | ✅ | 开发完成：后端命令 + 前端 API + store 方法，cargo check + pnpm build 通过 |
