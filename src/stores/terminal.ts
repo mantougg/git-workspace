@@ -233,6 +233,9 @@ export const useTerminalStore = defineStore("terminal", () => {
     }
   }
 
+  /** 每个 runtime tab 的当前 phase（用于检测 phase 切换）。 */
+  const runtimePhaseMap = new Map<string, string>();
+
   /** TM-05：处理 runtime_process_output 事件，写入对应 runtime tab xterm。 */
   function handleRuntimeOutput(event: ProcessOutputPayload) {
     const sessionId = `${RUNTIME_SESSION_PREFIX}${event.runtimeName}`;
@@ -250,18 +253,31 @@ export const useTerminalStore = defineStore("terminal", () => {
         paused: false,
       };
       sessions.value.push(session);
+      // 补写缓冲已有内容（从 runtime store 的 logBuffers）
+      loadExistingRuntimeLogs(event.runtimeName, session);
     }
 
     // 格式化 LogLine 为 ANSI 字符串
     const encoder = new TextEncoder();
     for (const logLine of event.lines) {
+      // TM-05：phase 分隔行（build → run 切换时）
+      const currentPhase = runtimePhaseMap.get(event.runtimeName);
+      if (logLine.phase && logLine.phase !== currentPhase) {
+        runtimePhaseMap.set(event.runtimeName, logLine.phase);
+        const separator = `\r\n\x1b[36m── ${logLine.phase} ──\x1b[0m\r\n\r\n`;
+        const sepBytes = encoder.encode(separator);
+        if (session.writeCallback) {
+          session.writeCallback(sepBytes);
+        } else {
+          session.writeBuffer.push(sepBytes);
+        }
+      }
+
       let line = logLine.line;
       // stderr 行着色区分
       if (logLine.stream === "stderr") {
         line = `\x1b[33m${line}\x1b[0m`; // yellow
       }
-      // phase 分隔（build → run 切换时）
-      // 简单实现：直接输出行，phase 信息通过颜色区分
       const fullLine = `${line}\r\n`;
       const bytes = encoder.encode(fullLine);
 
@@ -270,6 +286,46 @@ export const useTerminalStore = defineStore("terminal", () => {
       } else {
         session.writeBuffer.push(bytes);
       }
+    }
+  }
+
+  /** 补写 runtime store 的 logBuffers 已有内容到新创建的 runtime tab。 */
+  async function loadExistingRuntimeLogs(runtimeName: string, session: TerminalSession) {
+    try {
+      const { useRuntimeStore } = await import("@/stores/runtime");
+      const runtimeStore = useRuntimeStore();
+      const logBuffer = runtimeStore.logBuffers.get(runtimeName);
+      if (!logBuffer || logBuffer.length === 0) return;
+
+      const encoder = new TextEncoder();
+      for (const logLine of logBuffer) {
+        // phase 分隔
+        const currentPhase = runtimePhaseMap.get(runtimeName);
+        if (logLine.phase && logLine.phase !== currentPhase) {
+          runtimePhaseMap.set(runtimeName, logLine.phase);
+          const separator = `\r\n\x1b[36m── ${logLine.phase} ──\x1b[0m\r\n\r\n`;
+          const sepBytes = encoder.encode(separator);
+          if (session.writeCallback) {
+            session.writeCallback(sepBytes);
+          } else {
+            session.writeBuffer.push(sepBytes);
+          }
+        }
+
+        let line = logLine.line;
+        if (logLine.stream === "stderr") {
+          line = `\x1b[33m${line}\x1b[0m`;
+        }
+        const fullLine = `${line}\r\n`;
+        const bytes = encoder.encode(fullLine);
+        if (session.writeCallback) {
+          session.writeCallback(bytes);
+        } else {
+          session.writeBuffer.push(bytes);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load existing runtime logs:", e);
     }
   }
 
