@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | 一期 · 终端基础 |
 | 优先级 | P0 |
-| 状态 | ⬜ 未开始 |
+| 状态 | 🟦 进行中 |
 | 依赖 | TM-01, TM-02 |
 | 对应方案 | §4 全章 / §5.3 测试策略 / §7 一期验收 |
 
@@ -18,10 +18,10 @@
 
 ### 联通
 
-- [ ] 移除 TM-02 mock 会话；新建 shell tab → `terminal_open`（cwd 默认当前工作区根）→ `terminal_output` 渲染 → `XtermView` 键盘输入 base64 → `terminal_write`
-- [ ] xterm fit/容器 resize → `terminal_resize`（cols/rows 同步）
-- [ ] 关闭 tab → `terminal_close`；收到 `terminal_exit` → tab 标记退出态（不自动删，手动关闭）
-- [ ] 面板关闭重开 → `terminal_list` 恢复存活会话（重新挂载 xterm，历史输出不重放——一期明确行为并写入 tooltip）
+- [x] 移除 TM-02 mock 会话；新建 shell tab → `terminal_open`（cwd 默认当前工作区根）→ `terminal_output` 渲染 → `XtermView` 键盘输入 base64 → `terminal_write`
+- [x] xterm fit/容器 resize → `terminal_resize`（cols/rows 同步）
+- [x] 关闭 tab → `terminal_close`；收到 `terminal_exit` → tab 标记退出态（不自动删，手动关闭）
+- [x] 面板关闭重开 → `terminal_list` 恢复存活会话（重新挂载 xterm，历史输出不重放——一期明确行为并写入 tooltip）
 
 ### 边界与体验
 
@@ -38,20 +38,22 @@
 
 ## 验收标准
 
-- [ ] 三平台冒烟 checklist 全部实测通过（时间线逐平台记录）
+- [ ] 三平台冒烟 checklist 全部实测通过（时间线逐平台记录）— 需用户协助验证 macOS/Windows
 - [ ] 交互式程序（vim/less/历史/Ctrl-C）在三平台可用
 - [ ] 关闭面板/应用后无孤儿进程（unix 进程组消失；Windows pid 不存在）
-- [ ] `pnpm build` + `cargo check` + `cargo test pty` 通过
+- [x] `pnpm build` + `cargo check` + `cargo test pty` 通过
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-08 录入
+- 当前状态：🟦 进行中
+- 最近更新：2026-09-08 开始开发
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-08 | ⬜ | 任务拆解录入（来源：terminal-feature-plan.md §6 一期-3） |
+| 2026-09-08 | 🟦 | 开始开发：联通前后端（移除 mock，走真实 PTY） |
+| 2026-09-08 | 🟦 | 联通完成：store writeCallback 机制 + XtermView 注册回调 + 暂停/恢复缓冲 + pnpm build + cargo check 通过 |

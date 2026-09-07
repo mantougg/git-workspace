@@ -8,6 +8,7 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { useTerminalStore } from "@/stores/terminal";
 import "@xterm/xterm/css/xterm.css";
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,8 @@ function getXtermTheme(): Record<string, string> {
 onMounted(() => {
   if (!containerRef.value) return;
 
+  const terminalStore = useTerminalStore();
+
   terminal = new Terminal({
     cols: props.cols ?? 80,
     rows: props.rows ?? 24,
@@ -78,6 +81,11 @@ onMounted(() => {
   terminal.loadAddon(fitAddon);
 
   terminal.open(containerRef.value);
+
+  // 注册写入回调（store 收到 terminal_output 时直接写入此 xterm）
+  terminalStore.registerWriteCallback(props.sessionId, (data: Uint8Array) => {
+    terminal?.write(data);
+  });
 
   // 用户输入 → emit
   terminal.onData((data: string) => {
@@ -106,6 +114,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  const terminalStore = useTerminalStore();
+  terminalStore.unregisterWriteCallback(props.sessionId);
   resizeObserver?.disconnect();
   resizeObserver = null;
   terminal?.dispose();

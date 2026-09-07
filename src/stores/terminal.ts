@@ -26,6 +26,8 @@ export interface TerminalSession extends TerminalSessionInfo {
   writeBuffer: Uint8Array[];
   /** 是否暂停渲染（tab 隐藏时）。 */
   paused: boolean;
+  /** xterm 写入回调（XtermView 挂载时注册，卸载时清除）。 */
+  writeCallback?: (data: Uint8Array) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +94,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     });
   }
 
-  /** 处理 terminal_output 事件：合并到写缓冲。 */
+  /** 处理 terminal_output 事件：通过回调直接写入 xterm，或缓冲到 writeBuffer。 */
   function handleOutput(event: TerminalOutputEvent) {
     const session = sessions.value.find(
       (s) => s.sessionId === event.sessionId
@@ -106,13 +108,12 @@ export const useTerminalStore = defineStore("terminal", () => {
       bytes[i] = binary.charCodeAt(i);
     }
 
-    if (session.paused) {
-      // tab 隐藏时保留数据，切回时补写
+    if (session.paused || !session.writeCallback) {
+      // tab 隐藏或 xterm 未挂载时保留数据，切回时补写
       session.writeBuffer.push(bytes);
     } else {
-      // 直接写入 xterm（通过事件或直接引用）
-      session.writeBuffer.push(bytes);
-      // 触发 xterm 刷新（XtermView 组件监听此变化）
+      // 直接写入 xterm（通过注册的回调）
+      session.writeCallback(bytes);
     }
   }
 
@@ -161,6 +162,13 @@ export const useTerminalStore = defineStore("terminal", () => {
       // 从暂停恢复
       session.paused = false;
       activeTabId.value = sessionId;
+      // 补写暂停期间缓冲的数据
+      if (session.writeBuffer.length > 0 && session.writeCallback) {
+        for (const chunk of session.writeBuffer) {
+          session.writeCallback(chunk);
+        }
+        session.writeBuffer = [];
+      }
     }
   }
 
@@ -246,6 +254,29 @@ export const useTerminalStore = defineStore("terminal", () => {
     }
   }
 
+  /** 注册 xterm 写入回调（XtermView 挂载时调用）。 */
+  function registerWriteCallback(sessionId: string, callback: (data: Uint8Array) => void) {
+    const session = sessions.value.find((s) => s.sessionId === sessionId);
+    if (session) {
+      session.writeCallback = callback;
+      // 补写已缓冲的数据
+      if (session.writeBuffer.length > 0) {
+        for (const chunk of session.writeBuffer) {
+          callback(chunk);
+        }
+        session.writeBuffer = [];
+      }
+    }
+  }
+
+  /** 注销 xterm 写入回调（XtermView 卸载时调用）。 */
+  function unregisterWriteCallback(sessionId: string) {
+    const session = sessions.value.find((s) => s.sessionId === sessionId);
+    if (session) {
+      session.writeCallback = undefined;
+    }
+  }
+
   /** 应用退出时清理（teardown 钩子）。 */
   function cleanup() {
     unlistenOutput?.();
@@ -277,6 +308,8 @@ export const useTerminalStore = defineStore("terminal", () => {
     resizeSession,
     flushBuffer,
     pauseSession,
+    registerWriteCallback,
+    unregisterWriteCallback,
     cleanup,
   };
 });
