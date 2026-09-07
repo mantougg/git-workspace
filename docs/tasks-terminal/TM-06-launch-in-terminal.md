@@ -19,6 +19,7 @@
 ### 后端
 
 - [x] 新增 `runtime_start_in_terminal(command, cwd, env)`：打开 PTY 会话并写入启动命令
+- [x] 新增 `runtime_get_launch_preview`：从进程管理器的 launch_cache 获取缓存的启动命令
 - [x] env 注入方式按平台分支：unix `A=b C=d cmd` 前缀；Windows `set A=b && cmd`
 - [x] **脱敏闸门**：env 含 SECRET/TOKEN/PASSWORD/API_KEY 等敏感关键词时拒绝该模式
 - [x] 会话登记进 `TerminalManager`，应用退出随会话清理
@@ -33,6 +34,8 @@
 ## 验收标准
 
 - [x] 命令可通过 PTY 执行，Ctrl-C / 输入交互可用
+- [x] 非降级模式：使用缓存的 LaunchPlan 真实启动命令（首次成功启动后可用）
+- [x] 降级模式：无缓存时提示用户先正常启动一次
 - [x] 含敏感 env 的配置被拒绝且提示可行动（脱敏闸门检测 SECRET/TOKEN/PASSWORD 等）
 - [x] 关闭 tab 后进程树无残留；Dashboard 运行态标识不误报
 - [x] `cargo check` + `pnpm build` 通过
