@@ -1,6 +1,9 @@
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 use crate::error::{AppError, AppResult};
+use crate::process::{spawn_streaming, OutputStream, StreamingExit};
 
 impl super::GitOps {
     /// Clone a repository from `url` into `dest` (T-33 batch clone). The
@@ -104,6 +107,75 @@ impl super::GitOps {
             "No remotes configured for this repository",
         )))
     }
+
+    // -----------------------------------------------------------------------
+    // TM-04：流式版本（逐行回调，用于 Git Console 实时镜像）
+    // -----------------------------------------------------------------------
+
+    /// 流式 fetch：逐行 emit 进度到回调。
+    pub fn fetch_streaming(
+        &self,
+        repo_path: &Path,
+        cancel: Option<&AtomicBool>,
+        timeout: Option<Duration>,
+        on_line: &mut dyn FnMut(OutputStream, &str),
+    ) -> AppResult<StreamingExit> {
+        let repo = git2::Repository::open(repo_path)?;
+        let remote_name = self.find_default_remote_name(&repo)?;
+        log::info!("Fetching (streaming) from remote '{}' for {:?}", remote_name, repo_path);
+        run_git_streaming(repo_path, &["fetch", &remote_name], cancel, timeout, on_line)
+    }
+
+    /// 流式 pull：逐行 emit 输出到回调。
+    pub fn pull_streaming(
+        &self,
+        repo_path: &Path,
+        cancel: Option<&AtomicBool>,
+        timeout: Option<Duration>,
+        on_line: &mut dyn FnMut(OutputStream, &str),
+    ) -> AppResult<StreamingExit> {
+        log::info!("Pulling (streaming) for {:?}", repo_path);
+        run_git_streaming(repo_path, &["pull", "--ff-only"], cancel, timeout, on_line)
+    }
+
+    /// 流式 push：逐行 emit 输出到回调。
+    pub fn push_streaming(
+        &self,
+        repo_path: &Path,
+        cancel: Option<&AtomicBool>,
+        timeout: Option<Duration>,
+        on_line: &mut dyn FnMut(OutputStream, &str),
+    ) -> AppResult<StreamingExit> {
+        log::info!("Pushing (streaming) for {:?}", repo_path);
+        run_git_streaming(repo_path, &["push"], cancel, timeout, on_line)
+    }
+
+    /// 流式 clone：逐行 emit 输出到回调。
+    pub fn clone_streaming(
+        &self,
+        dest: &Path,
+        url: &str,
+        branch: Option<&str>,
+        cancel: Option<&AtomicBool>,
+        timeout: Option<Duration>,
+        on_line: &mut dyn FnMut(OutputStream, &str),
+    ) -> AppResult<StreamingExit> {
+        let parent = dest
+            .parent()
+            .ok_or_else(|| AppError::Other(format!("clone 目标 {:?} 没有父目录", dest)))?;
+        std::fs::create_dir_all(parent)?;
+        let name = dest
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| AppError::Other(format!("clone 目标路径无效: {:?}", dest)))?;
+        let mut args: Vec<&str> = vec!["clone"];
+        if let Some(b) = branch {
+            args.extend(["--branch", b]);
+        }
+        args.extend([url, name]);
+        log::info!("Cloning (streaming) {} into {:?}", url, dest);
+        run_git_streaming(parent, &args, cancel, timeout, on_line)
+    }
 }
 
 /// Run a `git` command inside a repository directory.
@@ -147,4 +219,41 @@ fn run_git(repo_path: &Path, args: &[&str]) -> AppResult<String> {
         log::error!("git {} failed: {}", args.join(" "), msg);
         Err(AppError::Git(git2::Error::from_str(&msg)))
     }
+}
+
+/// TM-04：流式运行 `git` 命令，逐行回调输出（用于 Git Console 实时镜像）。
+///
+/// 与 `run_git` 相同的命令构建逻辑，但使用 `spawn_streaming` 逐行读取
+/// stdout/stderr，支持取消和超时。保留 `run_git` 作为阻塞版本供内部使用。
+pub(super) fn run_git_streaming(
+    repo_path: &Path,
+    args: &[&str],
+    cancel: Option<&AtomicBool>,
+    timeout: Option<Duration>,
+    on_line: &mut dyn FnMut(OutputStream, &str),
+) -> AppResult<StreamingExit> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.current_dir(repo_path).args(args);
+
+    // spawn_streaming 内部会设置 CREATE_NO_WINDOW（Windows）和管道
+
+    let exit = spawn_streaming(&mut cmd, cancel, timeout, on_line)
+        .map_err(|e| AppError::Git(git2::Error::from_str(&format!("failed to run git: {}", e))))?;
+
+    if exit.timed_out {
+        return Err(AppError::Git(git2::Error::from_str("git command timed out")));
+    }
+    if exit.cancelled {
+        return Err(AppError::Git(git2::Error::from_str("git command cancelled")));
+    }
+    if exit.exit_code.unwrap_or(1) != 0 {
+        // 失败时错误信息已通过 on_line 回调传出，这里返回通用错误
+        return Err(AppError::Git(git2::Error::from_str(&format!(
+            "git {} exited with code {:?}",
+            args.join(" "),
+            exit.exit_code
+        ))));
+    }
+
+    Ok(exit)
 }
