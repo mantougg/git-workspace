@@ -31,6 +31,7 @@ pub mod spring_boot;
 pub mod stash;
 pub mod symbols;
 pub mod task;
+pub mod terminal;
 pub mod toolbox;
 pub mod workspace;
 pub mod workspace_stash;

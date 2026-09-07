@@ -45,6 +45,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 keyring = { version = "3", default-features = true }
 regex = "1"
 sysinfo = "0.30"
+portable-pty = "0.8"
 quick-xml = "0.41"
 # F-11：pathing jar（写 META-INF/MANIFEST.MF 的 stub jar）。zip 已是传递
 # 依赖，提升为直接依赖即可，无新增编译量；Stored 压缩无需默认 features。

@@ -234,6 +234,12 @@ pub fn run() {
 
             app.manage(state);
 
+            // TM-01：注入 AppHandle 到 TerminalManager（reader 线程在 open() 时
+            // 才 spawn，此时 AppHandle 已就绪，无竞态）。
+            if let Some(terminal_state) = app.try_state::<AppState>() {
+                terminal_state.terminal.set_app_handle(app.handle().clone());
+            }
+
             // LAN Chat：长驻聊天引擎状态（当前房间 + 附近房间浏览器），
             // 退出时在 RunEvent::Exit 钩子里清理（§29）。
             app.manage(crate::chat::LanChatState::new());
@@ -608,6 +614,13 @@ pub fn run() {
             commands::automation::delete_scheduled_task,
             commands::automation::export_pipeline_template,
             commands::automation::import_pipeline_template,
+            // Terminal commands (TM-01)
+            commands::terminal::terminal_open,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_close,
+            commands::terminal::terminal_list,
+            commands::terminal::terminal_list_shells,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")
@@ -618,6 +631,10 @@ pub fn run() {
                 // LAN Chat（§29）：退出时关连接、清内存、清零密钥（尽力而为）。
                 if let Some(chat_state) = app_handle.try_state::<crate::chat::LanChatState>() {
                     chat_state.shutdown_on_exit();
+                }
+                // TM-01：应用退出时全量清理 PTY 会话。
+                if let Some(app_state) = app_handle.try_state::<crate::state::AppState>() {
+                    app_state.terminal.shutdown_all();
                 }
             }
         });

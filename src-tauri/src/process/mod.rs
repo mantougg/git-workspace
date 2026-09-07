@@ -10,6 +10,7 @@
 
 pub mod kill_tree;
 pub mod port;
+pub mod pty;
 pub mod streaming;
 
 pub use kill_tree::{

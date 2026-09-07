@@ -97,6 +97,9 @@ pub struct AppState {
     /// AI-04（§11.3）：AI 结果缓存（内存 LRU + SQLite）。与 Gateway 共享同一
     /// 实例，设置页的「清除缓存」也作用于它。
     pub ai_result_cache: Arc<crate::ai::AiResultCache>,
+
+    /// TM-01：PTY 会话管理器（终端面板后端，portable-pty）。
+    pub terminal: Arc<crate::process::pty::TerminalManager>,
 }
 
 /// AI 结果缓存的内存 LRU 上限（§16.1：每个 LRU 都有上限）。条目是结构化
@@ -150,6 +153,9 @@ impl AppState {
                 .with_cache(Arc::clone(&ai_result_cache)),
             ),
             ai_result_cache,
+            // TM-01：TerminalManager（TauriTerminalEmitter 延迟初始化，
+            // setup 闭包中通过 set_app_handle 注入 AppHandle）。
+            terminal: Arc::new(crate::process::pty::TerminalManager::new()),
         }
     }
 }
