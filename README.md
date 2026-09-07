@@ -119,7 +119,7 @@ In the AI coding era, code is generated faster than ever — the bottleneck has 
 | --- | --- |
 | ![Workspace Overview](imgs/01总览.png) | ![Health Check](imgs/03健康检查.png) |
 | ![Workspace Management](imgs/13工作区管理.png) | ![Manifest](imgs/08Manifest.png) |
-| ![Change Set Scope](imgs/10作用域.png) | |
+| ![Change Tree & Batch Ops](imgs/02变更与批量操作.png) | ![Change Set Scope](imgs/10作用域.png) |
 
 ### Complete Git Client
 
