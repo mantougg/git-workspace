@@ -278,3 +278,7 @@ Planned runtime extensions: Gradle support, debug collaboration (JDWP), Docker/K
 ## Credits
 
 Built by **mantougg**.
+
+## Links
+
+- [linux.do](https://linux.do/) — 开发者社区
