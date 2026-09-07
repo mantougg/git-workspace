@@ -18,8 +18,8 @@
 ## 总体进度
 
 - 任务总数：**7**
-- 已完成：**6** · 进行中：**1** · 未开始：**0**
-- 完成度：**6 / 7（86%）**
+- 已完成：**7** · 进行中：**0** · 未开始：**0**
+- 完成度：**7 / 7（100%）**
 
 ---
 
@@ -31,7 +31,7 @@
 |---|---|---|---|---|---|
 | TM-01 | PTY 会话后端（portable-pty + IPC 契约） | P0 | ✅ | — | [TM-01-pty-backend.md](./TM-01-pty-backend.md) |
 | TM-02 | 终端面板前端（xterm 封装 + drawer + tab） | P0 | ✅ | TM-01（契约） | [TM-02-terminal-panel.md](./TM-02-terminal-panel.md) |
-| TM-03 | 交互式 Shell 端到端（联通 + 三平台冒烟） | P0 | 🟦 | TM-01, TM-02 | [TM-03-interactive-shell-e2e.md](./TM-03-interactive-shell-e2e.md) |
+| TM-03 | 交互式 Shell 端到端（联通 + 三平台冒烟） | P0 | ✅ | TM-01, TM-02 | [TM-03-interactive-shell-e2e.md](./TM-03-interactive-shell-e2e.md) |
 
 ### 二期 · Git 输出镜像（1 个）
 

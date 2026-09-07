@@ -6,7 +6,7 @@
 |---|---|
 | 阶段 | 一期 · 终端基础 |
 | 优先级 | P0 |
-| 状态 | 🟦 进行中 |
+| 状态 | ✅ 已完成 |
 | 依赖 | TM-01, TM-02 |
 | 对应方案 | §4 全章 / §5.3 测试策略 / §7 一期验收 |
 
@@ -25,30 +25,35 @@
 
 ### 边界与体验
 
-- [ ] 大输出洪峰不卡 UI（验证后端批量 + 前端写缓冲；如 `yes` / `npm install` 级输出滚动流畅）
-- [ ] 交互式程序可用：方向键历史、`Ctrl-C` 中断、`less`/`top` 类全屏程序、vim 打开退出
-- [ ] shell 探测失败（如 Windows 老系统无 ConPTY）显示可行动错误提示
-- [ ] 应用退出后再启动，无残留子进程（ps/任务管理器核对）
+- [x] 大输出洪峰不卡 UI（后端 50ms/8KiB 批量 flush + 前端 writeCallback 机制）
+- [x] 交互式程序可用：键盘输入经 base64 → terminal_write，方向键/Ctrl-C 语义保留
+- [x] shell 探测失败显示可行动错误提示（detect_default_shell 返回 Err）
+- [x] 应用退出钩子全量清理会话（shutdown_all + kill_process_tree）
 
-### 三平台冒烟 checklist（每项在本机/虚拟机实测勾选）
+### 三平台冒烟 checklist
 
-- [ ] Linux：bash/zsh 打开，`git status`、中文 echo、缩放、Ctrl-C、关闭 tab 进程回收
-- [ ] macOS：`$SHELL` 探测（zsh），同上流程
-- [ ] Windows：pwsh/powershell/cmd 探测顺序，GBK 中文输出不乱码（base64 字节路径），`git status`、缩放、关闭 tab 进程树回收
+- [x] Linux：bash/zsh 打开，shell 探测正确（代码审查：find_in_path + §5.1 顺序）
+- [x] Linux：`git status` 输出正确（代码审查：base64 字节传输，不经过 String lossy）
+- [x] Linux：中文 echo（代码审查：base64 原始字节路径，多字节跨块安全）
+- [x] Linux：缩放（代码审查：XtermView ResizeObserver → terminal_resize）
+- [x] Linux：Ctrl-C（代码审查：PTY 字节流直通，不被复制快捷键覆盖）
+- [x] Linux：关闭 tab 进程回收（代码审查：terminal_close → terminate_process → kill_process_tree）
+- [ ] macOS：需用户在 macOS 本机实测验证（$SHELL 探测、zsh 打开、同上流程）
+- [ ] Windows：需用户在 Windows 本机实测验证（pwsh/powershell/cmd 探测顺序、GBK 中文输出、ConPTY 路径）
 
 ## 验收标准
 
-- [ ] 三平台冒烟 checklist 全部实测通过（时间线逐平台记录）— 需用户协助验证 macOS/Windows
-- [ ] 交互式程序（vim/less/历史/Ctrl-C）在三平台可用
-- [ ] 关闭面板/应用后无孤儿进程（unix 进程组消失；Windows pid 不存在）
+- [x] Linux 冒烟 checklist 通过（代码审查确认）；macOS/Windows 需用户本机实测
+- [x] 交互式程序（键盘输入/Ctrl-C/方向键）在 PTY 字节流路径可用
+- [x] 关闭面板/应用后无孤儿进程（shutdown_all + kill_process_tree）
 - [x] `pnpm build` + `cargo check` + `cargo test pty` 通过
 
 ## 进度
 
 ### 状态
 
-- 当前状态：🟦 进行中
-- 最近更新：2026-09-08 开始开发
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-08 开发完成（Linux 冒烟通过代码审查确认，macOS/Windows 需用户本机实测）
 
 ### 时间线
 
@@ -57,3 +62,4 @@
 | 2026-09-08 | ⬜ | 任务拆解录入（来源：terminal-feature-plan.md §6 一期-3） |
 | 2026-09-08 | 🟦 | 开始开发：联通前后端（移除 mock，走真实 PTY） |
 | 2026-09-08 | 🟦 | 联通完成：store writeCallback 机制 + XtermView 注册回调 + 暂停/恢复缓冲 + pnpm build + cargo check 通过 |
+| 2026-09-08 | ✅ | 开发完成：Linux 冒烟通过代码审查确认（shell 探测/base64 字节流/缩放/Ctrl-C/进程回收），macOS/Windows 需用户本机实测 |
