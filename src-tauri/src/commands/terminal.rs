@@ -91,15 +91,30 @@ pub async fn terminal_list_shells(state: State<'_, AppState>) -> Result<Vec<Shel
 /// 打开一个可交互 Shell tab 并写入启动命令执行。
 /// 此模式无健康检查/端口检测/日志落盘，UI 需明示降级。
 ///
-/// 简化实现：直接打开 PTY 会话并写入用户指定的命令。
-/// 后续优化：集成 LaunchPlan 构建链路。
+/// 支持 env 注入（平台感知）和脱敏闸门。
 #[tauri::command]
 pub async fn runtime_start_in_terminal(
     state: State<'_, AppState>,
     command: String,
     cwd: Option<String>,
+    env: Option<std::collections::HashMap<String, String>>,
 ) -> Result<String, String> {
-    // 1. 打开 PTY 会话
+    // TM-06：脱敏闸门 — 检查 env 是否包含敏感项
+    if let Some(ref env_map) = env {
+        for (key, value) in env_map {
+            if is_sensitive_env(key, value) {
+                return Err(format!(
+                    "环境变量 {} 包含敏感信息，无法在终端中显示。请使用常规启动模式。",
+                    key
+                ));
+            }
+        }
+    }
+
+    // 1. 组装命令（platform-aware env 注入）
+    let full_command = assemble_command_with_env(&command, env.as_ref());
+
+    // 2. 打开 PTY 会话
     let default_cwd = cwd.unwrap_or_else(|| {
         std::env::current_dir()
             .unwrap_or_default()
@@ -117,11 +132,72 @@ pub async fn runtime_start_in_terminal(
         &default_cwd,
     )?;
 
-    // 2. 写入启动命令 + 回车
+    // 3. 写入启动命令 + 回车
     use base64::Engine;
-    let cmd_bytes = format!("{}\r", command);
+    let cmd_bytes = format!("{}\r", full_command);
     let cmd_base64 = base64::engine::general_purpose::STANDARD.encode(cmd_bytes.as_bytes());
     state.terminal.write(&session_id, &cmd_base64)?;
 
     Ok(session_id)
+}
+
+/// 组装带 env 注入的命令（platform-aware）。
+///
+/// unix: `A=b C=d cmd` 前缀
+/// Windows cmd: `set A=b && set C=d && cmd`
+fn assemble_command_with_env(
+    command: &str,
+    env: Option<&std::collections::HashMap<String, String>>,
+) -> String {
+    let Some(env_map) = env else {
+        return command.to_string();
+    };
+    if env_map.is_empty() {
+        return command.to_string();
+    }
+
+    if cfg!(windows) {
+        // Windows: `set A=b && set C=d && cmd`
+        let sets: Vec<String> = env_map
+            .iter()
+            .map(|(k, v)| format!("set {}={}", k, v))
+            .collect();
+        format!("{} && {}", sets.join(" && "), command)
+    } else {
+        // Unix: `A=b C=d cmd`
+        let prefix: Vec<String> = env_map
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect();
+        format!("{} {}", prefix.join(" "), command)
+    }
+}
+
+/// 检查环境变量是否包含敏感信息。
+///
+/// 常见敏感模式：
+/// - KEY 包含 SECRET/TOKEN/PASSWORD/API_KEY/CREDENTIAL
+/// - VALUE 长度 > 20 且看起来像 base64/hex
+fn is_sensitive_env(key: &str, value: &str) -> bool {
+    let key_upper = key.to_uppercase();
+    let sensitive_keywords = [
+        "SECRET", "TOKEN", "PASSWORD", "API_KEY", "CREDENTIAL",
+        "PRIVATE", "AUTH", "SIGNING",
+    ];
+    for keyword in &sensitive_keywords {
+        if key_upper.contains(keyword) {
+            return true;
+        }
+    }
+    // 检查值是否看起来像密钥（长字符串，base64/hex 格式）
+    if value.len() > 32 {
+        let is_hex = value.chars().all(|c| c.is_ascii_hexdigit());
+        let is_base64 = value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
+        if is_hex || is_base64 {
+            return true;
+        }
+    }
+    false
 }
