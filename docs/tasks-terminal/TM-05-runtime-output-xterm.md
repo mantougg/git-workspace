@@ -25,8 +25,8 @@
 
 - [x] 终端面板为活跃 runtime 自动生成 tab（标题 = runtime 名 + 运行态图标；进程停止后标记退出态，可手动关闭）
 - [x] 数据源：`logBuffers` 的 `LogLine[]`；`line` 内 ANSI 保留，`writeln` 渲染；stderr 行按既有 stream 字段可着色区分
-- [ ] tab 打开时先补写缓冲已有内容，后续增量追加；tab 隐藏暂停渲染（保留数据）— 后续优化
-- [ ] phase 区分（build/run）在 tab 内以分隔行呈现（如 `── build ──► run`）— 后续优化
+- [x] tab 打开时先补写缓冲已有内容，后续增量追加；tab 隐藏暂停渲染（保留数据）
+- [x] phase 区分（build/run）在 tab 内以分隔行呈现（`── build ──` / `── run ──`）
 
 ### 面板操作工具条（对标 IDEA Run 面板）
 
@@ -44,11 +44,11 @@
 
 ## 验收标准
 
-- [ ] vite / Spring Boot 启动输出在 runtime tab 中颜色正确（与 RuntimeLogsView 同源数据、终端观感）
-- [ ] 面板工具条可对当前 runtime tab 启动/重启/停止，按钮状态与运行态一致；shell / Git Console tab 不显示该组按钮
-- [ ] 离开 Runtime 视图后打开终端面板，日志仍在持续缓冲（App 级订阅生效）
-- [ ] RuntimeLogsView 检索/导出/过滤功能不回归
-- [ ] `pnpm build` 通过；订阅迁移后无重复 listen（幂等验证）
+- [x] vite / Spring Boot 启动输出在 runtime tab 中颜色正确（ANSI 保留，stderr 着色区分）
+- [x] 面板工具条可对当前 runtime tab 启动/重启/停止，按钮状态与运行态一致；shell / Git Console tab 不显示该组按钮
+- [x] 离开 Runtime 视图后打开终端面板，日志仍在持续缓冲（App 级订阅生效）
+- [x] RuntimeLogsView 检索/导出/过滤功能不回归（未改动日志引擎）
+- [x] `pnpm build` 通过；订阅迁移后无重复 listen（幂等验证）
 
 ## 进度
 
