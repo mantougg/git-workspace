@@ -58,3 +58,5 @@
 | 2026-09-08 | 🟦 | RuntimeDashboard「终端启动」按钮 + 降级提示条（⚠️ 无健康检查/端口检测/日志落盘） |
 | 2026-09-08 | 🟦 | 非降级模式：后端 runtime_get_launch_preview（从 launch_cache 获取真实启动命令） |
 | 2026-09-08 | ✅ | 开发完成：前端优先使用真实命令（完整模式），无缓存时降级提示，cargo check + pnpm build 通过 |
+| 2026-09-08 | ✅ | 非降级模式集成 LaunchPlan（后端 runtime_get_launch_preview + 前端优先使用真实命令） |
+| 2026-09-08 | ✅ | 验收标准全部更新（含非降级模式验收标准） |
