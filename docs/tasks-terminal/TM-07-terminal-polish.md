@@ -29,7 +29,7 @@
 ### 复制粘贴
 
 - [x] Ctrl+Shift+C / Ctrl+Shift+V（经命令注册表，仅终端面板聚焦时生效，不劫持全局）
-- [ ] 右键菜单接 `shell/ContextMenu.vue`：复制 / 粘贴 / 清屏 / 关闭 tab — 后续优化
+- [x] 右键菜单：复制 / 粘贴 / 清屏 / 关闭 tab（Teleport 到 body，快捷键提示）
 - [x] **不做选中即复制**；终端内 Ctrl+C 保持 PTY 中断语义，不被复制快捷键覆盖
 
 ### Shell profile 选择
@@ -49,7 +49,7 @@
 ## 验收标准
 
 - [x] 六项能力在 shell tab 可用；runtime / Git Console tab 上搜索、复制可用（清屏/重开/profile 不适用）
-- [x] 复制粘贴快捷键不与终端程序按键冲突（Ctrl+C 中断语义保留）；右键菜单项待后续优化
+- [x] 复制粘贴快捷键不与终端程序按键冲突（Ctrl+C 中断语义保留）；右键菜单项全部可用
 - [x] profile 下拉只出现真实探测到的 shell，新建 tab 按所选 profile 启动
 - [x] `pnpm build` 通过；无硬编码色值/像素；新增快捷键均在命令注册表登记
 
