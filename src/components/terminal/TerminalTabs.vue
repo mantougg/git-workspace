@@ -114,7 +114,7 @@ function selectShell(shellId: string) {
   border-bottom: 1px solid var(--gw-border);
   padding: 0 var(--gw-space-1);
   gap: var(--gw-space-1);
-  overflow-x: auto;
+  overflow: visible;
   flex-shrink: 0;
 }
 
@@ -122,6 +122,7 @@ function selectShell(shellId: string) {
   display: flex;
   gap: 2px;
   flex: 1;
+  min-width: 0;
   overflow-x: auto;
 }
 
@@ -229,7 +230,7 @@ function selectShell(shellId: string) {
 .terminal-shell-menu {
   position: absolute;
   top: 100%;
-  right: 0;
+  left: 0;
   z-index: 200;
   min-width: 200px;
   background: var(--gw-bg-panel);

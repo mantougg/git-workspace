@@ -124,6 +124,16 @@ This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 r
 - 平台差异用 `#[cfg(windows)]` / `#[cfg(not(windows))]` 分支，注释说明另一平台行为；
   不要用运行时字符串探测代替编译期分支（除非确有必要）。
 
+- **Windows 跑 `cargo test` 必须 `GW_TEST_MANIFEST=1 cargo test --lib`**：
+  测试 exe 不内嵌应用清单 → comctl32 解析为 System32 v5.82，缺
+  `TaskDialogIndirect`（rfd / tauri-plugin-dialog 需要 v6），进程加载即
+  0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND（全部单测起不来）。`build.rs` 在
+  `GW_TEST_MANIFEST=1` 时注入 `src-tauri/test.manifest`（comctl32 v6 依赖）
+  解决——必须环境变量门控，否则 app bin 与 tauri 内嵌清单 CVT1100 资源冲突。
+- **Windows ConPTY：`PtyPair` 禁止整体 drop**。portable-pty 的 master 持有
+  HPCON，drop 即 `ClosePseudoConsole` 杀死 shell（reader 只能收到 EOF）——
+  master 必须随会话保活，只 drop slave（参照 `process/pty.rs::TerminalManager::open`）。
+
 <!-- platform:end -->
 
 <!-- app-footer:start -->

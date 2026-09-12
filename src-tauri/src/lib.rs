@@ -549,6 +549,8 @@ pub fn run() {
             commands::runtime::runtime_apply_template,
             // TM-06：获取缓存的启动命令预览（非降级模式）
             commands::runtime::runtime_get_launch_preview,
+            // TM-06：按需计算启动命令预览（构建 + 缓存）
+            commands::runtime::runtime_compute_launch_preview,
             // Application lifecycle commands
             commands::app::restart_app,
             // F-38：关于页清除数据（历史与缓存表，配置保留）

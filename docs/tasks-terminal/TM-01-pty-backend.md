@@ -59,7 +59,7 @@
 ### 状态
 
 - 当前状态：✅ 已完成
-- 最近更新：2026-09-08 开发完成
+- 最近更新：2026-09-12 Windows ConPTY 根因修复（master 保活 + resize 落地）
 
 ### 时间线
 
@@ -68,3 +68,4 @@
 | 2026-09-08 | ⬜ | 任务拆解录入（来源：terminal-feature-plan.md §6 一期-1） |
 | 2026-09-08 | 🟦 | 开始开发：Cargo.toml 新增 portable-pty，创建 pty.rs 模块 |
 | 2026-09-08 | ✅ | 开发完成：TerminalManager + PtySession + shell 探测 + reader 线程 + 6 command + 2 event，cargo check 通过，22 tests 全部通过（含 8 个 PTY 测试） |
+| 2026-09-12 | ✅ | Windows 根因修复：open() 原 `drop(pty_pair)` 触发 ConPTY `ClosePseudoConsole` 杀死 shell——reader 只收到 EOF，终端空白/不可交互（Linux/macOS 因 reader/writer dup fd 不受影响，故潜伏至今）；改为仅 drop slave、master 随 PtySession 保活，`resize` 从 no-op 桩落地为真实实现；新增回归 `smoke_reader_receives_shell_output`（12/12 pty 测试通过）；另修复 Windows `cargo test` 无法运行：测试 exe 无应用清单 → comctl32 v5 缺 `TaskDialogIndirect` 加载即 0xc0000139，`build.rs` 在 `GW_TEST_MANIFEST=1` 时注入 `test.manifest`（comctl32 v6 依赖）解决，Windows 跑单测命令：`GW_TEST_MANIFEST=1 cargo test --lib` |

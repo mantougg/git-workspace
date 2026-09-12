@@ -1,8 +1,12 @@
 //! PTY 会话后端（TM-01，terminal-feature-plan §4.1 / §4.2 / §5）。
 //!
 //! 跨平台 PTY 会话管理：`portable-pty`（Windows ConPTY / unix forkpty）提供
-//! 真实 TTY 语义，reader 线程按 50ms / 8KiB 批量 flush → `terminal_output` 事件
+//! 真实 TTY 语义，reader 线程每次读到数据立即 flush → `terminal_output` 事件
 //! （base64 原始字节，不经 String，多字节跨块安全）。
+//!
+//! 平台关键约束：Windows ConPTY 的 master 持有 HPCON（伪控制台句柄），
+//! 随 `PtyPair` 整体 drop 会触发 `ClosePseudoConsole` 立即杀死 shell——
+//! master 必须随 `PtySession` 保活（同时提供 resize 入口）。
 //!
 //! 约束：
 //! - PTY 路径禁止 `read_line` / `from_utf8_lossy`（全局开发约束 §1）。
@@ -17,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtyPair, PtySize, PtySystem};
 use serde::{Deserialize, Serialize};
 
 use crate::java::detect::find_in_path;
@@ -27,10 +31,7 @@ use crate::process::{kill_process_tree, terminate_process};
 // Constants
 // ---------------------------------------------------------------------------
 
-/// Reader 线程 flush 间隔（≤50ms flush）。
-const FLUSH_INTERVAL: Duration = Duration::from_millis(50);
-
-/// Reader 线程立即 flush 阈值（≥8KiB 立即 flush）。
+/// Reader 线程 aggregate 缓冲初始容量。
 const FLUSH_THRESHOLD: usize = 8 * 1024;
 
 /// 关闭会话时优雅停止的超时（先 SIGTERM，超时升级 kill_process_tree）。
@@ -178,8 +179,11 @@ pub struct TerminalExitEvent {
 /// 单个 PTY 会话。
 struct PtySession {
     /// 子进程 pid（用于 kill_tree 清理）。
-    #[allow(dead_code)]
     pid: u32,
+    /// PTY master：resize 入口 + 保活。Windows ConPTY 下 master 的 Inner 持有
+    /// HPCON，drop 会 `ClosePseudoConsole` 立即杀死 shell（终端空白根因），
+    /// 因此必须随会话持有直至 close。
+    master: Mutex<Box<dyn MasterPty + Send>>,
     /// 写锁：`terminal_write` 持锁写 master。
     writer: Mutex<Box<dyn Write + Send>>,
     /// 会话元信息（供 `terminal_list` 返回）。
@@ -343,20 +347,23 @@ impl TerminalManager {
         let pid = child.process_id().unwrap_or(0);
         let session_id = uuid::Uuid::new_v4().to_string();
 
-        // Take ownership of master reader/writer before spawning the thread.
-        // `portable-pty` drops the slave side when `PtyPair` is dropped, so we
-        // must keep only the master parts we need.
-        let mut reader = pty_pair.master.try_clone_reader().map_err(|e| {
+        // 拆分 pair：只 drop slave（unix 关闭父进程 slave fd，子进程退出时
+        // reader 才能收到 EOF；Windows 上 slave 只是同一 Arc 的引用，drop 无
+        // 副作用）。master 必须保活——Windows ConPTY 的 master 持有 HPCON，
+        // 整个 pair 一起 drop 会触发 ClosePseudoConsole 立即杀死 shell，
+        // reader 只能读到 EOF（2026-09-12 Windows 终端空白根因）。
+        let PtyPair { master, slave } = pty_pair;
+        drop(slave);
+
+        let mut reader = master.try_clone_reader().map_err(|e| {
             // Clean up the child if we fail here.
             let _ = terminate_process(pid);
             format!("PTY reader 克隆失败: {e}")
         })?;
-        let writer = pty_pair.master.take_writer().map_err(|e| {
+        let writer = master.take_writer().map_err(|e| {
             let _ = terminate_process(pid);
             format!("PTY writer 获取失败: {e}")
         })?;
-        // Drop the PtyPair so the slave fd is closed in the parent.
-        drop(pty_pair);
 
         let shell_name = shell_path
             .file_name()
@@ -373,7 +380,7 @@ impl TerminalManager {
 
         let shutdown = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        // Spawn reader thread（批量 flush：≤50ms 或 ≥8KiB）
+        // Spawn reader thread（阻塞 read，每次读到数据立即 flush）
         let emitter = Arc::clone(&self.emitter);
         let sid = session_id.clone();
         let shutdown_clone = Arc::clone(&shutdown);
@@ -383,6 +390,7 @@ impl TerminalManager {
 
         let session = PtySession {
             pid,
+            master: Mutex::new(master),
             writer: Mutex::new(writer),
             info,
             shutdown,
@@ -424,27 +432,29 @@ impl TerminalManager {
         Ok(())
     }
 
-    /// 缩放 PTY（`terminal_resize`）。
-    ///
-    /// 注意：portable-pty 的 `PtyPair` 在 open 时已被 drop，resize 需要通过
-    /// 保存的 master handle。当前 portable-pty 版本不支持在 pair drop 后 resize，
-    /// 此处记录日志并返回成功（非致命，xterm 会继续正常渲染）。
+    /// 缩放 PTY（`terminal_resize`）：通过会话持有的 master 调整
+    /// ConPTY（Windows）/ tty（unix）尺寸，shell 与 TUI 程序可感知行列变化。
     pub fn resize(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), String> {
         let sessions = self
             .sessions
             .lock()
             .map_err(|e| format!("会话表锁中毒: {e}"))?;
-        let _session = sessions
+        let session = sessions
             .get(session_id)
             .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
 
-        // resize 通过 PtyPair master 的 resize 方法——但当前架构中 PtyPair
-        // 已被 drop（只保留了 reader/writer）。记录日志。
-        // 后续优化：在 PtySession 中保留 master handle 以支持 resize。
-        log::debug!(
-            "terminal_resize({}, cols={}, rows={}) — PTY resize 待优化（需保留 master handle）",
-            session_id, cols, rows
-        );
+        let master = session
+            .master
+            .lock()
+            .map_err(|e| format!("master 锁中毒: {e}"))?;
+        master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("PTY 缩放失败: {e}"))?;
         Ok(())
     }
 
@@ -530,10 +540,10 @@ impl TerminalManager {
 }
 
 // ---------------------------------------------------------------------------
-// Reader thread（批量 flush：≤50ms 或 ≥8KiB）
+// Reader thread（阻塞 read，每次读到数据立即 flush）
 // ---------------------------------------------------------------------------
 
-/// PTY reader 线程循环：阻塞读 master → 批量聚合 → base64 → `terminal_output` 事件。
+/// PTY reader 线程循环：阻塞读 master → 每次读到数据立即 flush → base64 → `terminal_output` 事件。
 ///
 /// 约束（全局开发约束 §1 / §2）：
 /// - 禁止 `read_line` / `from_utf8_lossy`（PTY 是字节流，多字节字符可跨块）。
@@ -548,18 +558,15 @@ fn reader_thread_loop(
 ) {
     let mut buf = [0u8; 4096];
     let mut aggregate = Vec::with_capacity(FLUSH_THRESHOLD * 2);
-    let mut last_flush = Instant::now();
 
     loop {
         if shutdown.load(std::sync::atomic::Ordering::SeqCst) {
             break;
         }
 
-        // 非阻塞检查：尝试读，没有数据则检查是否需要 flush
         match reader.read(&mut buf) {
             Ok(0) => {
                 // EOF：子进程退出（或管道关闭）
-                // Flush remaining data
                 if !aggregate.is_empty() {
                     flush_aggregate(session_id, &mut aggregate, &emitter);
                 }
@@ -567,18 +574,16 @@ fn reader_thread_loop(
             }
             Ok(n) => {
                 aggregate.extend_from_slice(&buf[..n]);
-
-                // ≥8KiB 立即 flush
-                if aggregate.len() >= FLUSH_THRESHOLD {
-                    flush_aggregate(session_id, &mut aggregate, &emitter);
-                    last_flush = Instant::now();
-                }
+                // 阻塞 reader 每次返回即有数据，立即 flush（不积攒）。
+                // 原设计假设非阻塞 reader + WouldBlock 分支做 idle flush，
+                // 但 Windows ConPTY 的 reader 是阻塞的，WouldBlock 永远不会
+                // 触发——小数据（如 shell prompt）会卡在 aggregate 中。
+                flush_aggregate(session_id, &mut aggregate, &emitter);
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // 没有数据，检查是否需要 flush（≤50ms 间隔）
-                if !aggregate.is_empty() && last_flush.elapsed() >= FLUSH_INTERVAL {
+                // 非阻塞模式（unix 部分场景）：idle flush + 防忙等
+                if !aggregate.is_empty() {
                     flush_aggregate(session_id, &mut aggregate, &emitter);
-                    last_flush = Instant::now();
                 }
                 thread::sleep(Duration::from_millis(5));
                 continue;
@@ -587,18 +592,11 @@ fn reader_thread_loop(
                 continue;
             }
             Err(_) => {
-                // 读取错误，flush 剩余并退出
                 if !aggregate.is_empty() {
                     flush_aggregate(session_id, &mut aggregate, &emitter);
                 }
                 break;
             }
-        }
-
-        // ≤50ms flush（有数据时）
-        if !aggregate.is_empty() && last_flush.elapsed() >= FLUSH_INTERVAL {
-            flush_aggregate(session_id, &mut aggregate, &emitter);
-            last_flush = Instant::now();
         }
     }
 
@@ -622,6 +620,7 @@ fn reader_thread_loop(
         }
         #[cfg(not(unix))]
         {
+            let _ = pid; // Windows 暂无退出码获取路径
             None
         }
     };
@@ -653,13 +652,11 @@ fn flush_aggregate(session_id: &str, aggregate: &mut Vec<u8>, emitter: &Arc<dyn 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Mock emitter for unit tests.
     struct MockEmitter {
         output_events: Mutex<Vec<TerminalOutputEvent>>,
         exit_events: Mutex<Vec<TerminalExitEvent>>,
-        output_count: AtomicUsize,
     }
 
     impl MockEmitter {
@@ -667,18 +664,12 @@ mod tests {
             Self {
                 output_events: Mutex::new(Vec::new()),
                 exit_events: Mutex::new(Vec::new()),
-                output_count: AtomicUsize::new(0),
             }
-        }
-
-        fn output_count(&self) -> usize {
-            self.output_count.load(Ordering::SeqCst)
         }
     }
 
     impl TerminalEmitter for MockEmitter {
         fn emit_output(&self, event: TerminalOutputEvent) {
-            self.output_count.fetch_add(1, Ordering::SeqCst);
             self.output_events.lock().unwrap().push(event);
         }
 
@@ -803,6 +794,86 @@ mod tests {
         // 关闭后会话应被移除
         let sessions = manager.list().expect("list should succeed");
         assert!(sessions.is_empty());
+    }
+
+    /// 回归：reader 必须收到 shell 的真实输出并完成一次交互往返。
+    /// Windows ConPTY 下若 PtyPair 整体被 drop（master 不随会话保活），
+    /// ClosePseudoConsole 会立即杀死 shell，reader 只会收到 EOF（0 字节）。
+    /// 用 cmd（无 profile 启动开销）验证，探测不到则回退默认 shell。
+    #[test]
+    fn smoke_reader_receives_shell_output() {
+        let shell = find_in_path("cmd").or_else(|| detect_default_shell().ok());
+        let Some(shell) = shell else {
+            eprintln!("SKIP smoke_reader_receives_shell_output: no shell found");
+            return;
+        };
+
+        let mock = Arc::new(MockEmitter::new());
+        let manager = TerminalManager::with_emitter(mock.clone());
+
+        let default_cwd = std::env::temp_dir().to_string_lossy().to_string();
+        let session_id = manager
+            .open(
+                TerminalOpenParams {
+                    cwd: None,
+                    shell: Some(shell.to_string_lossy().to_string()),
+                    cols: 80,
+                    rows: 24,
+                },
+                &default_cwd,
+            )
+            .expect("open should succeed");
+
+        use base64::Engine;
+        let probe = "gwptyprobe123";
+        let input = base64::engine::general_purpose::STANDARD.encode(format!("echo {probe}\r"));
+
+        let decoded_so_far = |mock: &MockEmitter| -> String {
+            let events = mock.output_events.lock().unwrap();
+            let mut all: Vec<u8> = Vec::new();
+            for ev in events.iter() {
+                all.extend(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(&ev.data_base64)
+                        .unwrap_or_default(),
+                );
+            }
+            String::from_utf8_lossy(&all).into_owned()
+        };
+
+        // 轮询解码输出：shell 有任何输出后写入 echo，等待探针出现（至多 15s）。
+        // 若 shell 已退出（exit 事件）则 fail fast——说明 PTY 生命周期管理有回归。
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut wrote_probe = false;
+        let mut seen = false;
+        let mut died_early = false;
+        while Instant::now() < deadline {
+            if !mock.exit_events.lock().unwrap().is_empty() {
+                died_early = true;
+                break;
+            }
+            let text = decoded_so_far(&mock);
+            if text.contains(probe) {
+                seen = true;
+                break;
+            }
+            if !wrote_probe && !text.is_empty() {
+                manager
+                    .write(&session_id, &input)
+                    .expect("write should succeed");
+                wrote_probe = true;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        manager.close(&session_id).expect("close should succeed");
+
+        assert!(!died_early, "shell 提前退出（PTY 生命周期回归？）");
+        assert!(
+            seen,
+            "输出流应包含 echo 探针 '{probe}'（交互往返），实际: {:?}",
+            decoded_so_far(&mock)
+        );
     }
 
     #[test]

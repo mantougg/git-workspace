@@ -453,3 +453,14 @@ export function runtimeGetLaunchPreview(
     runtimeName,
   });
 }
+
+/** 按需计算启动命令预览（构建 + 缓存，不依赖先前的托管启动）。 */
+export function runtimeComputeLaunchPreview(
+  workspaceId: number,
+  runtimeName: string
+): Promise<[string, string]> {
+  return invoke<[string, string]>("runtime_compute_launch_preview", {
+    workspaceId,
+    runtimeName,
+  });
+}

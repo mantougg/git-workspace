@@ -961,10 +961,9 @@ const configColumns = [
   {
     title: "操作",
     key: "actions",
-    width: 260,
+    width: 200,
     fixed: "right" as const,
     render(row: RuntimeConfigSummary) {
-      // F-39：平铺 启动/停止/日志；重启/构建/配置/删除 收进「更多」下拉。
       const primary = [
         h(
           NButton,
@@ -972,20 +971,9 @@ const configColumns = [
             size: "small",
             type: "primary",
             disabled: isBusy(row.name),
-            onClick: () => onStart(row.name),
-          },
-          { default: () => "启动" },
-        ),
-        // TM-06：在终端中启动（降级模式）
-        h(
-          NButton,
-          {
-            size: "small",
-            disabled: isBusy(row.name),
-            title: "在终端中启动（降级模式：无健康检查/端口检测/日志落盘）",
             onClick: () => onLaunchInTerminal(row),
           },
-          { default: () => "终端启动" },
+          { default: () => "启动" },
         ),
         h(
           NButton,
@@ -1004,21 +992,13 @@ const configColumns = [
           },
           { default: () => "日志" },
         ),
-        ...(row.kind === "node"
-          ? [
-              h(
-                NButton,
-                {
-                  size: "small",
-                  disabled: isBusy(row.name),
-                  onClick: () => onInstallDeps(row),
-                },
-                { default: () => "装依赖" },
-              ),
-            ]
-          : []),
       ];
       const moreOptions: DropdownOption[] = [
+        { label: "托管启动", key: "managed_start", disabled: isBusy(row.name) },
+        ...(row.kind === "node"
+          ? [{ label: "装依赖", key: "install_deps", disabled: isBusy(row.name) } as DropdownOption]
+          : []),
+        { type: "divider", key: "d0" },
         { label: "重启", key: "restart", disabled: !isRunning(row.name) },
         { label: "构建", key: "build", disabled: isBusy(row.name) },
         { label: "配置", key: "config" },
@@ -1035,6 +1015,12 @@ const configColumns = [
       ];
       const onMore = (key: string | number) => {
         switch (key) {
+          case "managed_start":
+            onStart(row.name);
+            break;
+          case "install_deps":
+            onInstallDeps(row);
+            break;
           case "restart":
             onRestart(row.name);
             break;
@@ -1274,32 +1260,16 @@ async function onStart(name: string) {
   }
 }
 
-// TM-06：在终端中启动 runtime（非降级模式：优先使用缓存的 LaunchPlan）
 async function onLaunchInTerminal(row: RuntimeConfigSummary) {
   clearError();
   try {
     const { useTerminalStore } = await import("@/stores/terminal");
-    const { runtimeGetLaunchPreview } = await import("@/api/runtime");
+    const { runtimeComputeLaunchPreview } = await import("@/api/runtime");
     const terminalStore = useTerminalStore();
 
-    // 尝试获取缓存的启动命令（首次成功启动后填充）
-    const preview = await runtimeGetLaunchPreview(row.workspaceId, row.name);
-
-    let command: string;
-    let cwd: string | undefined;
-
-    if (preview) {
-      // 非降级模式：使用真实的启动命令
-      command = preview[0];
-      cwd = preview[1];
-      message.success(`已在终端中启动：${row.name}（完整模式）`);
-    } else {
-      // 降级模式：提示用户需要先正常启动一次
-      command = `echo "请先正常启动 ${row.name} 一次，然后即可使用终端启动模式"`;
-      message.warning(`首次使用请先正常启动 ${row.name}`);
-    }
-
+    const [command, cwd] = await runtimeComputeLaunchPreview(row.workspaceId, row.name);
     await terminalStore.launchInTerminal(command, cwd);
+    message.success(`已在终端中启动：${row.name}`);
   } catch (e) {
     handleError("在终端中启动", e);
   }

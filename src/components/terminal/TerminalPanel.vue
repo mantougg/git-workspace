@@ -472,6 +472,7 @@ onMounted(() => {
   gap: 2px;
   padding: 0 var(--gw-space-1);
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .terminal-toolbar-btn {

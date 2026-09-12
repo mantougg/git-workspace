@@ -46,6 +46,9 @@ export const useTerminalStore = defineStore("terminal", () => {
   const panelVisible = ref(false);
   const availableShells = ref<ShellInfo[]>([]);
 
+  /** PTY 输出缓冲：session 尚未 push 到 sessions.value 期间（await IPC 返回前）的输出。 */
+  const pendingOutput = new Map<string, Uint8Array[]>();
+
   /** 事件监听 unlisten 句柄（面板首次打开时注册）。 */
   let unlistenOutput: UnlistenFn | null = null;
   let unlistenExit: UnlistenFn | null = null;
@@ -54,6 +57,7 @@ export const useTerminalStore = defineStore("terminal", () => {
   let unlistenRuntimeStarted: UnlistenFn | null = null;
   let unlistenRuntimeStopped: UnlistenFn | null = null;
   let listenersRegistered = false;
+  let listenersReady: Promise<void> | null = null;
 
   /** Git Console 会话 ID（固定值，不可关闭）。 */
   const GIT_CONSOLE_SESSION_ID = "__git_console__";
@@ -95,51 +99,43 @@ export const useTerminalStore = defineStore("terminal", () => {
   }
 
   /** 注册 Tauri 事件监听（面板首次打开时调用，App 生命周期内保持）。 */
-  function registerEventListeners() {
-    if (listenersRegistered) return;
+  function registerEventListeners(): Promise<void> {
+    if (listenersReady) return listenersReady;
     listenersRegistered = true;
 
-    // 确保 Git Console 会话存在
     ensureGitConsoleSession();
 
-    listen<TerminalOutputEvent>(terminalApi.TERMINAL_EVENTS.OUTPUT, (event) => {
-      handleOutput(event.payload);
-    }).then((unlisten) => {
-      unlistenOutput = unlisten;
-    });
+    listenersReady = (async () => {
+      unlistenOutput = await listen<TerminalOutputEvent>(
+        terminalApi.TERMINAL_EVENTS.OUTPUT,
+        (event) => { handleOutput(event.payload); },
+      );
 
-    listen<TerminalExitEvent>(terminalApi.TERMINAL_EVENTS.EXIT, (event) => {
-      handleExit(event.payload);
-    }).then((unlisten) => {
-      unlistenExit = unlisten;
-    });
+      unlistenExit = await listen<TerminalExitEvent>(
+        terminalApi.TERMINAL_EVENTS.EXIT,
+        (event) => { handleExit(event.payload); },
+      );
 
-    // TM-04：Git 输出镜像事件
-    listen<GitOpOutputEvent>(terminalApi.TERMINAL_EVENTS.GIT_OP_OUTPUT, (event) => {
-      handleGitOpOutput(event.payload);
-    }).then((unlisten) => {
-      unlistenGitOp = unlisten;
-    });
+      unlistenGitOp = await listen<GitOpOutputEvent>(
+        terminalApi.TERMINAL_EVENTS.GIT_OP_OUTPUT,
+        (event) => { handleGitOpOutput(event.payload); },
+      );
 
-    // TM-05：Runtime 输出事件（App 级订阅）
-    listen<ProcessOutputPayload>(RUNTIME_EVENTS.processOutput, (event) => {
-      handleRuntimeOutput(event.payload);
-    }).then((unlisten) => {
-      unlistenRuntimeOutput = unlisten;
-    });
+      unlistenRuntimeOutput = await listen<ProcessOutputPayload>(
+        RUNTIME_EVENTS.processOutput,
+        (event) => { handleRuntimeOutput(event.payload); },
+      );
 
-    // TM-05：Runtime 启动/停止事件（更新 runtime 状态）
-    listen(RUNTIME_EVENTS.processStarted, () => {
-      refreshRuntimeProcesses();
-    }).then((unlisten) => {
-      unlistenRuntimeStarted = unlisten;
-    });
+      unlistenRuntimeStarted = await listen(RUNTIME_EVENTS.processStarted, () => {
+        refreshRuntimeProcesses();
+      });
 
-    listen(RUNTIME_EVENTS.processStopped, () => {
-      refreshRuntimeProcesses();
-    }).then((unlisten) => {
-      unlistenRuntimeStopped = unlisten;
-    });
+      unlistenRuntimeStopped = await listen(RUNTIME_EVENTS.processStopped, () => {
+        refreshRuntimeProcesses();
+      });
+    })();
+
+    return listenersReady;
   }
 
   /** 刷新 runtime 进程列表（用于工具条按钮状态）。 */
@@ -173,16 +169,23 @@ export const useTerminalStore = defineStore("terminal", () => {
 
   /** 处理 terminal_output 事件：通过回调直接写入 xterm，或缓冲到 writeBuffer。 */
   function handleOutput(event: TerminalOutputEvent) {
-    const session = sessions.value.find(
-      (s) => s.sessionId === event.sessionId
-    );
-    if (!session) return;
-
     // base64 解码为 Uint8Array
     const binary = atob(event.dataBase64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
+    }
+
+    const session = sessions.value.find(
+      (s) => s.sessionId === event.sessionId
+    );
+    if (!session) {
+      // session 尚未 push（await IPC 返回前 PTY reader 已开始发送），缓冲
+      if (!pendingOutput.has(event.sessionId)) {
+        pendingOutput.set(event.sessionId, []);
+      }
+      pendingOutput.get(event.sessionId)!.push(bytes);
+      return;
     }
 
     if (session.paused || !session.writeCallback) {
@@ -365,15 +368,31 @@ export const useTerminalStore = defineStore("terminal", () => {
     await useRuntimeStore().restart(runtimeName);
   }
 
-  /** TM-06：在终端中启动 runtime（降级模式）。 */
+  /** TM-06：在终端中启动 runtime。 */
   async function launchInTerminal(command: string, cwd?: string, env?: Record<string, string>) {
     showPanel();
+    if (listenersReady) await listenersReady;
     const sessionId = await terminalApi.runtimeStartInTerminal(command, cwd, env);
-    // 标记为「在终端中启动」模式
-    const session = sessions.value.find((s) => s.sessionId === sessionId);
-    if (session) {
-      session.launchedInTerminal = true;
+    const session: TerminalSession = {
+      sessionId,
+      kind: "shell",
+      title: "Terminal",
+      cwd: cwd ?? "",
+      alive: true,
+      writeBuffer: [],
+      paused: false,
+      launchedInTerminal: true,
+    };
+
+    // 排干 await 期间缓冲的 PTY 输出
+    const pending = pendingOutput.get(sessionId);
+    if (pending) {
+      session.writeBuffer.push(...pending);
+      pendingOutput.delete(sessionId);
     }
+
+    sessions.value.push(session);
+    activeTabId.value = sessionId;
   }
 
   /** 打开新 PTY 会话。 */
@@ -381,6 +400,8 @@ export const useTerminalStore = defineStore("terminal", () => {
     cwd?: string;
     shell?: string;
   }): Promise<string> {
+    // 确保事件监听器已注册（PTY reader 在 IPC 返回前就会开始发送事件）
+    if (listenersReady) await listenersReady;
     const sessionId = await terminalApi.terminalOpen({
       cwd: params?.cwd,
       shell: params?.shell,
@@ -397,6 +418,13 @@ export const useTerminalStore = defineStore("terminal", () => {
       writeBuffer: [],
       paused: false,
     };
+
+    // 排干 await 期间缓冲的 PTY 输出（shell prompt 等）
+    const pending = pendingOutput.get(sessionId);
+    if (pending) {
+      session.writeBuffer.push(...pending);
+      pendingOutput.delete(sessionId);
+    }
 
     sessions.value.push(session);
     activeTabId.value = sessionId;
@@ -425,6 +453,7 @@ export const useTerminalStore = defineStore("terminal", () => {
   async function closeTab(sessionId: string) {
     // Git Console 不可关闭
     if (sessionId === GIT_CONSOLE_SESSION_ID) return;
+    pendingOutput.delete(sessionId);
 
     try {
       await terminalApi.terminalClose({ sessionId });
@@ -452,16 +481,24 @@ export const useTerminalStore = defineStore("terminal", () => {
   async function refreshSessions() {
     try {
       const list = await terminalApi.terminalList();
-      // 合并：保留现有 session 的 writeBuffer/paused 状态
       const existing = new Map(sessions.value.map((s) => [s.sessionId, s]));
+      const rustIds = new Set(list.map((s) => s.sessionId));
       sessions.value = list.map((info) => {
         const prev = existing.get(info.sessionId);
         return {
           ...info,
           writeBuffer: prev?.writeBuffer ?? [],
           paused: prev?.paused ?? false,
+          writeCallback: prev?.writeCallback,
+          launchedInTerminal: prev?.launchedInTerminal,
         };
       });
+      // 保留前端独有的 session（Git Console、runtime tab 等，不存在于 Rust HashMap）
+      for (const prev of existing.values()) {
+        if (!rustIds.has(prev.sessionId)) {
+          sessions.value.push(prev);
+        }
+      }
       // 如果 activeTab 不在列表中，选第一个
       if (activeTabId.value && !sessions.value.some((s) => s.sessionId === activeTabId.value)) {
         activeTabId.value = sessions.value[0]?.sessionId ?? null;
@@ -544,6 +581,8 @@ export const useTerminalStore = defineStore("terminal", () => {
     unlistenRuntimeStarted = null;
     unlistenRuntimeStopped = null;
     listenersRegistered = false;
+    listenersReady = null;
+    pendingOutput.clear();
   }
 
   return {

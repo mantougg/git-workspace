@@ -677,3 +677,15 @@ pub fn runtime_get_launch_preview(
 ) -> Option<(String, String)> {
     state.runtime.get_launch_preview(workspace_id, &runtime_name)
 }
+
+/// 按需计算启动命令预览（不依赖缓存，未命中时执行构建）。
+#[command]
+pub fn runtime_compute_launch_preview(
+    workspace_id: i64,
+    runtime_name: String,
+    state: State<'_, AppState>,
+) -> AppResult<(String, String)> {
+    state
+        .runtime
+        .compute_launch_preview(workspace_id, &runtime_name)
+}

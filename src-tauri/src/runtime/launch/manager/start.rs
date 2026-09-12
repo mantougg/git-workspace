@@ -287,6 +287,76 @@ impl RuntimeProcessManager {
         Ok(found.and_then(|candidate| candidate.default_main_class.clone()))
     }
 
+    /// 按需计算启动命令预览（不 spawn 进程）。
+    ///
+    /// 先查缓存，未命中则执行 prepare + build 计算出 LaunchPlan，
+    /// 缓存后返回 `(preview, working_dir)`。供终端启动使用。
+    pub fn compute_launch_plan(
+        &self,
+        workspace_id: i64,
+        runtime_name: &str,
+    ) -> AppResult<(String, String)> {
+        // 1. 检查缓存
+        {
+            let cache = self.launch_cache.lock().unwrap();
+            let key = (workspace_id, runtime_name.to_string());
+            if let Some(cached) = cache.get(&key) {
+                let preview = launcher::plan_preview(&cached.plan);
+                let working_dir = launcher::plan_working_dir(&cached.plan);
+                return Ok((preview, working_dir.to_string_lossy().to_string()));
+            }
+        }
+
+        // 2. 准备配置（加载配置、推断 mainClass、端口预检）
+        let options = StartOptions {
+            skip_build: false,
+            build_options: BuildOptions::default(),
+            start_grace: DEFAULT_START_GRACE,
+            overrides: None,
+        };
+        let prepared = self.prepare(workspace_id, runtime_name, &options)?;
+
+        let plan = match prepared {
+            Prepared::Cached(cached) => cached.plan,
+            Prepared::NeedBuild(build_options) => {
+                let workspace_root = {
+                    let conn = self.db.lock().unwrap();
+                    config::workspace_root(&conn, workspace_id)?
+                };
+                let request = BuildRequest {
+                    workspace_id,
+                    runtime_name: runtime_name.to_string(),
+                    options: build_options,
+                };
+                let mut sink = crate::runtime::build::RingTail::new();
+                let outcome = execute_build(
+                    &self.db,
+                    &workspace_root,
+                    &self.deps.graph_cache,
+                    &self.deps.closure_cache,
+                    &self.deps.scheduler,
+                    &*self.deps.maven_runner,
+                    &request,
+                    &self.deps.script_approvals,
+                    &mut sink,
+                    None,
+                )?;
+                self.launch_cache.lock().unwrap().insert(
+                    (workspace_id, runtime_name.to_string()),
+                    CachedLaunch {
+                        plan: outcome.launch.clone(),
+                        strategy: outcome.strategy,
+                    },
+                );
+                outcome.launch
+            }
+        };
+
+        let preview = launcher::plan_preview(&plan);
+        let working_dir = launcher::plan_working_dir(&plan);
+        Ok((preview, working_dir.to_string_lossy().to_string()))
+    }
+
     /// 驱动 R-09 构建流水线。构建输出经 `BuildLogSink` 进入 R-11 日志会话
     /// （流水线 RedactingSink 已脱敏一次，会话侧再脱敏是幂等防御）；
     /// `BuildFailed.log_tail` 由流水线内部的 RingTail 保障。

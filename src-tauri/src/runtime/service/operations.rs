@@ -261,6 +261,15 @@ impl RuntimeService {
         self.processes.cached_launch_preview(workspace_id, runtime_name)
     }
 
+    /// 按需计算启动命令预览（构建 + 缓存 LaunchPlan，不 spawn）。
+    pub fn compute_launch_preview(
+        &self,
+        workspace_id: i64,
+        runtime_name: &str,
+    ) -> AppResult<(String, String)> {
+        self.processes.compute_launch_plan(workspace_id, runtime_name)
+    }
+
     /// R-17/R-21 的 Rebuild & Restart 入口：Stop → 完整构建 → Start
     /// （与 `restart` 的 skip_build 复用相对；源码变更后必须重建）。
     pub(super) fn exec_rebuild_restart(

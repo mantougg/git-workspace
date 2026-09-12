@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 单元测试 exe 专用清单（build.rs 在 GW_TEST_MANIFEST=1 时经
+     cargo:rustc-link-arg 注入 /MANIFEST:EMBED + /MANIFESTINPUT）。
+     背景：tauri 应用清单只内嵌进 app bin（embed-resource 的 link-arg-bins），
+     cargo test 的测试 exe 无清单 → comctl32 解析为 System32 的 v5.82，
+     缺少 rfd（tauri-plugin-dialog）需要的 TaskDialogIndirect 导出，
+     进程加载即 STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)，Windows 上全部
+     单测无法运行。声明 comctl32 v6 依赖后由 SxS 加载 v6 解决。
+     之所以要环境变量门控：链接参数对所有 target 生效，app bin 已有 tauri
+     内嵌清单，重复注入会 CVT1100 RT_MANIFEST 资源冲突。
+     用法（Git Bash）：GW_TEST_MANIFEST=1 cargo test
+     注意：本注释内禁止出现连续两个半角连字符（XML 注释规范），否则 mt.exe 解析失败。 -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>

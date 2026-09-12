@@ -56,8 +56,14 @@ function getXtermTheme(): Record<string, string> {
     foreground: style.getPropertyValue("--gw-text").trim() || "#cccccc",
     cursor: style.getPropertyValue("--gw-accent").trim() || "#4d8bf5",
     selectionBackground: style.getPropertyValue("--gw-accent").trim() + "33" || "#4d8bf533",
-    // 保留 ANSI 默认色（xterm 内置）
   };
+}
+
+function getXtermFontFamily(): string {
+  const resolved = getComputedStyle(document.documentElement)
+    .getPropertyValue("--gw-font-mono")
+    .trim();
+  return resolved || "Consolas, monospace";
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +78,7 @@ onMounted(() => {
   terminal = new Terminal({
     cols: props.cols ?? 80,
     rows: props.rows ?? 24,
-    fontFamily: "var(--gw-font-mono)",
+    fontFamily: getXtermFontFamily(),
     fontSize: 13,
     theme: getXtermTheme(),
     cursorBlink: true,
@@ -91,6 +97,9 @@ onMounted(() => {
   terminal.loadAddon(new WebLinksAddon());
 
   terminal.open(containerRef.value);
+
+  // 验证渲染链路：写入测试行
+  terminal.writeln("Terminal ready.");
 
   // 注册写入回调（store 收到 terminal_output 时直接写入此 xterm）
   terminalStore.registerWriteCallback(props.sessionId, (data: Uint8Array) => {

@@ -25,7 +25,7 @@
 
 ### 边界与体验
 
-- [x] 大输出洪峰不卡 UI（后端 50ms/8KiB 批量 flush + 前端 writeCallback 机制）
+- [x] 大输出洪峰不卡 UI（后端每次 read 立即 flush + 前端 writeCallback 机制）
 - [x] 交互式程序可用：键盘输入经 base64 → terminal_write，方向键/Ctrl-C 语义保留
 - [x] shell 探测失败显示可行动错误提示（detect_default_shell 返回 Err）
 - [x] 应用退出钩子全量清理会话（shutdown_all + kill_process_tree）
@@ -39,7 +39,7 @@
 - [x] Linux：Ctrl-C（代码审查：PTY 字节流直通，不被复制快捷键覆盖）
 - [x] Linux：关闭 tab 进程回收（代码审查：terminal_close → terminate_process → kill_process_tree）
 - [ ] macOS：需用户在 macOS 本机实测验证（$SHELL 探测、zsh 打开、同上流程）
-- [ ] Windows：需用户在 Windows 本机实测验证（pwsh/powershell/cmd 探测顺序、GBK 中文输出、ConPTY 路径）
+- [ ] Windows：Rust 层链路已实测（2026-09-12 修复 ConPTY master 保活根因，pty 12/12 测试通过）；应用内端到端待用户实测（新建 shell 出 prompt / 输入交互 / GBK 中文输出 / 终端启动 Runtime）
 
 ## 验收标准
 
@@ -53,7 +53,7 @@
 ### 状态
 
 - 当前状态：✅ 已完成
-- 最近更新：2026-09-08 开发完成（Linux 冒烟通过代码审查确认，macOS/Windows 需用户本机实测）
+- 最近更新：2026-09-12 Windows ConPTY 根因修复 + 前端联动修复（Rust 层验证通过，Windows/macOS 应用内端到端待用户实测）
 
 ### 时间线
 
@@ -63,3 +63,4 @@
 | 2026-09-08 | 🟦 | 开始开发：联通前后端（移除 mock，走真实 PTY） |
 | 2026-09-08 | 🟦 | 联通完成：store writeCallback 机制 + XtermView 注册回调 + 暂停/恢复缓冲 + pnpm build + cargo check 通过 |
 | 2026-09-08 | ✅ | 开发完成：Linux 冒烟通过代码审查确认（shell 探测/base64 字节流/缩放/Ctrl-C/进程回收），macOS/Windows 需用户本机实测 |
+| 2026-09-12 | ✅ | Windows 根因修复：终端空白 = TM-01 的 `drop(pty_pair)` 触发 ConPTY `ClosePseudoConsole` 杀死 shell（详见 TM-01 时间线）；前端联动修复（listenersReady 竞态 / pendingOutput 缓冲 / xterm 字体 getComputedStyle 解析 / refreshSessions 保留 writeCallback）；Rust 层 12/12 pty 测试通过（含新增 `smoke_reader_receives_shell_output` 回归），应用内端到端待用户实测 |
