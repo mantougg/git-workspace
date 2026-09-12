@@ -97,6 +97,7 @@
               @selection-change="onTreeSelection"
               @file-dblclick="onFileDblClick"
               @contextmenu="onTreeContextmenu"
+              @preview-graph="onPreviewGraph"
             />
             <div
               v-if="!changesLoading && currentWorkspaceId && changes.length === 0"
@@ -120,28 +121,53 @@
         </n-spin>
       </div>
 
-      <!-- D-15 Middle: commit graph pane -->
+      <!-- D-15 Middle: commit graph pane（仅显式唤起，见 toggleGraphPreview） -->
       <!-- D-16：树 | 提交图 splitter（把手贴 graph-pane 左缘） -->
       <div
-        v-if="selectedRepoPath && graphCommits.length > 0"
+        v-if="graphRepoPath"
         class="resize-handle"
         @mousedown="startResize('graph', $event)"
       ></div>
       <div
-        v-if="selectedRepoPath && graphCommits.length > 0"
+        v-if="graphRepoPath"
         ref="graphPaneEl"
         class="graph-pane"
         :style="graphWidth ? { width: graphWidth + 'px' } : undefined"
       >
         <div class="graph-pane-header">
-          <span class="graph-pane-title">{{ repoNameOf(selectedRepoPath) }}</span>
+          <span class="graph-pane-title">{{ repoNameOf(graphRepoPath ?? "") }}</span>
+          <div class="graph-pane-actions">
+            <n-button
+              size="small"
+              text
+              title="在完整页面打开"
+              @click="graphRepoPath && viewGraph(graphRepoPath)"
+            >
+              <template #icon><n-icon><ExpandOutline /></n-icon></template>
+            </n-button>
+            <n-button
+              size="small"
+              text
+              title="关闭"
+              @click="closeGraphPreview"
+            >
+              <template #icon><n-icon><CloseOutline /></n-icon></template>
+            </n-button>
+          </div>
         </div>
         <n-spin :show="graphLoading" class="graph-pane-spin">
           <CommitGraph
+            v-if="graphCommits.length > 0"
             :commits="graphCommits"
             :loading="graphLoading"
             @select="onCommitSelect"
             @contextmenu="onGraphCommitContextmenu"
+          />
+          <n-empty
+            v-else-if="!graphLoading"
+            description="无提交记录"
+            size="small"
+            style="margin-top: 32px"
           />
         </n-spin>
         <!-- D-13：提交节点右键菜单（轻量版：复制 hash / 查看 Diff） -->
@@ -805,9 +831,11 @@ const identityDialog = ref({
   groupId: null as number | null,
 });
 
-// D-15：三栏联动状态
+// D-15：三栏联动状态。提交图只能由显式手势唤起（右键菜单 / 行尾图标），
+// 与勾选状态（treeSelection）完全解耦——勾选服务于 stage/commit，不触发浏览。
 const graphCommits = ref<CommitInfo[]>([]);
 const graphLoading = ref(false);
+const graphRepoPath = ref<string | null>(null);
 
 async function loadGraphCommits(repoPath: string) {
   graphLoading.value = true;
@@ -816,14 +844,30 @@ async function loadGraphCommits(repoPath: string) {
   } catch (e) {
     console.error("Failed to load commits:", e);
     graphCommits.value = [];
+    message.error("加载提交图失败: " + errMsg(e));
   } finally {
     graphLoading.value = false;
   }
 }
 
+/** 显式唤起/关闭提交图预览：同一仓库再次触发 = 关闭（toggle）。 */
+function toggleGraphPreview(repoPath: string) {
+  if (graphRepoPath.value === repoPath) {
+    closeGraphPreview();
+    return;
+  }
+  graphRepoPath.value = repoPath;
+  loadGraphCommits(repoPath);
+}
+
+function closeGraphPreview() {
+  graphRepoPath.value = null;
+  graphCommits.value = [];
+}
+
 function onCommitSelect(commit: CommitInfo) {
   // D-15 三栏联动：选中提交 → 右侧 diff 面板显示该提交的变更
-  viewCommitDiff(selectedRepoPath.value, commit);
+  viewCommitDiff(graphRepoPath.value, commit);
 }
 
 // D-13：graph-pane 提交节点右键（轻量菜单，历史操作请进提交图视图）
@@ -856,11 +900,11 @@ async function onGraphCommitMenuSelect(key: string) {
     return;
   }
   if (key === "diff") {
-    viewCommitDiff(selectedRepoPath.value, commit);
+    viewCommitDiff(graphRepoPath.value, commit);
   }
 }
 
-function viewCommitDiff(repoPath: string | undefined, commit: CommitInfo) {
+function viewCommitDiff(repoPath: string | null | undefined, commit: CommitInfo) {
   if (!repoPath) return;
   router.push({
     name: "diff-viewer",
@@ -890,6 +934,7 @@ const contextMenuOptions = computed(() => {
       { label: "健康检查", key: "health" },
       { label: "在文件管理器显示", key: "reveal" },
       { type: "divider", key: "d2" },
+      { label: "在侧栏预览提交图", key: "graph-preview" },
       { label: "查看提交图", key: "graph" },
     ];
   }
@@ -1007,6 +1052,9 @@ async function onContextmenuSelect(key: string) {
       }
       case "diff":
         viewDiff(repoPath);
+        break;
+      case "graph-preview":
+        toggleGraphPreview(repoPath);
         break;
       case "graph":
         viewGraph(repoPath);
@@ -1444,6 +1492,13 @@ async function loadChanges() {
   changesLoading.value = true;
   try {
     changes.value = await getWorkspaceChanges(currentWorkspaceId.value);
+    // 预览中的仓库从列表消失（被移出工作区）→ 静默关闭 pane
+    if (
+      graphRepoPath.value &&
+      !changes.value.some((c) => c.repoPath === graphRepoPath.value)
+    ) {
+      closeGraphPreview();
+    }
   } catch (e) {
     message.error("加载变更失败: " + errMsg(e));
   } finally {
@@ -1455,16 +1510,16 @@ async function loadChanges() {
 watch(() => workspaceStore.currentWorkspace, () => {
   loadChanges();
   selectedDiff.value = null;
+  closeGraphPreview();
 });
 
 function onTreeSelection(selection: TreeSelection) {
+  // 勾选只服务于 stage/commit；提交图由显式手势（toggleGraphPreview）唤起。
   treeSelection.value = selection;
-  // D-15：单仓库选中时加载提交图
-  if (selection.repoPaths.length === 1) {
-    loadGraphCommits(selection.repoPaths[0]);
-  } else {
-    graphCommits.value = [];
-  }
+}
+
+function onPreviewGraph(node: ChangeNode) {
+  if (node.repoPath) toggleGraphPreview(node.repoPath);
 }
 
 function repoNameOf(repoPath: string): string {
@@ -2315,6 +2370,16 @@ function viewConflicts() {
   font-weight: 600;
   color: var(--gw-text);
   font-family: var(--gw-font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
 .graph-pane-spin {

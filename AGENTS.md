@@ -161,6 +161,9 @@ This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 r
 
 ## 组件规范
 
+- **交互控件一律使用 naive-ui 组件**（NButton / NInput / NSelect / NCheckbox / NDropdown / NTooltip 等），禁止用原生 `<button>` / `<input>` / `<select>` / `<textarea>` 自绘等效控件（`h()` render 函数内同样适用）——否则 themeOverrides、暗色主题、组件密度会在这些角落失守。
+  - 不受此限的场景：布局元素（`div`/`span`）、naive-ui 无对应能力的场景（canvas、xterm 容器、splitter 把手等）。
+  - 存量原生控件（TerminalPanel 搜索栏、SideNav、ToolboxView 等）视为技术债，触及对应文件时顺手替换，不要求一次性清理。
 - 新面板一律使用 `Panel` / `PanelHeader` / `Toolbar` 骨架组件（二期落地后）。
 - 正文字号 / 圆角 / 组件密度以 Naive UI themeOverrides 为准，视图内不单独覆盖。
 - 新页面外壳遵循 docs/desktop-skin-plan.md §5.9 统一模式。

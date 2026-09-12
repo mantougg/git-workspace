@@ -32,7 +32,7 @@
 ### 状态
 
 - 当前状态：✅ 已完成
-- 最近更新：2026-08-27 完成
+- 最近更新：2026-09-12 交互修正（提交图改为显式唤起，见时间线）
 
 ### 时间线
 
@@ -41,3 +41,5 @@
 | 2026-08-27 | ⬜ | 任务拆解录入（来源：desktop-skin-plan.md §6 三期-1） |
 | 2026-08-27 | ✅ | 完成：三栏联动布局（树 + 提交图 + diff），单仓库选中自动加载提交图 |
 | 2026-08-28 | ✅ 补齐 | 核查发现 onCommitSelect 为 console.log 占位、三栏未真正联动。补齐：选中提交 → DiffViewer 显示该提交变更（repo+commit query）；graph-pane 提交节点右键（Copy hash/查看 Diff）。pnpm build 通过 |
+| 2026-09-12 | ✅ 交互修正 | 移除「勾选节点自动弹出提交图」（勾选=stage/commit 操作意图，不应触发浏览）。改为显式唤起：graphRepoPath 与 treeSelection 解耦；repo 行尾 hover 图标 + 右键菜单「在侧栏预览提交图」toggle 开关；pane header 加「完整页面 / 关闭」按钮；工作区切换或仓库移出时静默关闭；提交选中/右键 Diff 改用 pane 钉住的 graphRepoPath。pnpm build（vue-tsc）通过 |
+| 2026-09-13 | ✅ 规范 | AGENTS.md「组件规范」新增：交互控件一律 naive-ui、禁止原生 button/input 自绘（含 h() 内），存量视为技术债顺手替换。ChangeTree 行尾预览入口按规范从原生 button 改为 NButton（text/tiny），颜色密度交 themeOverrides。pnpm build 通过 |

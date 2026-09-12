@@ -21,8 +21,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, h } from "vue";
-import { DocumentTextOutline, FolderOutline, FolderOpenOutline } from "@vicons/ionicons5";
-import { NIcon, NTag } from "naive-ui";
+import { DocumentTextOutline, FolderOutline, FolderOpenOutline, GitNetworkOutline } from "@vicons/ionicons5";
+import { NButton, NIcon, NTag } from "naive-ui";
 import type { TreeOption } from "naive-ui";
 import type { RepoChanges } from "@/types/changes";
 
@@ -60,6 +60,8 @@ const emit = defineEmits<{
   (e: "selection-change", selection: TreeSelection): void;
   (e: "file-dblclick", node: ChangeNode): void;
   (e: "contextmenu", node: ChangeNode, x: number, y: number): void;
+  /** 显式唤起该仓库的提交图预览（行尾 hover 图标点击）。 */
+  (e: "preview-graph", node: ChangeNode): void;
 }>();
 
 const treeRef = ref();
@@ -410,8 +412,30 @@ function renderPrefix({ option }: { option: TreeOption }) {
   }
 }
 
-function renderSuffix() {
-  return null;
+/**
+ * 行尾 suffix：repo 节点渲染「预览提交图」入口图标（hover 显示）。
+ * 提交图只能由显式手势唤起（此图标 / 右键菜单），勾选 checkbox 不触发。
+ */
+function renderSuffix({ option }: { option: TreeOption }) {
+  const data = option as unknown as ChangeNode;
+  const isRepoNode = data.type === "repo" || (data.type === "dir" && data.repoPath && !data.relPath);
+  if (!isRepoNode) return null;
+  return h(
+    NButton,
+    {
+      class: "graph-suffix-btn",
+      size: "tiny",
+      text: true,
+      title: "在侧栏预览提交图",
+      onClick: (e: MouseEvent) => {
+        e.stopPropagation();
+        emit("preview-graph", data);
+      },
+      // 阻止冒泡到 renderLabel 的整行双击（展开/收起）
+      onDblclick: (e: MouseEvent) => e.stopPropagation(),
+    },
+    { icon: () => h(NIcon, { size: 14 }, () => h(GitNetworkOutline)) },
+  );
 }
 
 function emitSelection() {
@@ -527,6 +551,20 @@ defineExpose({
 .node-icon {
   color: var(--gw-text-dim);
   flex-shrink: 0;
+}
+
+/* 行尾「预览提交图」入口：默认隐藏，行 hover / 键盘聚焦时浮现。
+   颜色/密度交给 naive-ui themeOverrides，不在此覆盖（AGENTS.md 组件规范）。 */
+.graph-suffix-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+  margin-right: var(--gw-space-2);
+  flex-shrink: 0;
+}
+
+:deep(.n-tree-node-wrapper:hover) .graph-suffix-btn,
+.graph-suffix-btn:focus-visible {
+  opacity: 1;
 }
 
 .repo-icon {
