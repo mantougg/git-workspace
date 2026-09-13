@@ -309,13 +309,13 @@ async function loadBranches() {
 async function loadMore() {
   loading.value = true;
   try {
-    const more = await getCommitHistory(
-      repoPath.value,
-      commits.value.length + PAGE_SIZE,
-    );
-    if (more.length > commits.value.length) {
+    // 先记录旧长度再拉取：若先赋值 commits.value = more，随后的
+    // hasMore 比较恒为 false，按钮只生效一次（PAF-05）。
+    const prevCount = commits.value.length;
+    const more = await getCommitHistory(repoPath.value, prevCount + PAGE_SIZE);
+    if (more.length > prevCount) {
       commits.value = more;
-      hasMore.value = more.length >= commits.value.length + PAGE_SIZE;
+      hasMore.value = more.length >= prevCount + PAGE_SIZE;
     } else {
       hasMore.value = false;
     }

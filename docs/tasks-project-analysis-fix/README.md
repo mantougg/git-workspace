@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**2** · 修复中：**0** · 未开始：**24**
+- 已完成：**3** · 修复中：**0** · 未开始：**23**
 
 ---
 
@@ -36,7 +36,7 @@
 | PAF-02 | Runtime spawn 超时后进程存活但记录终态，不可停止（孤儿进程） | P0 | ⬜ | [PAF-02-runtime-spawn-timeout-orphan.md](./PAF-02-runtime-spawn-timeout-orphan.md) |
 | PAF-03 | Runtime 重复启动守卫 TOCTOU，并发产生双进程 | P0 | ⬜ | [PAF-03-runtime-start-toctou.md](./PAF-03-runtime-start-toctou.md) |
 | PAF-04 | 终端 btoa spread 大文本栈溢出（3 处） | P0 | ✅ | [PAF-04-terminal-btoa-spread-overflow.md](./PAF-04-terminal-btoa-spread-overflow.md) |
-| PAF-05 | GitGraph「加载更多」只生效一次（先赋值再比较恒 false + O(n²) 重拉） | P0 | ⬜ | [PAF-05-gitgraph-load-more-once.md](./PAF-05-gitgraph-load-more-once.md) |
+| PAF-05 | GitGraph「加载更多」只生效一次（先赋值再比较恒 false + O(n²) 重拉） | P0 | ✅ | [PAF-05-gitgraph-load-more-once.md](./PAF-05-gitgraph-load-more-once.md) |
 | PAF-06 | launch_cache 只插不清，改配置后「重启」静默用旧 LaunchPlan | P1 | ⬜ | [PAF-06-launch-cache-stale-restart.md](./PAF-06-launch-cache-stale-restart.md) |
 | PAF-07 | stop 在 pid 未回填时强杀也是 no-op，restart 撞 Stopping 报 Conflict | P1 | ⬜ | [PAF-07-stop-pid-none-restart-conflict.md](./PAF-07-stop-pid-none-restart-conflict.md) |
 | PAF-08 | git 网络任务超时后 spawn_blocking 线程无取消机制 | P1 | ⬜ | [PAF-08-git-network-task-timeout-leak.md](./PAF-08-git-network-task-timeout-leak.md) |

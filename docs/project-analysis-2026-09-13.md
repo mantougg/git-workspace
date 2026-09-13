@@ -132,7 +132,7 @@
 | P0-2 | **spawn 后 10s 未确认 pid → 行落终态 Failed 但进程存活，成为不可停止的孤儿**。链路：`spawn_monitor`(:140) 先启动 → `wait_pid_or_outcome` 10s 超时（Windows Defender 冷扫描 java.exe 是现实场景）→ `abort_before_spawn`(:415-431) 置终态 Failed 且 `cancelled:false`，monitor 无 spawn 前取消检查 → `stop()/kill()` 在 `is_terminal()` 早退（control.rs:19/100） | `runtime/launch/manager/start.rs:140-153` |
 | P0-3 | **重复启动守卫 TOCTOU 双进程**：`find_active` 检查（:27-37 一个 db 锁作用域）与 `insert_process`（:39-42 另一个作用域）分离；`runtime_processes` 表无 (workspace_id, runtime_name) 活跃行 UNIQUE 部分索引（schema.rs:610-634 仅两个普通索引）；8 worker 并发提交时可双 spawn | `runtime/launch/manager/start.rs:27-44` |
 | P0-4 | **终端大文本粘贴栈溢出**：`btoa(String.fromCharCode(...bytes))` spread 超引擎参数上限抛 RangeError 且未捕获，共 **3 处** ✅ 已修复（PAF-04，2026-09-13：新增分块编码工具 `src/utils/base64.ts`，三处统一替换） | `XtermView.vue:114`、`TerminalPanel.vue:149`、`commands/registry.ts:270` |
-| P0-5 | **GitGraph「加载更多」只生效一次**：先 `commits.value = more`（:317）再比较 `more.length >= commits.value.length + PAGE_SIZE`（:318），后者恒 false；且每次以递增 limit 全量重拉 O(n²) | `src/views/GitGraph.vue:309-327` |
+| P0-5 | **GitGraph「加载更多」只生效一次**：先 `commits.value = more`（:317）再比较 `more.length >= commits.value.length + PAGE_SIZE`（:318），后者恒 false；且每次以递增 limit 全量重拉 O(n²) ✅ 已修复（PAF-05，2026-09-13：先记录旧长度再赋值比较；offset 分页改造另立任务） | `src/views/GitGraph.vue:309-327` |
 
 ### P1 —— 本迭代应修（按主题分组）
 
