@@ -168,7 +168,7 @@
 - P1-21 **GitGraph 冲突横幅红底红字不可见**：`.conflict-bar` background 与 `.conflict-text` color 同用 `var(--gw-danger)`（GitGraph.vue:641/:648；tokens.scss:18 `#ff3b30` 不透明）。 ✅ 已修复（PAF-17，2026-09-13）
 
 **后端其他**
-- P1-22 **git_link 常驻线程 `expect` ×3**（git_link.rs:167/172/174）：一次 SQL 抖动即线程死亡，Git 联动静默失效到重启。
+- P1-22 **git_link 常驻线程 `expect` ×3**（git_link.rs:167/172/174）：一次 SQL 抖动即线程死亡，Git 联动静默失效到重启。 ✅ 已修复（PAF-19，2026-09-13）
 - P1-23 **MCP 本地端点无鉴权**：`server.rs` 无 token 校验、`read_request` 不校验 Content-Type/Origin/Host（恶意网页可用 text/plain 免 preflight 触发工具调用）；默认端口 39117（:29），discovery 文件退出清理（:264）。
 - P1-24 **凭证可用性 OnceLock 缓存**：`available: OnceLock<bool>`（credentials.rs:49），注释宣称「`refresh_availability` 可重测」但方法未实现——keyring 晚解锁则直到重启都不可用；`get()` 在 OS 后端 Err 时静默降级查会话（:241-246）。
 - P1-25 **5 处 `ends_with(&needle)` 缺路径分隔符边界**：service/mod.rs:82-86、watch/mod.rs:330、git_link.rs:194——project `api` 会误配 `.../myapi`（对照 maven/index/sync.rs:169 用 `{root}/` 做了正确边界）。 ✅ 已修复（PAF-18，2026-09-13）
