@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 来源 | 项目全景分析报告（docs/project-analysis-2026-09-13.md）P1-11/P1-12/P1-13，主控亲自验证 |
 | 关联任务 | AI-02（Gateway）、TM-02（终端面板）、LAN chat |
 
@@ -32,19 +32,20 @@
 
 ## 验收标准
 
-- [ ] 三处内存均有界（可写容量断言测试）
-- [ ] 长跑 runtime + 隐藏终端面板场景内存不无限增长
-- [ ] 网关/终端既有行为不回归
+- [x] 三处内存均有界（可写容量断言测试）
+- [x] 长跑 runtime + 隐藏终端面板场景内存不无限增长
+- [x] 网关/终端既有行为不回归
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-13 录入
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-13 修复完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-13 | ⬜ | 分析报告事实核查批次录入 |
+| 2026-09-13 | ✅ | 三处证据复核全部成立。① gateway：新增 `record_order` 插入序队列 + `enforce_record_capacity`（终态记录容量 128，超限按插入序淘汰最旧终态记录，在飞记录不淘汰；两个插入点接入），UI 最近记录轮询不回归，回归测试 `terminal_records_are_capacity_bounded`（141 次 submit+cancel，断言最旧 12 条快照不可达、最近记录可读）；② 终端 writeBuffer：`WRITE_BUFFER_MAX_CHUNKS=5000`（对照 runtime logBuffers 5000 行上限）+ `trimWriteBuffer`，8 个推入点全覆盖（6 处单推 + 2 处 pending 批量搬移）+ pendingOutput 增长也封顶；前端无测试基建，`pnpm build`（vue-tsc）为验证门禁；③ chat known_addrs：`HashSet`→`HashMap<SocketAddr, Instant>`，`insert_known_addr` TTL（30min）+ 硬上限（512）最旧淘汰，回归测试 `known_addrs_respect_ttl_and_capacity`。验证：`cargo test --lib` 883 passed + `pnpm build` 通过 |

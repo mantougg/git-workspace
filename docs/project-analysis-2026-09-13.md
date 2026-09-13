@@ -151,9 +151,9 @@
 - P1-10 **batch_add/batch_restore 不走任务队列**：同步串行 fail-fast（git_ops.rs:288/:324），与 T-20「操作全集走队列」口径不符，多仓中途失败无法定位。
 
 **内存/资源泄漏**
-- P1-11 **AI gateway 记录无界增长**：`records: Mutex<HashMap>`（gateway.rs:161）只有插入/读取，`prune_terminal`（:756-761）定义后**全仓零调用**（grep 实证），每条记录克隆完整请求正文。
-- P1-12 **终端隐藏面板时 writeBuffer 无上限**：6 处 `writeBuffer.push`（terminal.ts:193/:237/:277/:292/:316/:329）无任何上限/丢弃；面板 `v-if` 卸载 XtermView 后所有 PTY/runtime 输出无限堆积（对照 runtime store logBuffers 有 5000 行环形上限）；`pauseSession/flushBuffer`（:531-544）全工程零调用。
-- P1-13 **chat known_addrs 无界累积**：`Mutex<HashSet<SocketAddr>>`（chat/manager.rs:72）只插入（:334/:587/:800）无淘汰。
+- P1-11 **AI gateway 记录无界增长**：`records: Mutex<HashMap>`（gateway.rs:161）只有插入/读取，`prune_terminal`（:756-761）定义后**全仓零调用**（grep 实证），每条记录克隆完整请求正文。 ✅ 已修复（PAF-12，2026-09-13：插入序队列 + 终态记录容量 128 淘汰，接入两个插入点，带回归测试）
+- P1-12 **终端隐藏面板时 writeBuffer 无上限**：6 处 `writeBuffer.push`（terminal.ts:193/:237/:277/:292/:316/:329）无任何上限/丢弃；面板 `v-if` 卸载 XtermView 后所有 PTY/runtime 输出无限堆积（对照 runtime store logBuffers 有 5000 行环形上限）；`pauseSession/flushBuffer`（:531-544）全工程零调用。 ✅ 已修复（PAF-12，2026-09-13：writeBuffer/pendingOutput 5000 块上限超限丢最旧，8 个推入点全覆盖）
+- P1-13 **chat known_addrs 无界累积**：`Mutex<HashSet<SocketAddr>>`（chat/manager.rs:72）只插入（:334/:587/:800）无淘汰。 ✅ 已修复（PAF-12，2026-09-13：改为 HashMap<SocketAddr, Instant>，TTL 30min + 硬上限 512 最旧淘汰，带回归测试）
 
 **core watcher（4 个实证缺陷）**
 - P1-14 ① debounce 是**丢弃**非合并：窗口内事件 `continue`（watcher.rs:210-213），连续保存两个文件第二个可能永不触发刷新；② mount 用 NonRecursive（:146-159），子目录编辑不产生事件；③ mount 失败不回滚 `watched` 集合（:64-79），失败目录永不重试且无用户可见错误；④ 事件匹配 `path_under_root` 只做边界字节双兼容，无整串分隔符/大小写/`\\?\` 归一化（git_status.rs:320-338）——违反 AGENTS.md §1 自定规则。

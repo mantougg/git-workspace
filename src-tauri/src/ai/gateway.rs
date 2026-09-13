@@ -19,7 +19,7 @@
 //! requestId / taskKind / provider/model ID / 状态迁移 / 耗时 / 重试次数 /
 //! token 估算与脱敏计数 / 错误 code；不记 Key、Prompt 原文、Secret 原文。
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -152,6 +152,11 @@ impl RequestRecord {
 // Gateway
 // ---------------------------------------------------------------------------
 
+/// 请求记录容量上限（PAF-12）：超过后按插入序淘汰最旧的**终态**记录。
+/// 每条记录克隆完整 `AiRequest`（含全部消息正文），无界增长即内存泄漏；
+/// 在飞记录数量受信号量约束（`max_concurrent_requests`），不参与淘汰。
+const MAX_TERMINAL_RECORDS: usize = 128;
+
 /// AI Gateway 服务。以 `Arc<AiGateway>` 挂在 AppState 上（approve 需要
 /// `Arc<Self>` 以派生执行任务）。
 pub struct AiGateway {
@@ -159,6 +164,9 @@ pub struct AiGateway {
     transport: Arc<dyn HttpTransport>,
     sink: Arc<dyn AiEventSink>,
     records: Mutex<HashMap<String, RequestRecord>>,
+    /// PAF-12：records 的插入序（淘汰最旧终态记录用）。与 records 分锁，
+    /// 锁序恒为 records → record_order（无反向获取路径）。
+    record_order: Mutex<VecDeque<String>>,
     semaphore: Arc<Semaphore>,
     /// AI-04：审计与会话持久化的写入口（`AppState.db` 的共享句柄）。
     /// 未装配（测试/早期引导）时审计与缓存自动降级为 no-op。
@@ -176,6 +184,7 @@ impl AiGateway {
             transport,
             sink,
             records: Mutex::new(HashMap::new()),
+            record_order: Mutex::new(VecDeque::new()),
             store: None,
             cache: None,
         }
@@ -364,8 +373,14 @@ impl AiGateway {
                 from_cache: false,
             },
         );
-        let snapshot = records.get(&request_id).expect("just inserted").snapshot();
         drop(records);
+        self.track_record_order(&request_id);
+        self.enforce_record_capacity();
+        let snapshot = self
+            .lock_records()
+            .get(&request_id)
+            .expect("just inserted")
+            .snapshot();
 
         log::info!(
             "ai request submitted: id={} task={} provider={} model={} ctx_items={} redacted={} est_tokens={} stream={}",
@@ -817,6 +832,43 @@ impl AiGateway {
         self.records.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// PAF-12：记录插入序登记（在 records 锁外调用）。
+    fn track_record_order(&self, request_id: &str) {
+        let mut order = self.record_order.lock().unwrap_or_else(|e| e.into_inner());
+        order.push_back(request_id.to_string());
+    }
+
+    /// PAF-12：records 有界化——终态记录超过 [`MAX_TERMINAL_RECORDS`] 时按
+    /// 插入序淘汰最旧的；在飞记录不淘汰（数量受信号量约束）。UI 仍可读到
+    /// 最近终态记录（容量内），行为不回归。
+    fn enforce_record_capacity(&self) {
+        let mut records = self.lock_records();
+        let mut order = self.record_order.lock().unwrap_or_else(|e| e.into_inner());
+        // 先清队列里已不存在的陈旧 id（容量淘汰 / 异常路径残留）。
+        order.retain(|id| records.contains_key(id));
+        let terminal_count = records.values().filter(|r| r.lifecycle.is_terminal()).count();
+        let surplus = terminal_count.saturating_sub(MAX_TERMINAL_RECORDS);
+        if surplus == 0 {
+            return;
+        }
+        let mut removed = 0;
+        let mut kept = VecDeque::with_capacity(order.len());
+        while let Some(id) = order.pop_front() {
+            let evictable = removed < surplus
+                && records.get(&id).is_some_and(|rec| rec.lifecycle.is_terminal());
+            if evictable {
+                records.remove(&id);
+                removed += 1;
+            } else {
+                kept.push_back(id);
+            }
+        }
+        *order = kept;
+        if removed > 0 {
+            log::debug!("ai gateway pruned {removed} terminal records (capacity {MAX_TERMINAL_RECORDS})");
+        }
+    }
+
     fn cancel_token(&self, request_id: &str) -> super::transport::CancelToken {
         self.lock_records()
             .get(request_id)
@@ -1030,6 +1082,8 @@ impl AiGateway {
                 from_cache: false,
             },
         );
+        self.track_record_order(request_id);
+        self.enforce_record_capacity();
         self.emit_event(request_id, RequestPhase::Rejected, None, 0);
         log::warn!(
             "ai request rejected: id={} task={} provider={} model={} code={}",

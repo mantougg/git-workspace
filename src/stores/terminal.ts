@@ -35,6 +35,20 @@ export interface TerminalSession extends TerminalSessionInfo {
   launchedInTerminal?: boolean;
 }
 
+/**
+ * PAF-12：writeBuffer / pendingOutput 的块数上限（对照 runtime logBuffers
+ * 5000 行环形上限）。面板隐藏（v-if 卸载 XtermView）或 xterm 未挂载期间
+ * 输出全部入缓冲，超限丢最旧，防止长跑 runtime 输出把内存打爆。
+ */
+const WRITE_BUFFER_MAX_CHUNKS = 5000;
+
+/** 超限丢最旧（shift 代价在 5000 量级可接受，且仅在溢出时发生）。 */
+function trimWriteBuffer(buffer: Uint8Array[]) {
+  while (buffer.length > WRITE_BUFFER_MAX_CHUNKS) {
+    buffer.shift();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -184,13 +198,16 @@ export const useTerminalStore = defineStore("terminal", () => {
       if (!pendingOutput.has(event.sessionId)) {
         pendingOutput.set(event.sessionId, []);
       }
-      pendingOutput.get(event.sessionId)!.push(bytes);
+      const pending = pendingOutput.get(event.sessionId)!;
+      pending.push(bytes);
+      trimWriteBuffer(pending);
       return;
     }
 
     if (session.paused || !session.writeCallback) {
-      // tab 隐藏或 xterm 未挂载时保留数据，切回时补写
+      // tab 隐藏或 xterm 未挂载时保留数据，切回时补写（PAF-12：超限丢最旧）
       session.writeBuffer.push(bytes);
+      trimWriteBuffer(session.writeBuffer);
     } else {
       // 直接写入 xterm（通过注册的回调）
       session.writeCallback(bytes);
@@ -235,6 +252,7 @@ export const useTerminalStore = defineStore("terminal", () => {
       session.writeCallback(bytes);
     } else {
       session.writeBuffer.push(bytes);
+      trimWriteBuffer(session.writeBuffer);
     }
   }
 
@@ -275,6 +293,7 @@ export const useTerminalStore = defineStore("terminal", () => {
           session.writeCallback(sepBytes);
         } else {
           session.writeBuffer.push(sepBytes);
+          trimWriteBuffer(session.writeBuffer);
         }
       }
 
@@ -290,6 +309,7 @@ export const useTerminalStore = defineStore("terminal", () => {
         session.writeCallback(bytes);
       } else {
         session.writeBuffer.push(bytes);
+        trimWriteBuffer(session.writeBuffer);
       }
     }
   }
@@ -314,6 +334,7 @@ export const useTerminalStore = defineStore("terminal", () => {
             session.writeCallback(sepBytes);
           } else {
             session.writeBuffer.push(sepBytes);
+            trimWriteBuffer(session.writeBuffer);
           }
         }
 
@@ -327,6 +348,7 @@ export const useTerminalStore = defineStore("terminal", () => {
           session.writeCallback(bytes);
         } else {
           session.writeBuffer.push(bytes);
+          trimWriteBuffer(session.writeBuffer);
         }
       }
     } catch (e) {
@@ -388,6 +410,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     const pending = pendingOutput.get(sessionId);
     if (pending) {
       session.writeBuffer.push(...pending);
+      trimWriteBuffer(session.writeBuffer);
       pendingOutput.delete(sessionId);
     }
 
@@ -423,6 +446,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     const pending = pendingOutput.get(sessionId);
     if (pending) {
       session.writeBuffer.push(...pending);
+      trimWriteBuffer(session.writeBuffer);
       pendingOutput.delete(sessionId);
     }
 
