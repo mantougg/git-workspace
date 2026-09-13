@@ -5,7 +5,7 @@
 -->
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from "vue";
 import { useTerminalStore } from "@/stores/terminal";
 import { encodeUtf8Base64 } from "@/utils/base64";
 import TerminalTabs from "./TerminalTabs.vue";
@@ -53,15 +53,13 @@ async function restartCurrentRuntime() {
 const showSearch = ref(false);
 const searchText = ref("");
 const searchCaseSensitive = ref(false);
+/** PAF-14：聚焦用模板 ref，querySelector 选择器与模板 class 位置不符永远匹配不到 */
+const searchInputRef = ref<HTMLInputElement | null>(null);
 
 function toggleSearch() {
   showSearch.value = !showSearch.value;
   if (showSearch.value) {
-    // 聚焦搜索框
-    setTimeout(() => {
-      const input = document.querySelector(".terminal-search-input input") as HTMLInputElement;
-      input?.focus();
-    }, 50);
+    nextTick(() => searchInputRef.value?.focus());
   }
 }
 
@@ -209,6 +207,7 @@ function endResize() {
 onBeforeUnmount(() => {
   document.removeEventListener("mousemove", onResizeMove);
   document.removeEventListener("mouseup", endResize);
+  window.removeEventListener("terminal:toggle-search", toggleSearch);
 });
 
 // ---------------------------------------------------------------------------
@@ -254,6 +253,9 @@ function registerXtermRef(sessionId: string, ref: InstanceType<typeof XtermView>
 
 onMounted(() => {
   terminalStore.loadShells();
+  // PAF-14：命令面板「终端内搜索」经 window 自定义事件接线到本面板
+  // （此前 registry.ts 派发后全工程无人监听，命令失效）。
+  window.addEventListener("terminal:toggle-search", toggleSearch);
 });
 </script>
 
@@ -317,6 +319,7 @@ onMounted(() => {
     <!-- 搜索条（TM-07） -->
     <div v-if="showSearch" class="terminal-search-bar">
       <input
+        ref="searchInputRef"
         v-model="searchText"
         class="terminal-search-input"
         placeholder="搜索..."

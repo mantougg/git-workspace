@@ -34,8 +34,11 @@ const SHORTCUT_MAP: Record<string, string[]> = {
   "action:commit-push": ["Ctrl+Shift+Enter"],
 };
 
-/** 输入框聚焦时仍允许触发的组合键（提交 / 刷新语义不与文本输入冲突） */
-const EDITABLE_ALLOWED = new Set(["Ctrl+Enter", "Ctrl+Shift+Enter", "F5"]);
+/** 输入框聚焦时仍允许触发的组合键（提交 / 刷新 / 终端面板开关语义不与文本输入冲突） */
+const EDITABLE_ALLOWED = new Set(["Ctrl+Enter", "Ctrl+Shift+Enter", "F5", "Ctrl+`", "Ctrl+Shift+`"]);
+
+/** 终端区域专属组合键（搜索 / 复制 / 粘贴）：仅在焦点位于终端（xterm）内时放行 */
+const TERMINAL_EDITABLE_ALLOWED = new Set(["Ctrl+F", "Ctrl+Shift+C", "Ctrl+Shift+V"]);
 
 /** 展示用快捷键描述（多绑定用 " / " 连接） */
 export function getShortcutForCommand(commandId: string): string | undefined {
@@ -79,6 +82,12 @@ function parseKeyEvent(e: KeyboardEvent): string {
     return parts.join("+");
   }
 
+  // 反引号（终端面板 Ctrl+` / Ctrl+Shift+`，PAF-14：此前返回 "" 永远无法触发）
+  if (e.key === "`") {
+    parts.push("`");
+    return parts.join("+");
+  }
+
   return "";
 }
 
@@ -95,6 +104,13 @@ function isEditableTarget(e: KeyboardEvent): boolean {
   );
 }
 
+/** 事件目标是否位于终端（xterm）输入区内——xterm 的隐藏 textarea 也是
+ * 可编辑目标，终端专属快捷键（搜索 / 复制 / 粘贴）必须在此放行（PAF-14） */
+function isInsideTerminal(e: KeyboardEvent): boolean {
+  const target = e.target as HTMLElement | null;
+  return !!target?.closest && target.closest(".xterm") !== null;
+}
+
 /**
  * 全局快捷键监听器。
  * `getCommands` 在每次按键时求值（命令含导航/分组等运行时状态，不宜缓存）。
@@ -107,8 +123,11 @@ export function createShortcutListener(
     const keyStr = parseKeyEvent(e);
     if (!keyStr) return;
 
-    // 输入框聚焦时跳过快捷键分发（Ctrl+Enter 提交、F5 刷新除外）
-    if (isEditableTarget(e) && !EDITABLE_ALLOWED.has(keyStr)) return;
+    // 输入框聚焦时跳过快捷键分发（提交 / 刷新 / 终端面板开关除外；
+    // 搜索 / 复制 / 粘贴仅在焦点位于终端内时放行——PAF-14）
+    if (isEditableTarget(e) && !EDITABLE_ALLOWED.has(keyStr)) {
+      if (!(isInsideTerminal(e) && TERMINAL_EDITABLE_ALLOWED.has(keyStr))) return;
+    }
 
     // 查找匹配的命令
     const commands = getCommands();
