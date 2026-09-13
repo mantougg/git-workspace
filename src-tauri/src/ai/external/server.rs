@@ -177,7 +177,6 @@ fn validate_request(request: &HttpRequest, token: &str) -> Option<u16> {
         return Some(415);
     }
 
-    let expected = format!("Bearer {token}");
     let provided = request.header("authorization").unwrap_or("");
     let scheme_ok = provided.len() > 7 && provided[..7].eq_ignore_ascii_case("Bearer ");
     if !scheme_ok || !constant_time_eq(provided[7..].trim(), token) {

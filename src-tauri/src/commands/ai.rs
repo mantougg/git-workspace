@@ -894,15 +894,22 @@ fn legacy_review_result(result: ai::AiResult) -> ReviewResult {
 
 /// Build the code search index for a repository.
 /// Scans all non-binary files and writes their content to the FTS5 index.
+///
+/// PAF-23：扫描与落库分离——目录遍历/读文件不持全局 DB 锁，攒批后短锁内
+/// 事务批量写入（每批 `INDEX_BATCH` 条，内存上界 ≈ 批条数 × 100KB 单文件
+/// 上限）；重建开头 DELETE 全量旧条目，中途失败留下的部分索引在下次重建
+/// 时自愈。
 #[tauri::command]
 pub fn build_code_index(repo_path: String, state: tauri::State<'_, crate::state::AppState>) -> AppResult<()> {
     use rusqlite::params;
     use std::fs;
     use walkdir::WalkDir;
 
+    const INDEX_BATCH: usize = 200;
+
     let repo_path = Path::new(&repo_path);
 
-    // Delete existing index entries for this repo
+    // Delete existing index entries for this repo（短锁）。
     {
         let conn = state
             .db
@@ -930,11 +937,9 @@ pub fn build_code_index(repo_path: String, state: tauri::State<'_, crate::state:
 
     let mut walker = WalkDir::new(repo_path).into_iter();
 
-    let mut batch_count = 0;
-    let conn = state
-        .db
-        .lock()
-        .map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
+    let mut batch_count = 0usize;
+    let repo_path_str = repo_path.to_string_lossy().to_string();
+    let mut batch: Vec<(String, String)> = Vec::with_capacity(INDEX_BATCH);
 
     while let Some(Ok(entry)) = walker.next() {
         if entry.file_type().is_dir() {
@@ -1011,20 +1016,41 @@ pub fn build_code_index(repo_path: String, state: tauri::State<'_, crate::state:
             Err(_) => continue, // Skip binary files
         };
 
-        // Insert into FTS5 index
-        let repo_path_str = repo_path.to_string_lossy().to_string();
-        conn.execute(
-            "INSERT INTO code_index (content, repo_path, file_path) VALUES (?1, ?2, ?3)",
-            params![content, repo_path_str, relative],
-        )?;
-
+        // PAF-23：攒批，批满短锁事务写入后释放锁，扫描本身不阻塞其他 DB 使用方。
+        batch.push((relative, content));
         batch_count += 1;
+        if batch.len() >= INDEX_BATCH {
+            flush_code_index_batch(&state.db, &repo_path_str, &mut batch)?;
+        }
         if batch_count % 100 == 0 {
             log::debug!("Indexed {} files for {:?}", batch_count, repo_path);
         }
     }
+    flush_code_index_batch(&state.db, &repo_path_str, &mut batch)?;
 
     log::info!("Code index built: {} files for {:?}", batch_count, repo_path);
+    Ok(())
+}
+
+/// PAF-23：单批索引条目事务写入（短锁持锁、批内原子提交）。
+fn flush_code_index_batch(
+    db: &std::sync::Mutex<rusqlite::Connection>,
+    repo_path_str: &str,
+    batch: &mut Vec<(String, String)>,
+) -> AppResult<()> {
+    use rusqlite::params;
+    if batch.is_empty() {
+        return Ok(());
+    }
+    let mut conn = db.lock().map_err(|e| AppError::Other(format!("DB lock error: {}", e)))?;
+    let tx = conn.transaction()?;
+    for (relative, content) in batch.drain(..) {
+        tx.execute(
+            "INSERT INTO code_index (content, repo_path, file_path) VALUES (?1, ?2, ?3)",
+            params![content, repo_path_str, relative],
+        )?;
+    }
+    tx.commit()?;
     Ok(())
 }
 
@@ -1123,6 +1149,30 @@ fn ceil_char_boundary(s: &str, mut i: usize) -> usize {
 #[cfg(test)]
 mod snippet_tests {
     use super::*;
+
+    /// PAF-23：批写分多次短锁事务提交后全部条目可见（含不满一批的尾批）。
+    #[test]
+    fn code_index_batched_flush_persists_all_entries() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrate(&mut conn).unwrap();
+        let db = std::sync::Mutex::new(conn);
+        let repo_path = "/ws/repo".to_string();
+
+        // 模拟命令流：批满 200 条 flush 两次 + 尾批 50 条。
+        for chunk in [0..200, 200..400, 400..450] {
+            let mut batch: Vec<(String, String)> = chunk
+                .map(|i| (format!("src/f{i}.rs"), format!("content {i}")))
+                .collect();
+            flush_code_index_batch(&db, &repo_path, &mut batch).unwrap();
+            assert!(batch.is_empty(), "flush 后批应清空");
+        }
+
+        let conn = db.lock().unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM code_index WHERE repo_path = ?1", [&repo_path], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 450);
+    }
 
     #[test]
     fn snippet_is_char_boundary_safe_for_multibyte_content() {

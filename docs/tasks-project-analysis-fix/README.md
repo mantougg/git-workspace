@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**23** · 修复中：**0** · 未开始：**3**
+- 已完成：**24** · 修复中：**0** · 未开始：**2**
 
 ---
 
@@ -54,7 +54,7 @@
 | PAF-20 | MCP 本地端点无鉴权（per-boot token + 请求头校验） | P1 | ✅ | [PAF-20-mcp-endpoint-auth.md](./PAF-20-mcp-endpoint-auth.md) |
 | PAF-21 | 凭证可用性 OnceLock 缓存 + get 静默降级 | P1 | ✅ | [PAF-21-credential-availability-oncelock.md](./PAF-21-credential-availability-oncelock.md) |
 | PAF-22 | get_workspace_changes 串行且绕过缓存（首页最慢路径） | P1 | ✅ | [PAF-22-workspace-changes-serial.md](./PAF-22-workspace-changes-serial.md) |
-| PAF-23 | build_code_index 持全局 DB 锁贯穿扫描且无事务 | P1 | ⬜ | [PAF-23-code-index-db-lock.md](./PAF-23-code-index-db-lock.md) |
+| PAF-23 | build_code_index 持全局 DB 锁贯穿扫描且无事务 | P1 | ✅ | [PAF-23-code-index-db-lock.md](./PAF-23-code-index-db-lock.md) |
 | PAF-24 | PTY 生命周期加固（close 持锁 2s / 死会话回收 / pid=0 / 注释不符） | P1 | ⬜ | [PAF-24-pty-lifecycle-hardening.md](./PAF-24-pty-lifecycle-hardening.md) |
 | PAF-25 | Git Console 实时流式接线（run_git_streaming → git_op_output） | P1 | ✅ | [PAF-25-git-console-realtime-streaming.md](./PAF-25-git-console-realtime-streaming.md) |
 | PAF-26 | P2 加固项批次清单（约 40 项，触及文件时顺手修或拆分） | P2 | ⬜ | [PAF-26-p2-hardening-batch.md](./PAF-26-p2-hardening-batch.md) |
