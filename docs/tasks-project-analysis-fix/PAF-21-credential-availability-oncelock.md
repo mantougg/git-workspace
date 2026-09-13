@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 来源 | 项目全景分析报告（docs/project-analysis-2026-09-13.md）P1-24，主控亲自验证 |
 | 关联任务 | AI-01（凭证管理） |
 
@@ -27,19 +27,20 @@
 
 ## 验收标准
 
-- [ ] keyring 晚解锁场景下无需重启即可恢复使用 OS 凭证
-- [ ] OS 后端故障时的降级对用户可见（日志/UI 提示）
-- [ ] `cargo test --lib`（ai::credentials）通过
+- [x] keyring 晚解锁场景下无需重启即可恢复使用 OS 凭证（`late_unlock_recovers_without_restart`：不可用缓存 → 解锁 → set 重测成功）
+- [x] OS 后端故障时的降级对用户可见（`get()` 降级读会话副本前 `log::warn!`；操作失败使可用性缓存失效下次重测）
+- [x] `cargo test --lib`（ai::credentials）通过（7 passed）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-13 录入
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-13 修复完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-13 | ⬜ | 分析报告事实核查批次录入 |
+| 2026-09-13 | ✅ | 复核证据成立。修复：① `KeyringStore` 不再自带 `OnceLock` 缓存，每次真实探测；新增 `AvailabilityCachedStore` 装饰器（`Mutex<Option<bool>>`）承接缓存——操作返回 `Unavailable` 时缓存失效、成功时缓存 `true`，trait 增加 `refresh_availability`（默认实现 = `is_available`）；② `CredentialManager::set` persist 路径在缓存不可用时先 `refresh_availability` 重测一次再拒绝——keyring 晚解锁后用户重试即可恢复，免重启；③ `CredentialManager::get` 在 OS 后端 `Err` 时 `log::warn!` 后再降级读会话副本（`Ok(None)` 无条目仍静默）；④ `production()` 装配缓存装饰器。验证：`cargo test --lib ai::credentials` 7 passed（新增 FlakyStore 晚解锁恢复 / 缓存失效+降级两用例）。 |
