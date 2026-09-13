@@ -287,6 +287,31 @@ async fn execute_task(
                     }
                     Ok(None)
                 }
+                TaskType::RestoreFiles { files } => {
+                    // PAF-11：restore 丢弃工作区改动，属高危操作——执行前快照
+                    // HEAD，执行后落 T-34 操作日志（该 op 类型不支持自动撤销，
+                    // 日志行用于追溯与定位）。
+                    let repo_dir = std::path::Path::new(&repo_path);
+                    let before = crate::core::operation_log::snapshot_head(repo_dir);
+                    let out = ops.execute(&task_type_for_exec, repo_dir)?;
+                    if let Some((ref_name, before_oid)) = before {
+                        crate::core::operation_log::record_operation_best_effort(
+                            &db_for_exec,
+                            &repo_path,
+                            crate::core::operation_log::OP_RESTORE_FILES,
+                            "batch restore working-tree changes",
+                            vec![crate::core::operation_log::NewOperationLogItem {
+                                repo_path: repo_path.clone(),
+                                ref_name,
+                                before_oid,
+                                after_oid: crate::core::operation_log::snapshot_head(repo_dir)
+                                    .map(|(_, oid)| oid),
+                                detail: Some(format!("files:{}", files.join(","))),
+                            }],
+                        );
+                    }
+                    Ok(out)
+                }
                 _ => ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path)),
             }),
         )
@@ -362,6 +387,8 @@ async fn execute_task(
         TaskType::Commit { then_push: true, .. } => Some("git commit && git push".to_string()),
         // Shell / Node
         TaskType::ShellCommand { command, .. } => Some(command.clone()),
+        TaskType::StageFiles { files } => Some(format!("git add {} file(s)", files.len())),
+        TaskType::RestoreFiles { files } => Some(format!("git restore {} file(s)", files.len())),
         TaskType::NodeInstall {
             project_dir,
             package_manager,

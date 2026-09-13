@@ -48,6 +48,20 @@ pub enum TaskType {
         #[serde(default)]
         content: Option<String>,
     },
+    /// Bulk stage (git add) per repository (T-20 / PAF-11): one repo per
+    /// task, files deleted on disk are removed from the index instead.
+    StageFiles {
+        #[serde(default)]
+        files: Vec<String>,
+    },
+    /// Bulk restore working-tree changes per repository (T-20 / PAF-11):
+    /// tracked files restore from HEAD (index + worktree), staged-new files
+    /// unstage and delete. Destructive — the worker records an operation-log
+    /// entry (T-34) with the before-HEAD snapshot.
+    RestoreFiles {
+        #[serde(default)]
+        files: Vec<String>,
+    },
     /// Bulk branch operation across repositories (T-20): checkout / create /
     /// delete a branch per repo.
     BranchOp {

@@ -738,6 +738,7 @@ import { NButton, NIcon, NTag, useMessage, useDialog } from "naive-ui";
 import { listen } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
+import { useTaskStore } from "@/stores/task";
 import ContextMenu from "@/components/shell/ContextMenu.vue";
 import CommitGraph from "@/components/graph/CommitGraph.vue";
 import { getCommitHistory } from "@/api/graph";
@@ -795,6 +796,7 @@ const router = useRouter();
 const route = useRoute();
 const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
+const taskStore = useTaskStore();
 const message = useMessage();
 const dialog = useDialog();
 const { openAssistant } = useAiAssistant();
@@ -1021,9 +1023,11 @@ async function onContextmenuSelect(key: string) {
         break;
       case "stage": {
         if (!repo || !node.relPath) break;
-        await batchAdd([
+        const stageIds = await batchAdd([
           { repoPath, repoName: repo.repoName, files: [node.relPath] },
         ]);
+        // PAF-11：任务队列异步执行，等收口后再刷新视图
+        await taskStore.waitForTasks(stageIds);
         message.success(`已暂存 ${node.relPath}`);
         await loadChanges();
         break;
@@ -1038,9 +1042,11 @@ async function onContextmenuSelect(key: string) {
           negativeText: "取消",
           onPositiveClick: async () => {
             try {
-              await batchRestore([
+              const discardIds = await batchRestore([
                 { repoPath, repoName: repo.repoName, files: [file] },
               ]);
+              // PAF-11：任务队列异步执行，等收口后再刷新视图
+              await taskStore.waitForTasks(discardIds);
               message.success(`已丢弃 ${file}`);
               await loadChanges();
             } catch (e) {
@@ -1615,7 +1621,9 @@ async function handleAdd() {
   }
   actionLoading.value = true;
   try {
-    await batchAdd(requests);
+    const stageIds = await batchAdd(requests);
+    // PAF-11：任务队列异步执行，等收口后再刷新视图
+    await taskStore.waitForTasks(stageIds);
     message.success(`已暂存 ${requests.length} 个仓库的文件`);
     await loadChanges();
   } catch (e) {
@@ -1656,7 +1664,9 @@ async function handleRestore() {
   }
   actionLoading.value = true;
   try {
-    await batchRestore(requests);
+    const restoreIds = await batchRestore(requests);
+    // PAF-11：任务队列异步执行，等收口后再刷新视图
+    await taskStore.waitForTasks(restoreIds);
     message.success(`已回退 ${requests.length} 个仓库的文件`);
     await loadChanges();
   } catch (e) {

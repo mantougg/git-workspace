@@ -16,6 +16,8 @@ export type TaskType =
       authorName?: string | null;
       authorEmail?: string | null;
     }
+  | { type: "stageFiles"; files: string[] }
+  | { type: "restoreFiles"; files: string[] }
   | { type: "conflictApply"; path: string; strategy: string; content?: string | null }
   | {
       type: "branchOp";

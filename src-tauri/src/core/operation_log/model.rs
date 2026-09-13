@@ -21,6 +21,7 @@ pub const OP_REBASE: &str = "rebase";
 pub const OP_CONFLICT_RESOLUTION: &str = "conflict_resolution";
 /// op_type of a commit submitted through an AI Action Proposal.
 pub const OP_AI_COMMIT: &str = "ai_commit";
+pub const OP_RESTORE_FILES: &str = "restore_files";
 
 /// One page of operation log summaries plus the total matching count.
 #[derive(Debug, Clone, Serialize)]

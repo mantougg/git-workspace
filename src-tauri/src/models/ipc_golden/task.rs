@@ -25,6 +25,12 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 author_name: Some("alice".into()),
                 author_email: Some("alice@example.com".into()),
             },
+            task::TaskType::StageFiles {
+                files: vec!["src/main.rs".into()],
+            },
+            task::TaskType::RestoreFiles {
+                files: vec!["src/main.rs".into()],
+            },
             task::TaskType::ConflictApply {
                 path: "src/main.rs".into(),
                 strategy: "both".into(),

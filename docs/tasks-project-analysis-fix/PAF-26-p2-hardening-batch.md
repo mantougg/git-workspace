@@ -111,6 +111,15 @@
 - [ ] LAN chat secret/room_id 提交值未 trim（F-36 doc:56 记录未做；
       `LanChatTool.vue:313-323`）
 
+### 测试健壮性
+
+- [ ] 日志聚合 flood 测试的批次上限 slack 过紧：断言
+      `batch_count <= 5000/16 + 8`（`runtime/logs/engine/tests.rs:118`），
+      `aggregate_interval=100ms` 的周期边界刷批在持续机器负载下多出
+      2 批（实测 322 > 320，基线 stash 后 5/5 同样失败，非 PAF 改动引入；
+      `search_stays_fast` 100ms 断言同类）。建议加大 slack 或改为确定性
+      断言（注入时钟 / 固定窗口计数）
+
 ## 验收标准
 
 - [ ] 清单项被逐项处理（修复 / 拆分为独立 PAF-XX / 明确记录不修的理由）

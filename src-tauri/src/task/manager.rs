@@ -477,6 +477,8 @@ fn label_for(req: &TaskRequest) -> String {
         TaskType::Fetch => "Fetch",
         TaskType::Pull => "Pull",
         TaskType::Push => "Push",
+        TaskType::StageFiles { .. } => "暂存",
+        TaskType::RestoreFiles { .. } => "还原工作区",
         TaskType::Commit { .. } => "Commit",
         TaskType::ConflictApply { .. } => "Conflict Apply",
         TaskType::BranchOp { .. } => "分支操作",

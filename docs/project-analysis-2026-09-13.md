@@ -148,7 +148,7 @@
 - P1-7 **多 commit cherry-pick 中途 Abort 语义破损**：`ConflictResolver.vue:312/:476` 调 `abortPick(repoPath)` 不传 `base_oid`；`history.rs:165-171` 在 None 时 reset 到当前 HEAD——前 N-1 个已落地的 pick 提交残留。 ✅ 已修复（PAF-10，2026-09-13：冲突时持久化 pick base 到 .git，abort_pick 显式 base > 持久化 base > 当前 HEAD 兜底）
 - P1-8 **rebase_continue 不校验分支被切换**：结果 set 到当前 HEAD 所指 ref（rebase.rs:342-344），冲突挂起期间切分支再 Continue 会把 rebase 链写到错误分支。 ✅ 已修复（PAF-10，2026-09-13：RebaseState.branch_ref + ensure_branch_unchanged，continue/skip/abort 全覆盖）
 - P1-9 **merge 无互斥/前置校验**：`merge()`（merge.rs:37-73）不检查已有 MERGE_HEAD（`merge_in_progress` 存在但未调用）、不检查脏区、不检查 rebase 进行中。 ✅ 已修复（PAF-10，2026-09-13：MERGE_HEAD 互斥 + rebase 互斥 + 脏区拒绝）
-- P1-10 **batch_add/batch_restore 不走任务队列**：同步串行 fail-fast（git_ops.rs:288/:324），与 T-20「操作全集走队列」口径不符，多仓中途失败无法定位。
+- P1-10 **batch_add/batch_restore 不走任务队列**：同步串行 fail-fast（git_ops.rs:288/:324），与 T-20「操作全集走队列」口径不符，多仓中途失败无法定位。 ✅ 已修复（PAF-11，2026-09-13：收编 TaskQueue 一仓一任务 + PartialSuccess 聚合；restore 落 T-34 操作日志；前端 waitForTasks 等收口再刷新）
 
 **内存/资源泄漏**
 - P1-11 **AI gateway 记录无界增长**：`records: Mutex<HashMap>`（gateway.rs:161）只有插入/读取，`prune_terminal`（:756-761）定义后**全仓零调用**（grep 实证），每条记录克隆完整请求正文。 ✅ 已修复（PAF-12，2026-09-13：插入序队列 + 终态记录容量 128 淘汰，接入两个插入点，带回归测试）
