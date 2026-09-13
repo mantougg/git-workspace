@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**20** · 修复中：**0** · 未开始：**6**
+- 已完成：**21** · 修复中：**0** · 未开始：**5**
 
 ---
 
@@ -51,7 +51,7 @@
 | PAF-17 | GitGraph 冲突横幅红底红字不可见 | P1 | ✅ | [PAF-17-gitgraph-conflict-bar-invisible.md](./PAF-17-gitgraph-conflict-bar-invisible.md) |
 | PAF-18 | 后端路径匹配缺组件边界（ends_with 三处 + guard 大小写/verbatim） | P1 | ✅ | [PAF-18-path-suffix-boundary.md](./PAF-18-path-suffix-boundary.md) |
 | PAF-19 | git_link 常驻线程 expect ×3，SQL 抖动即线程死亡 | P1 | ✅ | [PAF-19-git-link-thread-expect.md](./PAF-19-git-link-thread-expect.md) |
-| PAF-20 | MCP 本地端点无鉴权（per-boot token + 请求头校验） | P1 | ⬜ | [PAF-20-mcp-endpoint-auth.md](./PAF-20-mcp-endpoint-auth.md) |
+| PAF-20 | MCP 本地端点无鉴权（per-boot token + 请求头校验） | P1 | ✅ | [PAF-20-mcp-endpoint-auth.md](./PAF-20-mcp-endpoint-auth.md) |
 | PAF-21 | 凭证可用性 OnceLock 缓存 + get 静默降级 | P1 | ⬜ | [PAF-21-credential-availability-oncelock.md](./PAF-21-credential-availability-oncelock.md) |
 | PAF-22 | get_workspace_changes 串行且绕过缓存（首页最慢路径） | P1 | ⬜ | [PAF-22-workspace-changes-serial.md](./PAF-22-workspace-changes-serial.md) |
 | PAF-23 | build_code_index 持全局 DB 锁贯穿扫描且无事务 | P1 | ⬜ | [PAF-23-code-index-db-lock.md](./PAF-23-code-index-db-lock.md) |

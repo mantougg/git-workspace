@@ -171,6 +171,11 @@ fn cmd_call(args: &[String]) -> i32 {
             return EXIT_USAGE;
         }
     };
+    // PAF-20：本地端点要求 Bearer token（per-boot，写入 discovery 文件）。
+    // 指向外部端点时 discovery 里没有 token 则不发送该头。
+    let token = read_discovery(&crate::get_app_data_dir())
+        .map(|info| info.token)
+        .filter(|token| !token.is_empty());
     let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(runtime) => runtime,
         Err(error) => {
@@ -178,25 +183,32 @@ fn cmd_call(args: &[String]) -> i32 {
             return EXIT_USAGE;
         }
     };
-    runtime.block_on(post_call(&endpoint, &options))
+    runtime.block_on(post_call(&endpoint, token.as_deref(), &options))
 }
 
-async fn post_call(endpoint: &str, options: &CallOptions) -> i32 {
+async fn post_call(endpoint: &str, token: Option<&str>, options: &CallOptions) -> i32 {
     let client = reqwest::Client::new();
-    let response = match client
+    let mut request = client
         .post(endpoint)
         .header("content-type", "application/json")
         .json(&build_call_request(options))
-        .timeout(std::time::Duration::from_secs(15))
-        .send()
-        .await
-    {
+        .timeout(std::time::Duration::from_secs(15));
+    if let Some(token) = token {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    let response = match request.send().await {
         Ok(response) => response,
         Err(error) => {
             eprintln!("无法连接 GitWorkspace 外部端点 {endpoint}（{error}）。请确认应用正在运行。");
             return EXIT_USAGE;
         }
     };
+    if response.status().as_u16() == 401 {
+        eprintln!(
+            "外部端点返回 HTTP 401：token 不匹配。discovery 文件可能属于旧实例，请重启 GitWorkspace 后重试。"
+        );
+        return EXIT_USAGE;
+    }
     if !response.status().is_success() {
         eprintln!("外部端点返回 HTTP {}", response.status());
         return EXIT_USAGE;
