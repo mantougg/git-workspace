@@ -144,10 +144,10 @@
 - P1-5 **构建路径无进程组**：`process_group(0)` 仅在启动路径（launcher.rs:105），Maven 执行链（executor.rs:75-88 build_process）没有——mvnw/mvnd/Windows `cmd /c` 链存在与 N-07 同构的「父死孙活」窄窗。 ✅ 已修复（PAF-09，2026-09-13：build_process 补 `process_group(0)`（unix），kill_tree 对组长走 killpg 整组投递）
 
 **Git 客户端数据安全**
-- P1-6 **rebase 启动不查脏工作区**：ops 校验后直接 `history::reset_to(onto,"hard")`（rebase.rs:164-165），未暂存修改被静默丢弃且不入 undo log；`rebase_continue/rebase_skip/merge_abort` 的 hard reset 同理。
-- P1-7 **多 commit cherry-pick 中途 Abort 语义破损**：`ConflictResolver.vue:312/:476` 调 `abortPick(repoPath)` 不传 `base_oid`；`history.rs:165-171` 在 None 时 reset 到当前 HEAD——前 N-1 个已落地的 pick 提交残留。
-- P1-8 **rebase_continue 不校验分支被切换**：结果 set 到当前 HEAD 所指 ref（rebase.rs:342-344），冲突挂起期间切分支再 Continue 会把 rebase 链写到错误分支。
-- P1-9 **merge 无互斥/前置校验**：`merge()`（merge.rs:37-73）不检查已有 MERGE_HEAD（`merge_in_progress` 存在但未调用）、不检查脏区、不检查 rebase 进行中。
+- P1-6 **rebase 启动不查脏工作区**：ops 校验后直接 `history::reset_to(onto,"hard")`（rebase.rs:164-165），未暂存修改被静默丢弃且不入 undo log；`rebase_continue/rebase_skip/merge_abort` 的 hard reset 同理。 ✅ 已修复（PAF-10，2026-09-13：ensure_clean_worktree 前置校验；skip/abort 的 hard reset 经 UI 二次确认维持 abort 语义）
+- P1-7 **多 commit cherry-pick 中途 Abort 语义破损**：`ConflictResolver.vue:312/:476` 调 `abortPick(repoPath)` 不传 `base_oid`；`history.rs:165-171` 在 None 时 reset 到当前 HEAD——前 N-1 个已落地的 pick 提交残留。 ✅ 已修复（PAF-10，2026-09-13：冲突时持久化 pick base 到 .git，abort_pick 显式 base > 持久化 base > 当前 HEAD 兜底）
+- P1-8 **rebase_continue 不校验分支被切换**：结果 set 到当前 HEAD 所指 ref（rebase.rs:342-344），冲突挂起期间切分支再 Continue 会把 rebase 链写到错误分支。 ✅ 已修复（PAF-10，2026-09-13：RebaseState.branch_ref + ensure_branch_unchanged，continue/skip/abort 全覆盖）
+- P1-9 **merge 无互斥/前置校验**：`merge()`（merge.rs:37-73）不检查已有 MERGE_HEAD（`merge_in_progress` 存在但未调用）、不检查脏区、不检查 rebase 进行中。 ✅ 已修复（PAF-10，2026-09-13：MERGE_HEAD 互斥 + rebase 互斥 + 脏区拒绝）
 - P1-10 **batch_add/batch_restore 不走任务队列**：同步串行 fail-fast（git_ops.rs:288/:324），与 T-20「操作全集走队列」口径不符，多仓中途失败无法定位。
 
 **内存/资源泄漏**

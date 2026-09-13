@@ -43,6 +43,20 @@ pub fn merge(repo_path: &Path, branch: &str, mode: &str) -> AppResult<MergeOutco
     }
 
     let repo = git2::Repository::open(repo_path)?;
+    // PAF-10：互斥与脏区前置校验。MERGE_HEAD 已存在（merge_in_progress 此前
+    // 定义但未被调用）时再 merge 会覆盖冲突状态；rebase 进行中同理；脏工作区
+    // 会被 merge/checkout 吞掉。
+    if merge_in_progress(repo_path)? {
+        return Err(AppError::Conflict(
+            "已有 merge 进行中（请先 resolve + continue，或 abort 后再试）".into(),
+        ));
+    }
+    if crate::core::rebase::get_rebase_state(repo_path)?.is_some() {
+        return Err(AppError::Conflict(
+            "rebase 进行中，请先完成或中止该 rebase 再 merge".into(),
+        ));
+    }
+    history::ensure_clean_worktree(&repo, "Merge")?;
     let base_oid = repo.head().ok().and_then(|h| h.target()).map(|o| o.to_string());
     let their_commit = repo
         .revparse_single(branch)
@@ -363,6 +377,61 @@ mod tests {
             "resolved\n"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PAF-10：脏工作区 merge 被拒绝（未提交修改会被 merge 吞掉）。
+    #[test]
+    fn merge_rejects_dirty_worktree() {
+        let dir = tmpdir("dirty");
+        {
+            let repo = init_with_side(&dir);
+            drop(repo);
+        }
+        checkout(&dir, "side");
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            commit_file(&repo, &dir, "b.txt", "two\n", "side work");
+            drop(repo);
+        }
+        checkout(&dir, "master");
+        std::fs::write(dir.join("a.txt"), "dirty\n").unwrap();
+
+        let err = merge(&dir, "side", "normal").unwrap_err();
+        assert_eq!(err.code(), "ConflictError");
+        assert!(err.to_string().contains("未提交变更"));
+        assert!(!merge_in_progress(&dir).unwrap());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PAF-10：MERGE_HEAD 已存在（冲突 merge 进行中）时再次 merge 被拒绝。
+    #[test]
+    fn merge_rejects_when_already_in_progress() {
+        let dir = tmpdir("inprogress");
+        {
+            let repo = init_with_side(&dir);
+            commit_file(&repo, &dir, "a.txt", "master line\n", "master change");
+            drop(repo);
+        }
+        checkout(&dir, "side");
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "side line\n", "side change");
+            drop(repo);
+        }
+        checkout(&dir, "master");
+
+        let outcome = merge(&dir, "side", "normal").unwrap();
+        assert!(matches!(outcome, MergeOutcome::Conflict { .. }));
+        assert!(merge_in_progress(&dir).unwrap());
+
+        let err = merge(&dir, "side", "no-ff").unwrap_err();
+        assert_eq!(err.code(), "ConflictError");
+        assert!(err.to_string().contains("merge 进行中"));
+
+        // 收口：abort 清理状态。
+        merge_abort(&dir).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

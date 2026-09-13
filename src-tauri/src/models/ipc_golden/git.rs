@@ -240,6 +240,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             ops: vec![],
             position: 0,
             prev_commit: "def456".into(),
+            branch_ref: "refs/heads/main".into(),
         }),
     );
     m.insert(

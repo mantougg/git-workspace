@@ -1986,6 +1986,7 @@
     }
   ],
   "RebaseState": {
+    "branchRef": "refs/heads/main",
     "onto": "main",
     "ops": [],
     "originalHead": "abc123",

@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**9** · 修复中：**0** · 未开始：**17**
+- 已完成：**10** · 修复中：**0** · 未开始：**16**
 
 ---
 
@@ -41,7 +41,7 @@
 | PAF-07 | stop 在 pid 未回填时强杀也是 no-op，restart 撞 Stopping 报 Conflict | P1 | ✅ | [PAF-07-stop-pid-none-restart-conflict.md](./PAF-07-stop-pid-none-restart-conflict.md) |
 | PAF-08 | git 网络任务超时后 spawn_blocking 线程无取消机制 | P1 | ⬜ | [PAF-08-git-network-task-timeout-leak.md](./PAF-08-git-network-task-timeout-leak.md) |
 | PAF-09 | infer_main_class 无缓存全量重扫 + Maven 构建路径无进程组 | P1 | ✅ | [PAF-09-main-class-cache-build-process-group.md](./PAF-09-main-class-cache-build-process-group.md) |
-| PAF-10 | Git 操作数据安全前置校验（rebase 脏区 / 分支切换 / merge 前置 / cherry-pick abort） | P1 | ⬜ | [PAF-10-git-op-safety-prechecks.md](./PAF-10-git-op-safety-prechecks.md) |
+| PAF-10 | Git 操作数据安全前置校验（rebase 脏区 / 分支切换 / merge 前置 / cherry-pick abort） | P1 | ✅ | [PAF-10-git-op-safety-prechecks.md](./PAF-10-git-op-safety-prechecks.md) |
 | PAF-11 | batch_add / batch_restore 收编任务队列（部分失败语义 + 操作日志） | P1 | ⬜ | [PAF-11-batch-add-restore-task-queue.md](./PAF-11-batch-add-restore-task-queue.md) |
 | PAF-12 | 无界内存增长三连（AI gateway records / 终端 writeBuffer / chat known_addrs） | P1 | ✅ | [PAF-12-unbounded-memory-trio.md](./PAF-12-unbounded-memory-trio.md) |
 | PAF-13 | core watcher 四缺陷（debounce 丢弃 / NonRecursive 盲区 / mount 不回滚 / 路径未归一化） | P1 | ⬜ | [PAF-13-core-watcher-four-defects.md](./PAF-13-core-watcher-four-defects.md) |

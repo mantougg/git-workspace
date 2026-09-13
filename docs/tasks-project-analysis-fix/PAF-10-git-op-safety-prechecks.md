@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 来源 | 项目全景分析报告（docs/project-analysis-2026-09-13.md）P1-6~P1-9，主控 + 核查智能体双重验证 |
 | 关联任务 | T-13、T-15、T-16、T-34 |
 
@@ -35,20 +35,21 @@
 
 ## 验收标准
 
-- [ ] 脏工作区启动 rebase/merge 被拒绝并提示
-- [ ] 挂起期间切分支后 Continue 被拒绝
-- [ ] 多 commit cherry-pick 中途 Abort 恢复到操作前 HEAD
-- [ ] 各项单测通过
+- [x] 脏工作区启动 rebase/merge 被拒绝并提示
+- [x] 挂起期间切分支后 Continue 被拒绝
+- [x] 多 commit cherry-pick 中途 Abort 恢复到操作前 HEAD
+- [x] 各项单测通过
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-13 录入
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-13 修复完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-13 | ⬜ | 分析报告事实核查批次录入 |
+| 2026-09-13 | ✅ | 四项证据复核全部成立。① `history.rs` 新增 `ensure_clean_worktree`（拦截已暂存/已跟踪未提交变更，WT_NEW 未跟踪不拦——与 git 语义一致），`start_rebase`（另加 merge 进行中互斥）与 `merge`（另加 MERGE_HEAD 已存在 + rebase 进行中互斥，`merge_in_progress` 首次接入调用）前置校验；② `RebaseState` 新增 `branch_ref`（serde default 向后兼容），`ensure_branch_unchanged` 校验 continue/skip/abort 前分支未被切换，切走时拒绝并提示切回（重放链/abort 重置不得写错误分支）；③ pick base 持久化：cherry_pick/revert 冲突时写 `.git/gitworkspace-pick-base.json`，`abort_pick` 显式 base > 持久化 base > 当前 HEAD 兜底，Success/continue/abort 均清理——ConflictResolver 不传 baseOid（含批量模式与重启后）也恢复到操作前 HEAD；④ skip/abort 内的 hard reset 维持现状（UI 文案已含「冲突中的修改将丢失」二次确认，abort 语义本身如此）。回归测试 5 项（rebase 脏区/切分支、merge 脏区/进行中、多 pick 无 base abort），golden fixture + TS 类型同步（RebaseState.branchRef）。验证：`cargo test --lib` 888 passed |

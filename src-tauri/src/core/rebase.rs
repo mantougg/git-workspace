@@ -43,6 +43,13 @@ pub struct RebaseState {
     pub position: usize,
     /// Last commit of the new chain (squash melds into it).
     pub prev_commit: String,
+    /// The branch ref being rebased (PAF-10). Continue/skip/abort verify HEAD
+    /// still points here — a mid-rebase branch switch would otherwise write
+    /// the replayed chain (or the abort reset) onto the wrong branch.
+    /// `#[serde(default)]` keeps pre-existing state files loadable; an empty
+    /// value skips the check.
+    #[serde(default)]
+    pub branch_ref: String,
 }
 
 /// Outcome of a rebase run (start / continue / skip).
@@ -127,6 +134,14 @@ pub fn start_rebase(repo_path: &Path, onto: &str, ops: Vec<RebaseOp>) -> AppResu
             "a rebase is already in progress (continue / skip / abort it first)".into(),
         ));
     }
+    // PAF-10：互斥与脏区前置校验——merge 进行中互斥；脏工作区会被随后的
+    // hard reset 静默吞掉（启动阶段的 rebase 也不入 undo log，无法回退）。
+    if crate::core::merge::merge_in_progress(repo_path)? {
+        return Err(AppError::Conflict(
+            "merge 进行中，请先完成或中止该 merge 再启动 rebase".into(),
+        ));
+    }
+    history::ensure_clean_worktree(&repo, "Rebase")?;
 
     // Validate: oids exist; the first non-drop op cannot be a squash.
     for op in &ops {
@@ -161,6 +176,10 @@ pub fn start_rebase(repo_path: &Path, onto: &str, ops: Vec<RebaseOp>) -> AppResu
         return Ok(RebaseOutcome::Success { rewritten: 0 });
     }
 
+    // PAF-10：记录被 rebase 的分支 ref，供 continue/skip/abort 校验分支
+    // 未被切换（detached HEAD 时为 "HEAD"，校验语义仍成立）。
+    let branch_ref = repo.head()?.name().unwrap_or("HEAD").to_string();
+
     // Move the branch to onto (hard reset), then replay the ops forward.
     history::reset_to(repo_path, Some(onto), "hard")?;
     let repo = git2::Repository::open(repo_path)?;
@@ -170,6 +189,7 @@ pub fn start_rebase(repo_path: &Path, onto: &str, ops: Vec<RebaseOp>) -> AppResu
         ops,
         position: 0,
         prev_commit: onto_oid,
+        branch_ref,
     };
     save_state(&repo, &state)?;
     drop(repo);
@@ -182,6 +202,7 @@ pub fn start_rebase(repo_path: &Path, onto: &str, ops: Vec<RebaseOp>) -> AppResu
 pub fn rebase_continue(repo_path: &Path) -> AppResult<RebaseOutcome> {
     let repo = git2::Repository::open(repo_path)?;
     let mut state = load_state(&repo)?;
+    ensure_branch_unchanged(&repo, &state)?;
 
     let mut index = repo.index()?;
     if index.has_conflicts() {
@@ -214,6 +235,7 @@ pub fn rebase_continue(repo_path: &Path) -> AppResult<RebaseOutcome> {
 pub fn rebase_skip(repo_path: &Path) -> AppResult<RebaseOutcome> {
     let repo = git2::Repository::open(repo_path)?;
     let mut state = load_state(&repo)?;
+    ensure_branch_unchanged(&repo, &state)?;
     let prev = state.prev_commit.clone();
     drop(repo);
 
@@ -233,6 +255,7 @@ pub fn rebase_skip(repo_path: &Path) -> AppResult<RebaseOutcome> {
 pub fn rebase_abort(repo_path: &Path) -> AppResult<()> {
     let repo = git2::Repository::open(repo_path)?;
     let state = load_state(&repo)?;
+    ensure_branch_unchanged(&repo, &state)?;
     let original = state.original_head.clone();
     drop(repo);
 
@@ -349,6 +372,25 @@ fn load_state(repo: &git2::Repository) -> AppResult<RebaseState> {
     let path = state_path(repo);
     let raw = std::fs::read_to_string(&path).map_err(|_| AppError::Conflict("no rebase in progress".into()))?;
     serde_json::from_str(&raw).map_err(|e| AppError::Other(format!("corrupt rebase state: {}", e)))
+}
+
+/// PAF-10：校验 rebase 挂起期间分支未被切换——continue/skip/abort 都对
+/// 「HEAD 当前所指 ref」写链/重置，分支已切换时执行会落到错误分支。
+/// 旧版本状态文件无 branch_ref（空值）时跳过校验。
+fn ensure_branch_unchanged(repo: &git2::Repository, state: &RebaseState) -> AppResult<()> {
+    if state.branch_ref.is_empty() {
+        return Ok(());
+    }
+    let current = repo.head()?.name().unwrap_or("HEAD").to_string();
+    if current != state.branch_ref {
+        return Err(AppError::Conflict(format!(
+            "rebase 挂起期间分支已被切换（期望 '{expected}'，当前 '{current}'）。\
+             请先切回 '{expected}' 再继续；如确认放弃本次 rebase，\
+             可切回 '{expected}' 后 Abort",
+            expected = state.branch_ref
+        )));
+    }
+    Ok(())
 }
 
 fn save_state(repo: &git2::Repository, state: &RebaseState) -> AppResult<()> {
@@ -672,6 +714,84 @@ mod tests {
         );
         let subjects = head_subjects(&dir, 2);
         assert_eq!(subjects, vec!["s2", "master again"]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PAF-10：脏工作区启动 rebase 被拒绝（hard reset 会静默丢弃未提交修改）。
+    #[test]
+    fn start_rebase_rejects_dirty_worktree() {
+        let dir = tmpdir("dirty_start");
+        let (_s1, _s2) = setup_diverged(&dir);
+        // 未暂存修改（tracked 文件）。
+        std::fs::write(dir.join("s1.txt"), "dirty\n").unwrap();
+
+        let ops = list_rebase_commits(&dir, "master", None).unwrap();
+        let err = start_rebase(&dir, "master", ops).unwrap_err();
+        assert_eq!(err.code(), "ConflictError");
+        assert!(err.to_string().contains("未提交变更"));
+        // 未跟踪新文件不拦截（与 git 语义一致）。
+        std::fs::write(dir.join("s1.txt"), "s1\n").unwrap();
+        std::fs::write(dir.join("untracked.txt"), "new\n").unwrap();
+        let outcome = start_rebase(&dir, "master", list_rebase_commits(&dir, "master", None).unwrap()).unwrap();
+        assert!(matches!(outcome, RebaseOutcome::Success { .. }));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PAF-10：rebase 挂起期间分支被切换 → Continue / Abort 拒绝，
+    /// 重放链与 abort 重置不得写到错误分支。
+    #[test]
+    fn continue_after_branch_switch_is_rejected() {
+        let dir = tmpdir("switched");
+        let side_head;
+        {
+            let repo = git2::Repository::init(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "base\n", "init");
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.branch("side", &head, false).unwrap();
+            drop(head);
+            commit_file(&repo, &dir, "a.txt", "master\n", "master change");
+            drop(repo);
+        }
+        {
+            checkout(&dir, "side");
+            let repo = git2::Repository::open(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "side\n", "side change");
+            side_head = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+        }
+
+        let ops = list_rebase_commits(&dir, "master", None).unwrap();
+        let outcome = start_rebase(&dir, "master", ops).unwrap();
+        assert!(matches!(outcome, RebaseOutcome::Conflict { .. }));
+
+        // 强制切走分支（模拟挂起期间的用户操作）。
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            repo.set_head("refs/heads/master").unwrap();
+            let mut co = git2::build::CheckoutBuilder::new();
+            co.force();
+            repo.checkout_head(Some(&mut co)).unwrap();
+        }
+
+        // Continue / Skip / Abort 全部拒绝，master 不被破坏。
+        let err = rebase_continue(&dir).unwrap_err();
+        assert_eq!(err.code(), "ConflictError");
+        assert!(err.to_string().contains("分支已被切换"));
+        assert!(rebase_skip(&dir).is_err());
+        assert!(rebase_abort(&dir).is_err());
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            let head = repo.head().unwrap().target().unwrap().to_string();
+            assert_ne!(head, side_head, "abort must not reset the wrong branch");
+        }
+
+        // 切回原分支后 Abort 正常收口。
+        checkout(&dir, "side");
+        rebase_abort(&dir).unwrap();
+        let repo = git2::Repository::open(&dir).unwrap();
+        assert_eq!(repo.head().unwrap().target().unwrap().to_string(), side_head);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
