@@ -2,23 +2,14 @@
 //!
 //! DB 中存储的路径统一为正斜杠（`path_key`）；Windows verbatim 前缀
 //! （`\\?\` / `\\?\UNC\`）在展示与比较前清理。所有路径比较必须经过
-//! 本模块归一化，禁止裸 `==`（平台规范 §1）。
+//! 归一化，禁止裸 `==`（平台规范 §1）。verbatim 剥离的公共实现在
+//! [`crate::pathutil`]。
 
 use std::path::{Path, PathBuf};
 
 pub(super) fn path_key(path: &Path) -> String {
     let normalized = std::fs::canonicalize(path).unwrap_or_else(|_| lexical_normalize(path));
-    strip_windows_verbatim_prefix(&normalized.to_string_lossy()).replace('\\', "/")
-}
-
-pub(super) fn strip_windows_verbatim_prefix(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{rest}")
-    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
-        rest.to_string()
-    } else {
-        path.to_string()
-    }
+    crate::pathutil::strip_windows_verbatim_prefix(&normalized.to_string_lossy()).replace('\\', "/")
 }
 
 fn lexical_normalize(path: &Path) -> PathBuf {

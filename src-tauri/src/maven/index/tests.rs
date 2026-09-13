@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use super::cache::GRAPH_CACHE_CAPACITY;
-use super::path::{path_key, strip_windows_verbatim_prefix};
+use super::path::path_key;
+use crate::pathutil::strip_windows_verbatim_prefix;
 use super::*;
 use crate::db;
 use crate::maven::resolver::{local_artifact_path, DependencySource};

@@ -335,8 +335,8 @@ pub fn find_affected_repos<'a>(changed_paths: &[String], repo_roots: &'a [String
 }
 
 /// Whether `path` is `root` itself or a descendant of `root`. Both arguments
-/// must already be normalized via `normalize_path_for_compare`, so `/` is the
-/// only remaining separator (path-boundary aware: `/ws/a` does not match
+/// must already be normalized via `pathutil::normalize_for_compare`, so `/` is
+/// the only remaining separator (path-boundary aware: `/ws/a` does not match
 /// `/ws/ab`).
 fn path_under_root(path: &str, root: &str) -> bool {
     if !path.starts_with(root) {
@@ -349,24 +349,9 @@ fn path_under_root(path: &str, root: &str) -> bool {
 }
 
 /// Normalize a path for equality/prefix comparison only (never for display or
-/// IO): strip Windows verbatim prefixes (`\\?\` / `\\?\UNC\`), unify separators
-/// to `/`, and case-fold on case-insensitive filesystems (Windows / macOS).
-/// 仿写 `maven/index/path.rs`（`path_key`/`strip_windows_verbatim_prefix` 为
-/// `pub(super)` 且 core→maven 属反向依赖，故按平台规范 §1 在本模块仿写）。
+/// IO). 公共实现在 `pathutil`（PAF-13 引入本模块仿写，PAF-18 收口共享）。
 fn normalize_path_for_compare(path: &str) -> String {
-    let stripped = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{rest}")
-    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
-        rest.to_string()
-    } else {
-        path.to_string()
-    };
-    let unified = stripped.replace('\\', "/");
-    #[cfg(any(windows, target_os = "macos"))]
-    let normalized = unified.to_lowercase();
-    #[cfg(not(any(windows, target_os = "macos")))]
-    let normalized = unified;
-    normalized
+    crate::pathutil::normalize_for_compare(path)
 }
 
 #[cfg(test)]

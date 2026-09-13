@@ -171,7 +171,7 @@
 - P1-22 **git_link 常驻线程 `expect` ×3**（git_link.rs:167/172/174）：一次 SQL 抖动即线程死亡，Git 联动静默失效到重启。
 - P1-23 **MCP 本地端点无鉴权**：`server.rs` 无 token 校验、`read_request` 不校验 Content-Type/Origin/Host（恶意网页可用 text/plain 免 preflight 触发工具调用）；默认端口 39117（:29），discovery 文件退出清理（:264）。
 - P1-24 **凭证可用性 OnceLock 缓存**：`available: OnceLock<bool>`（credentials.rs:49），注释宣称「`refresh_availability` 可重测」但方法未实现——keyring 晚解锁则直到重启都不可用；`get()` 在 OS 后端 Err 时静默降级查会话（:241-246）。
-- P1-25 **5 处 `ends_with(&needle)` 缺路径分隔符边界**：service/mod.rs:82-86、watch/mod.rs:330、git_link.rs:194——project `api` 会误配 `.../myapi`（对照 maven/index/sync.rs:169 用 `{root}/` 做了正确边界）。
+- P1-25 **5 处 `ends_with(&needle)` 缺路径分隔符边界**：service/mod.rs:82-86、watch/mod.rs:330、git_link.rs:194——project `api` 会误配 `.../myapi`（对照 maven/index/sync.rs:169 用 `{root}/` 做了正确边界）。 ✅ 已修复（PAF-18，2026-09-13）
 - P1-26 **`get_workspace_changes` 串行绕过缓存**：逐仓同步调用、无 rayon、不读 status_cache（commands/repository.rs:30-51），首页变更树是全应用最慢列表路径。
 - P1-27 **build_code_index 持全局 DB 锁贯穿扫描 + 无事务**（commands/ai.rs:931-937 起锁贯穿 walkdir 循环）——大仓库索引期间全应用 DB 卡顿。
 - P1-28 **PTY 生命周期**：`close()` 持 sessions 锁轮询最长 2s（pty.rs:465-499）；死会话不回收（:551 注释与实现不符）；Windows exit_code 恒 None（:621-625）；`unwrap_or(0)` + pid==0 直接返回的孤儿路径（:347/:479-482）。

@@ -188,10 +188,10 @@ impl GitLinkEngine {
             Ok(c) => c,
             Err(_) => return (BTreeSet::new(), Vec::new()),
         };
-        let needle = cfg.project.replace('\\', "/");
+        // PAF-18：组件级后缀匹配（project `api` 不匹配 `.../myapi`）。
         let Some(root) = graph.projects.iter().find(|p| {
-            let path = p.path.to_string_lossy().replace('\\', "/");
-            path == needle || path.ends_with(&needle) || p.coordinates.artifact_id == cfg.project
+            crate::pathutil::path_component_match(&p.path.to_string_lossy(), &cfg.project)
+                || p.coordinates.artifact_id == cfg.project
         }) else {
             return (BTreeSet::new(), Vec::new());
         };

@@ -11,6 +11,7 @@ pub mod maven;
 mod models;
 mod network;
 pub mod node;
+pub mod pathutil;
 pub mod process;
 pub mod remote;
 pub mod runtime;

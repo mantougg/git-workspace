@@ -76,17 +76,60 @@ const DEFAULT_MAX_GRAPH_EDGES: usize = 5000;
 /// 按 path / artifactId / groupId:artifactId 匹配项目（与 R-09
 /// `find_root_project` 同口径；R-13 供 closure_preview 复用）。
 ///
-/// 路径匹配对 Windows 分隔符不敏感（R-14 修复：R-02 索引路径统一为正斜杠，
-/// 配置/查询参数可能是反斜杠）。
+/// 路径匹配经 `pathutil::path_component_match`：分隔符/verbatim/大小写
+/// 归一化（R-14 修复）+ 组件级后缀边界（PAF-18 修复：project `api`
+/// 不得匹配 `.../myapi`）。
 fn find_project<'a>(projects: &'a [MavenProjectNode], project: &str) -> Option<&'a MavenProjectNode> {
-    let needle = project.replace('\\', "/");
     projects.iter().find(|p| {
-        let path = p.path.to_string_lossy().replace('\\', "/");
-        path == needle
-            || path.ends_with(&needle)
+        crate::pathutil::path_component_match(&p.path.to_string_lossy(), project)
             || p.coordinates.artifact_id == project
             || format!("{}:{}", p.coordinates.group_id, p.coordinates.artifact_id) == project
     })
+}
+
+#[cfg(test)]
+mod find_project_tests {
+    use super::*;
+    use crate::maven::model::PomCoordinates;
+
+    fn node(path: &str, artifact_id: &str) -> MavenProjectNode {
+        MavenProjectNode {
+            project_id: 1,
+            repository_id: None,
+            path: PathBuf::from(path),
+            coordinates: PomCoordinates {
+                group_id: "com.example".into(),
+                artifact_id: artifact_id.into(),
+                version: "1.0.0".into(),
+            },
+            packaging: "jar".into(),
+            pom_hash: String::new(),
+        }
+    }
+
+    /// PAF-18 回归：project `api` 不得命中 `.../myapi`（组件级后缀边界）。
+    #[test]
+    fn api_does_not_match_myapi_directory() {
+        let projects = vec![node("/ws/backend/myapi", "myapi")];
+        assert!(find_project(&projects, "api").is_none());
+        assert!(find_project(&projects, "myapi").is_some());
+    }
+
+    #[test]
+    fn matches_by_full_component_suffix_or_artifact_id() {
+        let projects = vec![node("/ws/backend/api", "svc-api"), node("/ws/other/myapi", "api")];
+        // 「api」以组件后缀命中第一个（…/api），不命中 …/myapi；
+        // artifactId 与完整路径各自命中预期节点。
+        assert_eq!(find_project(&projects, "api").unwrap().path, PathBuf::from("/ws/backend/api"));
+        assert_eq!(
+            find_project(&projects, "/ws/backend/api").unwrap().path,
+            PathBuf::from("/ws/backend/api")
+        );
+        assert_eq!(find_project(&projects, "svc-api").unwrap().path, PathBuf::from("/ws/backend/api"));
+        // 仅 artifactId 匹配的节点在路径不命中时可达。
+        let only_artifact = vec![node("/ws/other/myapi", "api")];
+        assert_eq!(find_project(&only_artifact, "api").unwrap().path, PathBuf::from("/ws/other/myapi"));
+    }
 }
 
 // ---------------------------------------------------------------------------

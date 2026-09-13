@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**18** · 修复中：**0** · 未开始：**8**
+- 已完成：**19** · 修复中：**0** · 未开始：**7**
 
 ---
 
@@ -49,7 +49,7 @@
 | PAF-15 | stores 过期响应覆盖与 runtime 双监听器竞态（loadSeq 模式推广） | P1 | ✅ | [PAF-15-store-race-loadseq.md](./PAF-15-store-race-loadseq.md) |
 | PAF-16 | terminal store 监听注册失败永久锁死 | P1 | ✅ | [PAF-16-terminal-store-listener-deadlock.md](./PAF-16-terminal-store-listener-deadlock.md) |
 | PAF-17 | GitGraph 冲突横幅红底红字不可见 | P1 | ✅ | [PAF-17-gitgraph-conflict-bar-invisible.md](./PAF-17-gitgraph-conflict-bar-invisible.md) |
-| PAF-18 | 后端路径匹配缺组件边界（ends_with 三处 + guard 大小写/verbatim） | P1 | ⬜ | [PAF-18-path-suffix-boundary.md](./PAF-18-path-suffix-boundary.md) |
+| PAF-18 | 后端路径匹配缺组件边界（ends_with 三处 + guard 大小写/verbatim） | P1 | ✅ | [PAF-18-path-suffix-boundary.md](./PAF-18-path-suffix-boundary.md) |
 | PAF-19 | git_link 常驻线程 expect ×3，SQL 抖动即线程死亡 | P1 | ⬜ | [PAF-19-git-link-thread-expect.md](./PAF-19-git-link-thread-expect.md) |
 | PAF-20 | MCP 本地端点无鉴权（per-boot token + 请求头校验） | P1 | ⬜ | [PAF-20-mcp-endpoint-auth.md](./PAF-20-mcp-endpoint-auth.md) |
 | PAF-21 | 凭证可用性 OnceLock 缓存 + get 静默降级 | P1 | ⬜ | [PAF-21-credential-availability-oncelock.md](./PAF-21-credential-availability-oncelock.md) |

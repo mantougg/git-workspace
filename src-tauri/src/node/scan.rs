@@ -226,13 +226,8 @@ fn normalized_candidate_path(path: &Path) -> PathBuf {
 }
 
 fn strip_windows_verbatim_prefix(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{rest}")
-    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
-        rest.to_string()
-    } else {
-        path.to_string()
-    }
+    // PAF-18：verbatim 剥离公共实现在 pathutil（本模块保留同名转发，测试沿用）。
+    crate::pathutil::strip_windows_verbatim_prefix(path)
 }
 
 /// 全量扫描：收集 → 去重 → 逐个 `-v` 探测（失败降级「未知版本」）。
