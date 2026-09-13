@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**11** · 修复中：**0** · 未开始：**15**
+- 已完成：**12** · 修复中：**0** · 未开始：**14**
 
 ---
 
@@ -44,7 +44,7 @@
 | PAF-10 | Git 操作数据安全前置校验（rebase 脏区 / 分支切换 / merge 前置 / cherry-pick abort） | P1 | ✅ | [PAF-10-git-op-safety-prechecks.md](./PAF-10-git-op-safety-prechecks.md) |
 | PAF-11 | batch_add / batch_restore 收编任务队列（部分失败语义 + 操作日志） | P1 | ✅ | [PAF-11-batch-add-restore-task-queue.md](./PAF-11-batch-add-restore-task-queue.md) |
 | PAF-12 | 无界内存增长三连（AI gateway records / 终端 writeBuffer / chat known_addrs） | P1 | ✅ | [PAF-12-unbounded-memory-trio.md](./PAF-12-unbounded-memory-trio.md) |
-| PAF-13 | core watcher 四缺陷（debounce 丢弃 / NonRecursive 盲区 / mount 不回滚 / 路径未归一化） | P1 | ⬜ | [PAF-13-core-watcher-four-defects.md](./PAF-13-core-watcher-four-defects.md) |
+| PAF-13 | core watcher 四缺陷（debounce 丢弃 / NonRecursive 盲区 / mount 不回滚 / 路径未归一化） | P1 | ✅ | [PAF-13-core-watcher-four-defects.md](./PAF-13-core-watcher-four-defects.md) |
 | PAF-14 | 终端快捷键与命令失效三连（Ctrl+` 死绑定 / 搜索命令无人监听 / 搜索聚焦选择器失效） | P1 | ⬜ | [PAF-14-terminal-shortcut-search-broken.md](./PAF-14-terminal-shortcut-search-broken.md) |
 | PAF-15 | stores 过期响应覆盖与 runtime 双监听器竞态（loadSeq 模式推广） | P1 | ⬜ | [PAF-15-store-race-loadseq.md](./PAF-15-store-race-loadseq.md) |
 | PAF-16 | terminal store 监听注册失败永久锁死 | P1 | ⬜ | [PAF-16-terminal-store-listener-deadlock.md](./PAF-16-terminal-store-listener-deadlock.md) |

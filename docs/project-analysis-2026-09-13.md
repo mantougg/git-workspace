@@ -156,7 +156,7 @@
 - P1-13 **chat known_addrs 无界累积**：`Mutex<HashSet<SocketAddr>>`（chat/manager.rs:72）只插入（:334/:587/:800）无淘汰。 ✅ 已修复（PAF-12，2026-09-13：改为 HashMap<SocketAddr, Instant>，TTL 30min + 硬上限 512 最旧淘汰，带回归测试）
 
 **core watcher（4 个实证缺陷）**
-- P1-14 ① debounce 是**丢弃**非合并：窗口内事件 `continue`（watcher.rs:210-213），连续保存两个文件第二个可能永不触发刷新；② mount 用 NonRecursive（:146-159），子目录编辑不产生事件；③ mount 失败不回滚 `watched` 集合（:64-79），失败目录永不重试且无用户可见错误；④ 事件匹配 `path_under_root` 只做边界字节双兼容，无整串分隔符/大小写/`\\?\` 归一化（git_status.rs:320-338）——违反 AGENTS.md §1 自定规则。
+- P1-14 ① debounce 是**丢弃**非合并：窗口内事件 `continue`（watcher.rs:210-213），连续保存两个文件第二个可能永不触发刷新；② mount 用 NonRecursive（:146-159），子目录编辑不产生事件；③ mount 失败不回滚 `watched` 集合（:64-79），失败目录永不重试且无用户可见错误；④ 事件匹配 `path_under_root` 只做边界字节双兼容，无整串分隔符/大小写/`\\?\` 归一化（git_status.rs:320-338）——违反 AGENTS.md §1 自定规则。 ✅ 已修复（PAF-13，2026-09-13）
 
 **前端**
 - P1-15 **终端搜索聚焦彻底失效**：选择器 `.terminal-search-input input` 要求嵌套 input，而 class 就在 `<input>` 自身（TerminalPanel.vue:321）——`:60-64` 的 `focus()` 永远匹配不到（核查中新发现，比原判断更严重）。

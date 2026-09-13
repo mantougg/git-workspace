@@ -316,18 +316,28 @@ fn compute_ahead_behind(repo: &git2::Repository, branch_name: &str) -> (usize, u
 /// Given a list of changed file paths and candidate repository root paths,
 /// return the repository roots that contain at least one changed path.
 ///
+/// Both sides are normalized before comparison (PAF-13, platform rule §1), so
+/// Windows verbatim prefixes, mixed separators, and — on case-insensitive
+/// filesystems — case differences cannot defeat the match.
+///
 /// Used by the file watcher to refresh only affected repositories instead of
 /// rescanning the whole workspace (incremental status, §37).
 pub fn find_affected_repos<'a>(changed_paths: &[String], repo_roots: &'a [String]) -> Vec<&'a str> {
+    let changed: Vec<String> = changed_paths.iter().map(|p| normalize_path_for_compare(p)).collect();
     repo_roots
         .iter()
-        .filter(|root| changed_paths.iter().any(|cp| path_under_root(cp, root)))
+        .filter(|root| {
+            let root = normalize_path_for_compare(root);
+            changed.iter().any(|cp| path_under_root(cp, &root))
+        })
         .map(|r| r.as_str())
         .collect()
 }
 
-/// Whether `path` is `root` itself or a descendant of `root` (path-boundary
-/// aware, so `/ws/a` does not match `/ws/ab`).
+/// Whether `path` is `root` itself or a descendant of `root`. Both arguments
+/// must already be normalized via `normalize_path_for_compare`, so `/` is the
+/// only remaining separator (path-boundary aware: `/ws/a` does not match
+/// `/ws/ab`).
 fn path_under_root(path: &str, root: &str) -> bool {
     if !path.starts_with(root) {
         return false;
@@ -335,7 +345,28 @@ fn path_under_root(path: &str, root: &str) -> bool {
     if path.len() == root.len() {
         return true;
     }
-    matches!(path.as_bytes().get(root.len()), Some(b'/') | Some(b'\\'))
+    path.as_bytes().get(root.len()) == Some(&b'/')
+}
+
+/// Normalize a path for equality/prefix comparison only (never for display or
+/// IO): strip Windows verbatim prefixes (`\\?\` / `\\?\UNC\`), unify separators
+/// to `/`, and case-fold on case-insensitive filesystems (Windows / macOS).
+/// 仿写 `maven/index/path.rs`（`path_key`/`strip_windows_verbatim_prefix` 为
+/// `pub(super)` 且 core→maven 属反向依赖，故按平台规范 §1 在本模块仿写）。
+fn normalize_path_for_compare(path: &str) -> String {
+    let stripped = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        path.to_string()
+    };
+    let unified = stripped.replace('\\', "/");
+    #[cfg(any(windows, target_os = "macos"))]
+    let normalized = unified.to_lowercase();
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let normalized = unified;
+    normalized
 }
 
 #[cfg(test)]
@@ -355,6 +386,44 @@ mod tests {
         let repos = vec!["D:/ws/a".to_string()];
         let affected = find_affected_repos(&["D:/other/x.txt".to_string()], &repos);
         assert!(affected.is_empty());
+    }
+
+    /// PAF-13: notify on Windows can report verbatim paths with backslashes;
+    /// they must still map to the configured forward-slash repo root.
+    #[test]
+    fn find_affected_repos_matches_verbatim_backslash_paths() {
+        let repos = vec!["D:/ws/a".to_string()];
+        let affected = find_affected_repos(&[r"\\?\D:\ws\a\src\main.rs".to_string()], &repos);
+        assert_eq!(affected, vec!["D:/ws/a"]);
+    }
+
+    /// PAF-13: roots configured with backslashes must match forward-slash
+    /// change events (both sides normalized).
+    #[test]
+    fn find_affected_repos_matches_backslash_roots() {
+        let repos = vec![r"D:\ws\a".to_string()];
+        let affected = find_affected_repos(&["D:/ws/a/src/main.rs".to_string()], &repos);
+        assert_eq!(affected, vec![r"D:\ws\a"]);
+    }
+
+    /// Case-insensitive filesystems (Windows / macOS): drive letter / segment
+    /// case differences must not defeat the match. Linux is case-sensitive by
+    /// design, so the fold is compile-time platform-gated.
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn find_affected_repos_folds_case_on_insensitive_filesystems() {
+        let repos = vec!["D:/ws/a".to_string()];
+        let affected = find_affected_repos(&[r"d:\WS\A\src\main.rs".to_string()], &repos);
+        assert_eq!(affected, vec!["D:/ws/a"]);
+    }
+
+    /// Normalization must not weaken the prefix boundary: `D:/ws/ab` still
+    /// belongs to its own repo, not to `D:/ws/a`.
+    #[test]
+    fn find_affected_repos_still_respects_prefix_boundary_after_normalization() {
+        let repos = vec!["D:/ws/a".to_string(), "D:/ws/ab".to_string()];
+        let affected = find_affected_repos(&[r"\\?\D:\ws\ab\src\main.rs".to_string()], &repos);
+        assert_eq!(affected, vec!["D:/ws/ab"]);
     }
 
     fn commit_file(repo: &git2::Repository, dir: &Path, name: &str, content: &str, msg: &str) {
