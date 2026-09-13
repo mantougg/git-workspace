@@ -638,14 +638,18 @@ function openResolver() {
   align-items: center;
   gap: 10px;
   padding: 6px 16px;
-  background: var(--gw-danger);
-  border-bottom: 1px solid var(--gw-danger);
+  /* PAF-17：改 soft 危险底（同 RuntimeDashboard 惯用法）——原背景与文字同为
+     不透明 --gw-danger，冲突提示完全不可见；亮/暗主题下均为 danger 文字 +
+     近透明底，对比度充足。 */
+  background: color-mix(in srgb, var(--gw-danger) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--gw-danger) 35%, transparent);
   font-size: 13px;
 }
 
 .conflict-text {
   flex: 1;
   color: var(--gw-danger);
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
