@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**25** · 修复中：**0** · 未开始：**1**
+- 已完成：**25** · 修复中：**0** · 暂停（长尾批次）：**1**
 
 ---
 
@@ -57,7 +57,7 @@
 | PAF-23 | build_code_index 持全局 DB 锁贯穿扫描且无事务 | P1 | ✅ | [PAF-23-code-index-db-lock.md](./PAF-23-code-index-db-lock.md) |
 | PAF-24 | PTY 生命周期加固（close 持锁 2s / 死会话回收 / pid=0 / 注释不符） | P1 | ✅ | [PAF-24-pty-lifecycle-hardening.md](./PAF-24-pty-lifecycle-hardening.md) |
 | PAF-25 | Git Console 实时流式接线（run_git_streaming → git_op_output） | P1 | ✅ | [PAF-25-git-console-realtime-streaming.md](./PAF-25-git-console-realtime-streaming.md) |
-| PAF-26 | P2 加固项批次清单（约 40 项，触及文件时顺手修或拆分） | P2 | ⬜ | [PAF-26-p2-hardening-batch.md](./PAF-26-p2-hardening-batch.md) |
+| PAF-26 | P2 加固项批次清单（约 40 项，触及文件时顺手修或拆分） | P2 | ⏸️ | [PAF-26-p2-hardening-batch.md](./PAF-26-p2-hardening-batch.md) |
 
 ---
 

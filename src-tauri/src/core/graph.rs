@@ -318,9 +318,15 @@ pub fn get_branches(repo_path: &Path) -> AppResult<Vec<BranchInfo>> {
         for branch in remote_branches.flatten() {
             let (b, _branch_type) = branch;
             let name = b.name().ok().flatten().unwrap_or("").to_string();
+            // PAF-26：远程跟踪分支与本地当前分支按「{remote}/{branch}」组件级
+            // 对应——`contains` 会把 origin/feat-x 误标为本地 x / feat-x 前缀
+            // 分支的远程对应（远程名不含 '/'，首段即 remote）。
             let is_current = current_branch
                 .as_ref()
-                .map(|cb| name.contains(cb.as_str()))
+                .map(|cb| match name.split_once('/') {
+                    Some((_remote, short)) => short == cb.as_str(),
+                    None => false,
+                })
                 .unwrap_or(false);
             let (oid, message) = if let Some(oid) = b.get().target() {
                 let msg = repo
@@ -472,6 +478,44 @@ mod tests {
         assert!(pos(merge) < pos(main), "merge must precede main parent");
         assert!(pos(merge) < pos(side), "merge must precede side parent");
         assert!(pos(main) < pos(c0) && pos(side) < pos(c0), "c0 must be last");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PAF-26 回归：远程分支 is_current 用 {remote}/{branch} 组件级匹配——
+    /// 本地当前分支为 `x` 时，`origin/feat-x`（contains 误命中）不得标记
+    /// current，`origin/x` 应正确标记。
+    #[test]
+    fn remote_branch_current_match_is_component_exact() {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_graph_remote_cur_{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let repo = init_repo(&dir);
+
+        // 本地分支 x 并切换 HEAD 到它。
+        let commit = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.branch("x", &commit, false).unwrap();
+        repo.set_head("refs/heads/x").unwrap();
+
+        // 远程跟踪引用：origin/feat-x（含 "x" 子串）与 origin/x。
+        repo.reference(
+            "refs/remotes/origin/feat-x",
+            commit.id(),
+            true,
+            "test: remote feat-x",
+        )
+        .unwrap();
+        repo.reference("refs/remotes/origin/x", commit.id(), true, "test: remote x")
+            .unwrap();
+
+        let branches = get_branches(&dir).unwrap();
+        let feat_x = branches.iter().find(|b| b.name == "origin/feat-x").unwrap();
+        let x = branches.iter().find(|b| b.name == "origin/x").unwrap();
+        assert!(!feat_x.is_current, "origin/feat-x 不应误标为当前分支 x 的远程对应");
+        assert!(x.is_current, "origin/x 应标记为当前分支 x 的远程对应");
+        assert!(!feat_x.is_current && x.is_current);
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P2 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ⏸️ 长尾批次 |
 | 来源 | 项目全景分析报告（docs/project-analysis-2026-09-13.md）§3 P2 表，全部经核查 |
 | 关联任务 | 各 PAF-XX 触及文件时顺手拆分独立任务 |
 
@@ -40,8 +40,10 @@
       `core/rebase.rs:323-325`）
 - [ ] stash apply/pop 冲突裸错误无结构化处理；branch_from_stash 四步无回滚；
       stash_clear 非原子（`core/stash.rs:72-141`）
-- [ ] 远程分支 `is_current` 用 `name.contains(cb)` 误标 origin/feat-x
-      （`core/graph.rs:321-324`）
+- [x] 远程分支 `is_current` 用 `name.contains(cb)` 误标 origin/feat-x
+      （`core/graph.rs:321-324`）→ ✅ 已随 PAF-26 批次修复（2026-09-13）：
+      改 `{remote}/{branch}` 组件级匹配（`split_once('/')` 取首段为 remote），
+      回归测试 `remote_branch_current_match_is_component_exact`。
 - [ ] pick_continue 丢原 commit 作者（`core/history.rs:207-214`）
 - [ ] 冲突解决逐文件生成独立操作日志且不可撤销，刷屏 OperationLogView
       （`commands/conflict.rs:58-81`）
@@ -138,11 +140,12 @@
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-13 录入
+- 当前状态：⏸️ 长尾批次（按 skill 定位持续滚动处理）
+- 最近更新：2026-09-13 本批收口
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-13 | ⬜ | 分析报告事实核查批次录入（P2 汇总） |
+| 2026-09-13 | ⏸️ | 本批收口。⏸️ 理由：本清单按其自身定位是「触及对应文件时顺手修、或拆分独立任务」的**长尾 P2 清单**，约 36 项剩余加固各自需要独立的改动面评估与测试验证，一次性批量修改反而引入回归风险，与逐任务提交+验证的批次纪律冲突；按 PAF 批次验收出口「全 ✅（或 ⏸️ 带理由）」以 ⏸️ 收口，后续触及对应文件的 PAF/F 任务继续顺手消化。**已修复 4 项**（详见清单内 [x] 标注）：watcher `last_refresh` 只增不减 + 3 处 `lock().unwrap()`（PAF-13）、`sync_fetch/pull/push` 无超时阻塞主线程（PAF-08）、flood 测试批次上限抖动改确定性断言（PAF-08/25 批次，剩余同类墙钟断言 `search_stays_fast` / diff cache 50ms / benchmark smoke 已在清单内列明建议）、远程分支 `is_current` contains 误标（本批，含回归测试）。 |
