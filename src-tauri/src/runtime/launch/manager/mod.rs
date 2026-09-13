@@ -51,6 +51,7 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 use crate::maven::closure::RuntimeClosureCache;
 use crate::maven::index::DependencyGraphCache;
+use crate::maven::PomCache;
 use crate::runtime::build::runner::{MavenRunner, SpawningMavenRunner};
 use crate::runtime::build::scheduler::BuildScheduler;
 #[cfg(test)]
@@ -73,7 +74,10 @@ use output::BuildLogSink;
 
 use types::{classify_exit, ActiveProcess, Built, CachedLaunch, MonitorOutcome, PidWait, Prepared, RunWait};
 
-pub use types::{EnvironmentOverrides, StartOptions, DEFAULT_SAMPLE_INTERVAL, DEFAULT_START_GRACE, DEFAULT_STOP_GRACE};
+pub use types::{
+    EnvironmentOverrides, StartOptions, DEFAULT_SAMPLE_INTERVAL, DEFAULT_SPAWN_PID_CONFIRM_TIMEOUT,
+    DEFAULT_START_GRACE, DEFAULT_STOP_GRACE,
+};
 
 /// Manager 的可替换依赖（生产默认值 + 测试注入 seam）。
 pub struct RuntimeProcessDeps {
@@ -90,6 +94,11 @@ pub struct RuntimeProcessDeps {
     pub script_approvals: ScriptApprovalStore,
     /// R-16 §41 健康检查引擎；`None` = 不探针（R-12 生命周期推导语义）。
     pub health: Option<Arc<crate::runtime::health::HealthEngine>>,
+    /// PAF-09：主类推断（R-06）共用的 POM Cache（内容指纹失效）——与
+    /// RuntimeService 共享同一实例，避免每次启动全量重扫。
+    pub pom_cache: Arc<PomCache>,
+    /// PAF-02 测试 seam：spawn 后确认 pid 的窗口（生产默认 30s）。
+    pub spawn_pid_confirm_timeout: Duration,
 }
 
 impl Default for RuntimeProcessDeps {
@@ -105,6 +114,8 @@ impl Default for RuntimeProcessDeps {
             sample_interval: DEFAULT_SAMPLE_INTERVAL,
             script_approvals: ScriptApprovalStore::new(crate::runtime::script_approval::script_approvals_path()),
             health: None,
+            pom_cache: Arc::new(PomCache::new()),
+            spawn_pid_confirm_timeout: DEFAULT_SPAWN_PID_CONFIRM_TIMEOUT,
         }
     }
 }
@@ -272,10 +283,27 @@ impl RuntimeProcessManager {
         plan: LaunchPlan,
         strategy: RunStrategy,
     ) {
+        // 指纹按当前持久化配置计算（overrides None），与 prepare() 命中判定
+        // 一致；配置加载失败时指纹取 0，命中判定自然不通过（测试会显式暴露）。
+        let fingerprint = {
+            let conn = self.db.lock().unwrap();
+            crate::runtime::config::load_config_unredacted(&conn, workspace_id, runtime_name)
+                .ok()
+                .map(|config| types::launch_config_fingerprint(&config, None))
+                .unwrap_or(0)
+        };
         self.launch_cache.lock().unwrap().insert(
             (workspace_id, runtime_name.to_string()),
-            CachedLaunch { plan, strategy },
+            CachedLaunch { plan, strategy, config_fingerprint: fingerprint },
         );
+    }
+
+    /// PAF-06：显式清除某 (workspace, runtime) 的构建产物缓存。
+    ///
+    /// 常规路径由缓存内配置指纹自然失效覆盖；此处保留显式入口，供配置
+    /// 删除等无指纹可比对的场景调用。
+    pub fn invalidate_launch_cache(&self, workspace_id: i64, runtime_name: &str) {
+        self.launch_cache.lock().unwrap().remove(&(workspace_id, runtime_name.to_string()));
     }
 
     /// TM-06：获取缓存的启动命令预览（非降级模式）。

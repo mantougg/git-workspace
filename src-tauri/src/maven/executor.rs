@@ -81,6 +81,15 @@ pub fn build_process(req: &MavenExecutionRequest, env: &[(String, String)]) -> C
     for (k, v) in env {
         cmd.env(k, v);
     }
+    // PAF-09（unix，N-07 同构修复）：构建子进程独立成组。mvnw 链 / mvnd /
+    // Windows `cmd /c mvnw.cmd→java` 的「父死孙活」窄窗下，构建取消靠
+    // kill_process_tree 的 parent 链会漏杀被 reparent 的孙子进程；成组后
+    // kill_tree 对组长走 killpg 整组投递（launcher.rs 启动路径同款）。
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     cmd
 }
 

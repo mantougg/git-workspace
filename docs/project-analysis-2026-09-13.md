@@ -129,19 +129,19 @@
 | # | 问题 | 位置 |
 |---|---|---|
 | P0-1 | **中文 commit message 触发 UTF-8 字节边界 panic**：`message.len()` 是字节数，`&message[..47]` 按字节切片，中文第 47 字节落在多字节字符中间直接 panic，提交任务失败 ✅ 已修复（PAF-01，2026-09-13：改为按字符截断 `shorten_message`，带 CJK 回归测试） | `src-tauri/src/task/worker.rs:362-363` |
-| P0-2 | **spawn 后 10s 未确认 pid → 行落终态 Failed 但进程存活，成为不可停止的孤儿**。链路：`spawn_monitor`(:140) 先启动 → `wait_pid_or_outcome` 10s 超时（Windows Defender 冷扫描 java.exe 是现实场景）→ `abort_before_spawn`(:415-431) 置终态 Failed 且 `cancelled:false`，monitor 无 spawn 前取消检查 → `stop()/kill()` 在 `is_terminal()` 早退（control.rs:19/100） | `runtime/launch/manager/start.rs:140-153` |
-| P0-3 | **重复启动守卫 TOCTOU 双进程**：`find_active` 检查（:27-37 一个 db 锁作用域）与 `insert_process`（:39-42 另一个作用域）分离；`runtime_processes` 表无 (workspace_id, runtime_name) 活跃行 UNIQUE 部分索引（schema.rs:610-634 仅两个普通索引）；8 worker 并发提交时可双 spawn | `runtime/launch/manager/start.rs:27-44` |
+| P0-2 | **spawn 后 10s 未确认 pid → 行落终态 Failed 但进程存活，成为不可停止的孤儿**。链路：`spawn_monitor`(:140) 先启动 → `wait_pid_or_outcome` 10s 超时（Windows Defender 冷扫描 java.exe 是现实场景）→ `abort_before_spawn`(:415-431) 置终态 Failed 且 `cancelled:false`，monitor 无 spawn 前取消检查 → `stop()/kill()` 在 `is_terminal()` 早退（control.rs:19/100） ✅ 已修复（PAF-02，2026-09-13：超时分支预置 force_kill，迟到 spawn 由 streaming 循环首拍杀树；窗口放宽至 30s 且可注入；回归测试覆盖） | `runtime/launch/manager/start.rs:140-153` |
+| P0-3 | **重复启动守卫 TOCTOU 双进程**：`find_active` 检查（:27-37 一个 db 锁作用域）与 `insert_process`（:39-42 另一个作用域）分离；`runtime_processes` 表无 (workspace_id, runtime_name) 活跃行 UNIQUE 部分索引（schema.rs:610-634 仅两个普通索引）；8 worker 并发提交时可双 spawn ✅ 已修复（PAF-03，2026-09-13：check+insert 收进同一 DB 锁临界区——单连接写序列化架构下即全量互斥；并发 8 线程回归测试） | `runtime/launch/manager/start.rs:27-44` |
 | P0-4 | **终端大文本粘贴栈溢出**：`btoa(String.fromCharCode(...bytes))` spread 超引擎参数上限抛 RangeError 且未捕获，共 **3 处** ✅ 已修复（PAF-04，2026-09-13：新增分块编码工具 `src/utils/base64.ts`，三处统一替换） | `XtermView.vue:114`、`TerminalPanel.vue:149`、`commands/registry.ts:270` |
 | P0-5 | **GitGraph「加载更多」只生效一次**：先 `commits.value = more`（:317）再比较 `more.length >= commits.value.length + PAGE_SIZE`（:318），后者恒 false；且每次以递增 limit 全量重拉 O(n²) ✅ 已修复（PAF-05，2026-09-13：先记录旧长度再赋值比较；offset 分页改造另立任务） | `src/views/GitGraph.vue:309-327` |
 
 ### P1 —— 本迭代应修（按主题分组）
 
 **启动/停止链路**
-- P1-1 **launch_cache 只插不清**：缓存 `HashMap<(i64,String),CachedLaunch>`（manager/mod.rs:119）只有 insert（mod.rs:275、start.rs:344/:399）与读（mod.rs:289、start.rs:257/:301），无任何失效；`restart()` 强制 `skip_build=true`（control.rs:143-145）→ **改端口/JDK/vm_options 后点「重启」静默用旧 LaunchPlan**。
-- P1-2 **stop 在 pid 未回填时强杀也是 no-op**：terminate 与强杀升级都有 `if let Some(pid)` 守卫（control.rs:29-49），pid 持续为 None 时行停留 Stopping；`restart()` 随即 `start()` 撞 `find_active`（Stopping 非终态，lifecycle.rs:64-66）返回 Conflict。
+- P1-1 **launch_cache 只插不清**：缓存 `HashMap<(i64,String),CachedLaunch>`（manager/mod.rs:119）只有 insert（mod.rs:275、start.rs:344/:399）与读（mod.rs:289、start.rs:257/:301），无任何失效；`restart()` 强制 `skip_build=true`（control.rs:143-145）→ **改端口/JDK/vm_options 后点「重启」静默用旧 LaunchPlan**。 ✅ 已修复（PAF-06，2026-09-13：配置指纹纳入缓存命中判定，配置/覆盖项变化自然失效回退重建；delete 配置显式清除；回归测试覆盖失效+命中两方向）
+- P1-2 **stop 在 pid 未回填时强杀也是 no-op**：terminate 与强杀升级都有 `if let Some(pid)` 守卫（control.rs:29-49），pid 持续为 None 时行停留 Stopping；`restart()` 随即 `start()` 撞 `find_active`（Stopping 非终态，lifecycle.rs:64-66）返回 Conflict。 ✅ 已修复（PAF-07，2026-09-13：stop 先等 pid/outcome 短窗口，拿不到也预置 force_kill 由 streaming 循环收树；restart 等行收口终态再 start；回归测试覆盖）
 - P1-3 **git 网络任务超时后阻塞线程占用**：超时仅 Runtime 类置 cancel flag（worker.rs:297-301），git 类无取消；泄漏点在 tokio blocking 线程池（默认 512）而非 8 个 async worker，网络挂起期间等效无限占用。
-- P1-4 **`infer_main_class` 无缓存全量重扫**：mainClass 缺省时每次 `discover_poms(ws, 5, None, None)`（start.rs:278-279，cache 显式 None），大 workspace 启动秒级延迟。
-- P1-5 **构建路径无进程组**：`process_group(0)` 仅在启动路径（launcher.rs:105），Maven 执行链（executor.rs:75-88 build_process）没有——mvnw/mvnd/Windows `cmd /c` 链存在与 N-07 同构的「父死孙活」窄窗。
+- P1-4 **`infer_main_class` 无缓存全量重扫**：mainClass 缺省时每次 `discover_poms(ws, 5, None, None)`（start.rs:278-279，cache 显式 None），大 workspace 启动秒级延迟。 ✅ 已修复（PAF-09，2026-09-13：manager deps 注入共享 PomCache（内容指纹失效）传给 discover_poms，重复启动不再全量重扫）
+- P1-5 **构建路径无进程组**：`process_group(0)` 仅在启动路径（launcher.rs:105），Maven 执行链（executor.rs:75-88 build_process）没有——mvnw/mvnd/Windows `cmd /c` 链存在与 N-07 同构的「父死孙活」窄窗。 ✅ 已修复（PAF-09，2026-09-13：build_process 补 `process_group(0)`（unix），kill_tree 对组长走 killpg 整组投递）
 
 **Git 客户端数据安全**
 - P1-6 **rebase 启动不查脏工作区**：ops 校验后直接 `history::reset_to(onto,"hard")`（rebase.rs:164-165），未暂存修改被静默丢弃且不入 undo log；`rebase_continue/rebase_skip/merge_abort` 的 hard reset 同理。

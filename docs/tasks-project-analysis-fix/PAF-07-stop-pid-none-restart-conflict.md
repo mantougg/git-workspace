@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 来源 | 项目全景分析报告（docs/project-analysis-2026-09-13.md）P1-2（经核查修正后结论） |
 | 关联任务 | R-10、PAF-02（spawn 超时孤儿） |
 
@@ -24,19 +24,20 @@ Conflict「已在运行」，用户只能干等。
 
 ## 验收标准
 
-- [ ] spawn 慢（pid 未回填）时点 Stop 不长时间无响应、行最终落终态
-- [ ] 紧跟的 Restart 不报 Conflict
-- [ ] 回归测试通过
+- [x] spawn 慢（pid 未回填）时点 Stop 不长时间无响应、行最终落终态
+- [x] 紧跟的 Restart 不报 Conflict
+- [x] 回归测试通过
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-13 录入
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-13 修复完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-13 | ⬜ | 分析报告事实核查批次录入 |
+| 2026-09-13 | ✅ | 证据复核成立。control.rs `stop()`：pid 未回填时先 `wait_pid_or_outcome(SPAWN_PID_WAIT=10s)` 等 pid 或 outcome，仍拿不到也**预置 force_kill**（spawn 完成瞬间 streaming 循环收树），强杀升级分支保留 pid 直杀兜底；`restart()`：stop 后轮询等行收口终态（`RESTART_TERMINAL_WAIT=10s`）再 start，不再撞 Stopping 报 Conflict。回归测试 `stop_during_slow_spawn_reaches_terminal_and_restart_ok`。验证：`cargo test --lib` 881 passed |

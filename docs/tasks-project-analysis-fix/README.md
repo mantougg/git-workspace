@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**3** · 修复中：**0** · 未开始：**23**
+- 已完成：**8** · 修复中：**0** · 未开始：**18**
 
 ---
 
@@ -33,14 +33,14 @@
 | 编号 | 问题 | 优先级 | 状态 | 文档 |
 |---|---|---|---|---|
 | PAF-01 | 中文 commit message 触发 UTF-8 字节边界 panic（worker.rs 按字节切片） | P0 | ✅ | [PAF-01-commit-message-utf8-panic.md](./PAF-01-commit-message-utf8-panic.md) |
-| PAF-02 | Runtime spawn 超时后进程存活但记录终态，不可停止（孤儿进程） | P0 | ⬜ | [PAF-02-runtime-spawn-timeout-orphan.md](./PAF-02-runtime-spawn-timeout-orphan.md) |
-| PAF-03 | Runtime 重复启动守卫 TOCTOU，并发产生双进程 | P0 | ⬜ | [PAF-03-runtime-start-toctou.md](./PAF-03-runtime-start-toctou.md) |
+| PAF-02 | Runtime spawn 超时后进程存活但记录终态，不可停止（孤儿进程） | P0 | ✅ | [PAF-02-runtime-spawn-timeout-orphan.md](./PAF-02-runtime-spawn-timeout-orphan.md) |
+| PAF-03 | Runtime 重复启动守卫 TOCTOU，并发产生双进程 | P0 | ✅ | [PAF-03-runtime-start-toctou.md](./PAF-03-runtime-start-toctou.md) |
 | PAF-04 | 终端 btoa spread 大文本栈溢出（3 处） | P0 | ✅ | [PAF-04-terminal-btoa-spread-overflow.md](./PAF-04-terminal-btoa-spread-overflow.md) |
 | PAF-05 | GitGraph「加载更多」只生效一次（先赋值再比较恒 false + O(n²) 重拉） | P0 | ✅ | [PAF-05-gitgraph-load-more-once.md](./PAF-05-gitgraph-load-more-once.md) |
-| PAF-06 | launch_cache 只插不清，改配置后「重启」静默用旧 LaunchPlan | P1 | ⬜ | [PAF-06-launch-cache-stale-restart.md](./PAF-06-launch-cache-stale-restart.md) |
-| PAF-07 | stop 在 pid 未回填时强杀也是 no-op，restart 撞 Stopping 报 Conflict | P1 | ⬜ | [PAF-07-stop-pid-none-restart-conflict.md](./PAF-07-stop-pid-none-restart-conflict.md) |
+| PAF-06 | launch_cache 只插不清，改配置后「重启」静默用旧 LaunchPlan | P1 | ✅ | [PAF-06-launch-cache-stale-restart.md](./PAF-06-launch-cache-stale-restart.md) |
+| PAF-07 | stop 在 pid 未回填时强杀也是 no-op，restart 撞 Stopping 报 Conflict | P1 | ✅ | [PAF-07-stop-pid-none-restart-conflict.md](./PAF-07-stop-pid-none-restart-conflict.md) |
 | PAF-08 | git 网络任务超时后 spawn_blocking 线程无取消机制 | P1 | ⬜ | [PAF-08-git-network-task-timeout-leak.md](./PAF-08-git-network-task-timeout-leak.md) |
-| PAF-09 | infer_main_class 无缓存全量重扫 + Maven 构建路径无进程组 | P1 | ⬜ | [PAF-09-main-class-cache-build-process-group.md](./PAF-09-main-class-cache-build-process-group.md) |
+| PAF-09 | infer_main_class 无缓存全量重扫 + Maven 构建路径无进程组 | P1 | ✅ | [PAF-09-main-class-cache-build-process-group.md](./PAF-09-main-class-cache-build-process-group.md) |
 | PAF-10 | Git 操作数据安全前置校验（rebase 脏区 / 分支切换 / merge 前置 / cherry-pick abort） | P1 | ⬜ | [PAF-10-git-op-safety-prechecks.md](./PAF-10-git-op-safety-prechecks.md) |
 | PAF-11 | batch_add / batch_restore 收编任务队列（部分失败语义 + 操作日志） | P1 | ⬜ | [PAF-11-batch-add-restore-task-queue.md](./PAF-11-batch-add-restore-task-queue.md) |
 | PAF-12 | 无界内存增长三连（AI gateway records / 终端 writeBuffer / chat known_addrs） | P1 | ⬜ | [PAF-12-unbounded-memory-trio.md](./PAF-12-unbounded-memory-trio.md) |

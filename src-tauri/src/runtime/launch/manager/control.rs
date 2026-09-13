@@ -1,12 +1,13 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::error::{AppError, AppResult};
 use crate::process::kill_tree::kill_process_tree;
 use crate::runtime::launch::store;
 use crate::runtime::launch::{LifecycleStatus, RuntimeProcessInfo};
 
+use super::types::{PidWait, RESTART_TERMINAL_WAIT, SPAWN_PID_WAIT};
 use super::*;
 
 impl RuntimeProcessManager {
@@ -27,13 +28,24 @@ impl RuntimeProcessManager {
                     return self.info(process_id);
                 }
                 handle.build_cancel.store(true, Ordering::Relaxed);
-                if let Some(pid) = handle.pid() {
-                    if !self.deps.launch_runner.terminate(pid) {
-                        handle.force_kill.store(true, Ordering::Relaxed);
-                        if handle.adopted {
-                            kill_process_tree(pid);
+                // PAF-07：pid 未回填（spawn 慢）时 terminate 会直接 no-op，
+                // 强杀升级同样有 `if let Some(pid)` 守卫。先短暂等待 pid 或
+                // outcome 再决策；仍拿不到 pid 也预置 force_kill——spawn 完成
+                // 的瞬间 streaming 循环按取消语义杀树，行最终由 monitor 收口。
+                let pid = match self.wait_pid_or_outcome(&handle, SPAWN_PID_WAIT) {
+                    PidWait::Pid(pid) => Some(pid),
+                    PidWait::Exited | PidWait::Timeout => None,
+                };
+                match pid {
+                    Some(pid) => {
+                        if !self.deps.launch_runner.terminate(pid) {
+                            handle.force_kill.store(true, Ordering::Relaxed);
+                            if handle.adopted {
+                                kill_process_tree(pid);
+                            }
                         }
                     }
+                    None => handle.force_kill.store(true, Ordering::Relaxed),
                 }
                 if !self.wait_outcome(&handle, grace) {
                     log::warn!(
@@ -139,6 +151,27 @@ impl RuntimeProcessManager {
     ) -> AppResult<RuntimeProcessInfo> {
         if self.stop_runtime(workspace_id, runtime_name, None)?.is_some() {
             log::info!("R-10: restart stopped previous instance of '{runtime_name}'");
+            // PAF-07：stop 返回时行可能仍是 Stopping（终态落库由 monitor
+            // 线程异步收口，如 pid 迟到场景）。等行收口到终态再 start，
+            // 否则 find_active 撞非终态行报 Conflict「已在运行」。
+            let deadline = Instant::now() + RESTART_TERMINAL_WAIT;
+            loop {
+                let active = {
+                    let conn = self.db.lock().unwrap();
+                    store::find_active(&conn, workspace_id, runtime_name)?
+                };
+                if active.is_none() {
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    log::warn!(
+                        "R-10: restart of '{runtime_name}' timed out waiting for the \
+                         previous row to settle; proceeding (start may conflict)"
+                    );
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
         options.skip_build = true;
         self.start(workspace_id, runtime_name, options)

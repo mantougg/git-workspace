@@ -178,8 +178,10 @@ impl RuntimeService {
                 events: bridge,
                 logs: Arc::clone(&overrides.logs),
                 sample_interval: overrides.sample_interval,
-                script_approvals: ScriptApprovalStore::new(script_approvals_path.clone()),
                 health: Some(Arc::clone(&health)),
+                // PAF-09：主类推断与 RuntimeService 共享同一 POM Cache。
+                pom_cache: Arc::clone(&pom_cache),
+                ..Default::default()
             },
         ));
 
@@ -202,6 +204,12 @@ impl RuntimeService {
 
     fn now() -> String {
         chrono::Utc::now().to_rfc3339()
+    }
+
+    /// PAF-06：配置删除等场景显式清除构建产物缓存（常规配置更新由缓存内
+    /// 配置指纹自然失效覆盖，无需调用）。
+    pub fn invalidate_launch_cache(&self, workspace_id: i64, runtime_name: &str) {
+        self.processes.invalidate_launch_cache(workspace_id, runtime_name);
     }
 
     fn emit<T: Serialize>(&self, name: &'static str, payload: &T) {
