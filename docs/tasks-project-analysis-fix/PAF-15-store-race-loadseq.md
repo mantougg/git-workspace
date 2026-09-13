@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 来源 | 项目全景分析报告（docs/project-analysis-2026-09-13.md）P1-18/P1-19，核查智能体逐项验证 |
 | 关联任务 | D-15、F-14/F-17（仓库解析链） |
 
@@ -33,19 +33,20 @@
 
 ## 验收标准
 
-- [ ] 快速切换工作区/仓库/文件，旧响应不再覆盖新数据
-- [ ] 快速进出 Runtime 视图不产生重复日志与双份 IPC
-- [ ] `pnpm build` 通过
+- [x] 快速切换工作区/仓库/文件，旧响应不再覆盖新数据
+- [x] 快速进出 Runtime 视图不产生重复日志与双份 IPC
+- [x] `pnpm build` 通过（vue-tsc --noEmit + vite build）
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-13 录入
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-13 修复完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-13 | ⬜ | 分析报告事实核查批次录入 |
+| 2026-09-13 | ✅ | 复核证据全部成立。修复：① runtime store `subscribe` 改缓存 in-flight Promise（`subscribePromise`，参照 terminal.ts `listenersReady` 模式并按 PAF-16 要求补失败回滚——注册中途失败释放已注册部分、清空 Promise 允许重试；`unsubscribe` 先等在途注册完成再统一释放，消除「先清空后回填」泄漏窗口）；② 五处竞态统一防护：runtime.ts `loadConfigs`/`loadProjects`/`loadProcesses`/`loadClosureInfo` 完成时校验 workspaceId 丢弃过期响应；repository.ts 三个列表加载共享 `listSeq` 递增序号（过期响应不回写 `repositoriesWorkspaceId`，避免破坏 F-17 失效判定）；changeSet.ts `refreshSummary` 用 `summarySeq`（目标 id 入参捕获）；RepositoryList.vue `onFileDblClick` 与 RuntimeDependenciesView.vue `onSelectProject` 各自引入递增序号（含 loading/错误提示的 seq 门控）。验证：`pnpm build` 通过。 |

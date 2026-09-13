@@ -162,8 +162,8 @@
 - P1-15 **终端搜索聚焦彻底失效**：选择器 `.terminal-search-input input` 要求嵌套 input，而 class 就在 `<input>` 自身（TerminalPanel.vue:321）——`:60-64` 的 `focus()` 永远匹配不到（核查中新发现，比原判断更严重）。 ✅ 已修复（PAF-14，2026-09-13）
 - P1-16 **Ctrl+\` 快捷键死绑定**：`parseKeyEvent` 只识别数字/字母/Enter/F 键（shortcuts.ts:55-83），反引号返回 `""`，terminal:toggle / terminal:new-shell 永远无法触发，而 StatusBar tooltip 仍在宣传该快捷键。 ✅ 已修复（PAF-14，2026-09-13）
 - P1-17 **「终端内搜索」命令失效**：`registry.ts:239` 派发 `CustomEvent("terminal:toggle-search")`，全工程无任何 addEventListener 接收。 ✅ 已修复（PAF-14，2026-09-13）
-- P1-18 **runtime store 双监听器竞态**：`subscribe` 幂等守卫在第一个 await 之前、`unlisteners` 赋值在 12 个 await listen 全部完成后（runtime.ts:268-334）——快速切视图产生两批监听器（日志重复、事件双触发），前一批永不释放。
-- P1-19 **stores 过期响应覆盖族**（均无 seq/requestId 防护，对照 `DiffViewer.vue:369-395` 的 `loadSeq` 是现成最佳实践）：changeSet.ts:36-52、runtime.ts:92-126、repository.ts:39-62、RepositoryList.vue:1531-1563（双击 diff）、RuntimeDependenciesView.vue:706-718。
+- P1-18 **runtime store 双监听器竞态**：`subscribe` 幂等守卫在第一个 await 之前、`unlisteners` 赋值在 12 个 await listen 全部完成后（runtime.ts:268-334）——快速切视图产生两批监听器（日志重复、事件双触发），前一批永不释放。 ✅ 已修复（PAF-15，2026-09-13）
+- P1-19 **stores 过期响应覆盖族**（均无 seq/requestId 防护，对照 `DiffViewer.vue:369-395` 的 `loadSeq` 是现成最佳实践）：changeSet.ts:36-52、runtime.ts:92-126、repository.ts:39-62、RepositoryList.vue:1531-1563（双击 diff）、RuntimeDependenciesView.vue:706-718。 ✅ 已修复（PAF-15，2026-09-13）
 - P1-20 **terminal store 监听注册失败永久锁死**：`listenersRegistered` 同步置位，任一 listen 抛异常则 `listenersReady` 成永久 rejected promise 且无法重试（terminal.ts:102-139）。
 - P1-21 **GitGraph 冲突横幅红底红字不可见**：`.conflict-bar` background 与 `.conflict-text` color 同用 `var(--gw-danger)`（GitGraph.vue:641/:648；tokens.scss:18 `#ff3b30` 不透明）。
 

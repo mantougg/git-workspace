@@ -1533,9 +1533,13 @@ function repoNameOf(repoPath: string): string {
   return repo?.repoName ?? repoPath.split(/[\\/]/).pop() ?? repoPath;
 }
 
-/** Double-click a file node: show its change content on the right. */
+/** Double-click a file node: show its change content on the right.
+ *  PAF-15：递增序号丢弃过期响应——快速双击不同文件时旧的 diff 结果不得覆盖新选中。 */
+let diffLoadSeq = 0;
+
 async function onFileDblClick(node: ChangeNode) {
   if (!node.repoPath || !node.relPath) return;
+  const seq = ++diffLoadSeq;
   diffLoading.value = true;
   try {
     const normRel = node.relPath.replace(/^\.?\/+/, "").replace(/\\/g, "/");
@@ -1557,6 +1561,7 @@ async function onFileDblClick(node: ChangeNode) {
         // readFileAsDiff failed (binary file, permission, etc.) — fall through
       }
     }
+    if (seq !== diffLoadSeq) return;
     if (match) {
       selectedDiff.value = {
         repoPath: node.repoPath,
@@ -1568,9 +1573,13 @@ async function onFileDblClick(node: ChangeNode) {
       message.info("该文件没有可展示的变更内容");
     }
   } catch (e) {
-    message.error("加载变更内容失败: " + errMsg(e));
+    if (seq === diffLoadSeq) {
+      message.error("加载变更内容失败: " + errMsg(e));
+    }
   } finally {
-    diffLoading.value = false;
+    if (seq === diffLoadSeq) {
+      diffLoading.value = false;
+    }
   }
 }
 

@@ -36,10 +36,17 @@ export const useRepositoryStore = defineStore("repository", () => {
       repositories.value.filter((r) => r.status?.isClean).length,
   );
 
+  // PAF-15：仓库列表加载递增序号——快速切换工作区时旧响应不得覆盖新列表，
+  // 也不得回写 repositoriesWorkspaceId（会破坏 F-17 的失效判定）。
+  let listSeq = 0;
+
   async function scanRepositories(workspaceId: number) {
+    const seq = ++listSeq;
     scanning.value = true;
     try {
-      repositories.value = await repoApi.scanRepositories(workspaceId);
+      const result = await repoApi.scanRepositories(workspaceId);
+      if (seq !== listSeq) return;
+      repositories.value = result;
       repositoriesWorkspaceId.value = workspaceId;
     } catch (e) {
       console.error("Failed to scan repositories:", e);
@@ -50,9 +57,12 @@ export const useRepositoryStore = defineStore("repository", () => {
   }
 
   async function loadRepositories(workspaceId: number) {
+    const seq = ++listSeq;
     loading.value = true;
     try {
-      repositories.value = await repoApi.listRepositories(workspaceId);
+      const result = await repoApi.listRepositories(workspaceId);
+      if (seq !== listSeq) return;
+      repositories.value = result;
       repositoriesWorkspaceId.value = workspaceId;
     } catch (e) {
       console.error("Failed to load repositories:", e);
@@ -65,12 +75,15 @@ export const useRepositoryStore = defineStore("repository", () => {
     workspaceId: number,
     subPath: string,
   ) {
+    const seq = ++listSeq;
     scanning.value = true;
     try {
-      repositories.value = await repoApi.scanRepositoriesSelected(
+      const result = await repoApi.scanRepositoriesSelected(
         workspaceId,
         subPath,
       );
+      if (seq !== listSeq) return;
+      repositories.value = result;
       repositoriesWorkspaceId.value = workspaceId;
     } catch (e) {
       console.error("Failed to scan repository subtree:", e);

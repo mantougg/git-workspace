@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**13** · 修复中：**0** · 未开始：**13**
+- 已完成：**14** · 修复中：**0** · 未开始：**12**
 
 ---
 
@@ -46,7 +46,7 @@
 | PAF-12 | 无界内存增长三连（AI gateway records / 终端 writeBuffer / chat known_addrs） | P1 | ✅ | [PAF-12-unbounded-memory-trio.md](./PAF-12-unbounded-memory-trio.md) |
 | PAF-13 | core watcher 四缺陷（debounce 丢弃 / NonRecursive 盲区 / mount 不回滚 / 路径未归一化） | P1 | ✅ | [PAF-13-core-watcher-four-defects.md](./PAF-13-core-watcher-four-defects.md) |
 | PAF-14 | 终端快捷键与命令失效三连（Ctrl+` 死绑定 / 搜索命令无人监听 / 搜索聚焦选择器失效） | P1 | ✅ | [PAF-14-terminal-shortcut-search-broken.md](./PAF-14-terminal-shortcut-search-broken.md) |
-| PAF-15 | stores 过期响应覆盖与 runtime 双监听器竞态（loadSeq 模式推广） | P1 | ⬜ | [PAF-15-store-race-loadseq.md](./PAF-15-store-race-loadseq.md) |
+| PAF-15 | stores 过期响应覆盖与 runtime 双监听器竞态（loadSeq 模式推广） | P1 | ✅ | [PAF-15-store-race-loadseq.md](./PAF-15-store-race-loadseq.md) |
 | PAF-16 | terminal store 监听注册失败永久锁死 | P1 | ⬜ | [PAF-16-terminal-store-listener-deadlock.md](./PAF-16-terminal-store-listener-deadlock.md) |
 | PAF-17 | GitGraph 冲突横幅红底红字不可见 | P1 | ⬜ | [PAF-17-gitgraph-conflict-bar-invisible.md](./PAF-17-gitgraph-conflict-bar-invisible.md) |
 | PAF-18 | 后端路径匹配缺组件边界（ends_with 三处 + guard 大小写/verbatim） | P1 | ⬜ | [PAF-18-path-suffix-boundary.md](./PAF-18-path-suffix-boundary.md) |
