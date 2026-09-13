@@ -1,15 +1,20 @@
 use std::path::Path;
+use std::time::Duration;
 
 use tauri::{Emitter, State};
 
 use crate::core::git_ops::GitOps;
 use crate::core::git_status;
 use crate::db::dao;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::commit::{CommitIdentity, CommitScanFinding};
 use crate::models::repository::RepoStatus;
 use crate::models::task::{TaskRequest, TaskType};
 use crate::state::AppState;
+
+/// PAF-08：sync 网络命令硬超时（与任务队列 TASK_TIMEOUT 对齐）。超时后
+/// `run_git_streaming` 杀掉 git 进程树，避免无限占用执行线程。
+const SYNC_GIT_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Batch fetch: create Fetch tasks for each repo path and submit to the task queue.
 /// Returns the list of task IDs.
@@ -164,31 +169,45 @@ pub fn set_group_identity(
     dao::set_group_identity(&conn, group_id, name.as_deref(), email.as_deref())
 }
 
-/// Sync fetch for a single repo (synchronous, not queued).
+/// Sync fetch for a single repo (not queued through the task system).
 /// Useful for quick status refresh without the task system.
+///
+/// PAF-08：原为同步命令——git 网络挂起时在 Tauri 主线程无限阻塞且无超时。
+/// 改 async + `spawn_blocking` 并走 `fetch_streaming`：执行移出主线程，
+/// 超时杀 git 进程树。
 #[tauri::command]
-pub fn sync_fetch(repo_path: String) -> AppResult<()> {
-    let ops = GitOps::with_default_ssh();
-    ops.fetch(Path::new(&repo_path)).map(|_| ())
+pub async fn sync_fetch(repo_path: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ops = GitOps::with_default_ssh();
+        ops.fetch_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})
+            .map(|_| ())
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("sync_fetch join error: {e}")))?
 }
 
-/// Sync pull for a single repo (synchronous, not queued).
-/// Returns the refreshed status after pulling.
+/// Sync pull for a single repo (not queued). Returns the refreshed status after pulling.
 #[tauri::command]
-pub fn sync_pull(repo_path: String) -> AppResult<RepoStatus> {
-    let ops = GitOps::with_default_ssh();
-    ops.pull(Path::new(&repo_path))?;
-
-    // Return fresh status after pull
-    let status = git_status::get_repo_status(Path::new(&repo_path))?;
-    Ok(status)
+pub async fn sync_pull(repo_path: String) -> AppResult<RepoStatus> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ops = GitOps::with_default_ssh();
+        ops.pull_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+        git_status::get_repo_status(Path::new(&repo_path))
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("sync_pull join error: {e}")))?
 }
 
-/// Sync push for a single repo (synchronous, not queued).
+/// Sync push for a single repo (not queued).
 #[tauri::command]
-pub fn sync_push(repo_path: String) -> AppResult<()> {
-    let ops = GitOps::with_default_ssh();
-    ops.push(Path::new(&repo_path)).map(|_| ())
+pub async fn sync_push(repo_path: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ops = GitOps::with_default_ssh();
+        ops.push_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})
+            .map(|_| ())
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("sync_push join error: {e}")))?
 }
 
 /// Start watching repositories for file changes.

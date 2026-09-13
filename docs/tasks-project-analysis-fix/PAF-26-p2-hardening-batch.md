@@ -29,8 +29,10 @@
       `src/views/HealthView.vue:295-303`，注释自认 Mirror 需人工同步）
 - [ ] `@status:conflict` 探测不含自研 rebase 状态文件
       gitworkspace-rebase.json（`commands/batch.rs:88-92`）
-- [ ] watcher `last_refresh` 只增不减、3 处 `lock().unwrap()` 中毒级联风险
-      （`core/watcher.rs:65/:81/:179/:190`）
+- [x] watcher `last_refresh` 只增不减、3 处 `lock().unwrap()` 中毒级联风险
+      （`core/watcher.rs:65/:81/:179/:190`）→ ✅ 已随 PAF-13 修复（2026-09-13）：
+      `due`/`last_refresh` 每 flush tick 对 `watched` retain 清理；
+      `lock_watched` 统一中毒恢复。
 
 ### Git 客户端
 
@@ -58,8 +60,9 @@
 - [ ] kill_tree `process_alive` 用秒级 start_time 防 PID 复用，同秒复用误判
       （`process/kill_tree.rs:105-120`）
 - [ ] logger 初始化失败 expect 直接 panic（`src-tauri/src/lib.rs:126`）
-- [ ] `sync_fetch/pull/push` 同步命令无超时阻塞主线程
-      （`commands/git_ops.rs:170-192`）
+- [x] `sync_fetch/pull/push` 同步命令无超时阻塞主线程
+      （`commands/git_ops.rs:170-192`）→ ✅ 已随 PAF-08 修复（2026-09-13）：
+      改 async + `spawn_blocking`，走 `*_streaming`，300s 超时杀进程树。
 - [ ] wait_with_timeout 轮询期间不读管道，超 64KB 输出阻塞至超时
       （`maven/detect_exec.rs:283-318`）
 - [ ] PomCache 容量 2048 在 ≥2550 POM 淘汰（benchmarks/README.md:28 自录）
@@ -119,6 +122,13 @@
       2 批（实测 322 > 320，基线 stash 后 5/5 同样失败，非 PAF 改动引入；
       `search_stays_fast` 100ms 断言同类）。建议加大 slack 或改为确定性
       断言（注入时钟 / 固定窗口计数）
+      → flood 部分已随 PAF-08/25 批次修复（2026-09-13）：`flood_limits()`
+      把 `aggregate_interval` 拉到小时级消除周期 flush，上界改确定性
+      `5000/16 + 2`。剩余同类墙钟预算断言待处理：
+      `logs::search_stays_fast`（100ms）、`commands::diff`
+      `revision_diff_cache_hit`（1000 次 get < 50ms，实测隔离通过/负载失败）、
+      `benchmark::runtime::runtime_benchmark_smoke`（预算 verdicts）——
+      建议后续统一注入时钟或放宽预算。
 
 ## 验收标准
 

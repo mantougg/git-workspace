@@ -1,6 +1,7 @@
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use rusqlite::Connection;
@@ -11,6 +12,7 @@ use crate::core::git_ops::GitOps;
 use crate::db::dao;
 use crate::error::AppError;
 use crate::models::task::{BatchState, GitCommandResult, Task, TaskProgress, TaskStatus, TaskType};
+use crate::process::{OutputStream, StreamingExit};
 use crate::task::dag::{DagContext, DagState};
 
 /// Maximum retries for a failed task (network operations benefit most).
@@ -108,6 +110,160 @@ fn is_cancelled(flags: &DashMap<String, Arc<AtomicBool>>, task_id: &str) -> bool
     flags.get(task_id).map(|f| f.load(Ordering::Relaxed)).unwrap_or(false)
 }
 
+/// PAF-08/PAF-25：git_op_output 实时镜像的 100ms 聚合窗口（T-06 批量思路，
+/// 防 clone/fetch 进度行事件风暴）。
+const CONSOLE_FLUSH_INTERVAL: Duration = Duration::from_millis(100);
+/// 失败时合成可读错误所保留的 stderr 尾部行数。
+const STDERR_TAIL_LINES: usize = 8;
+
+/// Network task types（PAF-25）：统一走 `*_streaming` 流式底座的操作集合。
+fn is_network_task(task_type: &TaskType) -> bool {
+    matches!(
+        task_type,
+        TaskType::Fetch | TaskType::Pull | TaskType::Push | TaskType::Clone { .. }
+    )
+}
+
+/// Network 操作在 Git Console 的命令标题行（与收尾 `git_command_result` 共用）。
+fn network_console_command(task_type: &TaskType) -> Option<String> {
+    match task_type {
+        TaskType::Fetch => Some("git fetch <remote>".to_string()),
+        TaskType::Pull => Some("git pull --ff-only".to_string()),
+        TaskType::Push => Some("git push".to_string()),
+        TaskType::Clone { url, .. } => Some(format!("git clone {}", url)),
+        _ => None,
+    }
+}
+
+/// TM-04：Git Console 镜像事件（git_op_output）。
+fn emit_git_op_output(
+    app: &AppHandle,
+    repo_path: &str,
+    repo_name: &str,
+    command: &str,
+    stream: &str,
+    line: &str,
+) {
+    let _ = app.emit(
+        "git_op_output",
+        serde_json::json!({
+            "repoPath": repo_path,
+            "repoName": repo_name,
+            "command": command,
+            "stream": stream,
+            "line": line,
+        }),
+    );
+}
+
+/// PAF-25：把 git 流式输出实时桥接到 Git Console。
+///
+/// - 100ms 窗口聚合进度行后再 emit（防事件风暴）；
+/// - 累积完整输出（收尾的 `git_command_result` / DAG / batch 汇总复用）；
+/// - 保留 stderr 尾部：`run_git_streaming` 对非零退出只给通用错误，凭尾部
+///   还原可读原因（认证失败等）。
+struct ConsoleStreamer {
+    app: AppHandle,
+    repo_path: String,
+    repo_name: String,
+    command: String,
+    batch: Vec<(OutputStream, String)>,
+    window_start: Instant,
+    full_output: String,
+    stderr_tail: VecDeque<String>,
+}
+
+impl ConsoleStreamer {
+    fn new(app: AppHandle, repo_path: String, repo_name: String, command: String) -> Self {
+        ConsoleStreamer {
+            app,
+            repo_path,
+            repo_name,
+            command,
+            batch: Vec::new(),
+            window_start: Instant::now(),
+            full_output: String::new(),
+            stderr_tail: VecDeque::new(),
+        }
+    }
+
+    /// 命令标题行（`$ git fetch <remote>` 样式，先于输出发出）。
+    fn emit_meta_header(&self) {
+        emit_git_op_output(
+            &self.app,
+            &self.repo_path,
+            &self.repo_name,
+            &self.command,
+            "meta",
+            &format!("$ {}", self.command),
+        );
+    }
+
+    fn on_line(&mut self, stream: OutputStream, line: &str) {
+        self.full_output.push_str(line);
+        self.full_output.push('\n');
+        if matches!(stream, OutputStream::Stderr) {
+            if self.stderr_tail.len() == STDERR_TAIL_LINES {
+                self.stderr_tail.pop_front();
+            }
+            self.stderr_tail.push_back(line.to_string());
+        }
+        self.batch.push((stream, line.to_string()));
+        if self.window_start.elapsed() >= CONSOLE_FLUSH_INTERVAL {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if self.batch.is_empty() {
+            return;
+        }
+        for (stream, line) in std::mem::take(&mut self.batch) {
+            let stream_str = match stream {
+                OutputStream::Stdout => "stdout",
+                OutputStream::Stderr => "stderr",
+            };
+            emit_git_op_output(
+                &self.app,
+                &self.repo_path,
+                &self.repo_name,
+                &self.command,
+                stream_str,
+                &line,
+            );
+        }
+        self.window_start = Instant::now();
+    }
+
+    /// 非成功结局在 Console 补一行可读结论（超时/取消/失败）。
+    fn emit_outcome_line(&self, reason: &str) {
+        emit_git_op_output(
+            &self.app,
+            &self.repo_path,
+            &self.repo_name,
+            &self.command,
+            "meta",
+            &format!("✘ {reason}"),
+        );
+    }
+
+    /// 失败时合成可读错误：优先 stderr 尾部，退化到原始错误。
+    fn readable_error(&self, err: AppError) -> AppError {
+        let msg = err.to_string();
+        if msg.contains("exited with code") && !self.stderr_tail.is_empty() {
+            let tail = self
+                .stderr_tail
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join("\n");
+            AppError::Git(git2::Error::from_str(tail.trim()))
+        } else {
+            err
+        }
+    }
+}
+
 /// Truncate a commit message for the Git Console meta line, by **chars** not
 /// bytes — a byte slice would panic on a multi-byte UTF-8 boundary (e.g. CJK).
 fn shorten_message(message: &str) -> String {
@@ -196,6 +352,7 @@ async fn execute_task(
         let db_for_exec = Arc::clone(db);
         let app_for_exec = app.clone();
         let task_id_for_exec = task.id.clone();
+        let repo_name_for_exec = task.repo_name.clone();
         let hard_timeout = if is_runtime { RUNTIME_TASK_TIMEOUT } else { TASK_TIMEOUT };
 
         let result = tokio::time::timeout(
@@ -312,6 +469,72 @@ async fn execute_task(
                     }
                     Ok(out)
                 }
+                TaskType::Fetch | TaskType::Pull | TaskType::Push | TaskType::Clone { .. } => {
+                    // PAF-08/PAF-25：网络操作统一走 `*_streaming` 流式底座——
+                    // 任务级取消与超时直接杀 git 进程树（blocking 线程随即
+                    // 回收，不再悬挂占用），输出逐行实时镜像到 Git Console；
+                    // tokio 外层超时降级为兜底护栏。
+                    let cancel = cancel_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+                    let command = network_console_command(&task_type_for_exec)
+                        .unwrap_or_else(|| "git network op".to_string());
+                    let mut streamer = ConsoleStreamer::new(
+                        app_for_exec.clone(),
+                        repo_path.clone(),
+                        repo_name_for_exec.clone(),
+                        command.clone(),
+                    );
+                    streamer.emit_meta_header();
+
+                    let streaming_result = match &task_type_for_exec {
+                        TaskType::Fetch => ops.fetch_streaming(
+                            std::path::Path::new(&repo_path),
+                            Some(cancel.as_ref()),
+                            Some(hard_timeout),
+                            &mut |s, l| streamer.on_line(s, l),
+                        ),
+                        TaskType::Pull => ops.pull_streaming(
+                            std::path::Path::new(&repo_path),
+                            Some(cancel.as_ref()),
+                            Some(hard_timeout),
+                            &mut |s, l| streamer.on_line(s, l),
+                        ),
+                        TaskType::Push => ops.push_streaming(
+                            std::path::Path::new(&repo_path),
+                            Some(cancel.as_ref()),
+                            Some(hard_timeout),
+                            &mut |s, l| streamer.on_line(s, l),
+                        ),
+                        TaskType::Clone { url, branch } => ops.clone_streaming(
+                            std::path::Path::new(&repo_path),
+                            url,
+                            branch.as_deref(),
+                            Some(cancel.as_ref()),
+                            Some(hard_timeout),
+                            &mut |s, l| streamer.on_line(s, l),
+                        ),
+                        _ => unreachable!("network branch guard"),
+                    };
+                    streamer.flush();
+
+                    match streaming_result {
+                        Ok(StreamingExit { .. }) => {
+                            let out = streamer.full_output.trim().to_string();
+                            Ok(if out.is_empty() { None } else { Some(out) })
+                        }
+                        Err(e) => {
+                            let msg = e.to_string();
+                            let reason = if msg.contains("timed out") {
+                                format!("超时（≥{}s），git 进程已终止", hard_timeout.as_secs())
+                            } else if msg.contains("cancelled") {
+                                "已取消".to_string()
+                            } else {
+                                msg
+                            };
+                            streamer.emit_outcome_line(&reason);
+                            Err(streamer.readable_error(e))
+                        }
+                    }
+                }
                 _ => ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path)),
             }),
         )
@@ -348,12 +571,18 @@ async fn execute_task(
         // Retry on failure with exponential backoff. Only network operations
         // (Fetch/Pull/Push/Clone) are retried: a commit failure is local and a
         // Commit & Push middle-state failure must never re-run the commit
-        // (T-11; the push itself is retried inside execute).
+        // (T-11; the push itself is retried inside execute). Cancelled tasks
+        // must not retry — the flag is sticky and the retry would immediately
+        // re-run an operation the user asked to stop (PAF-08).
         let retryable = matches!(
             task_type,
             TaskType::Fetch | TaskType::Pull | TaskType::Push | TaskType::Clone { .. }
         );
-        if retryable && matches!(status, TaskStatus::Failed { .. }) && attempt < MAX_RETRIES {
+        if retryable
+            && matches!(status, TaskStatus::Failed { .. })
+            && !is_cancelled(cancel_flags, &task.id)
+            && attempt < MAX_RETRIES
+        {
             attempt += 1;
             let backoff = Duration::from_millis(500 * 2u64.pow(attempt as u32));
             log::warn!(
@@ -379,11 +608,10 @@ async fn execute_task(
     // Emit an IDE-style git console event for all git operations.
     // Network operations and libgit2 operations both get meta lines in Git Console.
     let console_command = match &task_type {
-        // Network operations
-        TaskType::Fetch => Some("git fetch <remote>".to_string()),
-        TaskType::Pull => Some("git pull --ff-only".to_string()),
-        TaskType::Push => Some("git push".to_string()),
-        TaskType::Clone { url, .. } => Some(format!("git clone {}", url)),
+        // Network operations（PAF-08/25：与流式执行共用标题行）
+        TaskType::Fetch | TaskType::Pull | TaskType::Push | TaskType::Clone { .. } => {
+            network_console_command(&task_type)
+        }
         TaskType::Commit { then_push: true, .. } => Some("git commit && git push".to_string()),
         // Shell / Node
         TaskType::ShellCommand { command, .. } => Some(command.clone()),
@@ -432,30 +660,29 @@ async fn execute_task(
             },
         );
 
-        // TM-04：Git Console 镜像事件（git_op_output）
-        // 发送 meta 行（命令标题）和输出行到终端面板 Git Console
-        let _ = app.emit(
-            "git_op_output",
-            &serde_json::json!({
-                "repoPath": task.repo_path,
-                "repoName": task.repo_name,
-                "command": command,
-                "stream": "meta",
-                "line": format!("$ {}", command),
-            }),
-        );
-        if !out.is_empty() {
-            for line in out.lines() {
-                let _ = app.emit(
-                    "git_op_output",
-                    &serde_json::json!({
-                        "repoPath": task.repo_path,
-                        "repoName": task.repo_name,
-                        "command": command,
-                        "stream": if success { "stdout" } else { "stderr" },
-                        "line": line,
-                    }),
-                );
+        // TM-04：Git Console 镜像事件（git_op_output）。
+        // PAF-25：网络操作已在执行期间实时流式输出（含命令标题行与失败结论
+        // 行），收尾不再重复发送，避免 Console 出现两份。
+        if !is_network_task(&task_type) {
+            emit_git_op_output(
+                app,
+                &task.repo_path,
+                &task.repo_name,
+                &command,
+                "meta",
+                &format!("$ {}", command),
+            );
+            if !out.is_empty() {
+                for line in out.lines() {
+                    emit_git_op_output(
+                        app,
+                        &task.repo_path,
+                        &task.repo_name,
+                        &command,
+                        if success { "stdout" } else { "stderr" },
+                        line,
+                    );
+                }
             }
         }
     }

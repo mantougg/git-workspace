@@ -24,7 +24,7 @@
 ## 总体进度
 
 - 任务总数：**26**
-- 已完成：**16** · 修复中：**0** · 未开始：**10**
+- 已完成：**18** · 修复中：**0** · 未开始：**8**
 
 ---
 
@@ -39,7 +39,7 @@
 | PAF-05 | GitGraph「加载更多」只生效一次（先赋值再比较恒 false + O(n²) 重拉） | P0 | ✅ | [PAF-05-gitgraph-load-more-once.md](./PAF-05-gitgraph-load-more-once.md) |
 | PAF-06 | launch_cache 只插不清，改配置后「重启」静默用旧 LaunchPlan | P1 | ✅ | [PAF-06-launch-cache-stale-restart.md](./PAF-06-launch-cache-stale-restart.md) |
 | PAF-07 | stop 在 pid 未回填时强杀也是 no-op，restart 撞 Stopping 报 Conflict | P1 | ✅ | [PAF-07-stop-pid-none-restart-conflict.md](./PAF-07-stop-pid-none-restart-conflict.md) |
-| PAF-08 | git 网络任务超时后 spawn_blocking 线程无取消机制 | P1 | ⬜ | [PAF-08-git-network-task-timeout-leak.md](./PAF-08-git-network-task-timeout-leak.md) |
+| PAF-08 | git 网络任务超时后 spawn_blocking 线程无取消机制 | P1 | ✅ | [PAF-08-git-network-task-timeout-leak.md](./PAF-08-git-network-task-timeout-leak.md) |
 | PAF-09 | infer_main_class 无缓存全量重扫 + Maven 构建路径无进程组 | P1 | ✅ | [PAF-09-main-class-cache-build-process-group.md](./PAF-09-main-class-cache-build-process-group.md) |
 | PAF-10 | Git 操作数据安全前置校验（rebase 脏区 / 分支切换 / merge 前置 / cherry-pick abort） | P1 | ✅ | [PAF-10-git-op-safety-prechecks.md](./PAF-10-git-op-safety-prechecks.md) |
 | PAF-11 | batch_add / batch_restore 收编任务队列（部分失败语义 + 操作日志） | P1 | ✅ | [PAF-11-batch-add-restore-task-queue.md](./PAF-11-batch-add-restore-task-queue.md) |
@@ -56,7 +56,7 @@
 | PAF-22 | get_workspace_changes 串行且绕过缓存（首页最慢路径） | P1 | ⬜ | [PAF-22-workspace-changes-serial.md](./PAF-22-workspace-changes-serial.md) |
 | PAF-23 | build_code_index 持全局 DB 锁贯穿扫描且无事务 | P1 | ⬜ | [PAF-23-code-index-db-lock.md](./PAF-23-code-index-db-lock.md) |
 | PAF-24 | PTY 生命周期加固（close 持锁 2s / 死会话回收 / pid=0 / 注释不符） | P1 | ⬜ | [PAF-24-pty-lifecycle-hardening.md](./PAF-24-pty-lifecycle-hardening.md) |
-| PAF-25 | Git Console 实时流式接线（run_git_streaming → git_op_output） | P1 | ⬜ | [PAF-25-git-console-realtime-streaming.md](./PAF-25-git-console-realtime-streaming.md) |
+| PAF-25 | Git Console 实时流式接线（run_git_streaming → git_op_output） | P1 | ✅ | [PAF-25-git-console-realtime-streaming.md](./PAF-25-git-console-realtime-streaming.md) |
 | PAF-26 | P2 加固项批次清单（约 40 项，触及文件时顺手修或拆分） | P2 | ⬜ | [PAF-26-p2-hardening-batch.md](./PAF-26-p2-hardening-batch.md) |
 
 ---

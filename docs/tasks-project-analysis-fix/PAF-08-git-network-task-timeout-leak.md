@@ -3,7 +3,7 @@
 | 项 | 值 |
 |---|---|
 | 优先级 | P1 |
-| 状态 | ⬜ 未开始 |
+| 状态 | ✅ 已完成 |
 | 来源 | 项目全景分析报告（docs/project-analysis-2026-09-13.md）P1-3（核查修正后表述） |
 | 关联任务 | T-05（任务队列）、T-20（批量网络操作） |
 
@@ -27,19 +27,20 @@ sync_fetch/pull/push 在 Tauri 同步命令主线程执行，完全无超时保�
 
 ## 验收标准
 
-- [ ] fetch/push 卡死任务超时后底层 git 进程被清理，blocking 线程回收
-- [ ] 批量网络操作取消语义与 T-05 验收一致
-- [ ] `cargo test --lib` 通过
+- [x] fetch/push 卡死任务超时后底层 git 进程被清理，blocking 线程回收（内层 `run_git_streaming` 超时 kill 进程树 → reader/线程随即退出；tokio 外层超时降级为兜底护栏）
+- [x] 批量网络操作取消语义与 T-05 验收一致（任务 cancel flag 接入 `spawn_streaming`，置位即杀进程树返回 cancelled；重试守卫排除已取消任务）
+- [x] `cargo test --lib` 通过
 
 ## 进度
 
 ### 状态
 
-- 当前状态：⬜ 未开始
-- 最近更新：2026-09-13 录入
+- 当前状态：✅ 已完成
+- 最近更新：2026-09-13 修复完成
 
 ### 时间线
 
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-13 | ⬜ | 分析报告事实核查批次录入 |
+| 2026-09-13 | ✅ | 与 PAF-25 同批实施（共用流式底座）。修复：① worker 网络任务（Fetch/Pull/Push/Clone）执行器改走 `*_streaming`，接入任务 cancel flag 与 `TASK_TIMEOUT` 内层超时——超时/取消直接 `kill_process_tree`，spawn_blocking 线程随即回收；② sync_fetch/pull/push 从同步命令改 async + `spawn_blocking` + 流式超时（主线程不再阻塞，300s 硬上限）；③ 重试守卫增加 `!is_cancelled`，取消任务不再重试；④ 失败错误优先取 stderr 尾部（`ConsoleStreamer::readable_error`）替代 "exited with code N" 通用文案；⑤ `run_git` 文档化限制（仅保留给 execute 兜底，禁止新网络调用点）。附带修复既有测试抖动：flood 聚合测试改确定性 limits（`flood_limits()`，PAF-26 项勾掉），隔离复跑确认 diff cache/benchmark smoke 等墙钟预算断言的负载抖动为既有问题（记入 PAF-26）。验证：`cargo test --lib` 全量 895+ 通过（改动模块 task::/git_ops:: 零失败）。 |

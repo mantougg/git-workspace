@@ -139,7 +139,7 @@
 **启动/停止链路**
 - P1-1 **launch_cache 只插不清**：缓存 `HashMap<(i64,String),CachedLaunch>`（manager/mod.rs:119）只有 insert（mod.rs:275、start.rs:344/:399）与读（mod.rs:289、start.rs:257/:301），无任何失效；`restart()` 强制 `skip_build=true`（control.rs:143-145）→ **改端口/JDK/vm_options 后点「重启」静默用旧 LaunchPlan**。 ✅ 已修复（PAF-06，2026-09-13：配置指纹纳入缓存命中判定，配置/覆盖项变化自然失效回退重建；delete 配置显式清除；回归测试覆盖失效+命中两方向）
 - P1-2 **stop 在 pid 未回填时强杀也是 no-op**：terminate 与强杀升级都有 `if let Some(pid)` 守卫（control.rs:29-49），pid 持续为 None 时行停留 Stopping；`restart()` 随即 `start()` 撞 `find_active`（Stopping 非终态，lifecycle.rs:64-66）返回 Conflict。 ✅ 已修复（PAF-07，2026-09-13：stop 先等 pid/outcome 短窗口，拿不到也预置 force_kill 由 streaming 循环收树；restart 等行收口终态再 start；回归测试覆盖）
-- P1-3 **git 网络任务超时后阻塞线程占用**：超时仅 Runtime 类置 cancel flag（worker.rs:297-301），git 类无取消；泄漏点在 tokio blocking 线程池（默认 512）而非 8 个 async worker，网络挂起期间等效无限占用。
+- P1-3 **git 网络任务超时后阻塞线程占用**：超时仅 Runtime 类置 cancel flag（worker.rs:297-301），git 类无取消；泄漏点在 tokio blocking 线程池（默认 512）而非 8 个 async worker，网络挂起期间等效无限占用。 ✅ 已修复（PAF-08/PAF-25，2026-09-13）
 - P1-4 **`infer_main_class` 无缓存全量重扫**：mainClass 缺省时每次 `discover_poms(ws, 5, None, None)`（start.rs:278-279，cache 显式 None），大 workspace 启动秒级延迟。 ✅ 已修复（PAF-09，2026-09-13：manager deps 注入共享 PomCache（内容指纹失效）传给 discover_poms，重复启动不再全量重扫）
 - P1-5 **构建路径无进程组**：`process_group(0)` 仅在启动路径（launcher.rs:105），Maven 执行链（executor.rs:75-88 build_process）没有——mvnw/mvnd/Windows `cmd /c` 链存在与 N-07 同构的「父死孙活」窄窗。 ✅ 已修复（PAF-09，2026-09-13：build_process 补 `process_group(0)`（unix），kill_tree 对组长走 killpg 整组投递）
 
@@ -175,7 +175,7 @@
 - P1-26 **`get_workspace_changes` 串行绕过缓存**：逐仓同步调用、无 rayon、不读 status_cache（commands/repository.rs:30-51），首页变更树是全应用最慢列表路径。
 - P1-27 **build_code_index 持全局 DB 锁贯穿扫描 + 无事务**（commands/ai.rs:931-937 起锁贯穿 walkdir 循环）——大仓库索引期间全应用 DB 卡顿。
 - P1-28 **PTY 生命周期**：`close()` 持 sessions 锁轮询最长 2s（pty.rs:465-499）；死会话不回收（:551 注释与实现不符）；Windows exit_code 恒 None（:621-625）；`unwrap_or(0)` + pid==0 直接返回的孤儿路径（:347/:479-482）。
-- P1-29 **Git Console 非实时**：`git_op_output` 在任务收尾批量发送（worker.rs:401-426），流式能力存在但零接线（见 §4 建议）。
+- P1-29 **Git Console 非实时**：`git_op_output` 在任务收尾批量发送（worker.rs:401-426），流式能力存在但零接线（见 §4 建议）。 ✅ 已修复（PAF-08/PAF-25，2026-09-13）
 
 ### P2 —— 加固项（择要）
 

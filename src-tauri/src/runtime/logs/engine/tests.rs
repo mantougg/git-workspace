@@ -27,6 +27,17 @@ fn test_limits() -> LogLimits {
     }
 }
 
+/// flood 测试专用：把周期 flush 间隔拉到小时级，让批次上界只由
+/// `batch_max_lines` 决定——默认 20ms 间隔下，并行测试负载会拉长写入循环、
+/// 产生数量不可预测的周期边界批次（实测 322 > 313+8 旧上界），断言随
+/// 机器速度抖动。行数上界的回归信号（逐行无聚合 ≈ 5000 批）保持不变。
+fn flood_limits() -> LogLimits {
+    LogLimits {
+        aggregate_interval: Duration::from_secs(3600),
+        ..test_limits()
+    }
+}
+
 fn open(
     engine: &RuntimeLogEngine,
     root: &Path,
@@ -101,7 +112,7 @@ fn capture_masks_secrets_before_persisting() {
 fn flood_is_aggregated_and_ring_stays_bounded() {
     let root = temp_root("flood");
     let events = Arc::new(VecEventSink::default());
-    let engine = RuntimeLogEngine::with_limits(test_limits());
+    let engine = RuntimeLogEngine::with_limits(flood_limits());
     let session = open(&engine, &root, 2, vec![], &events);
     for i in 0..5000 {
         session.log(LogPhase::Run, OutputStream::Stdout, &format!("flood line {i}"));
@@ -115,9 +126,11 @@ fn flood_is_aggregated_and_ring_stays_bounded() {
         .iter()
         .filter(|e| matches!(e, RuntimeEvent::Logs { process_id: 2, .. }))
         .count();
+    // 无周期 flush（间隔 1 小时）时批次上界是确定性的：
+    // ceil(5000 / 16) = 313。留 2 的余量防 worker 调度边缘。
     assert!(
-        batch_count <= 5000 / 16 + 8,
-        "每事件 ≤16 行 + 少量周期边界批次: {batch_count}"
+        batch_count <= 5000 / 16 + 2,
+        "每事件 ≤16 行（无周期 flush）: {batch_count}"
     );
     let seqs: Vec<u64> = lines.iter().map(|l| l.seq).collect();
     assert_eq!(seqs, (1..=5000).collect::<Vec<_>>(), "序号连续有序");
