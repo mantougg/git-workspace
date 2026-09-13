@@ -7,6 +7,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { useTerminalStore } from "@/stores/terminal";
+import { encodeUtf8Base64 } from "@/utils/base64";
 import TerminalTabs from "./TerminalTabs.vue";
 import XtermView from "./XtermView.vue";
 
@@ -144,10 +145,7 @@ async function contextPaste() {
   hideContextMenu();
   const text = await navigator.clipboard.readText();
   if (text && activeTabId.value) {
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(text);
-    const base64 = btoa(String.fromCharCode(...bytes));
-    await terminalStore.writeToSession(activeTabId.value, base64);
+    await terminalStore.writeToSession(activeTabId.value, encodeUtf8Base64(text));
   }
 }
 

@@ -13,6 +13,7 @@ import type { useWorkspaceStore } from "@/stores/workspace";
 import type { useRepositoryStore } from "@/stores/repository";
 import type { useAiStore } from "@/stores/ai";
 import { openInTerminal, openInIde, type TerminalKind, type IdeKind } from "@/api/integration";
+import { encodeUtf8Base64 } from "@/utils/base64";
 
 export interface Command {
   id: string;
@@ -264,11 +265,8 @@ function getEmbeddedTerminalCommands(_ctx: CommandContext): Command[] {
           const store = useTerminalStore();
           const sessionId = store.activeTabId;
           if (sessionId) {
-            // 将文本转为 base64
-            const encoder = new TextEncoder();
-            const bytes = encoder.encode(text);
-            const base64 = btoa(String.fromCharCode(...bytes));
-            await store.writeToSession(sessionId, base64);
+            // 将文本转为 base64（分块编码避免大输入栈溢出）
+            await store.writeToSession(sessionId, encodeUtf8Base64(text));
           }
         }
       },
