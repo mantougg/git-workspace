@@ -108,6 +108,18 @@ fn is_cancelled(flags: &DashMap<String, Arc<AtomicBool>>, task_id: &str) -> bool
     flags.get(task_id).map(|f| f.load(Ordering::Relaxed)).unwrap_or(false)
 }
 
+/// Truncate a commit message for the Git Console meta line, by **chars** not
+/// bytes — a byte slice would panic on a multi-byte UTF-8 boundary (e.g. CJK).
+fn shorten_message(message: &str) -> String {
+    const LIMIT: usize = 50;
+    if message.chars().count() > LIMIT {
+        let head: String = message.chars().take(LIMIT - 3).collect();
+        format!("{}…", head)
+    } else {
+        message.to_string()
+    }
+}
+
 /// Execute a single task: update status, run the Git operation (with timeout +
 /// retries), honour cancellation, and emit progress.
 #[allow(clippy::too_many_arguments)]
@@ -359,12 +371,7 @@ async fn execute_task(
             if *amend {
                 Some("git commit --amend".to_string())
             } else {
-                let short_msg = if message.len() > 50 {
-                    format!("{}…", &message[..47])
-                } else {
-                    message.clone()
-                };
-                Some(format!("git commit -m \"{}\"", short_msg))
+                Some(format!("git commit -m \"{}\"", shorten_message(message)))
             }
         }
         TaskType::BranchOp { op, name, .. } => {
@@ -601,5 +608,56 @@ pub(crate) fn update_batch(
             tokio::time::sleep(Duration::from_secs(30)).await;
             batches.remove(&batch_id);
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shorten_message;
+
+    #[test]
+    fn short_message_unchanged() {
+        assert_eq!(shorten_message("fix: parser"), "fix: parser");
+    }
+
+    #[test]
+    fn ascii_long_message_truncated() {
+        let msg = "a".repeat(80);
+        let out = shorten_message(&msg);
+        assert_eq!(out.chars().count(), 48); // 47 chars + '…'
+        assert!(out.ends_with('…'));
+    }
+
+    // PAF-01 回归：多字节字符落在截断点附近时按字符截断，不再 panic。
+    #[test]
+    fn cjk_long_message_truncated_without_panic() {
+        // 60 个汉字 = 180 字节：旧代码 `&message[..47]` 在字节边界直接 panic。
+        let msg = "修".repeat(60);
+        let out = shorten_message(&msg);
+        assert_eq!(out.chars().count(), 48); // 47 chars + '…'
+        assert!(out.ends_with('…'));
+    }
+
+    // PAF-01 回归：字节数超阈值但字符数未超，按字符语义不截断也不 panic。
+    #[test]
+    fn cjk_byte_over_threshold_char_under_threshold() {
+        let msg = "修".repeat(40); // 40 chars = 120 bytes；旧代码按字节切片在此 panic
+        assert_eq!(shorten_message(&msg), msg);
+    }
+
+    #[test]
+    fn mixed_multibyte_boundary_truncated_without_panic() {
+        // ASCII 与 CJK 混排，任意字节长度组合都不允许 panic。
+        for n in 0..=60 {
+            let msg = format!("{}{}", "x", "中".repeat(n));
+            let out = shorten_message(&msg);
+            assert!(out.chars().count() <= 50);
+        }
+    }
+
+    #[test]
+    fn exactly_at_limit_unchanged() {
+        let msg = "中".repeat(50);
+        assert_eq!(shorten_message(&msg), msg);
     }
 }
