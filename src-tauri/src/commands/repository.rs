@@ -15,6 +15,10 @@ use crate::state::AppState;
 
 /// Get the file-level change list for every repository in a workspace.
 /// Used to build the change tree on the home page.
+///
+/// PAF-22：rayon 并行逐仓计算（与 `list_repositories_with_status` 同模式），
+/// 替换原先的串行 for——大工作区下这是首页最慢路径；单仓失败降级为错误行，
+/// 不影响整体。
 #[tauri::command]
 pub fn get_workspace_changes(workspace_id: i64, state: State<'_, AppState>) -> AppResult<Vec<RepoChanges>> {
     log::info!("get_workspace_changes called for workspace_id={}", workspace_id);
@@ -27,16 +31,16 @@ pub fn get_workspace_changes(workspace_id: i64, state: State<'_, AppState>) -> A
     };
     log::info!("get_workspace_changes: {} repos loaded from DB", repos.len());
 
-    let mut result = Vec::with_capacity(repos.len());
-    for repo in repos {
-        match git_status::get_repo_changes(Path::new(&repo.path)) {
+    let result: Vec<RepoChanges> = repos
+        .into_par_iter()
+        .map(|repo| match git_status::get_repo_changes(Path::new(&repo.path)) {
             Ok(mut changes) => {
                 changes.relative_path = repo.relative_path;
-                result.push(changes);
+                changes
             }
             Err(e) => {
                 log::warn!("Failed to read changes for {:?}: {}", repo.path, e);
-                result.push(RepoChanges {
+                RepoChanges {
                     repo_path: repo.path,
                     repo_name: repo.name,
                     relative_path: repo.relative_path,
@@ -45,10 +49,10 @@ pub fn get_workspace_changes(workspace_id: i64, state: State<'_, AppState>) -> A
                     ahead: 0,
                     behind: 0,
                     changes: Vec::new(),
-                });
+                }
             }
-        }
-    }
+        })
+        .collect();
     log::info!(
         "get_workspace_changes: returning {} repo change summaries",
         result.len()
