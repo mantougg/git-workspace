@@ -11,6 +11,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTerminalStore } from "@/stores/terminal";
+import { encodeUtf8Base64 } from "@/utils/base64";
 import "@xterm/xterm/css/xterm.css";
 
 // ---------------------------------------------------------------------------
@@ -108,11 +109,8 @@ onMounted(() => {
 
   // 用户输入 → emit
   terminal.onData((data: string) => {
-    // 将字符串转为 base64（支持多字节）
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(data);
-    const base64 = btoa(String.fromCharCode(...bytes));
-    emit("input", base64);
+    // 将字符串转为 base64（支持多字节；分块编码避免大输入栈溢出）
+    emit("input", encodeUtf8Base64(data));
   });
 
   // Resize 观察器

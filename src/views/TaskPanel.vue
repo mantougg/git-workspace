@@ -348,6 +348,10 @@ function taskTypeLabel(task: Task): string {
       return "Pull";
     case "push":
       return "Push";
+    case "stageFiles":
+      return "暂存";
+    case "restoreFiles":
+      return "还原工作区";
     case "commit":
       return "Commit";
     case "conflictApply":

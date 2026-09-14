@@ -188,6 +188,11 @@ impl super::GitOps {
 /// On Windows the child process is spawned with `CREATE_NO_WINDOW` so no
 /// console windows pop up. The combined stdout/stderr is returned so the UI
 /// can show the executed command and its output (IDE-style git console).
+///
+/// PAF-08 已知限制：本函数无超时/取消（`cmd.output()` 阻塞到退出）。任务
+/// 队列与 sync 命令的网络路径均已改走 `run_git_streaming`（超时/取消杀进程
+/// 树）；本函数仅保留给 `GitOps::execute` 的非流式兜底与内部复用，不要在
+/// 新代码中为网络操作新增调用点。
 fn run_git(repo_path: &Path, args: &[&str]) -> AppResult<String> {
     let mut cmd = std::process::Command::new("git");
     cmd.current_dir(repo_path).args(args);

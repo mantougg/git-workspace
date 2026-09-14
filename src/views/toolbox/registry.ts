@@ -28,6 +28,7 @@ import {
   CreateOutline,
   PeopleOutline,
   ChatbubblesOutline,
+  TrashBinOutline,
 } from "@vicons/ionicons5";
 
 /**
@@ -50,6 +51,7 @@ export interface ToolboxTool {
 
 /** 类型分组与展示顺序。 */
 export const TOOL_CATEGORIES = [
+  "磁盘清理",
   "网络",
   "编码解码",
   "格式转换",
@@ -61,6 +63,29 @@ export const TOOL_CATEGORIES = [
 export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
 
 export const TOOLS: ToolboxTool[] = [
+  // ── 磁盘清理 ──
+  {
+    id: "workspace-cleaner",
+    title: "工作区清理",
+    description:
+      "按规则扫描并安全删除构建产物（node_modules / target / bin / obj 等）：父路径 + 排除目录 + 预览确认",
+    category: "磁盘清理",
+    keywords: [
+      "clean",
+      "清理",
+      "删除",
+      "node_modules",
+      "target",
+      "bin",
+      "obj",
+      "dist",
+      "磁盘",
+      "空间",
+      "delete",
+    ],
+    icon: markRaw(TrashBinOutline),
+    component: defineAsyncComponent(() => import("./tools/WorkspaceCleanerTool.vue")),
+  },
   // ── 网络 ──
   {
     id: "port-checker",

@@ -183,9 +183,14 @@ struct PtySession {
     /// PTY master：resize 入口 + 保活。Windows ConPTY 下 master 的 Inner 持有
     /// HPCON，drop 会 `ClosePseudoConsole` 立即杀死 shell（终端空白根因），
     /// 因此必须随会话持有直至 close。
-    master: Mutex<Box<dyn MasterPty + Send>>,
+    /// Arc 包装以便 resize() 可在会话表锁外克隆引用再调用（评审修复）。
+    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     /// 写锁：`terminal_write` 持锁写 master。
-    writer: Mutex<Box<dyn Write + Send>>,
+    /// Arc 包装以便 write() 可在会话表锁外克隆引用再写入（评审 MEDIUM 修复）。
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    /// 子进程句柄：pid=0（spawn 未返回 pid）时 close() 仍可直接 kill
+    /// （portable-pty 的 Child::kill 内部走平台 API，不依赖 pid）。
+    child: Mutex<Option<Box<dyn portable_pty::Child + Send>>>,
     /// 会话元信息（供 `terminal_list` 返回）。
     info: TerminalSessionInfo,
     /// reader 线程退出信号（drop 时设为 true）。
@@ -251,7 +256,7 @@ impl TerminalEmitter for TauriTerminalEmitter {
 /// 初始化策略：`AppState::new()` 时创建 `TauriTerminalEmitter`（AppHandle 尚未就绪），
 /// reader 线程在 `open()` 时才 spawn——此时 AppHandle 已通过 `set_app_handle` 注入。
 pub struct TerminalManager {
-    sessions: Mutex<HashMap<String, PtySession>>,
+    sessions: Arc<Mutex<HashMap<String, PtySession>>>,
     emitter: Arc<dyn TerminalEmitter>,
     /// 供 `set_app_handle` 用的内部 Tauri 发射器引用（`new()` 时创建）。
     tauri_emitter: Option<Arc<TauriTerminalEmitter>>,
@@ -263,7 +268,7 @@ impl TerminalManager {
         let tauri_emitter = Arc::new(TauriTerminalEmitter::new());
         let emitter: Arc<dyn TerminalEmitter> = tauri_emitter.clone();
         Self {
-            sessions: Mutex::new(HashMap::new()),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
             emitter,
             tauri_emitter: Some(tauri_emitter),
         }
@@ -272,7 +277,7 @@ impl TerminalManager {
     /// 从测试用发射器创建（不持有 TauriTerminalEmitter 引用）。
     pub fn with_emitter(emitter: Arc<dyn TerminalEmitter>) -> Self {
         Self {
-            sessions: Mutex::new(HashMap::new()),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
             emitter,
             tauri_emitter: None,
         }
@@ -344,8 +349,14 @@ impl TerminalManager {
             .spawn_command(cmd)
             .map_err(|e| format!("启动 shell 失败: {e}"))?;
 
-        let pid = child.process_id().unwrap_or(0);
+        let pid = child.process_id().unwrap_or_else(|| {
+            // pid 不可用时仍保留 child 句柄——portable-pty 的 Child::kill
+            // 走平台 API，不依赖 pid（评审修复：旧代码 pid=0 时无法 kill）。
+            log::warn!("terminal open: 子进程未返回 pid，close() 将回退到 child.kill()");
+            0
+        });
         let session_id = uuid::Uuid::new_v4().to_string();
+        let child_handle: Option<Box<dyn portable_pty::Child + Send>> = Some(child);
 
         // 拆分 pair：只 drop slave（unix 关闭父进程 slave fd，子进程退出时
         // reader 才能收到 EOF；Windows 上 slave 只是同一 Arc 的引用，drop 无
@@ -384,14 +395,16 @@ impl TerminalManager {
         let emitter = Arc::clone(&self.emitter);
         let sid = session_id.clone();
         let shutdown_clone = Arc::clone(&shutdown);
+        let sessions_for_reader = Arc::clone(&self.sessions);
         thread::spawn(move || {
-            reader_thread_loop(&mut reader, &sid, emitter, shutdown_clone, pid);
+            reader_thread_loop(&mut reader, &sid, emitter, shutdown_clone, pid, sessions_for_reader);
         });
 
         let session = PtySession {
             pid,
-            master: Mutex::new(master),
-            writer: Mutex::new(writer),
+            master: Arc::new(Mutex::new(master)),
+            writer: Arc::new(Mutex::new(writer)),
+            child: Mutex::new(child_handle),
             info,
             shutdown,
         };
@@ -405,22 +418,27 @@ impl TerminalManager {
     }
 
     /// 写入 PTY（`terminal_write`）。base64 解码后写 master（bytes，不经 String）。
+    ///
+    /// writer 为 `Arc<Mutex<...>>`：先在会话表锁内克隆 Arc，再**释放表锁**后
+    /// 做阻塞 I/O——避免 write_all/flush 期间阻塞 close/list/resize（评审 MEDIUM 修复）。
     pub fn write(&self, session_id: &str, data_base64: &str) -> Result<(), String> {
         use base64::Engine;
         let data = base64::engine::general_purpose::STANDARD
             .decode(data_base64)
             .map_err(|e| format!("base64 解码失败: {e}"))?;
 
-        let sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| format!("会话表锁中毒: {e}"))?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
-
-        let mut writer = session
-            .writer
+        let writer = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| format!("会话表锁中毒: {e}"))?;
+            let session = sessions
+                .get(session_id)
+                .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
+            Arc::clone(&session.writer)
+        };
+        // 表锁已释放，仅持 writer 锁做 I/O
+        let mut writer = writer
             .lock()
             .map_err(|e| format!("写锁中毒: {e}"))?;
         writer
@@ -434,17 +452,22 @@ impl TerminalManager {
 
     /// 缩放 PTY（`terminal_resize`）：通过会话持有的 master 调整
     /// ConPTY（Windows）/ tty（unix）尺寸，shell 与 TUI 程序可感知行列变化。
+    ///
+    /// master 为 `Arc<Mutex<...>>`：锁内克隆 Arc，释放表锁后再调 resize
+    /// （与 write 同模式，评审修复）。
     pub fn resize(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        let sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| format!("会话表锁中毒: {e}"))?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
-
-        let master = session
-            .master
+        let master = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| format!("会话表锁中毒: {e}"))?;
+            let session = sessions
+                .get(session_id)
+                .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
+            Arc::clone(&session.master)
+        };
+        // 表锁已释放，仅持 master 锁做系统调用
+        let master = master
             .lock()
             .map_err(|e| format!("master 锁中毒: {e}"))?;
         master
@@ -462,14 +485,20 @@ impl TerminalManager {
     ///
     /// 复用 `kill_tree.rs`：先 `terminate_process`（SIGTERM），超时升级
     /// `kill_process_tree`。禁止另起 kill 实现。
+    ///
+    /// PAF-24：先从会话表摘牌并**立即释放表锁**，再做最长
+    /// CLOSE_GRACE_TIMEOUT 的优雅等待与强杀——持锁轮询会阻塞
+    /// terminal_open/write/resize/list，连续关闭多个 tab 时 IPC 排队。
     pub fn close(&self, session_id: &str) -> Result<(), String> {
-        let mut sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| format!("会话表锁中毒: {e}"))?;
-        let session = sessions
-            .remove(session_id)
-            .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
+        let session = {
+            let mut sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| format!("会话表锁中毒: {e}"))?;
+            sessions
+                .remove(session_id)
+                .ok_or_else(|| format!("会话 {session_id} 不存在"))?
+        };
 
         // 通知 reader 线程退出
         session
@@ -478,6 +507,17 @@ impl TerminalManager {
 
         let pid = session.pid;
         if pid == 0 {
+            // pid 不可用——回退到 child.kill()（portable-pty 走平台 API，
+            // 不依赖 pid；评审修复：旧代码直接放弃，子进程成为孤儿）。
+            if let Ok(mut child_guard) = session.child.lock() {
+                if let Some(ref mut child) = *child_guard {
+                    if let Err(e) = child.kill() {
+                        log::warn!("terminal close: child.kill() 失败（会话 {session_id}）: {e}");
+                    } else {
+                        log::info!("terminal close: 会话 {session_id} 通过 child.kill() 已终止");
+                    }
+                }
+            }
             return Ok(());
         }
 
@@ -498,17 +538,25 @@ impl TerminalManager {
         Ok(())
     }
 
-    /// 列出存活会话（`terminal_list`，面板重开时恢复）。
+    /// 列出会话（`terminal_list`，面板重开时恢复）。
+    ///
+    /// 锁内只快照 (pid, info)，锁外再查 process_alive——避免 Windows 上
+    /// 系统调用阻塞 write/close（评审 MEDIUM 修复）。
     pub fn list(&self) -> Result<Vec<TerminalSessionInfo>, String> {
-        let sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| format!("会话表锁中毒: {e}"))?;
-        Ok(sessions
-            .values()
-            .map(|s| {
-                let mut info = s.info.clone();
-                info.alive = crate::process::process_alive(s.pid, None);
+        let snapshots: Vec<(u32, TerminalSessionInfo)> = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| format!("会话表锁中毒: {e}"))?;
+            sessions
+                .values()
+                .map(|s| (s.pid, s.info.clone()))
+                .collect()
+        };
+        Ok(snapshots
+            .into_iter()
+            .map(|(pid, mut info)| {
+                info.alive = crate::process::process_alive(pid, None);
                 info
             })
             .collect())
@@ -548,13 +596,17 @@ impl TerminalManager {
 /// 约束（全局开发约束 §1 / §2）：
 /// - 禁止 `read_line` / `from_utf8_lossy`（PTY 是字节流，多字节字符可跨块）。
 /// - base64 原始字节传输，前端解码为 `Uint8Array` 交给 xterm。
-/// - 子进程退出 → `terminal_exit` 事件 + 会话清理。
+/// - 子进程退出（EOF/错误/shutdown）→ `terminal_exit` 事件 + **从会话表
+///   摘除本会话**（PAF-24：此前只发事件不清理，`terminal_list` 会一直返回
+///   死会话，注释与实现不符）。
+/// - Windows 无退出码（`waitpid` 无对应路径）为已知限制，恒返回 None。
 fn reader_thread_loop(
     reader: &mut dyn Read,
     session_id: &str,
     emitter: Arc<dyn TerminalEmitter>,
     shutdown: Arc<std::sync::atomic::AtomicBool>,
     pid: u32,
+    sessions: Arc<Mutex<HashMap<String, PtySession>>>,
 ) {
     let mut buf = [0u8; 4096];
     let mut aggregate = Vec::with_capacity(FLUSH_THRESHOLD * 2);
@@ -629,6 +681,14 @@ fn reader_thread_loop(
         session_id: session_id.to_string(),
         exit_code,
     });
+
+    // PAF-24：reader 收尾从会话表摘除死会话（drop PtySession 释放 master/
+    // writer 资源）。close() 已先行摘牌的场景 remove 返回 None，属正常路径。
+    if let Ok(mut table) = sessions.lock() {
+        if table.remove(session_id).is_some() {
+            log::debug!("terminal session {} reclaimed by reader thread", session_id);
+        }
+    }
 }
 
 /// 将聚合缓冲 base64 编码后发射 `terminal_output` 事件。
@@ -980,5 +1040,115 @@ mod tests {
         for h in handles {
             h.join().unwrap();
         }
+    }
+
+    /// PAF-24 回归：shell 自行退出（exit 命令）后，reader 收尾必须从会话表
+    /// 摘除死会话——`terminal_list` 不再返回已退出的会话。
+    #[test]
+    fn smoke_dead_session_reclaimed_from_table() {
+        let shell = match detect_default_shell() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("SKIP smoke_dead_session_reclaimed_from_table: {e}");
+                return;
+            }
+        };
+        let mock = Arc::new(MockEmitter::new());
+        let manager = TerminalManager::with_emitter(mock.clone());
+
+        let default_cwd = std::env::temp_dir().to_string_lossy().to_string();
+        let session_id = manager
+            .open(
+                TerminalOpenParams {
+                    cwd: None,
+                    shell: Some(shell.to_string_lossy().to_string()),
+                    cols: 80,
+                    rows: 24,
+                },
+                &default_cwd,
+            )
+            .expect("open should succeed");
+
+        use base64::Engine;
+        let input = base64::engine::general_purpose::STANDARD.encode(b"exit\r");
+        manager.write(&session_id, &input).expect("write should succeed");
+
+        // 等 reader 收到 EOF 并 emit terminal_exit（至多 10s）。
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while mock.exit_events.lock().unwrap().is_empty() {
+            assert!(Instant::now() < deadline, "shell 未在时限内退出");
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        // reader 收尾摘除会话（紧随 exit 事件，给回收留少量宽限）。
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let sessions = manager.list().expect("list should succeed");
+            if sessions.is_empty() {
+                break;
+            }
+            assert!(Instant::now() < deadline, "死会话未被 reader 回收（terminal_list 仍返回）");
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    /// PAF-24 回归：close() 不再持会话表锁做优雅等待——shell 忽略 SIGTERM
+    /// （`trap '' TERM`）时，close 优雅等待期间并发 list() 仍应立即返回且
+    /// 不再包含已摘牌会话（旧实现持锁轮询会阻塞 list 约 CLOSE_GRACE_TIMEOUT）。
+    /// 仅 unix（trap 语法）。
+    #[cfg(unix)]
+    #[test]
+    fn close_does_not_block_list_while_grace_waiting() {
+        let shell = match find_in_path("sh") {
+            Some(s) => s,
+            None => {
+                eprintln!("SKIP close_does_not_block_list_while_grace_waiting: no sh on PATH");
+                return;
+            }
+        };
+        let emitter: Arc<dyn TerminalEmitter> = Arc::new(MockEmitter::new());
+        let manager = Arc::new(TerminalManager::with_emitter(emitter));
+
+        let default_cwd = std::env::temp_dir().to_string_lossy().to_string();
+        let session_id = manager
+            .open(
+                TerminalOpenParams {
+                    cwd: None,
+                    shell: Some(shell.to_string_lossy().to_string()),
+                    cols: 80,
+                    rows: 24,
+                },
+                &default_cwd,
+            )
+            .expect("open should succeed");
+
+        use base64::Engine;
+        let input = base64::engine::general_purpose::STANDARD.encode(b"trap '' TERM; sleep 30\r");
+        manager.write(&session_id, &input).expect("write should succeed");
+        // 等 shell 启动并装上 trap（此后 SIGTERM 无效，close 必走满优雅等待）。
+        thread::sleep(Duration::from_millis(800));
+
+        let closer = {
+            let manager = Arc::clone(&manager);
+            let sid_for_close = session_id.clone();
+            thread::spawn(move || manager.close(&sid_for_close))
+        };
+
+        // close 的优雅等待期（~2s）内，list 必须快速返回且不再含该会话。
+        thread::sleep(Duration::from_millis(200));
+        let start = Instant::now();
+        let sessions = manager.list().expect("list should succeed");
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "list() 在 close 优雅等待期间被阻塞 {:?}（close 不应持锁轮询）",
+            elapsed
+        );
+        assert!(
+            !sessions.iter().any(|s| s.session_id == session_id),
+            "close 已摘牌，list 不应再返回该会话"
+        );
+
+        closer.join().expect("close should succeed");
     }
 }

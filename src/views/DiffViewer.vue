@@ -251,6 +251,7 @@ import {
   type DiffOptions,
 } from "@/api/git";
 import { batchAdd } from "@/api/changes";
+import { useTaskStore } from "@/stores/task";
 import { batchCommit } from "@/api/git_ops";
 import { scanCommit } from "@/api/commit";
 import type { CommitScanFinding } from "@/types/commit";
@@ -267,6 +268,7 @@ import { startFrameMeter, type FrameStats } from "@/utils/frameTime";
 const route = useRoute();
 const router = useRouter();
 const message = useMessage();
+const taskStore = useTaskStore();
 const { resolveCurrentRepo } = useCurrentRepo();
 const { openAssistant } = useAiAssistant();
 
@@ -495,9 +497,11 @@ async function stageWholeFile() {
   try {
     const segments = repoPath.value.split(/[/\\]/);
     const name = segments.filter(Boolean).pop() ?? "repo";
-    await batchAdd([
+    const stageIds = await batchAdd([
       { repoPath: repoPath.value, repoName: name, files: [file.newPath] },
     ]);
+    // PAF-11：任务队列异步执行，等收口后再刷新视图
+    await taskStore.waitForTasks(stageIds);
     message.success("已暂存整个文件");
     await loadDiff();
   } catch (e) {

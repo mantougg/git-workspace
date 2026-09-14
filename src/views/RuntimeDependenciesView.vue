@@ -703,15 +703,21 @@ async function reload(manual = false) {
   }
 }
 
+/** PAF-15：递增序号丢弃过期响应——快速切换项目时旧的巡检结果不得覆盖新选中。 */
+let inspectSeq = 0;
+
 async function onSelectProject(p: MavenProjectNode) {
   selectedProjectId.value = p.projectId;
   inspection.value = null;
   if (store.workspaceId == null) return;
+  const seq = ++inspectSeq;
   try {
-    inspection.value = await runtimeApi.runtimeInspectProject(
+    const result = await runtimeApi.runtimeInspectProject(
       store.workspaceId,
       p.path,
     );
+    if (seq !== inspectSeq) return;
+    inspection.value = result;
   } catch (e) {
     console.error("R-13: inspect project failed:", e);
   }

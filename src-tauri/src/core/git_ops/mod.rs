@@ -43,6 +43,82 @@ impl GitOps {
         Self::new(SshCredentials::new())
     }
 
+    /// Stage (git add) the given files; files deleted on disk are removed
+    /// from the index instead (PAF-11，自 commands/git_ops.rs 收编入队列路径).
+    pub fn stage_files(&self, repo_path: &Path, files: &[String]) -> AppResult<String> {
+        let repo = git2::Repository::open(repo_path)?;
+        let mut index = repo.index()?;
+
+        for file in files {
+            let full_path = repo_path.join(file);
+            if full_path.is_dir() {
+                // Untracked directory: recursively stage everything under it.
+                index.add_all([file.as_str()], git2::IndexAddOption::DEFAULT, None)?;
+            } else if full_path.exists() {
+                index.add_path(Path::new(file))?;
+            } else {
+                // Deleted on disk: record the deletion in the index.
+                index.remove_path(Path::new(file))?;
+            }
+        }
+
+        index.write()?;
+        log::info!("Staged {} file(s) in {:?}", files.len(), repo_path);
+        Ok(format!("staged {} file(s)", files.len()))
+    }
+
+    /// Revert working-tree changes (git restore semantics):
+    /// tracked files restore from HEAD into index + worktree; staged-new /
+    /// untracked files unstage and delete from disk.
+    pub fn restore_files(&self, repo_path: &Path, files: &[String]) -> AppResult<String> {
+        let repo = git2::Repository::open(repo_path)?;
+
+        let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+
+        let mut checkout_paths: Vec<&str> = Vec::new();
+        let mut index_dirty = false;
+        let mut index = repo.index()?;
+
+        for file in files {
+            let full_path = repo_path.join(file);
+            let in_head = head_tree
+                .as_ref()
+                .and_then(|t| t.get_path(Path::new(file)).ok())
+                .is_some();
+
+            if in_head {
+                checkout_paths.push(file.as_str());
+            } else {
+                if index.remove_path(Path::new(file)).is_ok() {
+                    index_dirty = true;
+                }
+                if full_path.exists() {
+                    if full_path.is_dir() {
+                        std::fs::remove_dir_all(&full_path)?;
+                    } else {
+                        std::fs::remove_file(&full_path)?;
+                    }
+                }
+            }
+        }
+
+        if index_dirty {
+            index.write()?;
+        }
+
+        if !checkout_paths.is_empty() {
+            let mut co = git2::build::CheckoutBuilder::new();
+            for p in &checkout_paths {
+                co.path(p);
+            }
+            co.force();
+            repo.checkout_head(Some(&mut co))?;
+        }
+
+        log::info!("Restored {} file(s) in {:?}", files.len(), repo_path);
+        Ok(format!("restored {} file(s)", files.len()))
+    }
+
     /// Execute a Git operation based on the task type.
     /// This is the main entry point called by task workers.
     /// Returns the command output for network operations (fetch/pull/push).
@@ -51,6 +127,9 @@ impl GitOps {
             TaskType::Fetch => self.fetch(repo_path).map(Some),
             TaskType::Pull => self.pull(repo_path).map(Some),
             TaskType::Push => self.push(repo_path).map(Some),
+            // Bulk stage / restore (T-20 / PAF-11): local libgit2 ops.
+            TaskType::StageFiles { files } => self.stage_files(repo_path, files).map(Some),
+            TaskType::RestoreFiles { files } => self.restore_files(repo_path, files).map(Some),
             // Bulk branch operation (T-20): local libgit2 ops, one repo per task.
             TaskType::BranchOp { op, name, force } => {
                 match op {

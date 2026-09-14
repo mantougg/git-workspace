@@ -738,6 +738,7 @@ import { NButton, NIcon, NTag, useMessage, useDialog } from "naive-ui";
 import { listen } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
+import { useTaskStore } from "@/stores/task";
 import ContextMenu from "@/components/shell/ContextMenu.vue";
 import CommitGraph from "@/components/graph/CommitGraph.vue";
 import { getCommitHistory } from "@/api/graph";
@@ -795,6 +796,7 @@ const router = useRouter();
 const route = useRoute();
 const workspaceStore = useWorkspaceStore();
 const repoStore = useRepositoryStore();
+const taskStore = useTaskStore();
 const message = useMessage();
 const dialog = useDialog();
 const { openAssistant } = useAiAssistant();
@@ -1021,9 +1023,11 @@ async function onContextmenuSelect(key: string) {
         break;
       case "stage": {
         if (!repo || !node.relPath) break;
-        await batchAdd([
+        const stageIds = await batchAdd([
           { repoPath, repoName: repo.repoName, files: [node.relPath] },
         ]);
+        // PAF-11：任务队列异步执行，等收口后再刷新视图
+        await taskStore.waitForTasks(stageIds);
         message.success(`已暂存 ${node.relPath}`);
         await loadChanges();
         break;
@@ -1038,9 +1042,11 @@ async function onContextmenuSelect(key: string) {
           negativeText: "取消",
           onPositiveClick: async () => {
             try {
-              await batchRestore([
+              const discardIds = await batchRestore([
                 { repoPath, repoName: repo.repoName, files: [file] },
               ]);
+              // PAF-11：任务队列异步执行，等收口后再刷新视图
+              await taskStore.waitForTasks(discardIds);
               message.success(`已丢弃 ${file}`);
               await loadChanges();
             } catch (e) {
@@ -1527,9 +1533,13 @@ function repoNameOf(repoPath: string): string {
   return repo?.repoName ?? repoPath.split(/[\\/]/).pop() ?? repoPath;
 }
 
-/** Double-click a file node: show its change content on the right. */
+/** Double-click a file node: show its change content on the right.
+ *  PAF-15：递增序号丢弃过期响应——快速双击不同文件时旧的 diff 结果不得覆盖新选中。 */
+let diffLoadSeq = 0;
+
 async function onFileDblClick(node: ChangeNode) {
   if (!node.repoPath || !node.relPath) return;
+  const seq = ++diffLoadSeq;
   diffLoading.value = true;
   try {
     const normRel = node.relPath.replace(/^\.?\/+/, "").replace(/\\/g, "/");
@@ -1551,6 +1561,7 @@ async function onFileDblClick(node: ChangeNode) {
         // readFileAsDiff failed (binary file, permission, etc.) — fall through
       }
     }
+    if (seq !== diffLoadSeq) return;
     if (match) {
       selectedDiff.value = {
         repoPath: node.repoPath,
@@ -1562,9 +1573,13 @@ async function onFileDblClick(node: ChangeNode) {
       message.info("该文件没有可展示的变更内容");
     }
   } catch (e) {
-    message.error("加载变更内容失败: " + errMsg(e));
+    if (seq === diffLoadSeq) {
+      message.error("加载变更内容失败: " + errMsg(e));
+    }
   } finally {
-    diffLoading.value = false;
+    if (seq === diffLoadSeq) {
+      diffLoading.value = false;
+    }
   }
 }
 
@@ -1615,7 +1630,9 @@ async function handleAdd() {
   }
   actionLoading.value = true;
   try {
-    await batchAdd(requests);
+    const stageIds = await batchAdd(requests);
+    // PAF-11：任务队列异步执行，等收口后再刷新视图
+    await taskStore.waitForTasks(stageIds);
     message.success(`已暂存 ${requests.length} 个仓库的文件`);
     await loadChanges();
   } catch (e) {
@@ -1656,7 +1673,9 @@ async function handleRestore() {
   }
   actionLoading.value = true;
   try {
-    await batchRestore(requests);
+    const restoreIds = await batchRestore(requests);
+    // PAF-11：任务队列异步执行，等收口后再刷新视图
+    await taskStore.waitForTasks(restoreIds);
     message.success(`已回退 ${requests.length} 个仓库的文件`);
     await loadChanges();
   } catch (e) {

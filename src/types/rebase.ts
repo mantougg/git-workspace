@@ -20,6 +20,8 @@ export interface RebaseState {
   position: number;
   /** Last commit of the new chain. */
   prevCommit: string;
+  /** PAF-10：被 rebase 的分支 ref（continue/skip/abort 校验分支未被切换）。 */
+  branchRef: string;
 }
 
 /** Outcome of a rebase run (start / continue / skip). */

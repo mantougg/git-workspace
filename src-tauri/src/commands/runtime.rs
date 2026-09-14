@@ -47,7 +47,11 @@ pub fn update_runtime_config(
 #[command]
 pub fn delete_runtime_config(workspace_id: i64, name: String, state: State<'_, AppState>) -> AppResult<()> {
     let conn = lock_db(&state)?;
-    delete_config(&conn, workspace_id, &name)
+    delete_config(&conn, workspace_id, &name)?;
+    // PAF-06：删除后清掉该 (workspace, runtime) 的构建产物缓存（配置指纹
+    // 机制本身可拦住同名复用的旧 plan，这里显式清除避免残留）。
+    state.runtime.invalidate_launch_cache(workspace_id, &name);
+    Ok(())
 }
 
 #[command]

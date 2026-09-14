@@ -19,9 +19,9 @@
 
 ## 总体进度
 
-- 任务总数：**35**
-- 已完成：**35** · 进行中：**0** · 未开始：**0**
-- 完成度：**35 / 35（100%）**
+- 任务总数：**36**
+- 已完成：**36** · 进行中：**0** · 未开始：**0**
+- 完成度：**36 / 36（100%）**
 
 ---
 
@@ -88,6 +88,12 @@
 | T-31 | Command Palette + 快捷键 + IDE/Terminal 集成 | P2 | ✅ | — | [T-31-command-palette.md](./T-31-command-palette.md) |
 | T-32 | 插件系统 / Scheduled Tasks（Automation Platform） | P3 | ✅ | T-23 | [T-32-plugin-system.md](./T-32-plugin-system.md) |
 | T-35 | 发布工程（Updater / 崩溃上报 / 日志闭环 / 遥测） | P2 | ✅ | — | [T-35-release-engineering.md](./T-35-release-engineering.md) |
+
+### 用户需求增补（1 个）
+
+| 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
+|---|---|---|---|---|---|
+| T-36 | 工具箱·工作区清理（安全删除） | P2 | ✅ | — | [T-36-toolbox-cleaner.md](./T-36-toolbox-cleaner.md) |
 
 ---
 

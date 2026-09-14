@@ -10,6 +10,64 @@ use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 
+/// PAF-10：cherry-pick / revert 冲突时持久化的操作前 HEAD
+/// （`.git/gitworkspace-pick-base.json`）。ConflictResolver（含批量模式与
+/// 应用重启后进入）拿不到 PickOutcome.baseOid，abort 时由后端兜底读取。
+const PICK_BASE_FILE: &str = "gitworkspace-pick-base.json";
+
+fn pick_base_path(repo: &git2::Repository) -> std::path::PathBuf {
+    repo.path().join(PICK_BASE_FILE)
+}
+
+fn save_pick_base(repo: &git2::Repository, base_oid: &str) -> AppResult<()> {
+    let raw = serde_json::json!({ "baseOid": base_oid }).to_string();
+    std::fs::write(pick_base_path(repo), raw)?;
+    Ok(())
+}
+
+/// 读取并清除持久化的 pick base（存在时）。
+fn take_pick_base(repo: &git2::Repository) -> Option<String> {
+    let path = pick_base_path(repo);
+    let raw = std::fs::read_to_string(&path).ok()?;
+    let oid = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()?
+        .get("baseOid")?
+        .as_str()?
+        .to_string();
+    let _ = std::fs::remove_file(&path);
+    Some(oid)
+}
+
+fn clear_pick_base(repo: &git2::Repository) {
+    let _ = std::fs::remove_file(pick_base_path(repo));
+}
+
+/// PAF-10：脏工作区前置校验——已暂存 / 已跟踪文件的未提交变更会被随后的
+/// hard reset / merge 静默吞掉，先拒绝并给出可行动提示。未跟踪新文件
+/// （WT_NEW）不拦截，与 git 语义一致。
+pub fn ensure_clean_worktree(repo: &git2::Repository, action: &str) -> AppResult<()> {
+    let statuses = repo.statuses(None)?;
+    let dirty: Vec<String> = statuses
+        .iter()
+        .filter(|e| {
+            let s = e.status();
+            s != git2::Status::CURRENT && !s.contains(git2::Status::WT_NEW)
+        })
+        .filter_map(|e| e.path().map(String::from))
+        .collect();
+    if dirty.is_empty() {
+        return Ok(());
+    }
+    let preview = dirty.iter().take(5).cloned().collect::<Vec<_>>().join("、");
+    Err(AppError::Conflict(format!(
+        "{action} 前工作区存在未提交变更（{} 个文件：{}{}）。\
+         请先提交，或 stash / 放弃这些改动后再试",
+        dirty.len(),
+        preview,
+        if dirty.len() > 5 { " 等" } else { "" }
+    )))
+}
+
 /// Outcome of a cherry-pick / revert operation.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
@@ -61,6 +119,11 @@ pub fn cherry_pick(repo_path: &Path, oids: &[String]) -> AppResult<PickOutcome> 
 
         let mut index = repo.index()?;
         if index.has_conflicts() {
+            // PAF-10：持久化操作前 HEAD，供 ConflictResolver 的 Abort（不传
+            // baseOid 的路径）恢复到操作前状态。
+            if let Some(base) = &base_oid {
+                save_pick_base(&repo, base)?;
+            }
             return Ok(PickOutcome::Conflict {
                 files: conflict_paths(&index)?,
                 current: oid_str.clone(),
@@ -86,11 +149,11 @@ pub fn cherry_pick(repo_path: &Path, oids: &[String]) -> AppResult<PickOutcome> 
         repo.cleanup_state()?;
     }
 
+    clear_pick_base(&repo);
     Ok(PickOutcome::Success { picked: total })
 }
 
-/// Revert a single commit, creating a revert commit on success.
-/// On conflict the repo keeps REVERT_HEAD and conflict markers.
+/// Revert a single commit, creating a revert commit on success./// On conflict the repo keeps REVERT_HEAD and conflict markers.
 pub fn revert(repo_path: &Path, oid_str: &str) -> AppResult<PickOutcome> {
     let repo = git2::Repository::open(repo_path)?;
     let base_oid = head_oid(&repo);
@@ -101,6 +164,10 @@ pub fn revert(repo_path: &Path, oid_str: &str) -> AppResult<PickOutcome> {
 
     let mut index = repo.index()?;
     if index.has_conflicts() {
+        // PAF-10：持久化操作前 HEAD（同 cherry_pick）。
+        if let Some(base) = &base_oid {
+            save_pick_base(&repo, base)?;
+        }
         return Ok(PickOutcome::Conflict {
             files: conflict_paths(&index)?,
             current: oid_str.to_string(),
@@ -121,6 +188,7 @@ pub fn revert(repo_path: &Path, oid_str: &str) -> AppResult<PickOutcome> {
     );
     repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&parent])?;
     repo.cleanup_state()?;
+    clear_pick_base(&repo);
 
     Ok(PickOutcome::Success { picked: 1 })
 }
@@ -160,21 +228,28 @@ pub fn reset_to(repo_path: &Path, target: Option<&str>, mode: &str) -> AppResult
 }
 
 /// Abort an in-progress cherry-pick / revert: hard reset to `base_oid`
-/// (the pre-operation HEAD captured by the caller) or, without it, to the
-/// current HEAD, then clear CHERRY_PICK_HEAD / REVERT_HEAD state.
+/// (the pre-operation HEAD captured by the caller), falling back to the
+/// persisted pick base (PAF-10, written when the conflict surfaced) or, as a
+/// last resort, the current HEAD, then clear CHERRY_PICK_HEAD / REVERT_HEAD
+/// state.
 pub fn abort_pick(repo_path: &Path, base_oid: Option<&str>) -> AppResult<()> {
     let repo = git2::Repository::open(repo_path)?;
-    let target = match base_oid {
+    let persisted = take_pick_base(&repo);
+    let target_oid = match base_oid {
         Some(o) => git2::Oid::from_str(o).map_err(|_| AppError::NotFound(format!("commit '{}' not found", o)))?,
-        None => repo
-            .head()
-            .and_then(|h| h.target().ok_or(git2::Error::from_str("HEAD has no target")))?,
+        None => match persisted {
+            Some(o) => git2::Oid::from_str(&o).map_err(|_| AppError::Other("invalid persisted pick base".into()))?,
+            None => repo
+                .head()
+                .and_then(|h| h.target().ok_or(git2::Error::from_str("HEAD has no target")))?,
+        },
     };
-    let obj = repo.find_object(target, Some(git2::ObjectType::Commit))?;
+    let obj = repo.find_object(target_oid, Some(git2::ObjectType::Commit))?;
     let mut co = git2::build::CheckoutBuilder::new();
     co.force();
     repo.reset(&obj, git2::ResetType::Hard, Some(&mut co))?;
     repo.cleanup_state()?;
+    clear_pick_base(&repo);
     Ok(())
 }
 
@@ -213,6 +288,7 @@ pub fn pick_continue(repo_path: &Path) -> AppResult<String> {
 
     let oid = repo.commit(Some("HEAD"), &sig, &sig, &default_msg, &tree, &[&parent])?;
     repo.cleanup_state()?;
+    clear_pick_base(&repo);
     Ok(oid.to_string())
 }
 
@@ -486,6 +562,61 @@ mod tests {
         // CHERRY_PICK_HEAD cleared.
         let repo = git2::Repository::open(&dir).unwrap();
         assert!(!repo.path().join("CHERRY_PICK_HEAD").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PAF-10：多 commit cherry-pick 中途冲突 → abort **不带 base_oid**
+    /// 也恢复到操作前 HEAD（持久化 pick base 兜底，ConflictResolver /
+    /// 重启后场景拿不到 PickOutcome.baseOid）。
+    #[test]
+    fn multi_pick_abort_without_base_restores_original_head() {
+        let dir = tmpdir("pick_base");
+        let base_head;
+        {
+            let repo = git2::Repository::init(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "base\n", "init");
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.branch("side", &head, false).unwrap();
+            drop(head);
+            commit_file(&repo, &dir, "a.txt", "master\n", "master change");
+            base_head = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+        }
+        crate::core::branch::checkout_branch(&dir, "side").unwrap();
+        let (c1, c2);
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            // c1 干净落地（新文件），c2 与 master 的 a.txt 冲突。
+            c1 = commit_file(&repo, &dir, "b.txt", "b\n", "side b");
+            c2 = commit_file(&repo, &dir, "a.txt", "side\n", "side a");
+            drop(repo);
+        }
+        crate::core::branch::checkout_branch(&dir, "master").unwrap();
+
+        let outcome = cherry_pick(&dir, &[c1, c2]).unwrap();
+        match &outcome {
+            PickOutcome::Conflict { done, total, base_oid, .. } => {
+                assert_eq!(*done, 1);
+                assert_eq!(*total, 2);
+                assert_eq!(base_oid.as_deref(), Some(base_head.as_str()));
+            }
+            other => panic!("expected Conflict, got {:?}", other),
+        }
+
+        // 不带 base_oid 的 abort（ConflictResolver 路径）：恢复到操作前 HEAD。
+        abort_pick(&dir, None).unwrap();
+        let repo = git2::Repository::open(&dir).unwrap();
+        assert_eq!(repo.head().unwrap().target().unwrap().to_string(), base_head);
+        drop(repo);
+        // c1 已落地的提交被回退：b.txt 消失，a.txt 回到 master 内容。
+        assert!(!dir.join("b.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(dir.join("a.txt"))
+                .unwrap()
+                .replace("\r\n", "\n"),
+            "master\n"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

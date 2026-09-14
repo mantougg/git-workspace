@@ -15,6 +15,32 @@ export const useTaskStore = defineStore("task", () => {
     }
   }
 
+  function isTerminal(status: Task["status"]): boolean {
+    return ["success", "partialSuccess", "failed", "cancelled"].includes(
+      status.type
+    );
+  }
+
+  /**
+   * PAF-11：等待提交的任务到达终态（轮询活跃列表；任务不再活跃即视为
+   * 已收口）。供 batch_add/batch_restore 等队列化命令在刷新视图前等待。
+   * 超时保护避免 UI 卡死——超时后由调用方决定是否照常刷新。
+   */
+  async function waitForTasks(taskIds: string[], timeoutMs = 60_000) {
+    if (taskIds.length === 0) return;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await loadActiveTasks();
+      const pending = taskIds.filter((id) => {
+        const t = tasks.value.find((x) => x.id === id);
+        return t ? !isTerminal(t.status) : false;
+      });
+      if (pending.length === 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    console.warn("waitForTasks timed out; refreshing anyway", taskIds);
+  }
+
   function updateTaskProgress(progress: TaskProgress) {
     const idx = tasks.value.findIndex((t) => t.id === progress.taskId);
     const updatedTask: Task = {
@@ -86,6 +112,7 @@ export const useTaskStore = defineStore("task", () => {
     tasks,
     panelVisible,
     loadActiveTasks,
+    waitForTasks,
     updateTaskProgress,
     cancelTask,
     clearFinished,

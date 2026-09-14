@@ -1771,4 +1771,313 @@ mod real_node_vite {
         .iter()
         .any(|addr| TcpStream::connect(addr).is_ok())
     }
+
+    // --------------------------------------------------------------
+    // PAF-02 / PAF-03 / PAF-06 / PAF-07：启动链路簇回归
+    // --------------------------------------------------------------
+
+    /// pid 回填延迟的 fake runner：模拟 Windows Defender 冷扫描等 spawn 慢
+    /// 场景。每次 spawn 前按次序消费 `delays` 睡眠后再写 pid_slot，随后驻留
+    /// 到 kill 标志置位（记录观测供断言）。
+    struct SlowSpawnRunner {
+        delays: Mutex<std::collections::VecDeque<Duration>>,
+        kill_observed: Arc<AtomicBool>,
+        procs: Mutex<HashMap<u32, bool>>,
+        next_pid: std::sync::atomic::AtomicU32,
+    }
+
+    impl SlowSpawnRunner {
+        fn new(delays: Vec<Duration>) -> Self {
+            Self {
+                delays: Mutex::new(delays.into_iter().collect()),
+                kill_observed: Arc::new(AtomicBool::new(false)),
+                procs: Mutex::new(HashMap::new()),
+                next_pid: std::sync::atomic::AtomicU32::new(9000),
+            }
+        }
+    }
+
+    impl LaunchRunner for SlowSpawnRunner {
+        fn run(
+            &self,
+            _command: &mut std::process::Command,
+            kill: &AtomicBool,
+            pid_slot: &Mutex<Option<u32>>,
+            _on_line: &mut dyn FnMut(OutputStream, &str),
+        ) -> AppResult<crate::process::streaming::StreamingExit> {
+            let delay = self.delays.lock().unwrap().pop_front().unwrap_or_default();
+            std::thread::sleep(delay);
+            let pid = self.next_pid.fetch_add(1, Ordering::Relaxed);
+            self.procs.lock().unwrap().insert(pid, true);
+            *pid_slot.lock().unwrap() = Some(pid);
+            loop {
+                if kill.load(Ordering::Relaxed) {
+                    self.kill_observed.store(true, Ordering::Relaxed);
+                    self.procs.lock().unwrap().insert(pid, false);
+                    return Ok(crate::process::streaming::StreamingExit {
+                        exit_code: None,
+                        timed_out: false,
+                        cancelled: true,
+                    });
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+
+        fn terminate(&self, _pid: u32) -> bool {
+            // 与 Windows terminate 语义对齐（false → 调用方升级 force_kill）。
+            false
+        }
+
+        fn alive(&self, pid: u32, _start_time: Option<u64>) -> bool {
+            self.procs.lock().unwrap().get(&pid).copied().unwrap_or(false)
+        }
+
+        fn start_time(&self, _pid: u32) -> Option<u64> {
+            None
+        }
+    }
+
+    /// PAF-02：spawn 确认超时后，迟到成功的进程必须被强杀标志收掉，
+    /// 不允许「Failed 终态 + 活进程」孤儿并存。
+    #[test]
+    fn spawn_confirm_timeout_kills_late_process() {
+        let fixture = mini_fixture("paf02_timeout");
+        let events = Arc::new(VecEventSink::default());
+        // spawn 延迟 400ms；确认窗口 150ms → start 先超时，spawn 后到。
+        let runner = Arc::new(SlowSpawnRunner::new(vec![Duration::from_millis(400)]));
+        let kill_observed = runner.kill_observed.clone();
+        let manager = Arc::new(RuntimeProcessManager::with_deps(
+            fixture.db.clone(),
+            RuntimeProcessDeps {
+                launch_runner: runner,
+                maven_runner: Arc::new(FakeMavenRunner::successful()),
+                events: events.clone(),
+                spawn_pid_confirm_timeout: Duration::from_millis(150),
+                ..Default::default()
+            },
+        ));
+        manager.seed_cached_launch(
+            fixture.workspace_id,
+            "app",
+            crate::runtime::build::LaunchPlan::JavaJar {
+                java_exec: PathBuf::from("java"),
+                jar_path: PathBuf::from("/ws/app.jar"),
+                vm_options: vec![],
+                program_arguments: vec![],
+                env: vec![],
+                working_dir: fixture.root.clone(),
+                preview: "java -jar app.jar".into(),
+            },
+            RunStrategy::PackageRun,
+        );
+
+        let result = manager.start(
+            fixture.workspace_id,
+            "app",
+            StartOptions { skip_build: true, start_grace: Duration::from_secs(2), ..Default::default() },
+        );
+        assert!(matches!(result, Err(AppError::ProcessStartFailed { .. })));
+
+        // 行落 Failed 终态。
+        let info = manager.runtime_status(fixture.workspace_id, "app").unwrap().unwrap();
+        assert_eq!(info.status, LifecycleStatus::Failed);
+
+        // 迟到 spawn 成功的进程被强杀标志收掉（PAF-02 核心断言）。
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !kill_observed.load(Ordering::Relaxed) {
+            assert!(
+                Instant::now() < deadline,
+                "late-spawned process was not killed after confirm timeout (PAF-02 orphan)"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let _ = std::fs::remove_dir_all(&fixture.root);
+    }
+
+    /// PAF-03：并发双 Start 必有一个 Conflict，不再双 spawn。
+    #[test]
+    fn concurrent_start_only_one_wins() {
+        let fixture = mini_fixture("paf03_toctou");
+        let events = Arc::new(VecEventSink::default());
+        let manager = test_manager(
+            fixture.db.clone(),
+            Arc::new(FakeLaunchRunner::new(vec![])),
+            Arc::new(FakeMavenRunner::successful()),
+            events.clone(),
+            Duration::from_millis(50),
+        );
+        manager.seed_cached_launch(
+            fixture.workspace_id,
+            "app",
+            crate::runtime::build::LaunchPlan::JavaJar {
+                java_exec: PathBuf::from("java"),
+                jar_path: PathBuf::from("/ws/app.jar"),
+                vm_options: vec![],
+                program_arguments: vec![],
+                env: vec![],
+                working_dir: fixture.root.clone(),
+                preview: "java -jar app.jar".into(),
+            },
+            RunStrategy::PackageRun,
+        );
+
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let manager = manager.clone();
+            let barrier = barrier.clone();
+            let workspace_id = fixture.workspace_id;
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                manager.start(
+                    workspace_id,
+                    "app",
+                    StartOptions { skip_build: true, start_grace: Duration::from_millis(500), ..Default::default() },
+                )
+            }));
+        }
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let oks = results.iter().filter(|r| r.is_ok()).count();
+        let conflicts = results.iter().filter(|r| matches!(r, Err(AppError::Conflict(_)))).count();
+        assert_eq!(oks, 1, "exactly one start may win, got {oks} ok / {results:?}");
+        assert_eq!(conflicts, 7, "all losers must conflict, got {conflicts}");
+        // 停掉赢家进程，避免 fake 驻留循环与 sampler 持续占用（干扰并行测试）。
+        let _ = manager.stop_runtime(fixture.workspace_id, "app", None);
+        let _ = std::fs::remove_dir_all(&fixture.root);
+    }
+
+    /// PAF-07：spawn 慢（pid 未回填）时点 Stop，行最终落终态；紧跟的
+    /// Restart 不再撞 Stopping 报 Conflict。
+    #[test]
+    fn stop_during_slow_spawn_reaches_terminal_and_restart_ok() {
+        let fixture = mini_fixture("paf07_stop_slow_spawn");
+        let events = Arc::new(VecEventSink::default());
+        // 第一次 spawn 延迟 400ms（制造 pid 未回填窗口），第二次无延迟。
+        let runner = Arc::new(SlowSpawnRunner::new(vec![Duration::from_millis(400)]));
+        let manager = Arc::new(RuntimeProcessManager::with_deps(
+            fixture.db.clone(),
+            RuntimeProcessDeps {
+                launch_runner: runner,
+                maven_runner: Arc::new(FakeMavenRunner::successful()),
+                events: events.clone(),
+                // 确认窗口远大于 spawn 延迟：start 不会先超时，stop 在窗口内介入。
+                spawn_pid_confirm_timeout: Duration::from_secs(5),
+                ..Default::default()
+            },
+        ));
+        manager.seed_cached_launch(
+            fixture.workspace_id,
+            "app",
+            crate::runtime::build::LaunchPlan::JavaJar {
+                java_exec: PathBuf::from("java"),
+                jar_path: PathBuf::from("/ws/app.jar"),
+                vm_options: vec![],
+                program_arguments: vec![],
+                env: vec![],
+                working_dir: fixture.root.clone(),
+                preview: "java -jar app.jar".into(),
+            },
+            RunStrategy::PackageRun,
+        );
+
+        // start 放后台线程；让 start 进入 wait_pid_or_outcome 后再 stop。
+        let manager_for_start = manager.clone();
+        let workspace_id = fixture.workspace_id;
+        let start_handle = std::thread::spawn(move || {
+            manager_for_start.start(
+                workspace_id,
+                "app",
+                StartOptions { skip_build: true, start_grace: Duration::from_millis(300), ..Default::default() },
+            )
+        });
+        std::thread::sleep(Duration::from_millis(50));
+
+        let stopped = manager
+            .stop_runtime(workspace_id, "app", Some(Duration::from_secs(3)))
+            .unwrap()
+            .expect("active row must exist while spawn is pending");
+        assert_eq!(
+            stopped.status,
+            LifecycleStatus::Stopped,
+            "stop during slow spawn must settle the row to a terminal state (PAF-07)"
+        );
+
+        // 紧跟的 Restart 不报 Conflict。
+        let restarted = manager.restart(
+            workspace_id,
+            "app",
+            StartOptions { start_grace: Duration::from_millis(300), ..Default::default() },
+        );
+        assert!(
+            restarted.is_ok(),
+            "restart after slow-spawn stop must not conflict: {:?}",
+            restarted.err()
+        );
+        let _ = start_handle.join().unwrap();
+        // 收尾：停掉 restart 启动的进程（避免 fake 驻留循环与 sampler 干扰并行测试）。
+        let _ = manager.stop_runtime(workspace_id, "app", None);
+        let _ = std::fs::remove_dir_all(&fixture.root);
+    }
+
+    /// PAF-06：配置变更后 Restart 走完整重建（指纹失配，不再静默复用旧
+    /// LaunchPlan）；无配置变更的再次 Restart 仍复用产物（缓存命中不回归）。
+    #[test]
+    fn config_change_invalidates_launch_cache() {
+        use crate::runtime::config::{load_config_unredacted, update_config, UpdateRuntimeConfigRequest};
+
+        let fixture = maven_fixture("paf06_cache_fingerprint", false);
+        let events = Arc::new(VecEventSink::default());
+        let maven = Arc::new(FakeMavenRunner::successful());
+        let manager = test_manager(
+            fixture.db.clone(),
+            Arc::new(FakeLaunchRunner::staying_alive()),
+            maven.clone(),
+            events.clone(),
+            Duration::from_millis(50),
+        );
+        let workspace_id = fixture.workspace_id;
+        // MavenRun 策略：一次 Maven 调用即完成构建（无 classpath 文件产物）。
+        let start_options = StartOptions {
+            build_options: BuildOptions { strategy: Some(RunStrategy::MavenRun), ..Default::default() },
+            start_grace: Duration::from_millis(300),
+            ..Default::default()
+        };
+
+        // 第一次启动：完整构建（第 1 次 Maven 调用），产物入缓存。
+        let first = manager.start(workspace_id, "app", start_options.clone()).unwrap();
+        assert_eq!(first.status, LifecycleStatus::Running);
+        assert_eq!(maven.request_count(), 1);
+        manager.stop_runtime(workspace_id, "app", None).unwrap();
+
+        // 修改配置（端口注入）→ 指纹失配 → Restart 必须重新构建（第 2 次）。
+        {
+            let conn = fixture.db.lock().unwrap();
+            let mut config = load_config_unredacted(&conn, workspace_id, "app").unwrap();
+            config.program_arguments.push("--server.port=9999".into());
+            update_config(
+                &conn,
+                &UpdateRuntimeConfigRequest { workspace_id, name: "app".into(), config },
+            )
+            .unwrap();
+        }
+        let second = manager
+            .restart(workspace_id, "app", start_options.clone())
+            .unwrap();
+        assert_eq!(second.status, LifecycleStatus::Running);
+        assert_eq!(
+            maven.request_count(),
+            2,
+            "config change must force a rebuild instead of reusing the stale LaunchPlan (PAF-06)"
+        );
+
+        // 无配置变更的再次 Restart：缓存命中，不触发新的 Maven 构建。
+        manager.stop_runtime(workspace_id, "app", None).unwrap();
+        let third = manager.restart(workspace_id, "app", start_options.clone()).unwrap();
+        assert_eq!(third.status, LifecycleStatus::Running);
+        assert_eq!(maven.request_count(), 2, "unchanged config must keep reusing cached artifacts");
+        // 收尾：停掉最后一个进程（避免 fake 驻留循环与 sampler 干扰并行测试）。
+        let _ = manager.stop_runtime(workspace_id, "app", None);
+        let _ = std::fs::remove_dir_all(&fixture.root);
+    }
 }

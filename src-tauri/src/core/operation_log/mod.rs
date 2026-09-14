@@ -26,7 +26,7 @@ mod undo_plan;
 
 pub use model::{
     NewOperationLogItem, OperationLogDetail, OperationLogItem, OperationLogPage, OperationLogSummary, UndoItemResult,
-    UndoOutcome, UndoPreviewItem, OP_AI_COMMIT, OP_CHECKOUT_ALL, OP_CONFLICT_RESOLUTION, OP_DELETE_BRANCH_ALL,
+    UndoOutcome, UndoPreviewItem, OP_AI_COMMIT, OP_RESTORE_FILES, OP_CHECKOUT_ALL, OP_CONFLICT_RESOLUTION, OP_DELETE_BRANCH_ALL,
     OP_REBASE, OP_RESET,
 };
 pub(crate) use query::{get_operation_log, query_operation_logs, LogFilter};

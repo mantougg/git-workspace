@@ -648,15 +648,15 @@ fn user_script_command(script: &str) -> std::process::Command {
 
 /// 在依赖图中定位 Runtime 配置的根项目：path → artifactId → groupId:artifactId。
 ///
-/// 路径匹配对 Windows 分隔符不敏感：R-02 索引把路径统一存为正斜杠
-/// （`path_key`），而用户配置里的 project 可能是反斜杠——相等比较前
-/// 两侧都归一化（Windows 真实 bug 修复，R-14）。
+/// 路径匹配走 `path_component_match`（PAF-18 组件级后缀匹配）：
+/// 归一化 verbatim 前缀 + 分隔符 + 大小写，`api` 匹配 `…/backend/api`
+/// 但不匹配 `…/myapi`——R-14 的 `replace('\\', "/") + ==` 在 verbatim
+/// 路径下仍会失败，此处统一收口。
 fn find_root_project<'a>(graph: &'a DependencyGraph, project: &str) -> AppResult<&'a MavenProjectNode> {
-    let needle = project.replace('\\', "/");
     graph
         .projects
         .iter()
-        .find(|node| normalize_path(&node.path.to_string_lossy()) == needle)
+        .find(|node| crate::pathutil::path_component_match(&node.path.to_string_lossy(), project))
         .or_else(|| {
             graph
                 .projects
@@ -670,11 +670,6 @@ fn find_root_project<'a>(graph: &'a DependencyGraph, project: &str) -> AppResult
                  请重新选择 Runtime 的根项目"
             ))
         })
-}
-
-/// 路径归一化：Windows 反斜杠 → 正斜杠（与 R-02 `path_key` 一致）。
-fn normalize_path(path: &str) -> String {
-    path.replace('\\', "/")
 }
 
 /// Classpath Run 的 classpath 生成：缓存命中直接复用，否则驱动

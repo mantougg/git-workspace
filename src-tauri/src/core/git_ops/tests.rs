@@ -331,3 +331,94 @@ fn branch_op_task_create_checkout_delete() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------------------
+// PAF-11：stage_files / restore_files（自同步命令收编入队列路径后的行为回归）
+// ---------------------------------------------------------------------------
+
+#[test]
+fn stage_files_tracks_modification_and_deletion() {
+    let dir = tmpdir("stage_files");
+    init_repo(&dir, "a.txt", "one\n");
+    let ops = GitOps::with_default_ssh();
+
+    // 修改 + 新文件 + 磁盘删除三种形态。
+    std::fs::write(dir.join("a.txt"), "two\n").unwrap();
+    std::fs::write(dir.join("new.txt"), "new\n").unwrap();
+    ops.stage_files(&dir, &["a.txt".into(), "new.txt".into()])
+        .unwrap();
+    std::fs::remove_file(dir.join("a.txt")).unwrap();
+    ops.stage_files(&dir, &["a.txt".into()]).unwrap();
+
+    let repo = git2::Repository::open(&dir).unwrap();
+    let index = repo.index().unwrap();
+    assert!(
+        index.get_path(Path::new("a.txt"), 0).is_none(),
+        "deleted file must be removed from the index"
+    );
+    assert!(
+        index.get_path(Path::new("new.txt"), 0).is_some(),
+        "new file must be staged"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn restore_files_reverts_tracked_and_removes_untracked() {
+    let dir = tmpdir("restore_files");
+    init_repo(&dir, "a.txt", "one\n");
+    let ops = GitOps::with_default_ssh();
+
+    // tracked 文件修改（含暂存）→ 还原到 HEAD；
+    // staged-new 文件 → 取消暂存并删除。
+    std::fs::write(dir.join("a.txt"), "dirty\n").unwrap();
+    ops.stage_files(&dir, &["a.txt".into()]).unwrap();
+    std::fs::write(dir.join("b.txt"), "staged new\n").unwrap();
+    ops.stage_files(&dir, &["b.txt".into()]).unwrap();
+
+    ops.restore_files(&dir, &["a.txt".into(), "b.txt".into()])
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+        "one\n",
+        "tracked file must be restored from HEAD"
+    );
+    assert!(!dir.join("b.txt").exists(), "staged-new file must be deleted");
+    let repo = git2::Repository::open(&dir).unwrap();
+    let statuses = repo.statuses(None).unwrap();
+    assert!(
+        statuses.iter().all(|e| e.status() == git2::Status::CURRENT),
+        "worktree must be clean after restore: {:?}",
+        statuses
+            .iter()
+            .map(|e| (e.path().map(|p| p.to_string()), e.status().bits()))
+            .collect::<Vec<_>>()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn execute_dispatches_stage_and_restore_task_types() {
+    let dir = tmpdir("dispatch_stage_restore");
+    init_repo(&dir, "a.txt", "one\n");
+    let ops = GitOps::with_default_ssh();
+
+    std::fs::write(dir.join("a.txt"), "dirty\n").unwrap();
+    ops.execute(
+        &crate::models::task::TaskType::StageFiles { files: vec!["a.txt".into()] },
+        &dir,
+    )
+    .unwrap();
+    ops.execute(
+        &crate::models::task::TaskType::RestoreFiles { files: vec!["a.txt".into()] },
+        &dir,
+    )
+    .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(dir.join("a.txt")).unwrap().replace("\r\n", "\n"),
+        "one\n"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

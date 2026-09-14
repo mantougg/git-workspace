@@ -33,6 +33,10 @@ export const useChangeSetStore = defineStore("changeSet", () => {
     }
   }
 
+  /** PAF-15：递增序号丢弃过期响应——快速切换 Change Set 时，旧 summary
+   * 不得覆盖新选中项（参照 DiffViewer.vue loadSeq 模式）。 */
+  let summarySeq = 0;
+
   async function selectChangeSet(id: number | null) {
     currentId.value = id;
     summary.value = null;
@@ -43,11 +47,17 @@ export const useChangeSetStore = defineStore("changeSet", () => {
 
   async function refreshSummary() {
     if (currentId.value == null) return;
+    const seq = ++summarySeq;
+    const targetId = currentId.value;
     summaryLoading.value = true;
     try {
-      summary.value = await api.getChangeSetSummary(currentId.value);
+      const result = await api.getChangeSetSummary(targetId);
+      if (seq !== summarySeq) return;
+      summary.value = result;
     } finally {
-      summaryLoading.value = false;
+      if (seq === summarySeq) {
+        summaryLoading.value = false;
+      }
     }
   }
 

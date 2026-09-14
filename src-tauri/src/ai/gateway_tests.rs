@@ -901,3 +901,40 @@ fn submit_blocks_high_risk_secrets_by_default() {
     assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::PreviewRequired);
     assert_eq!(transport.call_count(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// PAF-12：records 容量有界
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn terminal_records_are_capacity_bounded() {
+    let conn = open_db();
+    let provider = add_provider(&conn, ApiType::OpenaiChatCompletions);
+    add_model(&conn, &provider.id);
+    // 不联网：submit 后直接 cancel（PreviewRequired → Cancelled 终态）。
+    let transport = Arc::new(FakeTransport::new(vec![]));
+    let (gateway, _sink) = test_gateway(test_config(), transport.clone());
+
+    // 提交并取消 141 个请求（全部终态）：容量 128，淘汰在每次插入时触发
+    // （i=129..140 共 12 轮）→ 最旧 12 条（rcap0000..rcap0011）被淘汰。
+    let total = 141;
+    for i in 0..total {
+        let request = make_request(&format!("rcap{i:04}"), false);
+        let id = request.request_id.clone();
+        gateway.submit(&conn, request).expect("submit ok");
+        gateway.cancel(&id).expect("cancel ok");
+    }
+
+    // 最旧的 12 条已被淘汰，快照不可达。
+    assert!(
+        gateway.status("rcap0000").is_none(),
+        "oldest terminal record must be evicted (PAF-12)"
+    );
+    assert!(gateway.status("rcap0011").is_none());
+    // 容量内的最近记录仍可读（UI 轮询行为不回归）。
+    assert!(
+        gateway.status("rcap0140").is_some(),
+        "recent terminal records must remain readable"
+    );
+    assert_eq!(transport.call_count(), 0, "全程零网络调用");
+}

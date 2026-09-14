@@ -8,7 +8,7 @@
 //!   进程命令行、URL。
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use super::error::AiError;
 
@@ -20,6 +20,11 @@ pub trait CredentialStore: Send + Sync {
     fn name(&self) -> &'static str;
     /// 后端当前是否可用（Linux 无 Secret Service / 未解锁等场景为 false）。
     fn is_available(&self) -> bool;
+    /// 重测可用性。带缓存的实现必须绕过缓存真实探测（PAF-21：keyring
+    /// 晚解锁场景免重启恢复）；无缓存实现等同于 `is_available`。
+    fn refresh_availability(&self) -> bool {
+        self.is_available()
+    }
     /// 读取凭证；不存在返回 `Ok(None)`，后端不可用返回 `Err(Unavailable)`。
     fn get(&self, credential_ref: &str) -> Result<Option<String>, CredentialError>;
     fn set(&self, credential_ref: &str, secret: &str) -> Result<(), CredentialError>;
@@ -44,16 +49,12 @@ impl std::fmt::Display for CredentialError {
 }
 
 /// OS Credential Store 后端（三平台分支由 keyring crate 内部完成）。
-pub struct KeyringStore {
-    /// 可用性探测结果（首次使用时缓存；`refresh_availability` 可重测）。
-    available: OnceLock<bool>,
-}
+/// 可用性缓存由 [`AvailabilityCachedStore`] 装饰器负责，本类型每次真实探测。
+pub struct KeyringStore;
 
 impl KeyringStore {
     pub fn new() -> Self {
-        Self {
-            available: OnceLock::new(),
-        }
+        Self
     }
 
     fn entry(credential_ref: &str) -> Result<keyring::Entry, CredentialError> {
@@ -96,7 +97,7 @@ impl CredentialStore for KeyringStore {
     }
 
     fn is_available(&self) -> bool {
-        *self.available.get_or_init(Self::probe_availability)
+        Self::probe_availability()
     }
 
     fn get(&self, credential_ref: &str) -> Result<Option<String>, CredentialError> {
@@ -116,6 +117,96 @@ impl CredentialStore for KeyringStore {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(Self::map_err(e)),
         }
+    }
+}
+
+/// 可用性缓存装饰器（PAF-21）：进程内缓存 `is_available` 探测结果。
+///
+/// - 操作返回 `Unavailable` 时缓存失效——下次 `is_available` 重新探测
+///   （keyring 晚解锁：首次探测 false 后用户解锁 keyring，无需重启即可恢复）；
+/// - 操作成功时缓存 `true`；
+/// - `refresh_availability` 强制绕过缓存重新探测（`set` 的 persist 路径在
+///   拒绝用户前调用一次，保证「重试即可恢复」）。
+pub struct AvailabilityCachedStore {
+    inner: Arc<dyn CredentialStore>,
+    available: Mutex<Option<bool>>,
+}
+
+impl AvailabilityCachedStore {
+    pub fn new(inner: Arc<dyn CredentialStore>) -> Self {
+        Self {
+            inner,
+            available: Mutex::new(None),
+        }
+    }
+
+    fn note_available(&self, value: bool) {
+        if let Ok(mut guard) = self.available.lock() {
+            *guard = Some(value);
+        }
+    }
+
+    fn note_unavailable(&self) {
+        if let Ok(mut guard) = self.available.lock() {
+            *guard = None;
+        }
+    }
+}
+
+impl CredentialStore for AvailabilityCachedStore {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn is_available(&self) -> bool {
+        let mut guard = match self.available.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        match *guard {
+            Some(value) => value,
+            None => {
+                let probed = self.inner.is_available();
+                *guard = Some(probed);
+                probed
+            }
+        }
+    }
+
+    fn refresh_availability(&self) -> bool {
+        let probed = self.inner.is_available();
+        self.note_available(probed);
+        probed
+    }
+
+    fn get(&self, credential_ref: &str) -> Result<Option<String>, CredentialError> {
+        let result = self.inner.get(credential_ref);
+        match &result {
+            Ok(_) => self.note_available(true),
+            Err(CredentialError::Unavailable(_)) => self.note_unavailable(),
+            Err(_) => {}
+        }
+        result
+    }
+
+    fn set(&self, credential_ref: &str, secret: &str) -> Result<(), CredentialError> {
+        let result = self.inner.set(credential_ref, secret);
+        match &result {
+            Ok(()) => self.note_available(true),
+            Err(CredentialError::Unavailable(_)) => self.note_unavailable(),
+            Err(_) => {}
+        }
+        result
+    }
+
+    fn delete(&self, credential_ref: &str) -> Result<(), CredentialError> {
+        let result = self.inner.delete(credential_ref);
+        match &result {
+            Ok(()) => self.note_available(true),
+            Err(CredentialError::Unavailable(_)) => self.note_unavailable(),
+            Err(_) => {}
+        }
+        result
     }
 }
 
@@ -188,10 +279,10 @@ pub struct CredentialManager {
 }
 
 impl CredentialManager {
-    /// 生产装配：OS Credential Store + 会话内存。
+    /// 生产装配：OS Credential Store（带可用性缓存）+ 会话内存。
     pub fn production() -> Self {
         Self {
-            os: Arc::new(KeyringStore::new()),
+            os: Arc::new(AvailabilityCachedStore::new(Arc::new(KeyringStore::new()))),
             session: SessionStore::new(),
         }
     }
@@ -213,7 +304,9 @@ impl CredentialManager {
     /// 明确只存本次会话。
     pub fn set(&self, credential_ref: &str, secret: &str, persist: bool) -> Result<CredentialLocation, AiError> {
         if persist {
-            if !self.os.is_available() {
+            // PAF-21：缓存不可用时先重测一次再拒绝——keyring 晚解锁（应用
+            // 启动后 Secret Service 才解锁）场景下用户重试即可恢复，免重启。
+            if !self.os.is_available() && !self.os.refresh_availability() {
                 return Err(AiError::CredentialUnavailable {
                     message: "OS 凭证存储不可用：可选择「仅本次会话」临时保存（不落盘）".to_string(),
                 });
@@ -237,10 +330,19 @@ impl CredentialManager {
         }
     }
 
-    /// 读取凭证（OS 存储优先，其次会话内存）。后端不可用按 None 处理。
+    /// 读取凭证（OS 存储优先，其次会话内存）。
+    /// PAF-21：OS 后端故障（`Err`）降级读会话副本时必须可见——此时会话副本
+    /// 可能是过期值（单落点不变式只在写入时维护，OS 读取失败无法核对），
+    /// 打 warn 供排障；「无条目」（`Ok(None)`）才是静默降级。
     pub fn get(&self, credential_ref: &str) -> Option<String> {
-        if let Ok(Some(secret)) = self.os.get(credential_ref) {
-            return Some(secret);
+        match self.os.get(credential_ref) {
+            Ok(Some(secret)) => return Some(secret),
+            Ok(None) => {}
+            Err(e) => {
+                log::warn!(
+                    "credential: OS 存储读取失败（{e}），降级读取会话副本: {credential_ref}"
+                );
+            }
         }
         self.session.get(credential_ref).ok().flatten()
     }
@@ -280,6 +382,7 @@ impl CredentialManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     /// 内存后端（模拟可用的 OS 存储）。
     fn memory_store() -> Arc<dyn CredentialStore> {
@@ -304,6 +407,93 @@ mod tests {
         fn delete(&self, _: &str) -> Result<(), CredentialError> {
             Err(CredentialError::Unavailable("no secret service".into()))
         }
+    }
+
+    /// 可用性可翻转的后端（模拟 keyring 晚解锁：启动时不可用，随后解锁）。
+    /// 可用时行为等同内存存储。
+    struct FlakyStore {
+        unlocked: Arc<AtomicBool>,
+        entries: Mutex<HashMap<String, String>>,
+    }
+    impl FlakyStore {
+        fn new(unlocked: Arc<AtomicBool>) -> Self {
+            Self {
+                unlocked,
+                entries: Mutex::new(HashMap::new()),
+            }
+        }
+        fn check(&self) -> Result<(), CredentialError> {
+            if self.unlocked.load(Ordering::Relaxed) {
+                Ok(())
+            } else {
+                Err(CredentialError::Unavailable("locked".into()))
+            }
+        }
+    }
+    impl CredentialStore for FlakyStore {
+        fn name(&self) -> &'static str {
+            "flaky"
+        }
+        fn is_available(&self) -> bool {
+            self.unlocked.load(Ordering::Relaxed)
+        }
+        fn get(&self, credential_ref: &str) -> Result<Option<String>, CredentialError> {
+            self.check()?;
+            Ok(self.entries.lock().unwrap().get(credential_ref).cloned())
+        }
+        fn set(&self, credential_ref: &str, secret: &str) -> Result<(), CredentialError> {
+            self.check()?;
+            self.entries.lock().unwrap().insert(credential_ref.to_string(), secret.to_string());
+            Ok(())
+        }
+        fn delete(&self, credential_ref: &str) -> Result<(), CredentialError> {
+            self.check()?;
+            self.entries.lock().unwrap().remove(credential_ref);
+            Ok(())
+        }
+    }
+
+    /// PAF-21：keyring 晚解锁场景——首次探测不可用被缓存，用户解锁后重试
+    /// `set`（persist）应经 `refresh_availability` 重测成功，无需重启。
+    #[test]
+    fn late_unlock_recovers_without_restart() {
+        let unlocked = Arc::new(AtomicBool::new(false));
+        let mgr = CredentialManager::with_store(Arc::new(AvailabilityCachedStore::new(Arc::new(
+            FlakyStore::new(Arc::clone(&unlocked)),
+        ))));
+
+        // 启动时后端不可用：persist 被拒绝（不落文件）。
+        let err = mgr.set("ai-provider:p1", "sk-test", true).unwrap_err();
+        assert_eq!(err.code(), "AiCredentialUnavailable");
+
+        // 用户解锁 keyring 后重试：重测可用 → 写入成功。
+        unlocked.store(true, Ordering::Relaxed);
+        let loc = mgr.set("ai-provider:p1", "sk-test", true).unwrap();
+        assert_eq!(loc, CredentialLocation::OsStore);
+        assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-test"));
+        // 可用性缓存已翻新为 true。
+        assert!(mgr.os_store_available());
+    }
+
+    /// PAF-21：OS 后端故障（Err）时降级读会话副本，且操作失败使缓存失效——
+    /// 下次 `is_available` 重新探测而非使用旧 false。
+    #[test]
+    fn backend_failure_invalidates_cache_and_degrades_to_session() {
+        let unlocked = Arc::new(AtomicBool::new(false));
+        let cached: Arc<dyn CredentialStore> =
+            Arc::new(AvailabilityCachedStore::new(Arc::new(FlakyStore::new(Arc::clone(&unlocked)))));
+        assert!(!cached.is_available(), "首次探测不可用并缓存");
+
+        // OS 读取失败 → 静默路径改为告警 + 降级会话（此处断言降级行为）。
+        let mgr = CredentialManager::with_store(Arc::clone(&cached));
+        mgr.set("ai-provider:p1", "sk-session", false).unwrap();
+        assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-session"));
+
+        // Unavailable 操作使缓存失效：后端恢复后 is_available 立即为 true，
+        // 且此时 OS 侧无该条目 → 凭证仍标记「仅本次会话」（语义不回归）。
+        unlocked.store(true, Ordering::Relaxed);
+        assert!(cached.is_available());
+        assert!(mgr.is_session_only("ai-provider:p1"));
     }
 
     #[test]

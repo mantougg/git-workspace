@@ -11,6 +11,18 @@ pub const DEFAULT_START_GRACE: Duration = Duration::from_secs(5);
 /// Stop 的默认优雅宽限：SIGTERM 后等待退出，超时升级杀进程树。
 pub const DEFAULT_STOP_GRACE: Duration = Duration::from_secs(10);
 
+/// spawn 后确认 pid 的默认窗口。超时按启动失败收尾，但预置强杀标志：
+/// 若进程实际在窗口之后才 spawn 成功（Windows Defender 冷扫描是现实场景），
+/// streaming 循环在拿到进程的第一拍按取消语义杀树，不留孤儿（PAF-02）。
+pub const DEFAULT_SPAWN_PID_CONFIRM_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// stop 等待 pid 回填 / outcome 的窗口（pid 未回填时不让 terminate 直接
+/// no-op，PAF-07）。
+pub const SPAWN_PID_WAIT: Duration = Duration::from_secs(10);
+
+/// restart 在 stop 之后等待旧行收口到终态的最长等待（PAF-07）。
+pub const RESTART_TERMINAL_WAIT: Duration = Duration::from_secs(10);
+
 /// 指标采样默认间隔（低频节流，全局约束 §5）。
 pub const DEFAULT_SAMPLE_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -29,7 +41,7 @@ pub struct StartOptions {
 
 /// 环境编排（R-15）对单个服务的启动覆盖项。只存环境里声明的差异项：
 /// JDK / Profile / 追加环境变量 / 端口。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 pub struct EnvironmentOverrides {
     pub jdk: Option<String>,
     pub profile: Option<String>,
@@ -50,9 +62,37 @@ impl Default for StartOptions {
 
 /// 最近构建产物缓存（Restart 复用，验收标准 2）。进程内存驻留：
 /// GitWorkspace 重启后首次 Start 总是完整构建。
+///
+/// PAF-06：缓存携带配置指纹——持久化配置（端口/JDK/vm_options/mainClass
+/// 等）或本次启动覆盖项变化 → 指标不匹配 → 缓存自然失效回退完整构建，
+/// 无需各配置写路径显式清除。
 pub(super) struct CachedLaunch {
     pub(super) plan: LaunchPlan,
     pub(super) strategy: RunStrategy,
+    pub(super) config_fingerprint: u64,
+}
+
+/// 缓存命中判定：指纹一致才复用（PAF-06）。
+pub(super) fn fingerprint_matches(cached: &CachedLaunch, fingerprint: u64) -> bool {
+    cached.config_fingerprint == fingerprint
+}
+
+/// 配置指纹：持久化配置的稳定哈希（长度前缀拼接防串接歧义）。
+///
+/// 旧版接受 `overrides: Option<&EnvironmentOverrides>` 参数，但所有调用方
+/// 均传 `None`（overrides 已合并进 config），此处移除死参数（评审 LOW 修复）。
+pub(super) fn launch_config_fingerprint(
+    config: &crate::runtime::config::RuntimeApplicationConfig,
+) -> u64 {
+    use std::hash::Hasher;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    if let Some(json) = serde_json::to_string(config).ok() {
+        hasher.write(&(json.len() as u64).to_le_bytes());
+        hasher.write(json.as_bytes());
+    } else {
+        hasher.write(&0u64.to_le_bytes());
+    }
+    hasher.finish()
 }
 
 /// 活跃进程句柄：monitor/stop/sampler 共享的同步原语。
@@ -157,5 +197,8 @@ pub(super) enum RunWait {
 
 pub(super) enum Prepared {
     Cached(CachedLaunch),
-    NeedBuild(BuildOptions),
+    NeedBuild {
+        options: BuildOptions,
+        fingerprint: u64,
+    },
 }

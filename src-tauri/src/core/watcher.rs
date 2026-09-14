@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use moka::sync::Cache;
@@ -13,7 +13,10 @@ use crate::error::AppResult;
 use crate::models::repository::{RepoStatus, RepoStatusUpdate};
 
 /// Debounce window per repository: same-repo change bursts within this window
-/// are merged into a single status refresh.
+/// are merged into a single status refresh. The first event after a quiet
+/// period refreshes immediately (leading edge); events inside the window arm a
+/// trailing refresh so the burst's final state is captured instead of dropped
+/// (PAF-13).
 const DEBOUNCE_MS: u64 = 500;
 /// Cross-repo batch window: status updates are buffered and flushed as one IPC
 /// event per window, so hundreds of concurrent repo changes stay responsive.
@@ -23,8 +26,9 @@ const BATCH_MS: u64 = 100;
 /// and triggers incremental status refreshes.
 ///
 /// Uses the `notify` crate for cross-platform filesystem watching. Watches each
-/// repository root plus its `.git` directory (NonRecursive), and supports
-/// mounting/unmounting repositories incrementally instead of rebuilding.
+/// repository root recursively (plus a root + `.git` fallback when recursive
+/// watches are unavailable), and supports mounting/unmounting repositories
+/// incrementally instead of rebuilding.
 pub struct FileWatcher {
     watcher: Option<RecommendedWatcher>,
     /// Repository roots currently watched, shared with the event loop so it can
@@ -60,13 +64,10 @@ impl FileWatcher {
             self.started = true;
         }
 
-        // Compute the delta, then update the shared set.
+        // Compute the delta, publishing removals immediately.
         let (to_add, to_remove) = {
-            let mut watched = self.watched.lock().unwrap();
+            let mut watched = lock_watched(&self.watched);
             let (to_add, to_remove) = diff_watch_sets(&watched, &next);
-            for p in &to_add {
-                watched.insert(p.clone());
-            }
             for p in &to_remove {
                 watched.remove(p);
             }
@@ -74,11 +75,32 @@ impl FileWatcher {
         };
 
         if let Some(watcher) = self.watcher.as_mut() {
-            mount(watcher, &to_add);
             unmount(watcher, &to_remove);
+            // 批量预插入：锁内一次性插入所有待挂载路径（评审修复：旧代码每路径
+            // 单独加/释锁，N 个仓库时 2N 次锁操作）。
+            {
+                let mut watched = lock_watched(&self.watched);
+                for path in &to_add {
+                    watched.insert(path.clone());
+                }
+            }
+            // 逐个挂载，失败的路径从 watched 中移除
+            let mut failed = Vec::new();
+            for path in &to_add {
+                if let Err(e) = mount_repo(watcher, path) {
+                    failed.push(path.clone());
+                    log::warn!("Failed to watch {:?} ({}); will retry on next sync", path, e);
+                }
+            }
+            if !failed.is_empty() {
+                let mut watched = lock_watched(&self.watched);
+                for path in &failed {
+                    watched.remove(path);
+                }
+            }
         }
 
-        let total = self.watched.lock().unwrap().len();
+        let total = lock_watched(&self.watched).len();
         log::info!(
             "File watcher watching {} repositories ({} added, {} removed)",
             total,
@@ -121,9 +143,7 @@ impl FileWatcher {
     pub fn stop(&mut self) {
         if self.watcher.take().is_some() {
             self.started = false;
-            if let Ok(mut watched) = self.watched.lock() {
-                watched.clear();
-            }
+            lock_watched(&self.watched).clear();
             log::info!("File watcher stopped");
         }
     }
@@ -135,6 +155,13 @@ impl Default for FileWatcher {
     }
 }
 
+/// Lock the shared watched set, recovering from poisoning: a panic in one
+/// event-loop iteration must not cascade into permanent watcher lock failure
+/// (PAF-13: the previous `lock().unwrap()` call sites were a cascade risk).
+fn lock_watched(watched: &Mutex<HashSet<PathBuf>>) -> MutexGuard<'_, HashSet<PathBuf>> {
+    watched.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Compute the set difference between the currently-watched roots and the
 /// desired set: `(to_add, to_remove)`.
 fn diff_watch_sets(current: &HashSet<PathBuf>, next: &HashSet<PathBuf>) -> (Vec<PathBuf>, Vec<PathBuf>) {
@@ -143,22 +170,41 @@ fn diff_watch_sets(current: &HashSet<PathBuf>, next: &HashSet<PathBuf>) -> (Vec<
     (to_add, to_remove)
 }
 
-/// Start watching each repository root and its `.git` directory (NonRecursive).
-fn mount(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
-    for path in paths {
-        if let Err(e) = watcher.watch(path, RecursiveMode::NonRecursive) {
-            log::warn!("Failed to watch {:?}: {}", path, e);
-        }
-        let git_dir = path.join(".git");
-        if git_dir.exists() {
-            if let Err(e) = watcher.watch(&git_dir, RecursiveMode::NonRecursive) {
-                log::warn!("Failed to watch {:?}: {}", git_dir, e);
+/// Watch a repository root, preferring recursive coverage so edits in
+/// subdirectories also trigger refreshes (PAF-13: NonRecursive left everything
+/// below the root blind). Falls back to a root + recursive `.git` watch when
+/// the recursive watch fails (e.g. Linux inotify watch exhaustion on very
+/// large trees); returns `Err` only if the root itself could not be watched.
+fn mount_repo(watcher: &mut RecommendedWatcher, root: &Path) -> Result<(), notify::Error> {
+    match watcher.watch(root, RecursiveMode::Recursive) {
+        Ok(()) => Ok(()),
+        Err(recursive_err) => {
+            // The failed recursive walk may have left partial watches behind;
+            // clear the root entry before retrying with a shallower mode.
+            let _ = watcher.unwatch(root);
+            log::warn!(
+                "Recursive watch failed for {:?} ({}); falling back to root + .git",
+                root,
+                recursive_err
+            );
+            watcher.watch(root, RecursiveMode::NonRecursive)?;
+            let git_dir = root.join(".git");
+            if git_dir.exists() {
+                // Recursive `.git` covers nested refs/*; cheap (a few hundred
+                // directories at most), and commit/push refreshes no longer
+                // depend on HEAD/index being direct children.
+                if let Err(e) = watcher.watch(&git_dir, RecursiveMode::Recursive) {
+                    log::warn!("Failed to watch {:?}: {}", git_dir, e);
+                }
             }
+            Ok(())
         }
     }
 }
 
-/// Stop watching each repository root and its `.git` directory.
+/// Stop watching each repository root and its `.git` directory. Unwatches of
+/// entries that were never separately mounted (recursive roots cover `.git`)
+/// fail silently by design.
 fn unmount(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
     for path in paths {
         let _ = watcher.unwatch(&path.join(".git"));
@@ -166,9 +212,62 @@ fn unmount(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
     }
 }
 
+/// When the next refresh for a repository should run: immediately (leading
+/// edge) when the repo has been quiet since the last refresh, otherwise one
+/// debounce window out (trailing edge) so the burst's final state is captured
+/// instead of dropped (PAF-13).
+fn next_due(last_refresh: Option<Instant>, now: Instant, window: Duration) -> Instant {
+    match last_refresh {
+        Some(last) if now.duration_since(last) < window => now + window,
+        _ => now,
+    }
+}
+
+/// Drain scheduled refreshes that have come due, removing them from the map.
+fn poll_due(due: &mut HashMap<PathBuf, Instant>, now: Instant) -> Vec<PathBuf> {
+    let ready: Vec<PathBuf> = due
+        .iter()
+        .filter(|(_, t)| **t <= now)
+        .map(|(k, _)| k.clone())
+        .collect();
+    for k in &ready {
+        due.remove(k);
+    }
+    ready
+}
+
+/// Recompute one repository's status off the async worker thread (libgit2 +
+/// file IO are blocking) and return the batched update for the frontend.
+async fn refresh_repo(
+    repo_path: &Path,
+    cache: &Cache<String, RepoStatus>,
+) -> Option<RepoStatusUpdate> {
+    let path_str = repo_path.to_string_lossy().to_string();
+    let repo_for_blocking = repo_path.to_path_buf();
+    match tokio::task::spawn_blocking(move || git_status::get_repo_status(&repo_for_blocking)).await
+    {
+        Ok(Ok(new_status)) => {
+            cache.insert(path_str.clone(), new_status.clone());
+            Some(RepoStatusUpdate {
+                repo_path: path_str,
+                status: new_status,
+            })
+        }
+        Ok(Err(e)) => {
+            log::warn!("Failed to refresh status for {:?}: {}", repo_path, e);
+            None
+        }
+        Err(e) => {
+            log::warn!("Status refresh task failed for {:?}: {}", repo_path, e);
+            None
+        }
+    }
+}
+
 /// Event loop: consumes filesystem change events, maps them to affected
-/// repositories (via T-02's `find_affected_repos`), refreshes statuses with a
-/// per-repo debounce, and flushes batched `repo_status_changed_batch` events.
+/// repositories (via T-02's `find_affected_repos`), schedules per-repo
+/// debounced refreshes (leading edge + trailing merge, PAF-13), and flushes
+/// batched `repo_status_changed_batch` events.
 async fn run_event_loop(
     mut rx: mpsc::UnboundedReceiver<Vec<PathBuf>>,
     cache: Arc<Cache<String, RepoStatus>>,
@@ -176,18 +275,28 @@ async fn run_event_loop(
     watched: Arc<Mutex<HashSet<PathBuf>>>,
 ) {
     let debounce = Duration::from_millis(DEBOUNCE_MS);
+    // Scheduled refreshes: the event branch arms entries, the timer branch
+    // drains them — the map only ever holds pending work.
+    let mut due: HashMap<PathBuf, Instant> = HashMap::new();
+    // Last executed refresh per repo, feeding `next_due`'s leading edge.
     let mut last_refresh: HashMap<PathBuf, Instant> = HashMap::new();
     let mut pending: Vec<RepoStatusUpdate> = Vec::new();
     let mut flush = tokio::time::interval(Duration::from_millis(BATCH_MS));
 
     loop {
+        // Wake exactly when the earliest scheduled refresh comes due.
+        let earliest = due.values().min().copied();
+        let wake = tokio::time::sleep_until(tokio::time::Instant::from_std(
+            earliest.unwrap_or_else(Instant::now),
+        ));
+
         tokio::select! {
             maybe = rx.recv() => {
                 let Some(changed_paths) = maybe else { break };
 
                 // Map changed paths → affected repo roots (shared set).
                 let (roots, changed) = {
-                    let watched = watched.lock().unwrap();
+                    let watched = lock_watched(&watched);
                     let roots: Vec<String> = watched
                         .iter()
                         .map(|p| p.to_string_lossy().to_string())
@@ -201,43 +310,10 @@ async fn run_event_loop(
 
                 let now = Instant::now();
                 for root in git_status::find_affected_repos(&changed, &roots) {
-                    let repo_path = PathBuf::from(root);
-
-                    // Debounce: skip if this repo was refreshed recently.
-                    if let Some(&last) = last_refresh.get(&repo_path) {
-                        if now.duration_since(last) < debounce {
-                            continue;
-                        }
-                    }
-                    last_refresh.insert(repo_path.clone(), now);
-
-                    // Incremental refresh: recompute this repo's status off the
-                    // async worker thread (libgit2 + file IO are blocking).
-                    let path_str = repo_path.to_string_lossy().to_string();
-                    let repo_for_blocking = repo_path.clone();
-                    match tokio::task::spawn_blocking(move || {
-                        git_status::get_repo_status(&repo_for_blocking)
-                    })
-                    .await
-                    {
-                        Ok(Ok(new_status)) => {
-                            cache.insert(path_str.clone(), new_status.clone());
-                            pending.push(RepoStatusUpdate {
-                                repo_path: path_str,
-                                status: new_status,
-                            });
-                        }
-                        Ok(Err(e)) => log::warn!(
-                            "Failed to refresh status for {:?}: {}",
-                            repo_path,
-                            e
-                        ),
-                        Err(e) => log::warn!(
-                            "Status refresh task failed for {:?}: {}",
-                            repo_path,
-                            e
-                        ),
-                    }
+                    // PAF-13: merge bursts instead of dropping the tail.
+                    due.entry(PathBuf::from(root)).or_insert_with_key(|repo| {
+                        next_due(last_refresh.get(repo).copied(), now, debounce)
+                    });
                 }
             }
             _ = flush.tick() => {
@@ -246,6 +322,27 @@ async fn run_event_loop(
                         log::warn!("Failed to emit repo_status_changed_batch: {}", e);
                     }
                     pending.clear();
+                }
+                // Drop bookkeeping for unmounted repos so the maps cannot grow
+                // without bound across mount/unmount cycles (PAF-13).
+                if !last_refresh.is_empty() || !due.is_empty() {
+                    let live: HashSet<PathBuf> = lock_watched(&watched).iter().cloned().collect();
+                    last_refresh.retain(|k, _| live.contains(k));
+                    due.retain(|k, _| live.contains(k));
+                }
+            }
+            _ = wake, if earliest.is_some() => {
+                let ready = poll_due(&mut due, Instant::now());
+                // Skip repos unmounted while their refresh was pending.
+                let live: HashSet<PathBuf> = lock_watched(&watched).iter().cloned().collect();
+                for repo_path in ready {
+                    if !live.contains(&repo_path) {
+                        continue;
+                    }
+                    if let Some(update) = refresh_repo(&repo_path, &cache).await {
+                        last_refresh.insert(repo_path, Instant::now());
+                        pending.push(update);
+                    }
                 }
             }
         }
@@ -278,5 +375,37 @@ mod tests {
         let (to_add, to_remove) = diff_watch_sets(&set, &set);
         assert!(to_add.is_empty());
         assert!(to_remove.is_empty());
+    }
+
+    #[test]
+    fn next_due_refreshes_immediately_after_quiet_and_defers_bursts() {
+        let window = Duration::from_millis(500);
+        let now = Instant::now();
+
+        // Quiet repo (never refreshed): refresh immediately.
+        assert_eq!(next_due(None, now, window), now);
+
+        // Recently refreshed repo: trailing refresh one window out so the
+        // burst's final state is captured (PAF-13: previously dropped).
+        let last = now - Duration::from_millis(100);
+        assert_eq!(next_due(Some(last), now, window), now + window);
+
+        // Repo refreshed longer ago than the window: immediate again.
+        let old = now - window - Duration::from_millis(1);
+        assert_eq!(next_due(Some(old), now, window), now);
+    }
+
+    #[test]
+    fn poll_due_returns_only_ready_entries_and_drains_them() {
+        let mut due: HashMap<PathBuf, Instant> = HashMap::new();
+        let now = Instant::now();
+        due.insert(PathBuf::from("ready"), now - Duration::from_millis(10));
+        due.insert(PathBuf::from("later"), now + Duration::from_secs(60));
+
+        let ready = poll_due(&mut due, now);
+
+        assert_eq!(ready, vec![PathBuf::from("ready")]);
+        assert!(!due.contains_key(&PathBuf::from("ready")));
+        assert!(due.contains_key(&PathBuf::from("later")));
     }
 }

@@ -37,6 +37,23 @@ const RECONNECT_MAX: Duration = Duration::from_secs(30);
 /// 握手超时，避免慢连接挂住 accept 任务。
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// PAF-12：known_addrs 有界化——学习时间超 TTL 视为过期，硬上限超限时
+/// 先淘汰最旧条目再插入（Peer Exchange 高频学习防内存无界增长）。
+const KNOWN_ADDR_TTL: Duration = Duration::from_secs(30 * 60);
+const KNOWN_ADDR_MAX: usize = 512;
+
+/// 登记一条已知地址：TTL 清扫 + 硬上限最旧淘汰 + 刷新 last_seen。
+fn insert_known_addr(known: &mut HashMap<SocketAddr, Instant>, addr: SocketAddr) {
+    let now = Instant::now();
+    known.retain(|_, seen| now.duration_since(*seen) < KNOWN_ADDR_TTL);
+    if known.len() >= KNOWN_ADDR_MAX && !known.contains_key(&addr) {
+        if let Some(oldest) = known.iter().min_by_key(|(_, seen)| **seen).map(|(a, _)| *a) {
+            known.remove(&oldest);
+        }
+    }
+    known.insert(addr, now);
+}
+
 fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -69,7 +86,8 @@ pub struct ChatManager {
     /// 正在拨出、尚未完成握手的地址（防止重复拨号）。
     connecting: Mutex<HashSet<SocketAddr>>,
     /// 已知可拨地址（Peer Exchange / mDNS 学习而来），用于补拨与重连。
-    known_addrs: Mutex<HashSet<SocketAddr>>,
+    /// PAF-12：值记录最近一次学习时间——TTL + 硬上限淘汰，防止无界累积。
+    known_addrs: Mutex<HashMap<SocketAddr, Instant>>,
     seen: Mutex<SeenMessageCache>,
     members: Mutex<HashMap<String, MemberInfo>>,
     alive: Arc<AtomicBool>,
@@ -148,7 +166,7 @@ impl ChatManager {
             endpoint,
             peers: Mutex::new(HashMap::new()),
             connecting: Mutex::new(HashSet::new()),
-            known_addrs: Mutex::new(HashSet::new()),
+            known_addrs: Mutex::new(HashMap::new()),
             seen: Mutex::new(SeenMessageCache::new()),
             members: Mutex::new(members),
             alive: Arc::new(AtomicBool::new(true)),
@@ -332,7 +350,7 @@ impl ChatManager {
             })
             .unwrap_or_default();
         if let Ok(known) = self.known_addrs.lock() {
-            addrs.extend(known.iter().map(|a| a.to_string()));
+            addrs.extend(known.keys().map(|a| a.to_string()));
         }
         addrs.sort();
         addrs.dedup();
@@ -585,7 +603,7 @@ impl ChatManager {
             }
         }
         if let Ok(mut known) = self.known_addrs.lock() {
-            known.insert(handle.dial_addr());
+            insert_known_addr(&mut known, handle.dial_addr());
         }
         peers.insert(handle.peer_id.clone(), handle);
         true
@@ -798,7 +816,7 @@ impl ChatManager {
         for raw in payload.peers.iter().take(MAX_EXCHANGED_ADDRS) {
             let Ok(addr) = raw.parse::<SocketAddr>() else { continue };
             if let Ok(mut known) = self.known_addrs.lock() {
-                known.insert(addr);
+                insert_known_addr(&mut known, addr);
             }
             to_dial.push(addr);
         }
@@ -888,7 +906,7 @@ impl ChatManager {
                     let candidates: Vec<SocketAddr> = this
                         .known_addrs
                         .lock()
-                        .map(|k| k.iter().cloned().collect())
+                        .map(|k| k.keys().copied().collect())
                         .unwrap_or_default();
                     for addr in candidates {
                         if this.should_dial(addr) {
@@ -1289,5 +1307,38 @@ mod tests {
 
         b.leave(false).await;
         a.leave(false).await;
+    }
+}
+
+#[cfg(test)]
+mod known_addr_tests {
+    use super::*;
+
+    /// PAF-12：known_addrs 有界化——TTL 过期淘汰 + 硬上限最旧淘汰。
+    #[test]
+    fn known_addrs_respect_ttl_and_capacity() {
+        let mut known = HashMap::new();
+        let a = "127.0.0.1:9001".parse::<SocketAddr>().unwrap();
+        let b = "127.0.0.1:9002".parse::<SocketAddr>().unwrap();
+
+        // 正常登记。
+        insert_known_addr(&mut known, a);
+        insert_known_addr(&mut known, b);
+        assert!(known.contains_key(&a) && known.contains_key(&b));
+
+        // 硬上限：塞满后再插新地址 → 最旧的（a）被淘汰，总量不越界。
+        for i in 0..(KNOWN_ADDR_MAX - 1) {
+            let addr = format!("10.0.0.1:{}", 1000 + i).parse::<SocketAddr>().unwrap();
+            insert_known_addr(&mut known, addr);
+        }
+        assert_eq!(known.len(), KNOWN_ADDR_MAX);
+        assert!(!known.contains_key(&a), "oldest entry must be evicted at capacity");
+        assert!(known.contains_key(&b), "recent entry must survive");
+
+        // 已存在地址重复学习只刷新 last_seen，不越限。
+        let refreshed = "10.0.0.1:1999".parse::<SocketAddr>().unwrap();
+        insert_known_addr(&mut known, refreshed);
+        insert_known_addr(&mut known, refreshed);
+        assert_eq!(known.len(), KNOWN_ADDR_MAX);
     }
 }

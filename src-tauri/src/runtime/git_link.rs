@@ -24,6 +24,7 @@ use rusqlite::Connection;
 
 use crate::maven::closure::RuntimeClosureCache;
 use crate::maven::index::DependencyGraphCache;
+use crate::error::AppResult;
 use crate::models::task::{RuntimeOp, RuntimeTaskOptions, TaskRequest, TaskType};
 use crate::runtime::events::{
     DependencyChangedPayload, RuntimeEmission, RuntimeEventEmitter, EVENT_DEPENDENCY_CHANGED,
@@ -155,24 +156,42 @@ impl GitLinkEngine {
         runtime_name: &str,
     ) -> (BTreeSet<String>, Vec<String>) {
         // repo_status 只对「有缓存行」的仓库存在；无行 = 尚未扫描，不提示。
+        // PAF-19：SQL 失败降级为本轮空快照并继续下个 tick——本函数位于常驻
+        // runtime-git-link 线程循环，一次 prepare/IO 抖动不得 panic 杀死线程
+        // （否则 Git 联动静默失效直到应用重启）。
         let mut dirty_repos: BTreeMap<i64, String> = BTreeMap::new();
         {
-            let mut stmt = conn
-                .prepare(
+            let query = |conn: &Connection, workspace_id: i64| -> AppResult<Vec<(i64, String)>> {
+                let mut stmt = conn.prepare(
                     "SELECT r.id, r.path, rs.modified_count
                      FROM repositories r
                      JOIN repo_status rs ON rs.repo_id = r.id
                      WHERE r.workspace_id = ?1 AND rs.modified_count > 0",
-                )
-                .expect("repo_status query");
-            let rows = stmt
-                .query_map([workspace_id], |row| {
+                )?;
+                let rows = stmt.query_map([workspace_id], |row| {
                     Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?))
-                })
-                .expect("repo_status query_map");
-            for row in rows {
-                let (id, path, _modified) = row.expect("repo_status row");
-                dirty_repos.insert(id, path.replace('\\', "/"));
+                })?;
+                let mut out = Vec::new();
+                for row in rows {
+                    // 单行读取失败跳过该行，不放弃整轮快照（评审修复：旧代码用 row?
+                    // 会传播错误导致整轮变空，与注释意图不符）。
+                    match row {
+                        Ok((id, path, _modified)) => out.push((id, path)),
+                        Err(e) => log::warn!("git_link: skipping bad row: {e}"),
+                    }
+                }
+                Ok(out)
+            };
+            match query(conn, workspace_id) {
+                Ok(rows) => {
+                    for (id, path) in rows {
+                        dirty_repos.insert(id, path.replace('\\', "/"));
+                    }
+                }
+                Err(e) => {
+                    log::error!("git_link: repo_status query failed for workspace {workspace_id}: {e}");
+                    return (BTreeSet::new(), Vec::new());
+                }
             }
         }
         if dirty_repos.is_empty() {
@@ -188,10 +207,10 @@ impl GitLinkEngine {
             Ok(c) => c,
             Err(_) => return (BTreeSet::new(), Vec::new()),
         };
-        let needle = cfg.project.replace('\\', "/");
+        // PAF-18：组件级后缀匹配（project `api` 不匹配 `.../myapi`）。
         let Some(root) = graph.projects.iter().find(|p| {
-            let path = p.path.to_string_lossy().replace('\\', "/");
-            path == needle || path.ends_with(&needle) || p.coordinates.artifact_id == cfg.project
+            crate::pathutil::path_component_match(&p.path.to_string_lossy(), &cfg.project)
+                || p.coordinates.artifact_id == cfg.project
         }) else {
             return (BTreeSet::new(), Vec::new());
         };
@@ -639,6 +658,47 @@ mod tests {
         let emissions = emitter.collected();
         assert_eq!(emissions.len(), 2);
         assert_eq!(emissions[1].payload["repos"].as_array().unwrap().len(), 0);
+    }
+
+    /// PAF-19 回归：repo_status 表异常（prepare 失败）时 `dirty_for_app`
+    /// 降级为空快照而非 panic——常驻 runtime-git-link 线程的一次 DB 抖动
+    /// 不能杀死线程；表恢复后下个 tick 正常工作。
+    #[test]
+    fn dirty_for_app_survives_sql_error_and_recovers() {
+        let fixture = link_fixture("sql_error", false);
+        let (engine, _recorder, _emitter) = test_engine(&fixture);
+        mark_repo_dirty(&fixture, 3);
+        {
+            let conn = fixture.db.lock().unwrap();
+            conn.execute("DROP TABLE repo_status", []).unwrap();
+            let (dirty, affected) = engine.dirty_for_app(&conn, fixture.workspace_id, "app");
+            assert!(dirty.is_empty(), "SQL 失败应降级为空快照");
+            assert!(affected.is_empty());
+
+            // 恢复表结构（DDL 与 db/schema.rs repo_status 定义一致，IF NOT
+            // EXISTS 便于直接重放），模拟「下个 tick 前故障解除」。
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS repo_status (
+                    repo_id         INTEGER PRIMARY KEY REFERENCES repositories(id) ON DELETE CASCADE,
+                    branch          TEXT,
+                    is_dirty        INTEGER DEFAULT 0,
+                    is_detached     INTEGER DEFAULT 0,
+                    ahead           INTEGER DEFAULT 0,
+                    behind          INTEGER DEFAULT 0,
+                    conflict_count  INTEGER DEFAULT 0,
+                    modified_count  INTEGER DEFAULT 0,
+                    untracked_count INTEGER DEFAULT 0,
+                    updated_at      TEXT NOT NULL
+                );",
+            )
+            .unwrap();
+        }
+        mark_repo_dirty(&fixture, 3);
+        let (dirty, _affected) = {
+            let conn = fixture.db.lock().unwrap();
+            engine.dirty_for_app(&conn, fixture.workspace_id, "app")
+        };
+        assert_eq!(dirty.len(), 1, "故障解除后恢复正常快照");
     }
 
     /// §48：分支切换 → 依赖重算提交；POM 有变化（fingerprint 变化）→

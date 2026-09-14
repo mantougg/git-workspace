@@ -12,11 +12,21 @@ use std::path::Path;
 
 use crate::error::{AppError, AppResult};
 
+/// 护栏比较：两侧先经 `pathutil::normalize_for_compare`（verbatim 前缀剥离
+/// + 分隔符统一 + Windows/macOS 大小写折叠，PAF-18），再保留 `Path::starts_with`
+/// 的组件级边界语义。归一化对比较结果只会更宽松（此前大小写/写法差异会被
+/// 误报 Permission），不会放过真正的越界写。
+fn guard_starts_with(path: &Path, root: &Path) -> bool {
+    let path = crate::pathutil::normalize_for_compare(&path.to_string_lossy());
+    let root = crate::pathutil::normalize_for_compare(&root.to_string_lossy());
+    Path::new(&path).starts_with(&Path::new(&root))
+}
+
 /// 纯校验：运行时生成物写路径必须在 `workspace_root/.gitworkspace/` 下。
 /// 不触发 debug 断言（供测试与内部复用直接调用）。
 pub fn check_workspace_write_path(path: &Path, workspace_root: &Path, what: &str) -> AppResult<()> {
     let gitworkspace = workspace_root.join(".gitworkspace");
-    if !path.starts_with(&gitworkspace) {
+    if !guard_starts_with(path, &gitworkspace) {
         return Err(AppError::Permission(format!(
             "{what} 试图写入 workspace 之外：{path:?}。\
              运行时生成物只允许落在 {gitworkspace:?} 下（用户项目只读，全局约束 §2）"
@@ -30,7 +40,7 @@ pub fn check_workspace_write_path(path: &Path, workspace_root: &Path, what: &str
 /// 开发期 `debug_assert` fail-fast（违规写立即暴露），生产返回
 /// `Permission` 可行动错误。
 pub fn assert_workspace_write_path(path: &Path, workspace_root: &Path, what: &str) -> AppResult<()> {
-    let allowed = path.starts_with(&workspace_root.join(".gitworkspace"));
+    let allowed = guard_starts_with(path, &workspace_root.join(".gitworkspace"));
     debug_assert!(
         allowed,
         "R-14 guard: {what} writes outside .gitworkspace: {path:?} (workspace {workspace_root:?})"
@@ -78,5 +88,34 @@ mod tests {
         let root = Path::new("/ws");
         let error = check_workspace_write_path(Path::new("/ws/repo/.gitworkspace/x.json"), root, "测试").unwrap_err();
         assert_eq!(error.code(), "PermissionError");
+    }
+
+    /// PAF-18：Windows verbatim 前缀 + 反斜杠写法不得误报 Permission。
+    /// verbatim 剥离与分隔符归一化与平台无关，Linux 亦可验证。
+    #[test]
+    fn allows_verbatim_backslash_paths() {
+        let root = Path::new("C:/ws");
+        assert_workspace_write_path(Path::new(r"\\?\C:\ws\.gitworkspace\logs\1.log"), root, "测试")
+            .unwrap_or_else(|e| panic!("verbatim 路径应在护栏内: {e}"));
+    }
+
+    /// PAF-18：组件边界语义在归一化后保持——`.gitworkspace` 的兄弟目录
+    /// 前缀（如 `.gitworkspace-x`）仍被拒绝。
+    #[test]
+    fn rejects_sibling_prefix_directory_after_normalization() {
+        let root = Path::new("/ws");
+        let error =
+            check_workspace_write_path(Path::new("/ws/.gitworkspace-x/evil.json"), root, "测试").unwrap_err();
+        assert_eq!(error.code(), "PermissionError");
+    }
+
+    /// PAF-18：大小写不敏感文件系统（Windows / macOS）上，路径与 workspace
+    /// 根大小写不同不得误报；Linux 大小写敏感保持原语义。
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn allows_case_mismatched_paths_on_insensitive_filesystems() {
+        let root = Path::new("C:/ws");
+        assert_workspace_write_path(Path::new(r"c:\WS\.gitworkspace\logs\1.log"), root, "测试")
+            .unwrap_or_else(|e| panic!("大小写混合路径应在护栏内: {e}"));
     }
 }

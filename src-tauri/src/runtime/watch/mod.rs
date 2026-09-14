@@ -321,13 +321,13 @@ impl RuntimeWatchEngine {
         let conn = self.db.lock().unwrap();
         let cfg = config::load_config_unredacted(&conn, workspace_id, runtime_name)?;
         let graph = self.graph_cache.get_or_load(&conn, workspace_id)?.graph;
-        let needle = cfg.project.replace('\\', "/");
+        // PAF-18：组件级后缀匹配（project `api` 不匹配 `.../myapi`）。
         let root = graph
             .projects
             .iter()
             .find(|p| {
-                let path = p.path.to_string_lossy().replace('\\', "/");
-                path == needle || path.ends_with(&needle) || p.coordinates.artifact_id == cfg.project
+                crate::pathutil::path_component_match(&p.path.to_string_lossy(), &cfg.project)
+                    || p.coordinates.artifact_id == cfg.project
             })
             .ok_or_else(|| {
                 crate::error::AppError::ProjectNotFound(format!("项目 '{0}' 不在依赖图中（R-17 watch）", cfg.project))

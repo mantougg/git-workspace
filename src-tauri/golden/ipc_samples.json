@@ -1986,6 +1986,7 @@
     }
   ],
   "RebaseState": {
+    "branchRef": "refs/heads/main",
     "onto": "main",
     "ops": [],
     "originalHead": "abc123",
@@ -2721,6 +2722,18 @@
       "noEdit": false,
       "thenPush": false,
       "type": "commit"
+    },
+    {
+      "files": [
+        "src/main.rs"
+      ],
+      "type": "stageFiles"
+    },
+    {
+      "files": [
+        "src/main.rs"
+      ],
+      "type": "restoreFiles"
     },
     {
       "content": null,

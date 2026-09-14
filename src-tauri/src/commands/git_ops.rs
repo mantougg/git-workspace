@@ -1,15 +1,20 @@
 use std::path::Path;
+use std::time::Duration;
 
 use tauri::{Emitter, State};
 
 use crate::core::git_ops::GitOps;
 use crate::core::git_status;
 use crate::db::dao;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::commit::{CommitIdentity, CommitScanFinding};
 use crate::models::repository::RepoStatus;
 use crate::models::task::{TaskRequest, TaskType};
 use crate::state::AppState;
+
+/// PAF-08：sync 网络命令硬超时（与任务队列 TASK_TIMEOUT 对齐）。超时后
+/// `run_git_streaming` 杀掉 git 进程树，避免无限占用执行线程。
+const SYNC_GIT_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Batch fetch: create Fetch tasks for each repo path and submit to the task queue.
 /// Returns the list of task IDs.
@@ -164,31 +169,45 @@ pub fn set_group_identity(
     dao::set_group_identity(&conn, group_id, name.as_deref(), email.as_deref())
 }
 
-/// Sync fetch for a single repo (synchronous, not queued).
+/// Sync fetch for a single repo (not queued through the task system).
 /// Useful for quick status refresh without the task system.
+///
+/// PAF-08：原为同步命令——git 网络挂起时在 Tauri 主线程无限阻塞且无超时。
+/// 改 async + `spawn_blocking` 并走 `fetch_streaming`：执行移出主线程，
+/// 超时杀 git 进程树。
 #[tauri::command]
-pub fn sync_fetch(repo_path: String) -> AppResult<()> {
-    let ops = GitOps::with_default_ssh();
-    ops.fetch(Path::new(&repo_path)).map(|_| ())
+pub async fn sync_fetch(repo_path: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ops = GitOps::with_default_ssh();
+        ops.fetch_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})
+            .map(|_| ())
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("sync_fetch join error: {e}")))?
 }
 
-/// Sync pull for a single repo (synchronous, not queued).
-/// Returns the refreshed status after pulling.
+/// Sync pull for a single repo (not queued). Returns the refreshed status after pulling.
 #[tauri::command]
-pub fn sync_pull(repo_path: String) -> AppResult<RepoStatus> {
-    let ops = GitOps::with_default_ssh();
-    ops.pull(Path::new(&repo_path))?;
-
-    // Return fresh status after pull
-    let status = git_status::get_repo_status(Path::new(&repo_path))?;
-    Ok(status)
+pub async fn sync_pull(repo_path: String) -> AppResult<RepoStatus> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ops = GitOps::with_default_ssh();
+        ops.pull_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+        git_status::get_repo_status(Path::new(&repo_path))
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("sync_pull join error: {e}")))?
 }
 
-/// Sync push for a single repo (synchronous, not queued).
+/// Sync push for a single repo (not queued).
 #[tauri::command]
-pub fn sync_push(repo_path: String) -> AppResult<()> {
-    let ops = GitOps::with_default_ssh();
-    ops.push(Path::new(&repo_path)).map(|_| ())
+pub async fn sync_push(repo_path: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ops = GitOps::with_default_ssh();
+        ops.push_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})
+            .map(|_| ())
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("sync_push join error: {e}")))?
 }
 
 /// Start watching repositories for file changes.
@@ -283,34 +302,19 @@ pub struct RestoreRequest {
 
 /// Stage (git add) the given files in each repository.
 /// Files deleted on disk are removed from the index instead.
-/// Returns the list of repository names processed.
+/// PAF-11：收编 T-05 任务队列（一仓一任务）——进度事件可见、可定位失败仓，
+/// 部分失败语义与 batch_fetch/pull/push 一致。返回任务 ID 列表。
 #[tauri::command]
-pub fn batch_add(requests: Vec<AddRequest>) -> AppResult<Vec<String>> {
-    let mut processed = Vec::with_capacity(requests.len());
-
-    for req in requests {
-        let repo = git2::Repository::open(&req.repo_path)?;
-        let mut index = repo.index()?;
-
-        for file in &req.files {
-            let full_path = Path::new(&req.repo_path).join(file);
-            if full_path.is_dir() {
-                // Untracked directory: recursively stage everything under it.
-                index.add_all([file.as_str()], git2::IndexAddOption::DEFAULT, None)?;
-            } else if full_path.exists() {
-                index.add_path(Path::new(file))?;
-            } else {
-                // Deleted on disk: record the deletion in the index.
-                index.remove_path(Path::new(file))?;
-            }
-        }
-
-        index.write()?;
-        log::info!("Staged {} file(s) in {:?}", req.files.len(), req.repo_path);
-        processed.push(req.repo_name);
-    }
-
-    Ok(processed)
+pub fn batch_add(requests: Vec<AddRequest>, state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    let task_requests: Vec<TaskRequest> = requests
+        .into_iter()
+        .map(|req| TaskRequest {
+            task_type: TaskType::StageFiles { files: req.files },
+            repo_path: req.repo_path,
+            repo_name: req.repo_name,
+        })
+        .collect();
+    state.task_manager.submit(&task_requests)
 }
 
 /// Revert working-tree changes for the given files (git restore --staged semantics).
@@ -319,61 +323,17 @@ pub fn batch_add(requests: Vec<AddRequest>) -> AppResult<Vec<String>> {
 ///   index and the working tree, discarding staged and unstaged changes.
 /// - Files not in HEAD (untracked or staged-new) are unstaged and deleted
 ///   from disk.
-/// Returns the list of repository names processed.
+/// PAF-11：收编 T-05 任务队列（一仓一任务）；restore 属高危操作，worker
+/// 执行前快照 HEAD 并落 T-34 操作日志。返回任务 ID 列表。
 #[tauri::command]
-pub fn batch_restore(requests: Vec<RestoreRequest>) -> AppResult<Vec<String>> {
-    let mut processed = Vec::with_capacity(requests.len());
-
-    for req in requests {
-        let repo = git2::Repository::open(&req.repo_path)?;
-
-        let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-
-        let mut checkout_paths: Vec<&str> = Vec::new();
-        let mut index_dirty = false;
-        let mut index = repo.index()?;
-
-        for file in &req.files {
-            let full_path = Path::new(&req.repo_path).join(file);
-            let in_head = head_tree
-                .as_ref()
-                .and_then(|t| t.get_path(Path::new(file)).ok())
-                .is_some();
-
-            if in_head {
-                // Restore from HEAD (index + working tree) via checkout_head.
-                checkout_paths.push(file.as_str());
-            } else {
-                // Untracked or staged-new: unstage, then delete from disk.
-                if index.remove_path(Path::new(file)).is_ok() {
-                    index_dirty = true;
-                }
-                if full_path.exists() {
-                    if full_path.is_dir() {
-                        std::fs::remove_dir_all(&full_path)?;
-                    } else {
-                        std::fs::remove_file(&full_path)?;
-                    }
-                }
-            }
-        }
-
-        if index_dirty {
-            index.write()?;
-        }
-
-        if !checkout_paths.is_empty() {
-            let mut opts = git2::build::CheckoutBuilder::new();
-            for p in &checkout_paths {
-                opts.path(p);
-            }
-            opts.force();
-            repo.checkout_head(Some(&mut opts))?;
-        }
-
-        log::info!("Restored {} file(s) in {:?}", req.files.len(), req.repo_path);
-        processed.push(req.repo_name);
-    }
-
-    Ok(processed)
+pub fn batch_restore(requests: Vec<RestoreRequest>, state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    let task_requests: Vec<TaskRequest> = requests
+        .into_iter()
+        .map(|req| TaskRequest {
+            task_type: TaskType::RestoreFiles { files: req.files },
+            repo_path: req.repo_path,
+            repo_name: req.repo_name,
+        })
+        .collect();
+    state.task_manager.submit(&task_requests)
 }

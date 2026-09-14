@@ -35,6 +35,20 @@ export interface TerminalSession extends TerminalSessionInfo {
   launchedInTerminal?: boolean;
 }
 
+/**
+ * PAF-12：writeBuffer / pendingOutput 的块数上限（对照 runtime logBuffers
+ * 5000 行环形上限）。面板隐藏（v-if 卸载 XtermView）或 xterm 未挂载期间
+ * 输出全部入缓冲，超限丢最旧，防止长跑 runtime 输出把内存打爆。
+ */
+const WRITE_BUFFER_MAX_CHUNKS = 5000;
+
+/** 超限丢最旧（splice O(n) 一次裁剪，优于 shift 循环 O(n*m)）。 */
+function trimWriteBuffer(buffer: Uint8Array[]) {
+  if (buffer.length > WRITE_BUFFER_MAX_CHUNKS) {
+    buffer.splice(0, buffer.length - WRITE_BUFFER_MAX_CHUNKS);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -83,14 +97,18 @@ export const useTerminalStore = defineStore("terminal", () => {
   function togglePanel() {
     panelVisible.value = !panelVisible.value;
     if (panelVisible.value && !listenersRegistered) {
-      registerEventListeners();
+      registerEventListeners().catch((e) =>
+        console.warn("terminal: event listener registration failed (togglePanel):", e),
+      );
     }
   }
 
   function showPanel() {
     panelVisible.value = true;
     if (!listenersRegistered) {
-      registerEventListeners();
+      registerEventListeners().catch((e) =>
+        console.warn("terminal: event listener registration failed (showPanel):", e),
+      );
     }
   }
 
@@ -98,41 +116,75 @@ export const useTerminalStore = defineStore("terminal", () => {
     panelVisible.value = false;
   }
 
-  /** 注册 Tauri 事件监听（面板首次打开时调用，App 生命周期内保持）。 */
+  /** 注册 Tauri 事件监听（面板首次打开时调用，App 生命周期内保持）。
+   *  PAF-16：逐个独立注册，单个 listen 失败降级为「该事件不可用」（记错误
+   *  日志，成功者保留）；若全部失败则回滚注册门槛，下次打开面板可重试。
+   *  评审优化：Promise.allSettled 并行注册，避免单个 listen 卡住阻塞其余。 */
   function registerEventListeners(): Promise<void> {
     if (listenersReady) return listenersReady;
     listenersRegistered = true;
 
     ensureGitConsoleSession();
 
+    const listenerDefs = [
+      {
+        event: terminalApi.TERMINAL_EVENTS.OUTPUT,
+        handler: (e: { payload: TerminalOutputEvent }) => handleOutput(e.payload),
+        assign: (un: UnlistenFn) => { unlistenOutput = un; },
+      },
+      {
+        event: terminalApi.TERMINAL_EVENTS.EXIT,
+        handler: (e: { payload: TerminalExitEvent }) => handleExit(e.payload),
+        assign: (un: UnlistenFn) => { unlistenExit = un; },
+      },
+      {
+        event: terminalApi.TERMINAL_EVENTS.GIT_OP_OUTPUT,
+        handler: (e: { payload: GitOpOutputEvent }) => handleGitOpOutput(e.payload),
+        assign: (un: UnlistenFn) => { unlistenGitOp = un; },
+      },
+      {
+        event: RUNTIME_EVENTS.processOutput,
+        handler: (e: { payload: ProcessOutputPayload }) => handleRuntimeOutput(e.payload),
+        assign: (un: UnlistenFn) => { unlistenRuntimeOutput = un; },
+      },
+      {
+        event: RUNTIME_EVENTS.processStarted,
+        handler: () => { refreshRuntimeProcesses(); },
+        assign: (un: UnlistenFn) => { unlistenRuntimeStarted = un; },
+      },
+      {
+        event: RUNTIME_EVENTS.processStopped,
+        handler: () => { refreshRuntimeProcesses(); },
+        assign: (un: UnlistenFn) => { unlistenRuntimeStopped = un; },
+      },
+    ];
+
     listenersReady = (async () => {
-      unlistenOutput = await listen<TerminalOutputEvent>(
-        terminalApi.TERMINAL_EVENTS.OUTPUT,
-        (event) => { handleOutput(event.payload); },
+      const results = await Promise.allSettled(
+        listenerDefs.map((def) =>
+          listen(def.event, def.handler as (event: unknown) => void).then((un) => {
+            def.assign(un);
+            return un;
+          }),
+        ),
       );
 
-      unlistenExit = await listen<TerminalExitEvent>(
-        terminalApi.TERMINAL_EVENTS.EXIT,
-        (event) => { handleExit(event.payload); },
+      const succeeded = results.filter((r): r is PromiseFulfilledResult<UnlistenFn> =>
+        r.status === "fulfilled",
+      );
+      const failed = results.filter((r): r is PromiseRejectedResult =>
+        r.status === "rejected",
       );
 
-      unlistenGitOp = await listen<GitOpOutputEvent>(
-        terminalApi.TERMINAL_EVENTS.GIT_OP_OUTPUT,
-        (event) => { handleGitOpOutput(event.payload); },
-      );
+      for (const r of failed) {
+        console.error("terminal: register event listener failed:", r.reason);
+      }
 
-      unlistenRuntimeOutput = await listen<ProcessOutputPayload>(
-        RUNTIME_EVENTS.processOutput,
-        (event) => { handleRuntimeOutput(event.payload); },
-      );
-
-      unlistenRuntimeStarted = await listen(RUNTIME_EVENTS.processStarted, () => {
-        refreshRuntimeProcesses();
-      });
-
-      unlistenRuntimeStopped = await listen(RUNTIME_EVENTS.processStopped, () => {
-        refreshRuntimeProcesses();
-      });
+      if (succeeded.length === 0) {
+        listenersRegistered = false;
+        listenersReady = null;
+        throw new Error("terminal: all event listeners failed to register");
+      }
     })();
 
     return listenersReady;
@@ -184,13 +236,16 @@ export const useTerminalStore = defineStore("terminal", () => {
       if (!pendingOutput.has(event.sessionId)) {
         pendingOutput.set(event.sessionId, []);
       }
-      pendingOutput.get(event.sessionId)!.push(bytes);
+      const pending = pendingOutput.get(event.sessionId)!;
+      pending.push(bytes);
+      trimWriteBuffer(pending);
       return;
     }
 
     if (session.paused || !session.writeCallback) {
-      // tab 隐藏或 xterm 未挂载时保留数据，切回时补写
+      // tab 隐藏或 xterm 未挂载时保留数据，切回时补写（PAF-12：超限丢最旧）
       session.writeBuffer.push(bytes);
+      trimWriteBuffer(session.writeBuffer);
     } else {
       // 直接写入 xterm（通过注册的回调）
       session.writeCallback(bytes);
@@ -235,6 +290,7 @@ export const useTerminalStore = defineStore("terminal", () => {
       session.writeCallback(bytes);
     } else {
       session.writeBuffer.push(bytes);
+      trimWriteBuffer(session.writeBuffer);
     }
   }
 
@@ -275,6 +331,7 @@ export const useTerminalStore = defineStore("terminal", () => {
           session.writeCallback(sepBytes);
         } else {
           session.writeBuffer.push(sepBytes);
+          trimWriteBuffer(session.writeBuffer);
         }
       }
 
@@ -290,6 +347,7 @@ export const useTerminalStore = defineStore("terminal", () => {
         session.writeCallback(bytes);
       } else {
         session.writeBuffer.push(bytes);
+        trimWriteBuffer(session.writeBuffer);
       }
     }
   }
@@ -314,6 +372,7 @@ export const useTerminalStore = defineStore("terminal", () => {
             session.writeCallback(sepBytes);
           } else {
             session.writeBuffer.push(sepBytes);
+            trimWriteBuffer(session.writeBuffer);
           }
         }
 
@@ -327,6 +386,7 @@ export const useTerminalStore = defineStore("terminal", () => {
           session.writeCallback(bytes);
         } else {
           session.writeBuffer.push(bytes);
+          trimWriteBuffer(session.writeBuffer);
         }
       }
     } catch (e) {
@@ -388,6 +448,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     const pending = pendingOutput.get(sessionId);
     if (pending) {
       session.writeBuffer.push(...pending);
+      trimWriteBuffer(session.writeBuffer);
       pendingOutput.delete(sessionId);
     }
 
@@ -423,6 +484,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     const pending = pendingOutput.get(sessionId);
     if (pending) {
       session.writeBuffer.push(...pending);
+      trimWriteBuffer(session.writeBuffer);
       pendingOutput.delete(sessionId);
     }
 

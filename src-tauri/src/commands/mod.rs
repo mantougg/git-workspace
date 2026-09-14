@@ -5,6 +5,7 @@ pub mod batch;
 pub mod branch;
 pub mod change_set;
 pub mod chat;
+pub mod cleaner;
 pub mod conflict;
 pub mod diagnostics;
 pub mod diff;

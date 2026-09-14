@@ -64,6 +64,10 @@ export const useRuntimeStore = defineStore("runtime", () => {
   const dependencyChanged = ref<Map<string, DependencyChangedPayload>>(new Map());
 
   let unlisteners: UnlistenFn[] = [];
+  /** 在途注册 Promise（PAF-15：幂等守卫改为缓存 Promise，防止快速进出
+   * 视图产生两批监听器——旧的 `unlisteners.length > 0` 判断在 await 完成前
+   * 就放行了第二次调用）。 */
+  let subscribePromise: Promise<void> | null = null;
 
   // ------------------------------------------------------------------
   // 加载（事件驱动 + 显式刷新双通道）
@@ -103,18 +107,28 @@ export const useRuntimeStore = defineStore("runtime", () => {
   }
 
   async function loadConfigs() {
-    if (workspaceId.value == null) return;
-    configs.value = await runtimeApi.listRuntimeConfigs(workspaceId.value);
+    const ws = workspaceId.value;
+    if (ws == null) return;
+    const result = await runtimeApi.listRuntimeConfigs(ws);
+    // PAF-15：完成时校验 workspaceId，丢弃切换工作区后返回的过期响应。
+    if (workspaceId.value !== ws) return;
+    configs.value = result;
   }
 
   async function loadProjects() {
-    if (workspaceId.value == null) return;
-    projects.value = await runtimeApi.runtimeListProjects(workspaceId.value);
+    const ws = workspaceId.value;
+    if (ws == null) return;
+    const result = await runtimeApi.runtimeListProjects(ws);
+    if (workspaceId.value !== ws) return;
+    projects.value = result;
   }
 
   async function loadProcesses() {
-    if (workspaceId.value == null) return;
-    processes.value = await runtimeApi.runtimeListProcesses(workspaceId.value);
+    const ws = workspaceId.value;
+    if (ws == null) return;
+    const result = await runtimeApi.runtimeListProcesses(ws);
+    if (workspaceId.value !== ws) return;
+    processes.value = result;
     // 进程终止/失败时清理对应的健康与阶段标记，避免残留旧状态。
     const alive = new Set(processes.value.map((p) => p.runtimeName));
     for (const name of [...health.value.keys()]) {
@@ -167,6 +181,8 @@ export const useRuntimeStore = defineStore("runtime", () => {
         }
       }),
     );
+    // PAF-15：切换工作区后丢弃过期响应。
+    if (workspaceId.value !== ws) return;
     closureInfo.value = map;
   }
 
@@ -265,76 +281,111 @@ export const useRuntimeStore = defineStore("runtime", () => {
   // §64 事件订阅（幂等；进程域事件触发轻量刷新）
   // ------------------------------------------------------------------
 
-  async function subscribe() {
-    if (unlisteners.length > 0) return;
+  function onProcessEvent() {
+    loadProcesses().catch((e) => {
+      console.error("R-13: process event refresh failed:", e);
+    });
+  }
 
-    const onProcessEvent = async () => {
+  function subscribe(): Promise<void> {
+    if (subscribePromise) return subscribePromise;
+    subscribePromise = (async () => {
+      const pending: UnlistenFn[] = [];
       try {
-        await loadProcesses();
+        // 高频事件走内存缓冲，不触发 IPC 往返。
+        pending.push(
+          await listen<ProcessOutputPayload>(RUNTIME_EVENTS.processOutput, (e) => {
+            const name = e.payload.runtimeName;
+            const buf = logBuffers.value.get(name) ?? [];
+            buf.push(...e.payload.lines);
+            if (buf.length > MAX_BUFFER_LINES) {
+              buf.splice(0, buf.length - MAX_BUFFER_LINES);
+            }
+            logBuffers.value.set(name, buf);
+          }),
+        );
+        pending.push(
+          await listen<BuildProgressPayload>(RUNTIME_EVENTS.buildProgress, (e) => {
+            stages.value.set(e.payload.runtimeName, e.payload.stage);
+          }),
+        );
+        pending.push(
+          await listen<HealthChangedPayload>(RUNTIME_EVENTS.healthChanged, (e) => {
+            health.value.set(e.payload.runtimeName, e.payload.health);
+          }),
+        );
+        pending.push(await listen(RUNTIME_EVENTS.processStarted, onProcessEvent));
+        pending.push(await listen(RUNTIME_EVENTS.processStopped, onProcessEvent));
+        pending.push(await listen(RUNTIME_EVENTS.processFailed, onProcessEvent));
+        pending.push(await listen(RUNTIME_EVENTS.buildCompleted, onProcessEvent));
+        // 依赖索引变化 → 项目列表可能新增；dependency_resolved 是聚合汇总，
+        // 依赖解析是低频操作，这里刷新一次可以接受（§64 高频约束不覆盖）。
+        pending.push(
+          await listen(RUNTIME_EVENTS.dependencyResolved, async () => {
+            try {
+              await loadProjects();
+              // 依赖图变化 → 各配置闭包可能变化，闭包摘要一并刷新。
+              await loadClosureInfo();
+            } catch (e) {
+              console.error("R-13: dependency resolved refresh failed:", e);
+            }
+          }),
+        );
+        pending.push(
+          await listen(RUNTIME_EVENTS.projectDiscovered, async () => {
+            try {
+              await loadProjects();
+            } catch (e) {
+              console.error("R-13: project discovered refresh failed:", e);
+            }
+          }),
+        );
+        // R-17：watch 引擎检测到源码变更 / 自动重启完成——只记录展示，
+        // 重建与重启编排完全在后端（事件是通知，不是状态传输，§64）。
+        pending.push(
+          await listen<FileChangedPayload>(RUNTIME_EVENTS.fileChanged, (e) => {
+            lastFileChange.value = e.payload;
+          }),
+        );
+        pending.push(
+          await listen<RestartCompletedPayload>(RUNTIME_EVENTS.restartCompleted, (e) => {
+            lastRestart.value = e.payload;
+          }),
+        );
+        // R-21：Git 联动提示——空列表 = 恢复干净，清除该应用的横幅。
+        pending.push(
+          await listen<DependencyChangedPayload>(RUNTIME_EVENTS.dependencyChanged, (e) => {
+            if (e.payload.repos.length === 0) {
+              dependencyChanged.value.delete(e.payload.runtimeName);
+            } else {
+              dependencyChanged.value.set(e.payload.runtimeName, e.payload);
+            }
+          }),
+        );
       } catch (e) {
-        console.error("R-13: process event refresh failed:", e);
+        // PAF-15/16：注册中途失败 → 释放已注册的部分监听并允许下次重试，
+        // 不残留半套监听器。
+        for (const un of pending) {
+          try {
+            un();
+          } catch {
+            // ignore
+          }
+        }
+        unlisteners = [];
+        subscribePromise = null;
+        throw e;
       }
-    };
-
-    unlisteners = [
-      // 高频事件走内存缓冲，不触发 IPC 往返。
-      await listen<ProcessOutputPayload>(RUNTIME_EVENTS.processOutput, (e) => {
-        const name = e.payload.runtimeName;
-        const buf = logBuffers.value.get(name) ?? [];
-        buf.push(...e.payload.lines);
-        if (buf.length > MAX_BUFFER_LINES) {
-          buf.splice(0, buf.length - MAX_BUFFER_LINES);
-        }
-        logBuffers.value.set(name, buf);
-      }),
-      await listen<BuildProgressPayload>(RUNTIME_EVENTS.buildProgress, (e) => {
-        stages.value.set(e.payload.runtimeName, e.payload.stage);
-      }),
-      await listen<HealthChangedPayload>(RUNTIME_EVENTS.healthChanged, (e) => {
-        health.value.set(e.payload.runtimeName, e.payload.health);
-      }),
-      await listen(RUNTIME_EVENTS.processStarted, onProcessEvent),
-      await listen(RUNTIME_EVENTS.processStopped, onProcessEvent),
-      await listen(RUNTIME_EVENTS.processFailed, onProcessEvent),
-      await listen(RUNTIME_EVENTS.buildCompleted, onProcessEvent),
-      // 依赖索引变化 → 项目列表可能新增；dependency_resolved 是聚合汇总，
-      // 依赖解析是低频操作，这里刷新一次可以接受（§64 高频约束不覆盖）。
-      await listen(RUNTIME_EVENTS.dependencyResolved, async () => {
-        try {
-          await loadProjects();
-          // 依赖图变化 → 各配置闭包可能变化，闭包摘要一并刷新。
-          await loadClosureInfo();
-        } catch (e) {
-          console.error("R-13: dependency resolved refresh failed:", e);
-        }
-      }),
-      await listen(RUNTIME_EVENTS.projectDiscovered, async () => {
-        try {
-          await loadProjects();
-        } catch (e) {
-          console.error("R-13: project discovered refresh failed:", e);
-        }
-      }),
-      // R-17：watch 引擎检测到源码变更 / 自动重启完成——只记录展示，
-      // 重建与重启编排完全在后端（事件是通知，不是状态传输，§64）。
-      await listen<FileChangedPayload>(RUNTIME_EVENTS.fileChanged, (e) => {
-        lastFileChange.value = e.payload;
-      }),
-      await listen<RestartCompletedPayload>(RUNTIME_EVENTS.restartCompleted, (e) => {
-        lastRestart.value = e.payload;
-      }),
-      // R-21：Git 联动提示——空列表 = 恢复干净，清除该应用的横幅。
-      await listen<DependencyChangedPayload>(RUNTIME_EVENTS.dependencyChanged, (e) => {
-        if (e.payload.repos.length === 0) {
-          dependencyChanged.value.delete(e.payload.runtimeName);
-        } else {
-          dependencyChanged.value.set(e.payload.runtimeName, e.payload);
-        }
-      }),
-    ];
+      unlisteners = pending;
+    })();
+    return subscribePromise;
   }
 
   async function unsubscribe() {
+    // 等在途注册完成（成功或失败回滚）再统一释放，避免「先清空、注册再回填」
+    // 导致的监听器泄漏。
+    await subscribePromise?.catch(() => {});
+    subscribePromise = null;
     for (const un of unlisteners) {
       try {
         un();

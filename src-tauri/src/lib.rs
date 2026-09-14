@@ -2,6 +2,7 @@ pub mod ai;
 mod commands;
 mod core;
 pub mod chat;
+pub mod cleaner;
 pub mod crypto;
 mod db;
 pub mod discovery;
@@ -11,6 +12,7 @@ pub mod maven;
 mod models;
 mod network;
 pub mod node;
+pub mod pathutil;
 pub mod process;
 pub mod remote;
 pub mod runtime;
@@ -243,6 +245,9 @@ pub fn run() {
             // LAN Chat：长驻聊天引擎状态（当前房间 + 附近房间浏览器），
             // 退出时在 RunEvent::Exit 钩子里清理（§29）。
             app.manage(crate::chat::LanChatState::new());
+
+            // T-36：工作区清理工具的最近一次扫描会话（内存态，退出即焚）。
+            app.manage(commands::cleaner::CleanerState::default());
 
             // AI-12：启动本地 MCP 端点（仅 127.0.0.1，生命周期随应用启停；
             // Offline First——失败只记日志，不影响应用启动）。
@@ -560,6 +565,10 @@ pub fn run() {
             commands::toolbox::toolbox_route_plan_preview,
             commands::toolbox::toolbox_route_apply,
             commands::toolbox::toolbox_generate_secret,
+            // T-36：工具箱·工作区清理（安全删除）
+            commands::cleaner::cleaner_scan,
+            commands::cleaner::cleaner_compute_sizes,
+            commands::cleaner::cleaner_execute,
             // LAN Chat：局域网 P2P 加密聊天
             commands::chat::lan_chat_generate_secret,
             commands::chat::lan_chat_create_room,

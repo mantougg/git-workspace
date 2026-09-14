@@ -24,7 +24,10 @@ impl RuntimeProcessManager {
     ) -> AppResult<RuntimeProcessInfo> {
         self.ensure_sampler();
         // 重复启动守卫：同一 (workspace, runtime) 只允许一个活跃进程。
-        {
+        // PAF-03：检查与插入必须在**同一 DB 锁临界区**——分离的两个作用域
+        // 在 8 worker 并发提交时可双双通过 find_active，同一 (workspace,
+        // runtime) 双 spawn。
+        let process_id = {
             let conn = self.db.lock().unwrap();
             if let Some(active) = store::find_active(&conn, workspace_id, runtime_name)? {
                 return Err(AppError::Conflict(format!(
@@ -34,10 +37,6 @@ impl RuntimeProcessManager {
                     active.status.as_str()
                 )));
             }
-        }
-
-        let process_id = {
-            let conn = self.db.lock().unwrap();
             store::insert_process(&conn, workspace_id, runtime_name)?
         };
         let handle = ActiveProcess::new(false, workspace_id, runtime_name);
@@ -82,12 +81,12 @@ impl RuntimeProcessManager {
                 log::info!("R-10: reusing cached launch artifacts for '{runtime_name}'");
                 (cached.plan, cached.strategy)
             }
-            Prepared::NeedBuild(build_options) => {
+            Prepared::NeedBuild { options: build_options, fingerprint } => {
                 self.transit(process_id, runtime_name, LifecycleStatus::Resolving, None)?;
                 // execute_build 内部（图/闭包/Reactor → Maven）无法插桩；
                 // 构建主体是 Maven 调用，紧邻置位 Building（模块文档说明）。
                 self.transit(process_id, runtime_name, LifecycleStatus::Building, None)?;
-                match self.run_build(process_id, workspace_id, runtime_name, build_options, handle) {
+                match self.run_build(process_id, workspace_id, runtime_name, build_options, fingerprint, handle) {
                     Ok(built) => (built.plan, built.strategy),
                     Err(error) => {
                         // Stop/Kill 在构建期间介入：以停止语义收尾，不再算启动失败。
@@ -140,13 +139,22 @@ impl RuntimeProcessManager {
         self.spawn_monitor(process_id, runtime_name.to_string(), command, handle, detector_kind);
 
         // spawn 失败 / 拿到 pid 之前进程就没了 → outcome 先到。
-        let pid = match self.wait_pid_or_outcome(handle, Duration::from_secs(10)) {
+        // PAF-02：窗口可配置（默认 30s，Windows Defender 冷扫描是超窗的
+        // 现实场景）。超时按启动失败收尾，但**先预置强杀标志**——若进程
+        // 实际在窗口之后才 spawn 成功，monitor 的 streaming 循环第一拍即
+        // 按取消语义杀树，杜绝「Failed 终态 + 活进程」孤儿。
+        let pid = match self.wait_pid_or_outcome(handle, self.deps.spawn_pid_confirm_timeout) {
             PidWait::Pid(pid) => pid,
             PidWait::Exited => return self.finish_early_exit(process_id, runtime_name, handle),
             PidWait::Timeout => {
+                handle.force_kill.store(true, std::sync::atomic::Ordering::Relaxed);
                 let error = AppError::ProcessStartFailed {
                     runtime: runtime_name.to_string(),
-                    reason: "spawn 后 10s 内未能确认进程 pid".into(),
+                    reason: format!(
+                        "spawn 后 {:.0}s 内未能确认进程 pid；若进程稍后才启动成功，\
+                         已自动终止以防失控。可重试启动或检查安全软件拦截",
+                        self.deps.spawn_pid_confirm_timeout.as_secs_f32()
+                    ),
                 };
                 self.abort_before_spawn(process_id, runtime_name, handle, None);
                 return Err(error);
@@ -252,37 +260,44 @@ impl RuntimeProcessManager {
             }
         }
 
+        // PAF-06：指纹覆盖持久化配置与本次启动覆盖项（overrides 已在上文
+        // 原地合并进 config），命中判定见下——任一变化即缓存失效回退构建。
+        let fingerprint = types::launch_config_fingerprint(&config);
+
         if options.skip_build {
             let cached = self
                 .launch_cache
                 .lock()
                 .unwrap()
                 .get(&(workspace_id, runtime_name.to_string()))
+                .filter(|cached| types::fingerprint_matches(cached, fingerprint))
                 .map(|cached| CachedLaunch {
                     plan: cached.plan.clone(),
                     strategy: cached.strategy,
+                    config_fingerprint: cached.config_fingerprint,
                 });
             if let Some(cached) = cached {
                 return Ok(Prepared::Cached(cached));
             }
             log::info!(
-                "R-10: skip_build requested for '{runtime_name}' but no cached artifacts; \
-                 falling back to a full build"
+                "R-10: skip_build requested for '{runtime_name}' but no cached artifacts \
+                 matching the current config; falling back to a full build"
             );
         }
-        Ok(Prepared::NeedBuild(build_options))
+        Ok(Prepared::NeedBuild { options: build_options, fingerprint })
     }
 
     /// R-06 自动推断默认 mainClass：按 Runtime 配置的 project 匹配检测结果。
-    /// 路径比较对 Windows 分隔符不敏感（配置可能是 `\`、`/` 或混合，R-14 修复）。
+    /// PAF-18：路径匹配走 `path_component_match`（组件级后缀 + verbatim +
+    /// 分隔符 + 大小写归一化），取代旧的 `replace('\\', "/") + ==`。
+    /// PAF-09：POM 解析走共享 PomCache（内容指纹失效）——重复启动不再全量重扫。
     fn infer_main_class(&self, workspace_root: &std::path::Path, project: &str) -> AppResult<Option<String>> {
-        let discovery = crate::maven::discover_poms(workspace_root, 5, None, None);
+        let discovery = crate::maven::discover_poms(workspace_root, 5, Some(&self.deps.pom_cache), None);
         let result =
             crate::runtime::spring_boot::detect_spring_boot_workspace(&discovery.projects, &discovery.effective, None);
-        let needle = project.replace('\\', "/");
         let found = result.projects.iter().find(|candidate| {
-            let path = candidate.project_path.to_string_lossy().replace('\\', "/");
-            path == needle || candidate.module == project
+            crate::pathutil::path_component_match(&candidate.project_path.to_string_lossy(), project)
+                || candidate.module == project
         });
         Ok(found.and_then(|candidate| candidate.default_main_class.clone()))
     }
@@ -318,7 +333,7 @@ impl RuntimeProcessManager {
 
         let plan = match prepared {
             Prepared::Cached(cached) => cached.plan,
-            Prepared::NeedBuild(build_options) => {
+            Prepared::NeedBuild { options: build_options, fingerprint } => {
                 let workspace_root = {
                     let conn = self.db.lock().unwrap();
                     config::workspace_root(&conn, workspace_id)?
@@ -346,6 +361,7 @@ impl RuntimeProcessManager {
                     CachedLaunch {
                         plan: outcome.launch.clone(),
                         strategy: outcome.strategy,
+                        config_fingerprint: fingerprint,
                     },
                 );
                 outcome.launch
@@ -366,6 +382,7 @@ impl RuntimeProcessManager {
         workspace_id: i64,
         runtime_name: &str,
         build_options: BuildOptions,
+        config_fingerprint: u64,
         handle: &ActiveProcess,
     ) -> AppResult<Built> {
         let workspace_root = {
@@ -401,6 +418,7 @@ impl RuntimeProcessManager {
             CachedLaunch {
                 plan: outcome.launch.clone(),
                 strategy: outcome.strategy,
+                config_fingerprint,
             },
         );
         Ok(Built {
