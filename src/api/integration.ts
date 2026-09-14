@@ -9,7 +9,18 @@ export type TerminalKind =
   | "windows-terminal";
 
 /** IDE 类型（与后端 IdeKind kebab-case 对齐） */
-export type IdeKind = "vscode" | "idea" | "cursor" | "zed";
+export type IdeKind = "vscode" | "idea" | "cursor" | "zed" | "qoder" | "qoder-cn" | "codebuddy";
+
+/** IDE id → 用户可见显示名称（与后端 IdeKind::display_name 对齐）。 */
+export const IDE_DISPLAY_NAMES: Record<IdeKind, string> = {
+  vscode: "VS Code",
+  idea: "IntelliJ IDEA",
+  cursor: "Cursor",
+  zed: "Zed",
+  qoder: "Qoder",
+  "qoder-cn": "Qoder CN",
+  codebuddy: "CodeBuddy",
+};
 
 export interface IntegrationTargets {
   terminals: string[];
@@ -32,4 +43,14 @@ export function openInIde(path: string, ide: IdeKind): Promise<void> {
 /** 当前平台可用的终端 / IDE 列表（用于渲染菜单，避免必失败项）。 */
 export function listIntegrationTargets(): Promise<IntegrationTargets> {
   return invoke<IntegrationTargets>("list_integration_targets");
+}
+
+/** 用系统默认文件管理器打开目录（Windows Explorer / macOS Finder / Linux xdg-open）。 */
+export function openInFileManager(path: string): Promise<void> {
+  return invoke<void>("open_in_file_manager_cmd", { path });
+}
+
+/** 调出操作系统原生的「选择应用打开」对话框。 */
+export function openWithSystemApp(path: string): Promise<void> {
+  return invoke<void>("open_with_system_app_cmd", { path });
 }

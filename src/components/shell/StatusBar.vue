@@ -43,6 +43,20 @@
     <!-- 弹性占位 -->
     <div class="statusbar-spacer" />
 
+    <!-- 在编辑器中打开槽位 -->
+    <div
+      v-if="availableIdes.length > 0"
+      class="statusbar-slot clickable"
+      title="在编辑器中打开"
+      @click="toggleIdePopover"
+    >
+      <n-icon :size="12"><CodeOutline /></n-icon>
+      <span>打开编辑器</span>
+      <n-icon :size="10"><ChevronDownOutline /></n-icon>
+    </div>
+
+    <div v-if="availableIdes.length > 0" class="statusbar-divider" />
+
     <!-- AI 助手槽位（AI-10：Drawer 全局唯一入口之一，快捷键 Ctrl+I） -->
     <div class="statusbar-slot clickable" title="AI 助手（Ctrl+I）" @click="aiStore.toggleDrawer()">
       <n-icon :size="12"><SparklesOutline /></n-icon>
@@ -84,6 +98,37 @@
       </div>
     </div>
   </n-popover>
+
+  <!-- 编辑器选择器弹层 -->
+  <n-popover
+    :show="showIdePopover"
+    trigger="manual"
+    placement="top-end"
+    :style="{ marginRight: '8px' }"
+    @clickoutside="showIdePopover = false"
+  >
+    <template #trigger>
+      <div ref="ideTriggerRef" style="position: fixed; bottom: 24px; right: 0; width: 1px; height: 1px;" />
+    </template>
+    <div class="ide-switcher">
+      <div
+        v-for="ide in availableIdes"
+        :key="ide"
+        class="ide-switcher-item"
+        @click="openInEditor(ide)"
+      >
+        {{ ideDisplayName(ide) }}
+      </div>
+      <div class="ide-switcher-divider" />
+      <div class="ide-switcher-item" @click="openFileManager">
+        <n-icon :size="12"><FolderOpenOutline /></n-icon>
+        <span>打开文件管理器</span>
+      </div>
+      <div class="ide-switcher-item" @click="openWithSystemChooser">
+        更多…
+      </div>
+    </div>
+  </n-popover>
 </template>
 
 <script setup lang="ts">
@@ -91,8 +136,9 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { NIcon, NPopover } from "naive-ui";
-import { ChevronDownOutline, GitBranchOutline, PlayOutline, SparklesOutline, TerminalOutline } from "@vicons/ionicons5";
+import { ChevronDownOutline, CodeOutline, FolderOpenOutline, GitBranchOutline, PlayOutline, SparklesOutline, TerminalOutline } from "@vicons/ionicons5";
 import { WATCHER_EVENTS, watcherStatus } from "@/api/git_ops";
+import { listIntegrationTargets, openInIde, openInFileManager, openWithSystemApp, IDE_DISPLAY_NAMES, type IdeKind } from "@/api/integration";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTaskStore } from "@/stores/task";
 import { useAiStore } from "@/stores/ai";
@@ -111,6 +157,54 @@ const terminalStore = useTerminalStore();
 
 const showWsPopover = ref(false);
 const wsTriggerRef = ref<HTMLElement | null>(null);
+
+// 编辑器
+const showIdePopover = ref(false);
+const ideTriggerRef = ref<HTMLElement | null>(null);
+const availableIdes = ref<IdeKind[]>([]);
+
+function ideDisplayName(ide: IdeKind): string {
+  return IDE_DISPLAY_NAMES[ide] ?? ide;
+}
+
+function toggleIdePopover() {
+  showIdePopover.value = !showIdePopover.value;
+}
+
+async function openInEditor(ide: IdeKind) {
+  const path =
+    currentWorkspace.value?.path ||
+    "";
+  if (!path) return;
+  showIdePopover.value = false;
+  try {
+    await openInIde(path, ide);
+  } catch (e) {
+    console.error("Failed to open IDE:", e);
+  }
+}
+
+async function openFileManager() {
+  const path = currentWorkspace.value?.path || "";
+  if (!path) return;
+  showIdePopover.value = false;
+  try {
+    await openInFileManager(path);
+  } catch (e) {
+    console.error("Failed to open file manager:", e);
+  }
+}
+
+async function openWithSystemChooser() {
+  const path = currentWorkspace.value?.path || "";
+  if (!path) return;
+  showIdePopover.value = false;
+  try {
+    await openWithSystemApp(path);
+  } catch (e) {
+    console.error("Failed to open system app chooser:", e);
+  }
+}
 
 // 工作区
 const workspaces = computed(() => workspaceStore.workspaces);
@@ -167,6 +261,14 @@ onMounted(async () => {
     watcherActive.value = event.payload;
   });
   await loadWatcherStatus();
+
+  // 加载可用编辑器列表
+  try {
+    const targets = await listIntegrationTargets();
+    availableIdes.value = targets.ides as IdeKind[];
+  } catch (e) {
+    console.error("Failed to load integration targets:", e);
+  }
 });
 
 onUnmounted(() => {
@@ -267,5 +369,31 @@ onUnmounted(() => {
 
 .ws-switcher-manage {
   color: var(--gw-text-dim);
+}
+
+/* 编辑器选择器 */
+.ide-switcher {
+  min-width: 160px;
+}
+
+.ide-switcher-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: var(--gw-text-sm);
+  color: var(--gw-text);
+  border-radius: var(--gw-radius-sm);
+}
+
+.ide-switcher-item:hover {
+  background: var(--gw-bg-hover);
+}
+
+.ide-switcher-divider {
+  height: 1px;
+  background: var(--gw-border);
+  margin: 4px 0;
 }
 </style>

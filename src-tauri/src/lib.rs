@@ -587,6 +587,8 @@ pub fn run() {
             // Terminal / IDE integration commands (T-31)
             commands::integration::open_in_terminal,
             commands::integration::open_in_ide,
+            commands::integration::open_in_file_manager_cmd,
+            commands::integration::open_with_system_app_cmd,
             commands::integration::list_integration_targets,
             // Symbol index commands (T-28)
             commands::symbols::build_symbol_index,

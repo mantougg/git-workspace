@@ -12,7 +12,7 @@ import type { Router } from "vue-router";
 import type { useWorkspaceStore } from "@/stores/workspace";
 import type { useRepositoryStore } from "@/stores/repository";
 import type { useAiStore } from "@/stores/ai";
-import { openInTerminal, openInIde, type TerminalKind, type IdeKind } from "@/api/integration";
+import { openInTerminal, openInIde, IDE_DISPLAY_NAMES, type TerminalKind, type IdeKind } from "@/api/integration";
 import { encodeUtf8Base64 } from "@/utils/base64";
 
 export interface Command {
@@ -301,18 +301,13 @@ function getExternalTerminalCommands(ctx: CommandContext): Command[] {
   }));
 }
 
-/** IDE 命令（VS Code / IntelliJ IDEA / Cursor / Zed）。 */
+/** IDE 命令（VS Code / IntelliJ IDEA / Cursor / Zed / Qoder / Qoder CN / CodeBuddy）。 */
 function getIdeCommands(ctx: CommandContext): Command[] {
-  const ides: Array<[IdeKind, string]> = [
-    ["vscode", "VS Code"],
-    ["idea", "IntelliJ IDEA"],
-    ["cursor", "Cursor"],
-    ["zed", "Zed"],
-  ];
+  const ides = Object.keys(IDE_DISPLAY_NAMES) as IdeKind[];
 
-  return ides.map(([ide, label]) => ({
+  return ides.map((ide) => ({
     id: `ide:${ide}`,
-    title: `在 ${label} 打开当前仓库`,
+    title: `在 ${IDE_DISPLAY_NAMES[ide]} 打开当前仓库`,
     group: "IDE",
     run: async () => {
       const path = currentTargetPath(ctx);

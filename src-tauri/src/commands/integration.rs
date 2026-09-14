@@ -52,6 +52,9 @@ pub enum IdeKind {
     Idea,
     Cursor,
     Zed,
+    Qoder,
+    QoderCn,
+    CodeBuddy,
 }
 
 impl IdeKind {
@@ -61,6 +64,22 @@ impl IdeKind {
             IdeKind::Idea => "idea",
             IdeKind::Cursor => "cursor",
             IdeKind::Zed => "zed",
+            IdeKind::Qoder => "qoder",
+            IdeKind::QoderCn => "qoder-cn",
+            IdeKind::CodeBuddy => "codebuddy",
+        }
+    }
+
+    /// 用户可见的显示名称。
+    fn display_name(self) -> &'static str {
+        match self {
+            IdeKind::VsCode => "VS Code",
+            IdeKind::Idea => "IntelliJ IDEA",
+            IdeKind::Cursor => "Cursor",
+            IdeKind::Zed => "Zed",
+            IdeKind::Qoder => "Qoder",
+            IdeKind::QoderCn => "Qoder CN",
+            IdeKind::CodeBuddy => "CodeBuddy",
         }
     }
 }
@@ -334,6 +353,85 @@ fn terminal_plan(kind: TerminalKind, dir: &str) -> AppResult<SpawnPlan> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// 系统原生「打开方式」对话框 / 文件管理器（跨平台）
+// ---------------------------------------------------------------------------
+
+/// 用系统默认文件管理器打开目录：
+/// - Windows: `explorer.exe <path>`
+/// - macOS:   `open <path>`（Finder）
+/// - Linux:   `xdg-open <path>`
+pub(crate) fn open_in_file_manager(path: &str) -> AppResult<()> {
+    #[cfg(windows)]
+    {
+        SpawnPlan::new("explorer", vec![path.to_string()]);
+        spawn_plan(&SpawnPlan::new("explorer", vec![path.to_string()]))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        spawn_plan(&SpawnPlan::new("open", vec![path.to_string()]))?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        spawn_plan(&SpawnPlan::new("xdg-open", vec![path.to_string()]))?;
+    }
+    Ok(())
+}
+
+/// 调出操作系统原生的「选择应用打开」对话框：
+/// - Windows:  `rundll32 shell32.dll,OpenAs_RunDLL <path>`
+/// - macOS:    通过 AppleScript 弹出 "Choose Application" 对话框
+/// - Linux:    尝试 `zenity --file-selection` 或回落 `xdg-open`
+pub(crate) fn open_with_system_app_chooser(path: &str) -> AppResult<()> {
+    #[cfg(windows)]
+    {
+        // OpenAs_RunDLL 弹出 Windows 原生「打开方式」对话框。
+        spawn_plan(&SpawnPlan::new(
+            "rundll32",
+            vec![
+                "shell32.dll,OpenAs_RunDLL".to_string(),
+                path.to_string(),
+            ],
+        ))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // AppleScript: 弹出应用选择器，选中后用该应用打开目录。
+        let script = format!(
+            "tell application \"Finder\" to activate\n\
+             set thePath to POSIX file \"{path}\"\n\
+             choose application default location thePath"
+        );
+        spawn_plan(&SpawnPlan::new(
+            "osascript",
+            vec!["-e".to_string(), script],
+        ))?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Linux 没有统一的「选择应用」对话框；尝试 zenity / kdialog，
+        // 均不可用时回落到 xdg-open（用默认应用打开）。
+        if find_in_path("zenity").is_some() {
+            let script = format!(
+                r#"app=$(zenity --list --title="选择应用" --column="应用" \
+                    code idea cursor zed qoder codium 2>/dev/null); \
+                    [ -n "$app" ] && $app "{path}" 2>/dev/null &"#,
+            );
+            spawn_plan(&SpawnPlan::new("sh", vec!["-c".to_string(), script]))?;
+        } else if find_in_path("kdialog").is_some() {
+            let script = format!(
+                r#"app=$(kdialog --combobox "选择应用" code idea cursor zed qoder codium 2>/dev/null); \
+                    [ -n "$app" ] && $app "{path}" 2>/dev/null &"#,
+            );
+            spawn_plan(&SpawnPlan::new("sh", vec!["-c".to_string(), script]))?;
+        } else {
+            // 回落：用默认文件管理器打开
+            open_in_file_manager(path)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 fn windows_terminal_plan(kind: TerminalKind, dir: &str) -> AppResult<SpawnPlan> {
     let plan = match kind {
@@ -428,6 +526,9 @@ fn ide_plan(kind: IdeKind, target: &str) -> AppResult<SpawnPlan> {
             "IntelliJ IDEA",
             "请安装 IntelliJ IDEA（命令行启动器或默认安装路径）",
         ),
+        IdeKind::Qoder => ("qoder", "Qoder", "请安装 Qoder 并把 qoder 加入 PATH"),
+        IdeKind::QoderCn => ("qoder-cn", "Qoder CN", "请安装 Qoder CN 并把 qoder-cn 加入 PATH"),
+        IdeKind::CodeBuddy => ("codebuddy", "CodeBuddy", "请安装 CodeBuddy 并把 codebuddy 加入 PATH"),
     };
     let exe = if kind == IdeKind::Idea {
         locate_idea()
@@ -490,6 +591,20 @@ pub fn open_in_ide(path: String, ide: IdeKind) -> AppResult<()> {
     spawn_plan(&plan)
 }
 
+/// 用系统默认文件管理器打开目录（Windows Explorer / macOS Finder / Linux xdg-open）。
+#[tauri::command]
+pub fn open_in_file_manager_cmd(path: String) -> AppResult<()> {
+    ensure_exists(&path)?;
+    open_in_file_manager(&path)
+}
+
+/// 调出操作系统原生的「选择应用打开」对话框。
+#[tauri::command]
+pub fn open_with_system_app_cmd(path: String) -> AppResult<()> {
+    ensure_exists(&path)?;
+    open_with_system_app_chooser(&path)
+}
+
 /// 当前平台可用的终端 / IDE（前端据此渲染菜单，避免展示必失败项）。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -501,22 +616,24 @@ pub struct IntegrationTargets {
 #[tauri::command]
 pub fn list_integration_targets() -> IntegrationTargets {
     let terminals = integration_terminals();
-    let ides = [
+    // CLI-shim IDEs: detected via PATH lookup.
+    let cli_ides: &[(IdeKind, &str)] = &[
         (IdeKind::VsCode, "code"),
         (IdeKind::Cursor, "cursor"),
         (IdeKind::Zed, "zed"),
-    ]
-    .into_iter()
-    .filter(|(_, name)| find_in_path(name).is_some())
-    .map(|(kind, _)| kind.id().to_string())
-    .collect::<Vec<_>>();
-    let ides = if locate_idea().is_some() {
-        let mut v = ides;
-        v.push(IdeKind::Idea.id().to_string());
-        v
-    } else {
-        ides
-    };
+        (IdeKind::Qoder, "qoder"),
+        (IdeKind::QoderCn, "qoder-cn"),
+        (IdeKind::CodeBuddy, "codebuddy"),
+    ];
+    let mut ides: Vec<String> = cli_ides
+        .iter()
+        .filter(|(_, name)| find_in_path(name).is_some())
+        .map(|(kind, _)| kind.id().to_string())
+        .collect();
+    // IDEA has a special locate path (install dirs scanning).
+    if locate_idea().is_some() {
+        ides.push(IdeKind::Idea.id().to_string());
+    }
     IntegrationTargets { terminals, ides }
 }
 
