@@ -262,7 +262,7 @@ impl RuntimeProcessManager {
 
         // PAF-06：指纹覆盖持久化配置与本次启动覆盖项（overrides 已在上文
         // 原地合并进 config），命中判定见下——任一变化即缓存失效回退构建。
-        let fingerprint = types::launch_config_fingerprint(&config, None);
+        let fingerprint = types::launch_config_fingerprint(&config);
 
         if options.skip_build {
             let cached = self

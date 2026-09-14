@@ -289,7 +289,7 @@ impl RuntimeProcessManager {
             let conn = self.db.lock().unwrap();
             crate::runtime::config::load_config_unredacted(&conn, workspace_id, runtime_name)
                 .ok()
-                .map(|config| types::launch_config_fingerprint(&config, None))
+                .map(|config| types::launch_config_fingerprint(&config))
                 .unwrap_or(0)
         };
         self.launch_cache.lock().unwrap().insert(

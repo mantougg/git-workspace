@@ -42,10 +42,10 @@ export interface TerminalSession extends TerminalSessionInfo {
  */
 const WRITE_BUFFER_MAX_CHUNKS = 5000;
 
-/** 超限丢最旧（shift 代价在 5000 量级可接受，且仅在溢出时发生）。 */
+/** 超限丢最旧（splice O(n) 一次裁剪，优于 shift 循环 O(n*m)）。 */
 function trimWriteBuffer(buffer: Uint8Array[]) {
-  while (buffer.length > WRITE_BUFFER_MAX_CHUNKS) {
-    buffer.shift();
+  if (buffer.length > WRITE_BUFFER_MAX_CHUNKS) {
+    buffer.splice(0, buffer.length - WRITE_BUFFER_MAX_CHUNKS);
   }
 }
 
@@ -118,60 +118,69 @@ export const useTerminalStore = defineStore("terminal", () => {
 
   /** 注册 Tauri 事件监听（面板首次打开时调用，App 生命周期内保持）。
    *  PAF-16：逐个独立注册，单个 listen 失败降级为「该事件不可用」（记错误
-   *  日志，成功者保留）；若全部失败则回滚注册门槛，下次打开面板可重试——
-   *  旧实现任一失败即永久锁死（listenersReady 成为永久 rejected promise
-   *  且 listenersRegistered 永不复位，部分监听也无法清理）。 */
+   *  日志，成功者保留）；若全部失败则回滚注册门槛，下次打开面板可重试。
+   *  评审优化：Promise.allSettled 并行注册，避免单个 listen 卡住阻塞其余。 */
   function registerEventListeners(): Promise<void> {
     if (listenersReady) return listenersReady;
     listenersRegistered = true;
 
     ensureGitConsoleSession();
 
+    const listenerDefs = [
+      {
+        event: terminalApi.TERMINAL_EVENTS.OUTPUT,
+        handler: (e: { payload: TerminalOutputEvent }) => handleOutput(e.payload),
+        assign: (un: UnlistenFn) => { unlistenOutput = un; },
+      },
+      {
+        event: terminalApi.TERMINAL_EVENTS.EXIT,
+        handler: (e: { payload: TerminalExitEvent }) => handleExit(e.payload),
+        assign: (un: UnlistenFn) => { unlistenExit = un; },
+      },
+      {
+        event: terminalApi.TERMINAL_EVENTS.GIT_OP_OUTPUT,
+        handler: (e: { payload: GitOpOutputEvent }) => handleGitOpOutput(e.payload),
+        assign: (un: UnlistenFn) => { unlistenGitOp = un; },
+      },
+      {
+        event: RUNTIME_EVENTS.processOutput,
+        handler: (e: { payload: ProcessOutputPayload }) => handleRuntimeOutput(e.payload),
+        assign: (un: UnlistenFn) => { unlistenRuntimeOutput = un; },
+      },
+      {
+        event: RUNTIME_EVENTS.processStarted,
+        handler: () => { refreshRuntimeProcesses(); },
+        assign: (un: UnlistenFn) => { unlistenRuntimeStarted = un; },
+      },
+      {
+        event: RUNTIME_EVENTS.processStopped,
+        handler: () => { refreshRuntimeProcesses(); },
+        assign: (un: UnlistenFn) => { unlistenRuntimeStopped = un; },
+      },
+    ];
+
     listenersReady = (async () => {
-      const registered: UnlistenFn[] = [];
-      const register = async <P>(
-        event: string,
-        handler: (payload: P) => void,
-      ): Promise<UnlistenFn | null> => {
-        try {
-          const un = await listen<P>(event, (e) => { handler(e.payload); });
-          registered.push(un);
-          return un;
-        } catch (e) {
-          console.error(`terminal: register event listener failed (${event}):`, e);
-          return null;
-        }
-      };
-
-      unlistenOutput = await register<TerminalOutputEvent>(
-        terminalApi.TERMINAL_EVENTS.OUTPUT,
-        (event) => { handleOutput(event); },
+      const results = await Promise.allSettled(
+        listenerDefs.map((def) =>
+          listen(def.event, def.handler as (event: unknown) => void).then((un) => {
+            def.assign(un);
+            return un;
+          }),
+        ),
       );
 
-      unlistenExit = await register<TerminalExitEvent>(
-        terminalApi.TERMINAL_EVENTS.EXIT,
-        (event) => { handleExit(event); },
+      const succeeded = results.filter((r): r is PromiseFulfilledResult<UnlistenFn> =>
+        r.status === "fulfilled",
+      );
+      const failed = results.filter((r): r is PromiseRejectedResult =>
+        r.status === "rejected",
       );
 
-      unlistenGitOp = await register<GitOpOutputEvent>(
-        terminalApi.TERMINAL_EVENTS.GIT_OP_OUTPUT,
-        (event) => { handleGitOpOutput(event); },
-      );
+      for (const r of failed) {
+        console.error("terminal: register event listener failed:", r.reason);
+      }
 
-      unlistenRuntimeOutput = await register<ProcessOutputPayload>(
-        RUNTIME_EVENTS.processOutput,
-        (event) => { handleRuntimeOutput(event); },
-      );
-
-      unlistenRuntimeStarted = await register(RUNTIME_EVENTS.processStarted, () => {
-        refreshRuntimeProcesses();
-      });
-
-      unlistenRuntimeStopped = await register(RUNTIME_EVENTS.processStopped, () => {
-        refreshRuntimeProcesses();
-      });
-
-      if (registered.length === 0) {
+      if (succeeded.length === 0) {
         listenersRegistered = false;
         listenersReady = null;
         throw new Error("terminal: all event listeners failed to register");

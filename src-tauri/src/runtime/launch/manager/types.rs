@@ -77,24 +77,20 @@ pub(super) fn fingerprint_matches(cached: &CachedLaunch, fingerprint: u64) -> bo
     cached.config_fingerprint == fingerprint
 }
 
-/// 配置指纹：持久化配置 + 本次启动覆盖项的稳定哈希（长度前缀拼接防串接歧义）。
+/// 配置指纹：持久化配置的稳定哈希（长度前缀拼接防串接歧义）。
+///
+/// 旧版接受 `overrides: Option<&EnvironmentOverrides>` 参数，但所有调用方
+/// 均传 `None`（overrides 已合并进 config），此处移除死参数（评审 LOW 修复）。
 pub(super) fn launch_config_fingerprint(
     config: &crate::runtime::config::RuntimeApplicationConfig,
-    overrides: Option<&EnvironmentOverrides>,
 ) -> u64 {
     use std::hash::Hasher;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    let override_json = match overrides {
-        Some(overrides) => serde_json::to_string(overrides).ok(),
-        None => None,
-    };
-    for part in [serde_json::to_string(config).ok(), override_json] {
-        if let Some(json) = part {
-            hasher.write(&(json.len() as u64).to_le_bytes());
-            hasher.write(json.as_bytes());
-        } else {
-            hasher.write(&0u64.to_le_bytes());
-        }
+    if let Some(json) = serde_json::to_string(config).ok() {
+        hasher.write(&(json.len() as u64).to_le_bytes());
+        hasher.write(json.as_bytes());
+    } else {
+        hasher.write(&0u64.to_le_bytes());
     }
     hasher.finish()
 }
