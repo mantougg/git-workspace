@@ -435,6 +435,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             uptime_seconds: Some(42),
             cpu_percent: Some(3.5),
             memory_bytes: Some(268_435_456),
+            terminal_session_id: None,
         }),
     );
     m.insert(
