@@ -185,7 +185,8 @@ struct PtySession {
     /// 因此必须随会话持有直至 close。
     master: Mutex<Box<dyn MasterPty + Send>>,
     /// 写锁：`terminal_write` 持锁写 master。
-    writer: Mutex<Box<dyn Write + Send>>,
+    /// Arc 包装以便 write() 可在会话表锁外克隆引用再写入（评审 MEDIUM 修复）。
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     /// 会话元信息（供 `terminal_list` 返回）。
     info: TerminalSessionInfo,
     /// reader 线程退出信号（drop 时设为 true）。
@@ -397,7 +398,7 @@ impl TerminalManager {
         let session = PtySession {
             pid,
             master: Mutex::new(master),
-            writer: Mutex::new(writer),
+            writer: Arc::new(Mutex::new(writer)),
             info,
             shutdown,
         };
@@ -411,22 +412,27 @@ impl TerminalManager {
     }
 
     /// 写入 PTY（`terminal_write`）。base64 解码后写 master（bytes，不经 String）。
+    ///
+    /// writer 为 `Arc<Mutex<...>>`：先在会话表锁内克隆 Arc，再**释放表锁**后
+    /// 做阻塞 I/O——避免 write_all/flush 期间阻塞 close/list/resize（评审 MEDIUM 修复）。
     pub fn write(&self, session_id: &str, data_base64: &str) -> Result<(), String> {
         use base64::Engine;
         let data = base64::engine::general_purpose::STANDARD
             .decode(data_base64)
             .map_err(|e| format!("base64 解码失败: {e}"))?;
 
-        let sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| format!("会话表锁中毒: {e}"))?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
-
-        let mut writer = session
-            .writer
+        let writer = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| format!("会话表锁中毒: {e}"))?;
+            let session = sessions
+                .get(session_id)
+                .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
+            Arc::clone(&session.writer)
+        };
+        // 表锁已释放，仅持 writer 锁做 I/O
+        let mut writer = writer
             .lock()
             .map_err(|e| format!("写锁中毒: {e}"))?;
         writer
