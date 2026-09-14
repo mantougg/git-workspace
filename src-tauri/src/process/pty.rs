@@ -183,10 +183,14 @@ struct PtySession {
     /// PTY master：resize 入口 + 保活。Windows ConPTY 下 master 的 Inner 持有
     /// HPCON，drop 会 `ClosePseudoConsole` 立即杀死 shell（终端空白根因），
     /// 因此必须随会话持有直至 close。
-    master: Mutex<Box<dyn MasterPty + Send>>,
+    /// Arc 包装以便 resize() 可在会话表锁外克隆引用再调用（评审修复）。
+    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     /// 写锁：`terminal_write` 持锁写 master。
     /// Arc 包装以便 write() 可在会话表锁外克隆引用再写入（评审 MEDIUM 修复）。
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    /// 子进程句柄：pid=0（spawn 未返回 pid）时 close() 仍可直接 kill
+    /// （portable-pty 的 Child::kill 内部走平台 API，不依赖 pid）。
+    child: Mutex<Option<Box<dyn portable_pty::Child + Send>>>,
     /// 会话元信息（供 `terminal_list` 返回）。
     info: TerminalSessionInfo,
     /// reader 线程退出信号（drop 时设为 true）。
@@ -346,12 +350,13 @@ impl TerminalManager {
             .map_err(|e| format!("启动 shell 失败: {e}"))?;
 
         let pid = child.process_id().unwrap_or_else(|| {
-            // PAF-24：spawn 成功但拿不到 pid（平台异常路径）——会话仍创建，
-            // 但无法 kill，记 warn 供排障（可能遗留孤儿进程）。
-            log::warn!("terminal open: 子进程未返回 pid，会话将无法被 kill（可能的孤儿进程）");
+            // pid 不可用时仍保留 child 句柄——portable-pty 的 Child::kill
+            // 走平台 API，不依赖 pid（评审修复：旧代码 pid=0 时无法 kill）。
+            log::warn!("terminal open: 子进程未返回 pid，close() 将回退到 child.kill()");
             0
         });
         let session_id = uuid::Uuid::new_v4().to_string();
+        let child_handle: Option<Box<dyn portable_pty::Child + Send>> = Some(child);
 
         // 拆分 pair：只 drop slave（unix 关闭父进程 slave fd，子进程退出时
         // reader 才能收到 EOF；Windows 上 slave 只是同一 Arc 的引用，drop 无
@@ -397,8 +402,9 @@ impl TerminalManager {
 
         let session = PtySession {
             pid,
-            master: Mutex::new(master),
+            master: Arc::new(Mutex::new(master)),
             writer: Arc::new(Mutex::new(writer)),
+            child: Mutex::new(child_handle),
             info,
             shutdown,
         };
@@ -446,17 +452,22 @@ impl TerminalManager {
 
     /// 缩放 PTY（`terminal_resize`）：通过会话持有的 master 调整
     /// ConPTY（Windows）/ tty（unix）尺寸，shell 与 TUI 程序可感知行列变化。
+    ///
+    /// master 为 `Arc<Mutex<...>>`：锁内克隆 Arc，释放表锁后再调 resize
+    /// （与 write 同模式，评审修复）。
     pub fn resize(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        let sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| format!("会话表锁中毒: {e}"))?;
-        let session = sessions
-            .get(session_id)
-            .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
-
-        let master = session
-            .master
+        let master = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| format!("会话表锁中毒: {e}"))?;
+            let session = sessions
+                .get(session_id)
+                .ok_or_else(|| format!("会话 {session_id} 不存在"))?;
+            Arc::clone(&session.master)
+        };
+        // 表锁已释放，仅持 master 锁做系统调用
+        let master = master
             .lock()
             .map_err(|e| format!("master 锁中毒: {e}"))?;
         master
@@ -496,11 +507,17 @@ impl TerminalManager {
 
         let pid = session.pid;
         if pid == 0 {
-            // PAF-24：spawn 未返回 pid——无法 kill，只能摘牌 + 通知前端，
-            // 尽力清理会话资源（drop master/writer）并告警可能的孤儿。
-            log::warn!(
-                "terminal close: 会话 {session_id} 无 pid（spawn 未返回），已摘牌并清理资源；可能遗留孤儿进程"
-            );
+            // pid 不可用——回退到 child.kill()（portable-pty 走平台 API，
+            // 不依赖 pid；评审修复：旧代码直接放弃，子进程成为孤儿）。
+            if let Ok(mut child_guard) = session.child.lock() {
+                if let Some(ref mut child) = *child_guard {
+                    if let Err(e) = child.kill() {
+                        log::warn!("terminal close: child.kill() 失败（会话 {session_id}）: {e}");
+                    } else {
+                        log::info!("terminal close: 会话 {session_id} 通过 child.kill() 已终止");
+                    }
+                }
+            }
             return Ok(());
         }
 

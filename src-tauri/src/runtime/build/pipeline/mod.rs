@@ -672,11 +672,6 @@ fn find_root_project<'a>(graph: &'a DependencyGraph, project: &str) -> AppResult
         })
 }
 
-/// 路径归一化：Windows 反斜杠 → 正斜杠（与 R-02 `path_key` 一致）。
-fn normalize_path(path: &str) -> String {
-    path.replace('\\', "/")
-}
-
 /// Classpath Run 的 classpath 生成：缓存命中直接复用，否则驱动
 /// `dependency:build-classpath` 写入缓存后读出。
 #[allow(clippy::too_many_arguments)]
