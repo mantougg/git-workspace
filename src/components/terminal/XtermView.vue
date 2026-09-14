@@ -52,11 +52,37 @@ let resizeObserver: ResizeObserver | null = null;
 
 function getXtermTheme(): Record<string, string> {
   const style = getComputedStyle(document.documentElement);
+  const bg = style.getPropertyValue("--gw-bg-app").trim() || "#1e1e1e";
+  const fg = style.getPropertyValue("--gw-text").trim() || "#cccccc";
+  const accent = style.getPropertyValue("--gw-accent").trim() || "#4d8bf5";
+  const success = style.getPropertyValue("--gw-success").trim() || "#4ade80";
+  const warning = style.getPropertyValue("--gw-warning").trim() || "#f59e0b";
+  const danger = style.getPropertyValue("--gw-danger").trim() || "#f87171";
+  const info = style.getPropertyValue("--gw-info").trim() || "#38bdf8";
+
   return {
-    background: style.getPropertyValue("--gw-bg-app").trim() || "#1e1e1e",
-    foreground: style.getPropertyValue("--gw-text").trim() || "#cccccc",
-    cursor: style.getPropertyValue("--gw-accent").trim() || "#4d8bf5",
-    selectionBackground: style.getPropertyValue("--gw-accent").trim() + "33" || "#4d8bf533",
+    background: bg,
+    foreground: fg,
+    cursor: accent,
+    cursorAccent: bg,
+    selectionBackground: accent + "33",
+    // ANSI 颜色（16色）
+    black: "#000000",
+    red: danger,
+    green: success,
+    yellow: warning,
+    blue: accent,
+    magenta: "#c678dd",
+    cyan: info,
+    white: fg,
+    brightBlack: "#5c6370",
+    brightRed: "#e06c75",
+    brightGreen: "#98c379",
+    brightYellow: "#e5c07b",
+    brightBlue: "#61afef",
+    brightMagenta: "#c678dd",
+    brightCyan: "#56b6c2",
+    brightWhite: "#ffffff",
   };
 }
 

@@ -106,7 +106,13 @@ export const useTerminalStore = defineStore("terminal", () => {
   function showPanel() {
     panelVisible.value = true;
     if (!listenersRegistered) {
-      registerEventListeners().catch((e) =>
+      registerEventListeners().then(() => {
+        // 首次打开面板时，自动打开一个真正的终端会话
+        if (sessions.value.length <= 1) {
+          // 只有 Git Console，没有真正的终端
+          openSession();
+        }
+      }).catch((e) =>
         console.warn("terminal: event listener registration failed (showPanel):", e),
       );
     }
