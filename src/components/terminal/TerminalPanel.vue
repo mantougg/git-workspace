@@ -133,7 +133,9 @@ function hideContextMenu() {
 
 async function contextCopy() {
   hideContextMenu();
-  const selection = window.getSelection()?.toString();
+  // 使用 xterm 的 API 获取选中文本（比 window.getSelection 更可靠）
+  const xtermRef = activeTabId.value ? xtermRefs.value.get(activeTabId.value) : null;
+  const selection = xtermRef?.getTerminal()?.getSelection();
   if (selection) {
     await navigator.clipboard.writeText(selection);
   }

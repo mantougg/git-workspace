@@ -10,6 +10,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { open as tauriOpen } from "@tauri-apps/plugin-shell";
 import { useTerminalStore } from "@/stores/terminal";
 import { encodeUtf8Base64 } from "@/utils/base64";
 import "@xterm/xterm/css/xterm.css";
@@ -111,6 +112,7 @@ onMounted(() => {
     cursorBlink: true,
     convertEol: true,
     scrollback: 5000,
+    copyOnSelect: true, // 选中即复制（与主流终端行为一致）
   });
 
   fitAddon = new FitAddon();
@@ -121,7 +123,10 @@ onMounted(() => {
   terminal.loadAddon(searchAddon);
 
   // TM-07：链接识别 addon（URL 可点击，系统浏览器打开）
-  terminal.loadAddon(new WebLinksAddon());
+  // 使用自定义 handler 调用 Tauri shell.open 打开系统浏览器
+  terminal.loadAddon(new WebLinksAddon((_event, uri) => {
+    tauriOpen(uri).catch((e) => console.warn("Failed to open link:", e));
+  }));
 
   terminal.open(containerRef.value);
 
@@ -137,6 +142,35 @@ onMounted(() => {
   terminal.onData((data: string) => {
     // 将字符串转为 base64（支持多字节；分块编码避免大输入栈溢出）
     emit("input", encodeUtf8Base64(data));
+  });
+
+  // Ctrl+C 智能处理：有选中文本时复制，无选中文本时发送中断信号
+  // Ctrl+Shift+C：始终复制选中文本
+  terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+    // Ctrl+Shift+C：始终复制
+    if (event.ctrlKey && event.shiftKey && event.key === "C") {
+      const selection = terminal?.getSelection();
+      if (selection && selection.length > 0) {
+        navigator.clipboard.writeText(selection).catch((e) =>
+          console.warn("Failed to copy:", e)
+        );
+      }
+      return false; // 阻止默认行为
+    }
+    // Ctrl+C（无 Shift）：有选中文本时复制，无选中文本时发送中断信号
+    if (event.ctrlKey && event.key === "c" && !event.shiftKey) {
+      const selection = terminal?.getSelection();
+      if (selection && selection.length > 0) {
+        // 有选中文本，复制到剪贴板
+        navigator.clipboard.writeText(selection).catch((e) =>
+          console.warn("Failed to copy:", e)
+        );
+        return false; // 阻止默认行为（不发送中断信号）
+      }
+      // 无选中文本，让默认行为发生（发送中断信号）
+      return true;
+    }
+    return true;
   });
 
   // Resize 观察器
