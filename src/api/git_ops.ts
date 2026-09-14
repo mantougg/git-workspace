@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { CommitRequest } from "@/types/task";
 import type { RepoStatus } from "@/types/repository";
+import type { SmartPullResult } from "@/types/git_ops";
 
 export const WATCHER_EVENTS = {
   statusChanged: "watcher_status_changed",
@@ -28,6 +29,10 @@ export function syncFetch(repoPath: string): Promise<void> {
 
 export function syncPull(repoPath: string): Promise<RepoStatus> {
   return invoke<RepoStatus>("sync_pull", { repoPath });
+}
+
+export function smartPull(repoPath: string): Promise<SmartPullResult> {
+  return invoke<SmartPullResult>("smart_pull", { repoPath });
 }
 
 export function syncPush(repoPath: string): Promise<void> {
