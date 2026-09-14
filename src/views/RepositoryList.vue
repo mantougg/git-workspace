@@ -722,11 +722,21 @@
         </n-button>
       </template>
     </n-modal>
+
+    <!-- Smart Merge dialog (batch pull) -->
+    <SmartMergeDialog
+      v-model:show="smartMergeShow"
+      :repo-path="smartMergeCurrent.repoPath"
+      :conflicts="smartMergeCurrent.conflicts"
+      :base-oid="smartMergeCurrent.baseOid"
+      @resolved="onSmartMergeResolved"
+      @aborted="onSmartMergeAborted"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   AddCircleOutline,
@@ -760,7 +770,8 @@ import ContextMenu from "@/components/shell/ContextMenu.vue";
 import CommitGraph from "@/components/graph/CommitGraph.vue";
 import { getCommitHistory } from "@/api/graph";
 import type { CommitInfo } from "@/types/graph";
-import { startWatcher, stopWatcher, batchCommit, batchFetch, batchPull, batchPush } from "@/api/git_ops";
+import { startWatcher, stopWatcher, batchCommit, batchFetch, batchPull, batchPush, smartPull } from "@/api/git_ops";
+import SmartMergeDialog from "@/components/git/SmartMergeDialog.vue";
 import { open as openPath } from "@tauri-apps/plugin-shell";
 import { getWorkspaceHealth } from "@/api/health";
 import {
@@ -1153,6 +1164,20 @@ const treeSelection = ref<TreeSelection>({ repoPaths: [], filesByRepo: new Map()
 const changeTreeRef = ref<InstanceType<typeof ChangeTree> | null>(null);
 const showPushDialog = ref(false);
 const pushSelection = ref<string[]>([]);
+
+// Smart merge dialog state (batch pull)
+interface SmartMergeQueueItem {
+  repoPath: string;
+  conflicts: string[];
+  baseOid: string | null;
+}
+const smartMergeQueue = ref<SmartMergeQueueItem[]>([]);
+const smartMergeShow = ref(false);
+const smartMergeCurrent = reactive({
+  repoPath: "",
+  conflicts: [] as string[],
+  baseOid: null as string | null,
+});
 
 // D-16：splitter 位置按视图 key 持久化（gw-splitter:<视图>:<面板>）；
 // 旧全局 key gw-diff-width 首次保存后迁移移除。
@@ -2309,14 +2334,77 @@ async function handlePull(paths?: string[]) {
     return;
   }
   actionLoading.value = true;
+  const queue: SmartMergeQueueItem[] = [];
+  let successCount = 0;
   try {
-    const taskIds = await batchPull(targets);
-    message.success(`已提交 ${taskIds.length} 个 pull 任务`);
-    await loadChanges();
+    for (const p of targets) {
+      try {
+        const result = await smartPull(p);
+        if (result.status === "conflict") {
+          queue.push({ repoPath: p, conflicts: result.files, baseOid: result.baseOid });
+        } else {
+          successCount++;
+        }
+      } catch {
+        // Individual repo failure doesn't stop the batch
+      }
+    }
+    if (queue.length > 0) {
+      smartMergeQueue.value = queue;
+      openNextConflict();
+    }
+    if (successCount > 0) {
+      message.success(`${successCount} 个仓库 Pull 完成`);
+    }
+    if (queue.length === 0) {
+      await loadChanges();
+    }
   } catch (e) {
     message.error("pull 失败: " + errMsg(e));
   } finally {
     actionLoading.value = false;
+  }
+}
+
+function openNextConflict() {
+  const next = smartMergeQueue.value[0];
+  if (!next) {
+    smartMergeShow.value = false;
+    smartMergeCurrent.repoPath = "";
+    smartMergeCurrent.conflicts = [];
+    smartMergeCurrent.baseOid = null;
+    loadChanges();
+    return;
+  }
+  smartMergeCurrent.repoPath = next.repoPath;
+  smartMergeCurrent.conflicts = next.conflicts;
+  smartMergeCurrent.baseOid = next.baseOid;
+  smartMergeShow.value = true;
+}
+
+function onSmartMergeResolved() {
+  smartMergeQueue.value = smartMergeQueue.value.slice(1);
+  if (smartMergeQueue.value.length > 0) {
+    openNextConflict();
+  } else {
+    smartMergeShow.value = false;
+    smartMergeCurrent.repoPath = "";
+    smartMergeCurrent.conflicts = [];
+    smartMergeCurrent.baseOid = null;
+    loadChanges();
+  }
+}
+
+function onSmartMergeAborted() {
+  smartMergeQueue.value = smartMergeQueue.value.slice(1);
+  if (smartMergeQueue.value.length > 0) {
+    openNextConflict();
+  } else {
+    smartMergeShow.value = false;
+    smartMergeCurrent.repoPath = "";
+    smartMergeCurrent.conflicts = [];
+    smartMergeCurrent.baseOid = null;
+    loadChanges();
   }
 }
 

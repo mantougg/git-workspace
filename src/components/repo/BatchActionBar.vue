@@ -66,6 +66,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "action-completed"): void;
+  (e: "pull-conflict", queue: Array<{ repoPath: string; conflicts: string[]; baseOid: string | null }>): void;
 }>();
 
 const loading = ref(false);
@@ -82,16 +83,41 @@ async function handleAction(action: "fetch" | "pull" | "push") {
   loading.value = true;
   try {
     const paths = props.selectedPaths;
-    let taskIds: string[];
-    if (action === "fetch") {
-      taskIds = await gitOpsApi.batchFetch(paths);
-    } else if (action === "pull") {
-      taskIds = await gitOpsApi.batchPull(paths);
+    if (action === "pull") {
+      // Smart pull: collect conflicts per repo
+      const queue: Array<{ repoPath: string; conflicts: string[]; baseOid: string | null }> = [];
+      let successCount = 0;
+      for (const p of paths) {
+        try {
+          const result = await gitOpsApi.smartPull(p);
+          if (result.status === "conflict") {
+            queue.push({ repoPath: p, conflicts: result.files, baseOid: result.baseOid });
+          } else {
+            successCount++;
+          }
+        } catch {
+          // Individual failure doesn't stop batch
+        }
+      }
+      if (queue.length > 0) {
+        emit("pull-conflict", queue);
+      }
+      if (successCount > 0) {
+        message.success(`${successCount} 个仓库 Pull 完成`);
+      }
+      if (queue.length === 0) {
+        emit("action-completed");
+      }
     } else {
-      taskIds = await gitOpsApi.batchPush(paths);
+      let taskIds: string[];
+      if (action === "fetch") {
+        taskIds = await gitOpsApi.batchFetch(paths);
+      } else {
+        taskIds = await gitOpsApi.batchPush(paths);
+      }
+      message.success(`已提交 ${taskIds.length} 个${action}任务`);
+      emit("action-completed");
     }
-    message.success(`已提交 ${taskIds.length} 个${action}任务`);
-    emit("action-completed");
   } catch (e) {
     message.error(`操作失败: ${errMsg(e)}`);
   } finally {
