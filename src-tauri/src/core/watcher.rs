@@ -76,15 +76,26 @@ impl FileWatcher {
 
         if let Some(watcher) = self.watcher.as_mut() {
             unmount(watcher, &to_remove);
+            // 批量预插入：锁内一次性插入所有待挂载路径（评审修复：旧代码每路径
+            // 单独加/释锁，N 个仓库时 2N 次锁操作）。
+            {
+                let mut watched = lock_watched(&self.watched);
+                for path in &to_add {
+                    watched.insert(path.clone());
+                }
+            }
+            // 逐个挂载，失败的路径从 watched 中移除
+            let mut failed = Vec::new();
             for path in &to_add {
-                // Publish first so events arriving during the mount syscall are
-                // not missed, then roll back on failure (PAF-13): a failed mount
-                // must not stay in the set, or it would silently never be
-                // retried by the next `watch_repositories` diff.
-                lock_watched(&self.watched).insert(path.clone());
                 if let Err(e) = mount_repo(watcher, path) {
-                    lock_watched(&self.watched).remove(path);
+                    failed.push(path.clone());
                     log::warn!("Failed to watch {:?} ({}); will retry on next sync", path, e);
+                }
+            }
+            if !failed.is_empty() {
+                let mut watched = lock_watched(&self.watched);
+                for path in &failed {
+                    watched.remove(path);
                 }
             }
         }

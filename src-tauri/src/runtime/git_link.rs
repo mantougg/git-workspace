@@ -173,9 +173,12 @@ impl GitLinkEngine {
                 })?;
                 let mut out = Vec::new();
                 for row in rows {
-                    // 单行读取失败跳过该行，不放弃整轮快照。
-                    let (id, path, _modified) = row?;
-                    out.push((id, path));
+                    // 单行读取失败跳过该行，不放弃整轮快照（评审修复：旧代码用 row?
+                    // 会传播错误导致整轮变空，与注释意图不符）。
+                    match row {
+                        Ok((id, path, _modified)) => out.push((id, path)),
+                        Err(e) => log::warn!("git_link: skipping bad row: {e}"),
+                    }
                 }
                 Ok(out)
             };

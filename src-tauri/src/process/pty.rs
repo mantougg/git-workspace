@@ -521,17 +521,25 @@ impl TerminalManager {
         Ok(())
     }
 
-    /// 列出存活会话（`terminal_list`，面板重开时恢复）。
+    /// 列出会话（`terminal_list`，面板重开时恢复）。
+    ///
+    /// 锁内只快照 (pid, info)，锁外再查 process_alive——避免 Windows 上
+    /// 系统调用阻塞 write/close（评审 MEDIUM 修复）。
     pub fn list(&self) -> Result<Vec<TerminalSessionInfo>, String> {
-        let sessions = self
-            .sessions
-            .lock()
-            .map_err(|e| format!("会话表锁中毒: {e}"))?;
-        Ok(sessions
-            .values()
-            .map(|s| {
-                let mut info = s.info.clone();
-                info.alive = crate::process::process_alive(s.pid, None);
+        let snapshots: Vec<(u32, TerminalSessionInfo)> = {
+            let sessions = self
+                .sessions
+                .lock()
+                .map_err(|e| format!("会话表锁中毒: {e}"))?;
+            sessions
+                .values()
+                .map(|s| (s.pid, s.info.clone()))
+                .collect()
+        };
+        Ok(snapshots
+            .into_iter()
+            .map(|(pid, mut info)| {
+                info.alive = crate::process::process_alive(pid, None);
                 info
             })
             .collect())
