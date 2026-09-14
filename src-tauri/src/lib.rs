@@ -556,6 +556,10 @@ pub fn run() {
             commands::runtime::runtime_get_launch_preview,
             // TM-06：按需计算启动命令预览（构建 + 缓存）
             commands::runtime::runtime_compute_launch_preview,
+            // 终端启动进程管理
+            commands::runtime::runtime_register_terminal_process,
+            commands::runtime::runtime_unregister_terminal_process,
+            commands::runtime::runtime_stop_terminal_process,
             // Application lifecycle commands
             commands::app::restart_app,
             // F-38：关于页清除数据（历史与缓存表，配置保留）

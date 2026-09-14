@@ -693,3 +693,50 @@ pub fn runtime_compute_launch_preview(
         .runtime
         .compute_launch_preview(workspace_id, &runtime_name)
 }
+
+/// 注册终端启动的 Runtime 进程。
+///
+/// 创建一个轻量级进程记录（状态=Running），关联 PTY 会话 ID。
+/// 用于终端启动模式下也能在 Applications 表格中展示进程状态。
+#[command]
+pub fn runtime_register_terminal_process(
+    workspace_id: i64,
+    runtime_name: String,
+    session_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<i64> {
+    state
+        .runtime
+        .register_terminal_process(workspace_id, &runtime_name, &session_id)
+}
+
+/// 注销终端启动的 Runtime 进程。
+///
+/// 当 PTY 会话退出时调用，将关联的进程记录更新为终态（Stopped/Failed）。
+#[command]
+pub fn runtime_unregister_terminal_process(
+    session_id: String,
+    exit_code: Option<i32>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state
+        .runtime
+        .unregister_terminal_process(&session_id, exit_code)
+}
+
+/// 停止终端启动的 Runtime 进程。
+///
+/// 关闭关联的 PTY 会话，进程状态会在 terminal_exit 事件中自动更新。
+#[command]
+pub fn runtime_stop_terminal_process(
+    process_id: i64,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    // 获取 terminal_session_id
+    let session_id = state.runtime.get_terminal_session_id(process_id)?
+        .ok_or_else(|| AppError::Other("不是终端启动的进程".into()))?;
+    // 关闭 PTY 会话（TerminalManager 会发射 terminal_exit 事件）
+    state.terminal.close(&session_id)
+        .map_err(|e| AppError::Other(format!("关闭终端会话失败: {e}")))?;
+    Ok(())
+}

@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
 use crate::maven::{self, MavenProjectNode, RuntimeScope};
+use crate::runtime::launch::store;
 use crate::runtime::launch::RuntimeProcessInfo;
 use crate::runtime::logs::{LogEntry, LogExportOutcome};
 
@@ -247,5 +248,72 @@ impl RuntimeService {
             max_concurrent_builds: self.build_scheduler.max(),
             max_concurrent_resolves: self.resolve_scheduler.max(),
         }
+    }
+
+    /// 注册终端启动的 Runtime 进程。
+    ///
+    /// 创建一个轻量级进程记录（状态=Running），关联 PTY 会话 ID。
+    pub fn register_terminal_process(
+        &self,
+        workspace_id: i64,
+        runtime_name: &str,
+        terminal_session_id: &str,
+    ) -> AppResult<i64> {
+        let conn = self.db.lock().unwrap();
+        let process_id = store::insert_terminal_process(
+            &conn,
+            workspace_id,
+            runtime_name,
+            terminal_session_id,
+        )?;
+        // 发射 process_started 事件，让前端刷新进程列表
+        self.emit(crate::runtime::events::EVENT_PROCESS_STARTED, &serde_json::json!({
+            "workspaceId": workspace_id,
+            "processId": process_id,
+            "runtimeName": runtime_name,
+            "terminalSessionId": terminal_session_id,
+        }));
+        Ok(process_id)
+    }
+
+    /// 注销终端启动的 Runtime 进程。
+    ///
+    /// 当 PTY 会话退出时调用，将关联的进程记录更新为终态。
+    pub fn unregister_terminal_process(
+        &self,
+        terminal_session_id: &str,
+        exit_code: Option<i32>,
+    ) -> AppResult<()> {
+        let conn = self.db.lock().unwrap();
+        if let Some(row) = store::find_by_terminal_session(&conn, terminal_session_id)? {
+            let to = if exit_code.is_some() && exit_code != Some(0) {
+                crate::runtime::launch::LifecycleStatus::Failed
+            } else {
+                crate::runtime::launch::LifecycleStatus::Stopped
+            };
+            // 直接更新状态，不走 transition_status（避免非法迁移检查）
+            let now = chrono::Utc::now().to_rfc3339();
+            conn.execute(
+                "UPDATE runtime_processes SET status = ?1, exit_code = ?2, stopped_at = ?3, updated_at = ?3 WHERE id = ?4",
+                rusqlite::params![to.as_str(), exit_code, now, row.id],
+            )?;
+            // 发射 process_stopped 事件
+            self.emit(crate::runtime::events::EVENT_PROCESS_STOPPED, &serde_json::json!({
+                "workspaceId": row.workspace_id,
+                "processId": row.id,
+                "runtimeName": row.runtime_name,
+            }));
+        }
+        Ok(())
+    }
+
+    /// 获取终端启动的进程的 PTY 会话 ID。
+    ///
+    /// 用于停止终端进程时，返回关联的 session_id 以便命令层关闭 PTY 会话。
+    pub fn get_terminal_session_id(&self, process_id: i64) -> AppResult<Option<String>> {
+        let conn = self.db.lock().unwrap();
+        let row = store::get_process(&conn, process_id)?
+            .ok_or_else(|| AppError::NotFound(format!("进程记录 #{process_id} 不存在")))?;
+        Ok(row.terminal_session_id)
     }
 }

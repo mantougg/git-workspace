@@ -965,8 +965,17 @@ pub const SCHEMA_V22: &str = r#"
 ALTER TABLE runtime_processes ADD COLUMN port_pids_json TEXT NOT NULL DEFAULT '{}';
 "#;
 
+/// v23 (终端启动展示)：给 runtime_processes 添加 terminal_session_id 字段，
+/// 关联 PTY 会话。终端启动的进程没有完整的生命周期管理，但能展示状态
+/// 和支持停止操作。
+pub const SCHEMA_V23: &str = r#"
+ALTER TABLE runtime_processes ADD COLUMN terminal_session_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_runtime_processes_terminal_session
+    ON runtime_processes(terminal_session_id);
+"#;
+
 pub const MIGRATIONS: &[&str] = &[
     SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10,
     SCHEMA_V11, SCHEMA_V12, SCHEMA_V13, SCHEMA_V14, SCHEMA_V15, SCHEMA_V16, SCHEMA_V17, SCHEMA_V18, SCHEMA_V19,
-    SCHEMA_V20, SCHEMA_V21, SCHEMA_V22,
+    SCHEMA_V20, SCHEMA_V21, SCHEMA_V22, SCHEMA_V23,
 ];

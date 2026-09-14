@@ -293,6 +293,8 @@ export interface RuntimeProcessInfo {
   uptimeSeconds: number | null;
   cpuPercent: number | null;
   memoryBytes: number | null;
+  /** 终端启动的进程关联的 PTY 会话 ID（null 表示托管启动）。 */
+  terminalSessionId: string | null;
 }
 
 /** `runtime.process_output` 事件批次元素（已脱敏）。 */

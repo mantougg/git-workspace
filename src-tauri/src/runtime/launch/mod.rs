@@ -69,6 +69,8 @@ pub struct RuntimeProcessInfo {
     pub uptime_seconds: Option<u64>,
     pub cpu_percent: Option<f32>,
     pub memory_bytes: Option<u64>,
+    /// 终端启动的进程关联的 PTY 会话 ID（None 表示托管启动）。
+    pub terminal_session_id: Option<String>,
 }
 
 /// Runtime 进程事件（§27「状态迁移全程发事件」）。

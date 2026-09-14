@@ -34,12 +34,14 @@ pub struct RuntimeProcessRow {
     pub stopped_at: Option<String>,
     pub last_seen_at: Option<String>,
     pub updated_at: String,
+    /// 终端启动的进程关联的 PTY 会话 ID（None 表示托管启动）。
+    pub terminal_session_id: Option<String>,
 }
 
 const COLUMNS: &str = "id, workspace_id, runtime_name, pid, pid_start_time, status,
      run_strategy, command_preview, working_dir, ports_json, exit_code,
      cpu_percent, memory_bytes, adopted, started_at, stopped_at, last_seen_at, updated_at,
-     port_pids_json";
+     port_pids_json, terminal_session_id";
 
 fn now() -> String {
     Utc::now().to_rfc3339()
@@ -54,6 +56,42 @@ pub fn insert_process(conn: &Connection, workspace_id: i64, runtime_name: &str) 
         params![workspace_id, runtime_name, now],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// 新建终端启动的进程记录（状态 `Running`，记录 terminal_session_id）。
+/// 返回行 id。
+pub fn insert_terminal_process(
+    conn: &Connection,
+    workspace_id: i64,
+    runtime_name: &str,
+    terminal_session_id: &str,
+) -> AppResult<i64> {
+    let now = now();
+    conn.execute(
+        "INSERT INTO runtime_processes (workspace_id, runtime_name, status, terminal_session_id, started_at, updated_at)
+         VALUES (?1, ?2, 'running', ?3, ?4, ?4)",
+        params![workspace_id, runtime_name, terminal_session_id, now],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// 根据 terminal_session_id 查找活跃（非终态）的进程记录。
+pub fn find_by_terminal_session(
+    conn: &Connection,
+    terminal_session_id: &str,
+) -> AppResult<Option<RuntimeProcessRow>> {
+    conn.query_row(
+        &format!(
+            "SELECT {COLUMNS} FROM runtime_processes
+             WHERE terminal_session_id = ?1
+               AND status NOT IN ('stopped', 'failed')
+             ORDER BY id DESC LIMIT 1"
+        ),
+        params![terminal_session_id],
+        map_row,
+    )
+    .optional()
+    .map_err(AppError::from)
 }
 
 /// 生命周期迁移的 SQL 落点：读-校验-写在调用方持有的同一连接锁内完成
@@ -267,6 +305,7 @@ pub fn row_to_info(row: &RuntimeProcessRow) -> RuntimeProcessInfo {
         uptime_seconds: uptime,
         cpu_percent: row.cpu_percent,
         memory_bytes: row.memory_bytes,
+        terminal_session_id: row.terminal_session_id.clone(),
     }
 }
 
@@ -305,6 +344,7 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RuntimeProcessRow> {
         stopped_at: row.get(15)?,
         last_seen_at: row.get(16)?,
         updated_at: row.get(17)?,
+        terminal_session_id: row.get(19)?,
     })
 }
 

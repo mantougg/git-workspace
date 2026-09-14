@@ -464,3 +464,40 @@ export function runtimeComputeLaunchPreview(
     runtimeName,
   });
 }
+
+// ---------------------------------------------------------------------------
+// 终端启动进程管理
+// ---------------------------------------------------------------------------
+
+/** 注册终端启动的 Runtime 进程（创建进程记录，状态=Running）。 */
+export function runtimeRegisterTerminalProcess(
+  workspaceId: number,
+  runtimeName: string,
+  sessionId: string
+): Promise<number> {
+  return invoke<number>("runtime_register_terminal_process", {
+    workspaceId,
+    runtimeName,
+    sessionId,
+  });
+}
+
+/** 注销终端启动的 Runtime 进程（PTY 退出时调用，更新状态为终态）。 */
+export function runtimeUnregisterTerminalProcess(
+  sessionId: string,
+  exitCode?: number | null
+): Promise<void> {
+  return invoke<void>("runtime_unregister_terminal_process", {
+    sessionId,
+    exitCode: exitCode ?? null,
+  });
+}
+
+/** 停止终端启动的 Runtime 进程（关闭关联的 PTY 会话）。 */
+export function runtimeStopTerminalProcess(
+  processId: number
+): Promise<void> {
+  return invoke<void>("runtime_stop_terminal_process", {
+    processId,
+  });
+}

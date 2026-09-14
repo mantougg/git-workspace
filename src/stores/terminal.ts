@@ -252,13 +252,22 @@ export const useTerminalStore = defineStore("terminal", () => {
     }
   }
 
-  /** 处理 terminal_exit 事件：标记会话死亡。 */
-  function handleExit(event: TerminalExitEvent) {
+  /** 处理 terminal_exit 事件：标记会话死亡，同步更新 Runtime 进程状态。 */
+  async function handleExit(event: TerminalExitEvent) {
     const session = sessions.value.find(
       (s) => s.sessionId === event.sessionId
     );
     if (session) {
       session.alive = false;
+      // 如果是终端启动的 Runtime 进程，同步更新进程状态
+      if (session.launchedInTerminal) {
+        try {
+          const { runtimeUnregisterTerminalProcess } = await import("@/api/runtime");
+          await runtimeUnregisterTerminalProcess(event.sessionId, event.exitCode);
+        } catch (e) {
+          console.error("Failed to unregister terminal process:", e);
+        }
+      }
     }
   }
 
@@ -428,8 +437,8 @@ export const useTerminalStore = defineStore("terminal", () => {
     await useRuntimeStore().restart(runtimeName);
   }
 
-  /** TM-06：在终端中启动 runtime。 */
-  async function launchInTerminal(command: string, cwd?: string, env?: Record<string, string>) {
+  /** TM-06：在终端中启动 runtime。返回 sessionId 供调用方注册进程记录。 */
+  async function launchInTerminal(command: string, cwd?: string, env?: Record<string, string>): Promise<string> {
     showPanel();
     if (listenersReady) await listenersReady;
     const sessionId = await terminalApi.runtimeStartInTerminal(command, cwd, env);
@@ -454,6 +463,7 @@ export const useTerminalStore = defineStore("terminal", () => {
 
     sessions.value.push(session);
     activeTabId.value = sessionId;
+    return sessionId;
   }
 
   /** 打开新 PTY 会话。 */
