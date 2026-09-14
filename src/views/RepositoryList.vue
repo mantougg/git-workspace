@@ -1785,10 +1785,10 @@ async function pollAiResult(requestId: string): Promise<AiResult | null> {
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 500));
     const status = await aiGetRequestStatus(requestId);
-    if (status?.status === "completed" && status.result) {
+    if (status?.phase === "succeeded" && status.result) {
       return status.result;
     }
-    if (status?.status === "failed") {
+    if (status?.phase === "failed") {
       throw new Error(status.error || "AI 请求失败");
     }
   }
@@ -1826,7 +1826,7 @@ async function generateCommitMessage() {
       userInstruction: "",
       diffScope: "staged",
       diffSelection: { repositories },
-      supplementary: null,
+      supplementary: undefined,
       exclusions: [],
       secretPolicy: { strategy: "block", warnConfirmed: false },
       budgetStrategy: "commitMessage",
@@ -1837,10 +1837,10 @@ async function generateCommitMessage() {
       includeRuntimeLogs: false,
     });
     const snapshot = await aiSubmitRequest(preview.request);
-    const approved = await aiApproveRequest(snapshot.id);
+    const approved = await aiApproveRequest(snapshot.requestId);
 
     // 轮询等待结果
-    const result = await pollAiResult(approved.id);
+    const result = await pollAiResult(approved.requestId);
 
     // 填入输入框
     if (result?.type === "commitSuggestion") {

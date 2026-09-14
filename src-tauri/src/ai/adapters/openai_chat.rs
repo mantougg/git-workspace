@@ -159,6 +159,16 @@ fn map_chat_event(event: &super::sse::SseEvent) -> super::SseAction {
             usage: v.get("usage").and_then(parse_usage),
         };
     }
+    // MiMo API 等兼容端点在 choices 为空的独立 chunk 中发送 usage，
+    // 此时 choice 为 None，需单独提取 usage 作为 Finish 信号。
+    if choice.is_none() {
+        if let Some(u) = v.get("usage").and_then(parse_usage) {
+            return SseAction::Finish {
+                finish_reason: "stop".into(),
+                usage: Some(u),
+            };
+        }
+    }
     SseAction::Skip
 }
 
@@ -236,5 +246,23 @@ mod tests {
             data: r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#.into(),
         };
         assert!(matches!(map_chat_event(&finish), SseAction::Finish { .. }));
+    }
+
+    #[test]
+    fn stream_event_extracts_usage_from_empty_choices() {
+        // MiMo API 在 choices 为空的独立 chunk 中发送 usage
+        let chunk = super::super::sse::SseEvent {
+            event: None,
+            data: r#"{"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":50}}"#.into(),
+        };
+        match map_chat_event(&chunk) {
+            SseAction::Finish { finish_reason, usage } => {
+                assert_eq!(finish_reason, "stop");
+                let u = usage.unwrap();
+                assert_eq!(u.input_tokens, Some(100));
+                assert_eq!(u.output_tokens, Some(50));
+            }
+            other => panic!("expected Finish with usage, got: {:?}", other),
+        }
     }
 }

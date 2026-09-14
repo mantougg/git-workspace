@@ -306,6 +306,7 @@ fn truncate_label(s: &str) -> String {
 }
 
 /// 流式事件映射动作（协议映射函数的返回值）。
+#[derive(Debug)]
 pub(super) enum SseAction {
     /// 文本增量。
     Emit(String),
