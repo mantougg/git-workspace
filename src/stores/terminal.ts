@@ -97,14 +97,18 @@ export const useTerminalStore = defineStore("terminal", () => {
   function togglePanel() {
     panelVisible.value = !panelVisible.value;
     if (panelVisible.value && !listenersRegistered) {
-      registerEventListeners();
+      registerEventListeners().catch((e) =>
+        console.warn("terminal: event listener registration failed (togglePanel):", e),
+      );
     }
   }
 
   function showPanel() {
     panelVisible.value = true;
     if (!listenersRegistered) {
-      registerEventListeners();
+      registerEventListeners().catch((e) =>
+        console.warn("terminal: event listener registration failed (showPanel):", e),
+      );
     }
   }
 

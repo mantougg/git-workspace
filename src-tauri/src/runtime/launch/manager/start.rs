@@ -288,16 +288,16 @@ impl RuntimeProcessManager {
     }
 
     /// R-06 自动推断默认 mainClass：按 Runtime 配置的 project 匹配检测结果。
-    /// 路径比较对 Windows 分隔符不敏感（配置可能是 `\`、`/` 或混合，R-14 修复）。
+    /// PAF-18：路径匹配走 `path_component_match`（组件级后缀 + verbatim +
+    /// 分隔符 + 大小写归一化），取代旧的 `replace('\\', "/") + ==`。
     /// PAF-09：POM 解析走共享 PomCache（内容指纹失效）——重复启动不再全量重扫。
     fn infer_main_class(&self, workspace_root: &std::path::Path, project: &str) -> AppResult<Option<String>> {
         let discovery = crate::maven::discover_poms(workspace_root, 5, Some(&self.deps.pom_cache), None);
         let result =
             crate::runtime::spring_boot::detect_spring_boot_workspace(&discovery.projects, &discovery.effective, None);
-        let needle = project.replace('\\', "/");
         let found = result.projects.iter().find(|candidate| {
-            let path = candidate.project_path.to_string_lossy().replace('\\', "/");
-            path == needle || candidate.module == project
+            crate::pathutil::path_component_match(&candidate.project_path.to_string_lossy(), project)
+                || candidate.module == project
         });
         Ok(found.and_then(|candidate| candidate.default_main_class.clone()))
     }
