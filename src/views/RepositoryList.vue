@@ -393,13 +393,30 @@
         </div>
         <div class="commit-row">
           <div class="commit-input">
-            <n-input
-              v-model:value="commitForm.message"
-              type="textarea"
-              :rows="2"
-              placeholder="请输入 commit message"
-              :disabled="selectedFileCount === 0"
-            />
+            <n-input-group>
+              <n-input
+                v-model:value="commitForm.message"
+                type="textarea"
+                :rows="2"
+                placeholder="请输入 commit message"
+                :disabled="selectedFileCount === 0"
+              />
+              <n-tooltip trigger="hover">
+                <template #trigger>
+                  <n-button
+                    quaternary
+                    :loading="aiCommitLoading"
+                    :disabled="selectedFileCount === 0"
+                    @click="generateCommitMessage"
+                  >
+                    <template #icon>
+                      <n-icon><SparklesOutline /></n-icon>
+                    </template>
+                  </n-button>
+                </template>
+                AI 根据勾选文件生成 Commit Message
+              </n-tooltip>
+            </n-input-group>
           </div>
           <div class="commit-scope">
             <div
@@ -785,6 +802,13 @@ import LogManager from "@/components/common/LogManager.vue";
 import { errMsg } from "@/utils/error";
 import { COMMIT_REQUEST_EVENT } from "@/commands/registry";
 import { useAiAssistant } from "@/composables/useAiAssistant";
+import {
+  aiBuildContextPreview,
+  aiSubmitRequest,
+  aiApproveRequest,
+  aiGetRequestStatus,
+} from "@/api/ai";
+import type { AiResult } from "@/types/ai";
 
 interface SelectedDiff {
   repoPath: string;
@@ -816,6 +840,7 @@ const treeViewMode = ref<"tree" | "flat">(
 );
 watch(treeViewMode, (mode) => localStorage.setItem(TREE_VIEW_MODE_KEY, mode));
 const actionLoading = ref(false);
+const aiCommitLoading = ref(false);
 const commitPanelOpen = ref(true);
 const commitForm = ref({ message: "", amend: false, thenPush: false });
 const scanDialog = ref<{
@@ -1752,6 +1777,88 @@ async function submitCommits(commits: CommitRequest[]) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// AI 生成 Commit Message
+// ---------------------------------------------------------------------------
+
+async function pollAiResult(requestId: string): Promise<AiResult | null> {
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    const status = await aiGetRequestStatus(requestId);
+    if (status?.status === "completed" && status.result) {
+      return status.result;
+    }
+    if (status?.status === "failed") {
+      throw new Error(status.error || "AI 请求失败");
+    }
+  }
+  throw new Error("AI 生成超时");
+}
+
+async function generateCommitMessage() {
+  const filesByRepo = treeSelection.value?.filesByRepo;
+  if (!filesByRepo || filesByRepo.size === 0) {
+    message.warning("请先勾选要提交的文件");
+    return;
+  }
+
+  aiCommitLoading.value = true;
+  try {
+    // 构建 diffSelection
+    const repositories = [...filesByRepo.entries()].map(([repoPath, files]) => ({
+      repoPath,
+      includePaths: files,
+      excludePaths: [],
+    }));
+    const repoPath = repositories[0].repoPath;
+
+    // 调用 AI（复用现有链路）
+    const preview = await aiBuildContextPreview({
+      taskKind: "commitMessage",
+      gitScenario: "commitMessage",
+      providerId: null,
+      modelId: null,
+      workspaceId: currentWorkspaceId.value!,
+      repoPath,
+      runtimeName: null,
+      processId: null,
+      project: null,
+      userInstruction: "",
+      diffScope: "staged",
+      diffSelection: { repositories },
+      supplementary: null,
+      exclusions: [],
+      secretPolicy: { strategy: "block", warnConfirmed: false },
+      budgetStrategy: "commitMessage",
+      stream: false,
+      tokenEstimateFactor: null,
+      logTailLines: null,
+      tokenBudget: null,
+      includeRuntimeLogs: false,
+    });
+    const snapshot = await aiSubmitRequest(preview.request);
+    const approved = await aiApproveRequest(snapshot.id);
+
+    // 轮询等待结果
+    const result = await pollAiResult(approved.id);
+
+    // 填入输入框
+    if (result?.type === "commitSuggestion") {
+      const { title, body } = result.payload as { title: string; body?: string[] };
+      commitForm.value.message = body?.length
+        ? `${title}\n\n${body.join("\n")}`
+        : title;
+      message.success("AI 已生成 Commit Message");
+    } else {
+      message.warning("AI 未返回有效的提交建议");
+    }
+  } catch (e) {
+    message.error("AI 生成失败: " + errMsg(e));
+  } finally {
+    aiCommitLoading.value = false;
+  }
+}
+
 const identitySourceLabel = computed(() => {
   switch (identityDialog.value.current?.source) {
     case "repo":
@@ -2558,6 +2665,15 @@ function viewConflicts() {
 .commit-input {
   flex: 1;
   min-width: 0;
+
+  :deep(.n-input-group) {
+    display: flex;
+    align-items: stretch;
+  }
+  :deep(.n-input-group > .n-button) {
+    align-self: stretch;
+    margin-left: -1px;
+  }
 }
 
 .commit-scope {
