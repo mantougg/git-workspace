@@ -298,6 +298,16 @@
         <n-button type="primary" :loading="prDialog.submitting" @click="submitPr">创建 PR</n-button>
       </template>
     </n-modal>
+
+    <!-- Smart Merge dialog -->
+    <SmartMergeDialog
+      v-model:show="smartMerge.show"
+      :repo-path="repoPath"
+      :conflicts="smartMerge.conflicts"
+      :base-oid="smartMerge.baseOid"
+      @resolved="onSmartMergeResolved"
+      @aborted="onSmartMergeAborted"
+    />
   </div>
 </template>
 
@@ -340,7 +350,8 @@ import {
 } from "@/api/branch";
 import type { BranchEntry, BranchOverview, CompareResult, RemoteBranchEntry } from "@/types/branch";
 import type { FileDiff } from "@/types/git";
-import { syncPull } from "@/api/git_ops";
+import { smartPull } from "@/api/git_ops";
+import SmartMergeDialog from "@/components/git/SmartMergeDialog.vue";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import RebaseDialog from "@/components/branch/RebaseDialog.vue";
 import Panel from "@/components/shell/Panel.vue";
@@ -612,6 +623,13 @@ const rebaseDialogVisible = ref(false);
 const mergeInProgress = ref(false);
 const rebaseState = ref<RebaseState | null>(null);
 
+// Smart merge dialog state
+const smartMerge = reactive({
+  show: false,
+  conflicts: [] as string[],
+  baseOid: null as string | null,
+});
+
 /** Onto candidates: every local branch except the current one, plus remotes. */
 const rebaseRevisions = computed<string[]>(() => {
   if (!overview.value) return [];
@@ -778,8 +796,7 @@ async function handleLocalCommand(cmd: string, b: BranchEntry) {
       await handlePush(b);
       break;
     case "pull":
-      // --ff-only pull onto the current branch; divergent state fails safely.
-      await runOp("Pull 完成", () => syncPull(repoPath.value));
+      await handleSmartPull();
       break;
     case "compare":
       openCompare(b.name);
@@ -882,6 +899,39 @@ async function handleSetUpstream(b: BranchEntry) {
   } catch (e) {
     if (e !== "cancel") message.error("设置上游失败: " + errMsg(e));
   }
+}
+
+async function handleSmartPull() {
+  try {
+    const result = await smartPull(repoPath.value);
+    if (result.status === "conflict") {
+      smartMerge.conflicts = result.files;
+      smartMerge.baseOid = result.baseOid;
+      smartMerge.show = true;
+    } else if (result.status === "upToDate") {
+      message.info("已是最新");
+      await load();
+    } else {
+      message.success("Pull 完成");
+      await load();
+    }
+  } catch (e) {
+    message.error("Pull 失败: " + errMsg(e));
+  }
+}
+
+function onSmartMergeResolved() {
+  smartMerge.show = false;
+  smartMerge.conflicts = [];
+  smartMerge.baseOid = null;
+  load();
+}
+
+function onSmartMergeAborted() {
+  smartMerge.show = false;
+  smartMerge.conflicts = [];
+  smartMerge.baseOid = null;
+  load();
 }
 
 async function handlePush(b: BranchEntry) {
