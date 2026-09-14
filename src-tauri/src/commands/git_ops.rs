@@ -1,10 +1,13 @@
 use std::path::Path;
 use std::time::Duration;
 
+use serde::Serialize;
 use tauri::{Emitter, State};
 
 use crate::core::git_ops::GitOps;
 use crate::core::git_status;
+use crate::core::history;
+use crate::core::merge;
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
 use crate::models::commit::{CommitIdentity, CommitScanFinding};
@@ -15,6 +18,24 @@ use crate::state::AppState;
 /// PAF-08：sync 网络命令硬超时（与任务队列 TASK_TIMEOUT 对齐）。超时后
 /// `run_git_streaming` 杀掉 git 进程树，避免无限占用执行线程。
 const SYNC_GIT_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Result of a smart pull operation (fetch + intelligent merge).
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum SmartPullResult {
+    /// HEAD already matches the remote; nothing to do.
+    UpToDate,
+    /// Pull succeeded (fast-forward or merge commit created).
+    #[serde(rename_all = "camelCase")]
+    Success { commit_oid: String },
+    /// Merge conflicts detected; repo is in merge state (MERGE_HEAD set).
+    #[serde(rename_all = "camelCase")]
+    Conflict {
+        files: Vec<String>,
+        /// HEAD before the merge (abort target).
+        base_oid: Option<String>,
+    },
+}
 
 /// Batch fetch: create Fetch tasks for each repo path and submit to the task queue.
 /// Returns the list of task IDs.
@@ -196,6 +217,116 @@ pub async fn sync_pull(repo_path: String) -> AppResult<RepoStatus> {
     })
     .await
     .map_err(|e| AppError::Other(format!("sync_pull join error: {e}")))?
+}
+
+/// Smart pull: fetch via CLI then merge via libgit2.
+/// If fast-forward is possible, performs FF; otherwise does a full merge.
+/// Returns conflict info when the merge cannot be auto-resolved.
+#[tauri::command]
+pub async fn smart_pull(repo_path: String) -> AppResult<SmartPullResult> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = Path::new(&repo_path);
+        let ops = GitOps::with_default_ssh();
+
+        // 1. Fetch via CLI (credential manager / SSH support).
+        ops.fetch_streaming(path, None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+
+        // 2. Determine upstream branch name (must resolve before borrowing repo).
+        let upstream_name = {
+            let repo = git2::Repository::open(path)?;
+            repo.head()
+                .ok()
+                .and_then(|h| h.shorthand().map(String::from))
+        };
+        let shorthand = match upstream_name {
+            Some(s) => s,
+            None => {
+                ops.pull_streaming(path, None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+                return Ok(SmartPullResult::Success {
+                    commit_oid: String::new(),
+                });
+            }
+        };
+
+        let upstream = {
+            let repo = git2::Repository::open(path)?;
+            repo.find_branch(&shorthand, git2::BranchType::Local)
+                .ok()
+                .and_then(|b| b.upstream().ok())
+                .and_then(|u| u.name().ok().flatten().map(String::from))
+        };
+        let upstream = match upstream {
+            Some(u) => u,
+            None => {
+                ops.pull_streaming(path, None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+                return Ok(SmartPullResult::Success {
+                    commit_oid: String::new(),
+                });
+            }
+        };
+
+        // 3. Analyze merge possibility via libgit2.
+        smart_pull_inner(path, &upstream)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("smart_pull join error: {e}")))?
+}
+
+/// Core smart-pull logic: merge_analysis → fast-forward or full merge.
+fn smart_pull_inner(path: &Path, upstream: &str) -> AppResult<SmartPullResult> {
+    let repo = git2::Repository::open(path)?;
+    let their_commit = repo
+        .revparse_single(upstream)
+        .and_then(|o| o.peel_to_commit())
+        .map_err(|_| AppError::NotFound(format!("upstream '{}' not found", upstream)))?;
+    let their_annotated = repo.find_annotated_commit(their_commit.id())?;
+    let (analysis, _preference) = repo.merge_analysis(&[&their_annotated])?;
+
+    if analysis.is_up_to_date() {
+        return Ok(SmartPullResult::UpToDate);
+    }
+
+    let base_oid = repo.head().ok().and_then(|h| h.target()).map(|o| o.to_string());
+
+    // Fast-forward.
+    if analysis.is_fast_forward() {
+        let head_ref = repo.head()?.name().unwrap_or("HEAD").to_string();
+        repo.checkout_tree(their_commit.as_object(), None)?;
+        repo.find_reference(&head_ref)?
+            .set_target(their_commit.id(), "smart-pull: fast-forward")?;
+        return Ok(SmartPullResult::Success {
+            commit_oid: their_commit.id().to_string(),
+        });
+    }
+
+    // Full merge.
+    repo.merge(&[&their_annotated], None, None)?;
+    let mut index = repo.index()?;
+    if index.has_conflicts() {
+        return Ok(SmartPullResult::Conflict {
+            files: history::conflict_paths(&index)?,
+            base_oid,
+        });
+    }
+
+    // Clean merge — create merge commit.
+    let tree_oid = index.write_tree()?;
+    let tree = repo.find_tree(tree_oid)?;
+    let sig = crate::core::signature_or_default(&repo)?;
+    let head_commit = repo.head()?.peel_to_commit()?;
+    let message = format!("Merge '{}'", upstream);
+    let oid = repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        &message,
+        &tree,
+        &[&head_commit, &their_commit],
+    )?;
+    repo.cleanup_state()?;
+    Ok(SmartPullResult::Success {
+        commit_oid: oid.to_string(),
+    })
 }
 
 /// Sync push for a single repo (not queued).

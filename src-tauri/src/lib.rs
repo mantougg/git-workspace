@@ -358,6 +358,7 @@ pub fn run() {
             git_ops::batch_commit,
             git_ops::sync_fetch,
             git_ops::sync_pull,
+            git_ops::smart_pull,
             git_ops::sync_push,
             git_ops::start_watcher,
             git_ops::watcher_status,
