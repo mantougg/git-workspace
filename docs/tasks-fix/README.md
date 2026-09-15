@@ -21,8 +21,8 @@
 
 ## 总体进度
 
-- 任务总数：**41**
-- 已完成：**41** · 修复中：**0** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**42**
+- 已完成：**41** · 修复中：**1** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -71,6 +71,7 @@
 | F-39 | Runtime 总览操作列：重启/构建收进「更多」，日志放出平铺 | P2 | ✅ | [F-39-runtime-actions-column.md](./F-39-runtime-actions-column.md) |
 | F-40 | 端口检测以 PID 归属为主（正则兜底）+ PID tooltip 列出全部 PID | P1 | ✅ | [F-40-port-detection-by-pid.md](./F-40-port-detection-by-pid.md) |
 | F-41 | Runtime 依赖页「刷新」不好使（静默早退 + 树/详情不联动 + 解析完成不自动同步） | P1 | ✅ | [F-41-deps-view-refresh-button.md](./F-41-deps-view-refresh-button.md) |
+| F-42 | 终端面板不自动打开真终端（默认落在不可关闭的 Git Console tab） | P1 | 🟦 | [F-42-terminal-panel-auto-open-real-shell.md](./F-42-terminal-panel-auto-open-real-shell.md) |
 
 ---
 

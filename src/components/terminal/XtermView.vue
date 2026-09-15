@@ -112,7 +112,6 @@ onMounted(() => {
     cursorBlink: true,
     convertEol: true,
     scrollback: 5000,
-    copyOnSelect: true, // 选中即复制（与主流终端行为一致）
   });
 
   fitAddon = new FitAddon();

@@ -224,7 +224,8 @@ function getEmbeddedTerminalCommands(_ctx: CommandContext): Command[] {
       run: async () => {
         const { useTerminalStore } = await import("@/stores/terminal");
         const store = useTerminalStore();
-        store.showPanel();
+        // autoOpen: false —— 本命令自己会 openSession，避免一次开出两个 shell（F-42）
+        store.showPanel({ autoOpen: false });
         await store.openSession();
       },
     },

@@ -391,7 +391,7 @@ onMounted(() => {
           <span>清屏</span>
         </div>
         <div
-          v-if="activeTabId && activeTabId !== '__git_console__'"
+          v-if="activeTabId"
           class="terminal-context-item"
           @click="contextCloseTab"
         >

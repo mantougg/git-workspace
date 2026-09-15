@@ -1022,6 +1022,44 @@ mod tests {
         }
     }
 
+    /// F-42：shell 候选顺序是「默认终端」的契约——前端取探测列表第一个作为默认
+    /// shell（Windows 上即 PowerShell 7 → Windows PowerShell → CMD）。顺序退化会
+    /// 静默改掉默认终端，因此这里锁死相对顺序。
+    #[test]
+    fn detected_shells_preserve_candidate_order() {
+        let declared: Vec<String> = shell_candidates()
+            .into_iter()
+            .map(|(id, _, _)| id.to_string())
+            .collect();
+        let detected: Vec<String> = detect_available_shells()
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+
+        let positions: Vec<usize> = detected
+            .iter()
+            .map(|id| {
+                declared
+                    .iter()
+                    .position(|d| d == id)
+                    .unwrap_or_else(|| panic!("探测到未声明的 shell: {id}"))
+            })
+            .collect();
+        assert!(
+            positions.windows(2).all(|w| w[0] < w[1]),
+            "探测顺序偏离候选声明顺序: declared={declared:?} detected={detected:?}"
+        );
+
+        // 环境相关：装了 pwsh 才断言（探测不到不硬失败，见 AGENTS.md §4）
+        if cfg!(windows) && find_in_path("pwsh").is_some() {
+            assert_eq!(
+                detected.first().map(String::as_str),
+                Some("pwsh"),
+                "已安装 pwsh 时它必须是默认 shell，实际: {detected:?}"
+            );
+        }
+    }
+
     #[test]
     fn session_table_concurrent_access() {
         let emitter: Arc<dyn TerminalEmitter> = Arc::new(MockEmitter::new());

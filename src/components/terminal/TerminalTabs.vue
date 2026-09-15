@@ -73,7 +73,6 @@ function selectShell(shellId: string) {
         />
         <span class="terminal-tab-title">{{ session.title }}</span>
         <button
-          v-if="session.sessionId !== '__git_console__'"
           class="terminal-tab-close"
           title="关闭"
           @click="closeTab(session.sessionId, $event)"

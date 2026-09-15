@@ -49,6 +49,34 @@ function trimWriteBuffer(buffer: Uint8Array[]) {
   }
 }
 
+/** Git Console 会话 ID（前端独有镜像 tab，Rust 侧不存在此会话）。 */
+const GIT_CONSOLE_SESSION_ID = "__git_console__";
+
+/** Runtime 输出镜像会话 ID 前缀（自动创建，可关闭）。 */
+const RUNTIME_SESSION_PREFIX = "__runtime_";
+
+/** 判定「真正的终端会话」：排除 Git Console 与 Runtime 输出镜像 tab。 */
+function isRealShellSession(session: TerminalSession): boolean {
+  return (
+    session.sessionId !== GIT_CONSOLE_SESSION_ID &&
+    !session.sessionId.startsWith(RUNTIME_SESSION_PREFIX)
+  );
+}
+
+/** 排干 await IPC 期间缓冲的 PTY 输出（shell prompt 等）并入会话。 */
+function drainPendingOutput(
+  pendingOutput: Map<string, Uint8Array[]>,
+  sessionId: string,
+  session: TerminalSession,
+) {
+  const pending = pendingOutput.get(sessionId);
+  if (!pending || pending.length === 0) return;
+  // 用 concat 而非展开：首屏可能是大块输出，spread 有爆栈风险（同 PAF-04）
+  session.writeBuffer = session.writeBuffer.concat(pending);
+  trimWriteBuffer(session.writeBuffer);
+  pendingOutput.delete(sessionId);
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -70,14 +98,7 @@ export const useTerminalStore = defineStore("terminal", () => {
   let unlistenRuntimeOutput: UnlistenFn | null = null;
   let unlistenRuntimeStarted: UnlistenFn | null = null;
   let unlistenRuntimeStopped: UnlistenFn | null = null;
-  let listenersRegistered = false;
   let listenersReady: Promise<void> | null = null;
-
-  /** Git Console 会话 ID（固定值，不可关闭）。 */
-  const GIT_CONSOLE_SESSION_ID = "__git_console__";
-
-  /** Runtime 会话 ID 前缀（自动创建，可关闭）。 */
-  const RUNTIME_SESSION_PREFIX = "__runtime_";
 
   /** 活跃 runtime 进程列表（用于工具条按钮状态）。 */
   const runtimeProcesses = ref<RuntimeProcessInfo[]>([]);
@@ -96,30 +117,59 @@ export const useTerminalStore = defineStore("terminal", () => {
   /** 切换面板开合。 */
   function togglePanel() {
     panelVisible.value = !panelVisible.value;
-    if (panelVisible.value && !listenersRegistered) {
-      registerEventListeners().catch((e) =>
-        console.warn("terminal: event listener registration failed (togglePanel):", e),
-      );
+    if (panelVisible.value) {
+      openPanel(true);
     }
   }
 
-  function showPanel() {
+  /**
+   * 显示面板。
+   *
+   * `autoOpen` 默认 true：打开面板时保证有一个可用的真终端（见 `ensureRealSession`）。
+   * 调用方**自身会立刻创建会话**时传 false，避免一次操作开出两个 shell
+   * （`terminal:new-shell` 命令、`launchInTerminal`）。
+   */
+  function showPanel(options?: { autoOpen?: boolean }) {
     panelVisible.value = true;
-    if (!listenersRegistered) {
-      registerEventListeners().then(() => {
-        // 首次打开面板时，自动打开一个真正的终端会话
-        if (sessions.value.length <= 1) {
-          // 只有 Git Console，没有真正的终端
-          openSession();
-        }
-      }).catch((e) =>
-        console.warn("terminal: event listener registration failed (showPanel):", e),
-      );
-    }
+    openPanel(options?.autoOpen ?? true);
   }
 
   function hidePanel() {
     panelVisible.value = false;
+  }
+
+  /** 面板打开后的统一初始化：注册事件监听（一次性）→ 保证存在一个真终端。 */
+  function openPanel(autoOpen: boolean) {
+    void (async () => {
+      try {
+        await registerEventListeners();
+      } catch (e) {
+        // 事件通道全挂时开出的会话收不到任何输出，放弃自动开（与旧行为一致）
+        console.warn("terminal: event listener registration failed (panel open):", e);
+        return;
+      }
+      if (autoOpen) await ensureRealSession();
+    })();
+  }
+
+  /**
+   * 保证面板里有一个可用的真终端（幂等，重复调用不重复建会话）。
+   *
+   * - 已有**存活**的真终端：只在当前 tab 失效时接管焦点（无选中 / 会话已退出 /
+   *   Git Console 镜像 tab）——不抢走用户自己选中的真终端或 runtime 输出 tab；
+   * - 没有任何存活真终端：新建一个，默认 shell 由后端 §5.1 顺序决定
+   *   （Windows: PowerShell 7 → Windows PowerShell → CMD）。
+   */
+  async function ensureRealSession() {
+    const live = sessions.value.find((s) => isRealShellSession(s) && s.alive);
+    if (live) {
+      const current = sessions.value.find((s) => s.sessionId === activeTabId.value);
+      if (!current || !current.alive || current.sessionId === GIT_CONSOLE_SESSION_ID) {
+        switchTab(live.sessionId);
+      }
+      return;
+    }
+    await openSession();
   }
 
   /** 注册 Tauri 事件监听（面板首次打开时调用，App 生命周期内保持）。
@@ -128,9 +178,6 @@ export const useTerminalStore = defineStore("terminal", () => {
    *  评审优化：Promise.allSettled 并行注册，避免单个 listen 卡住阻塞其余。 */
   function registerEventListeners(): Promise<void> {
     if (listenersReady) return listenersReady;
-    listenersRegistered = true;
-
-    ensureGitConsoleSession();
 
     const listenerDefs = [
       {
@@ -187,7 +234,7 @@ export const useTerminalStore = defineStore("terminal", () => {
       }
 
       if (succeeded.length === 0) {
-        listenersRegistered = false;
+        // 回滚注册门槛，下次打开面板可重试
         listenersReady = null;
         throw new Error("terminal: all event listeners failed to register");
       }
@@ -211,10 +258,20 @@ export const useTerminalStore = defineStore("terminal", () => {
     }
   }
 
-  /** 确保 Git Console 会话存在（不可关闭的特殊会话）。 */
-  function ensureGitConsoleSession() {
-    if (sessions.value.some((s) => s.sessionId === GIT_CONSOLE_SESSION_ID)) return;
-    sessions.value.unshift({
+  /**
+   * 确保 Git Console 会话存在并返回它。
+   *
+   * **懒创建**（F-42）：不再在打开面板时无条件挂一个 tab，只在真正有
+   * `git_op_output` 镜像输出时才出现——它是个输出镜像，不是真终端，
+   * 常驻会让面板默认落在关不掉的冗余 tab 上。
+   */
+  function ensureGitConsoleSession(): TerminalSession {
+    const existing = sessions.value.find(
+      (s) => s.sessionId === GIT_CONSOLE_SESSION_ID
+    );
+    if (existing) return existing;
+
+    const session: TerminalSession = {
       sessionId: GIT_CONSOLE_SESSION_ID,
       kind: "shell",
       title: "Git Console",
@@ -222,7 +279,10 @@ export const useTerminalStore = defineStore("terminal", () => {
       alive: true,
       writeBuffer: [],
       paused: false,
-    });
+    };
+    // 追加到末尾：懒创建时不打乱已有 tab 顺序
+    sessions.value.push(session);
+    return session;
   }
 
   /** 处理 terminal_output 事件：通过回调直接写入 xterm，或缓冲到 writeBuffer。 */
@@ -277,12 +337,9 @@ export const useTerminalStore = defineStore("terminal", () => {
     }
   }
 
-  /** TM-04：处理 git_op_output 事件，写入 Git Console xterm。 */
+  /** TM-04：处理 git_op_output 事件，写入 Git Console xterm（懒创建，见 F-42）。 */
   function handleGitOpOutput(event: GitOpOutputEvent) {
-    const session = sessions.value.find(
-      (s) => s.sessionId === GIT_CONSOLE_SESSION_ID
-    );
-    if (!session) return;
+    const session = ensureGitConsoleSession();
 
     // 格式化输出行
     let line = event.line;
@@ -445,8 +502,11 @@ export const useTerminalStore = defineStore("terminal", () => {
 
   /** TM-06：在终端中启动 runtime。返回 sessionId 供调用方注册进程记录。 */
   async function launchInTerminal(command: string, cwd?: string, env?: Record<string, string>): Promise<string> {
-    showPanel();
-    if (listenersReady) await listenersReady;
+    // 本函数紧接着就会开出自己的会话，面板打开时不要自动再开一个默认 shell
+    showPanel({ autoOpen: false });
+    await registerEventListeners().catch((e) =>
+      console.warn("terminal: event listener registration failed (launchInTerminal):", e),
+    );
     const sessionId = await terminalApi.runtimeStartInTerminal(command, cwd, env);
     const session: TerminalSession = {
       sessionId,
@@ -460,12 +520,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     };
 
     // 排干 await 期间缓冲的 PTY 输出
-    const pending = pendingOutput.get(sessionId);
-    if (pending) {
-      session.writeBuffer.push(...pending);
-      trimWriteBuffer(session.writeBuffer);
-      pendingOutput.delete(sessionId);
-    }
+    drainPendingOutput(pendingOutput, sessionId, session);
 
     sessions.value.push(session);
     activeTabId.value = sessionId;
@@ -479,17 +534,39 @@ export const useTerminalStore = defineStore("terminal", () => {
   }): Promise<string> {
     // 确保事件监听器已注册（PTY reader 在 IPC 返回前就会开始发送事件）
     if (listenersReady) await listenersReady;
+
+    // F-42：不指定 shell 时用探测列表的第一个——后端 §5.1 顺序，
+    // Windows 上即 PowerShell 7（无 pwsh 时回退 Windows PowerShell / CMD）。
+    // 探测失败则传 undefined，由后端 detect_default_shell() 兜底。
+    if (!params?.shell && availableShells.value.length === 0) {
+      await loadShells();
+    }
+    const shellId = params?.shell ?? availableShells.value[0]?.id;
+    const title =
+      availableShells.value.find((s) => s.id === shellId)?.label ??
+      shellId ??
+      "Shell";
+
     const sessionId = await terminalApi.terminalOpen({
       cwd: params?.cwd,
-      shell: params?.shell,
+      shell: shellId,
       cols: 80,
       rows: 24,
     });
 
+    // 打开面板时的 refreshSessions 可能已把该会话（Rust 侧已创建）并入列表，
+    // 直接复用，避免同一个 sessionId 出现两个 tab。
+    const known = sessions.value.find((s) => s.sessionId === sessionId);
+    if (known) {
+      drainPendingOutput(pendingOutput, sessionId, known);
+      activeTabId.value = sessionId;
+      return sessionId;
+    }
+
     const session: TerminalSession = {
       sessionId,
       kind: "shell",
-      title: params?.shell ?? "Shell",
+      title,
       cwd: params?.cwd ?? "",
       alive: true,
       writeBuffer: [],
@@ -497,12 +574,7 @@ export const useTerminalStore = defineStore("terminal", () => {
     };
 
     // 排干 await 期间缓冲的 PTY 输出（shell prompt 等）
-    const pending = pendingOutput.get(sessionId);
-    if (pending) {
-      session.writeBuffer.push(...pending);
-      trimWriteBuffer(session.writeBuffer);
-      pendingOutput.delete(sessionId);
-    }
+    drainPendingOutput(pendingOutput, sessionId, session);
 
     sessions.value.push(session);
     activeTabId.value = sessionId;
@@ -529,14 +601,16 @@ export const useTerminalStore = defineStore("terminal", () => {
 
   /** 关闭指定 tab。 */
   async function closeTab(sessionId: string) {
-    // Git Console 不可关闭
-    if (sessionId === GIT_CONSOLE_SESSION_ID) return;
     pendingOutput.delete(sessionId);
 
-    try {
-      await terminalApi.terminalClose({ sessionId });
-    } catch (e) {
-      console.warn("terminal close failed:", e);
+    // Git Console 是前端独有镜像 tab（Rust 侧无此会话），无需走 close；
+    // 关掉后下次收到 git_op_output 会重新懒创建（F-42）。
+    if (sessionId !== GIT_CONSOLE_SESSION_ID) {
+      try {
+        await terminalApi.terminalClose({ sessionId });
+      } catch (e) {
+        console.warn("terminal close failed:", e);
+      }
     }
 
     const idx = sessions.value.findIndex((s) => s.sessionId === sessionId);
@@ -565,6 +639,9 @@ export const useTerminalStore = defineStore("terminal", () => {
         const prev = existing.get(info.sessionId);
         return {
           ...info,
+          // 保留前端标题：Rust 侧 title 是 exe 文件名（pwsh.exe），
+          // 前端标题是 shell label（PowerShell 7），重开面板不该退化（F-42）
+          title: prev?.title ?? info.title,
           writeBuffer: prev?.writeBuffer ?? [],
           paused: prev?.paused ?? false,
           writeCallback: prev?.writeCallback,
@@ -658,7 +735,6 @@ export const useTerminalStore = defineStore("terminal", () => {
     unlistenRuntimeOutput = null;
     unlistenRuntimeStarted = null;
     unlistenRuntimeStopped = null;
-    listenersRegistered = false;
     listenersReady = null;
     pendingOutput.clear();
   }
