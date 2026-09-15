@@ -772,6 +772,57 @@ async fn approve_is_the_only_network_entry() {
     assert_eq!(transport.call_count(), 1, "拒绝后无新增网络调用");
 }
 
+/// F-43 回归：`approve` 从**无 Tokio runtime 的线程**调用不得 panic。
+///
+/// 同步 Tauri 命令（`ai_approve_request`）在 WebView2 IPC 回调线程上同步执行，
+/// 该线程没有 runtime 上下文；旧实现的裸 `tokio::spawn` 在此直接 panic
+/// （"there is no reactor running"），unwind 穿透 COM extern "system" 边界即
+/// 进程 abort（应用闪退）。修复后执行任务经 `tauri::async_runtime::spawn`
+/// （懒初始化全局 runtime，任意线程可调）派生。
+///
+/// 注意本测试刻意用 `#[test]` + 裸 `std::thread`：线程上没有任何 runtime
+/// 上下文，正是 IPC 回调线程的环境；`#[tokio::test]` 会把 bug 遮掉。
+#[test]
+fn approve_from_thread_without_runtime_does_not_panic() {
+    let conn = open_db();
+    let provider = add_provider(&conn, ApiType::OpenaiChatCompletions);
+    add_model(&conn, &provider.id);
+    let transport = Arc::new(FakeTransport::new(vec![Step::Respond {
+        status: 200,
+        body: Body::Full(chat_json("ok")),
+    }]));
+    let (gateway, _sink) = test_gateway(test_config(), transport.clone());
+    let credentials = credentials_for_ref(provider.credential_ref.as_deref().unwrap(), KEY);
+
+    let worker = std::thread::spawn(move || {
+        let request = make_request("no-runtime-thread", false);
+        let id = request.request_id.clone();
+        gateway.submit(&conn, request).expect("submit ok");
+        gateway.approve(credentials, &id).expect("approve ok");
+        (gateway, id)
+    });
+    let (gateway, id) = worker
+        .join()
+        .expect("approve 在无 runtime 线程上不得 panic（F-43 闪退回归）");
+
+    // 执行任务派生到了全局 runtime：轮询直到终态。
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(snapshot) = gateway.status(&id) {
+            if snapshot.phase.is_terminal() {
+                assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::Succeeded);
+                break;
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "请求应在超时前到达终态"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(transport.call_count(), 1, "approve 触发了恰好一次执行");
+}
+
 /// AI-08：fake Provider 的 JSON 结果经既有 Gateway/Preview 闸门按场景解析，
 /// 不创建第二套 HTTP 调用链。
 #[tokio::test]

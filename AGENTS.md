@@ -136,6 +136,23 @@ This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 r
 
 <!-- platform:end -->
 
+<!-- tauri-command:start -->
+# Tauri 命令线程模型硬规则（F-43）
+
+- **同步（非 async）Tauri 命令内禁止裸 `tokio::spawn` / `tokio::runtime::Handle::current`
+  / 自建 runtime `block_on`**。非 async 命令在 WebView IPC 回调线程上**同步**执行
+  （tauri-macros `body_blocking` 直接调用），该线程没有 Tokio runtime 上下文——
+  裸 `tokio::spawn` 直接 panic（"there is no reactor running"），unwind 穿透 wry
+  COM 回调的 `extern "system"` 边界即**进程 abort（应用闪退）**；`panic = "unwind"`
+  与 Tauri IPC 链路（无 catch_unwind）都救不了同步命令。
+- 派生后台任务一律用 **`tauri::async_runtime::spawn` / `spawn_blocking`**（懒初始化
+  全局 runtime，任意线程可调，参照 `task/worker.rs`、`core/watcher.rs`、
+  `ai/gateway.rs::approve`）；或把命令标为 `async`（宏会把命令体 spawn 进全局
+  runtime，体内即有 runtime 上下文）。
+- 审计方法：新增/修改**同步**命令时，沿调用链查 `tokio::spawn` / `Handle::current`
+  / `block_on` 可达性（测试里的 `#[tokio::test]` 会掩盖该问题，单测绿 ≠ 生产安全）。
+<!-- tauri-command:end -->
+
 <!-- app-footer:start -->
 # 应用底部版本栏规则（F-07）
 

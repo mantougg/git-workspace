@@ -434,7 +434,12 @@ impl AiGateway {
         );
 
         // 凭证在执行开始时读取（Key 只经内存流经，不进日志/快照）。
-        tokio::spawn(
+        // F-43：必须经 tauri::async_runtime 派生（懒初始化全局 runtime，任意
+        // 线程可调）。裸 tokio::spawn 要求调用线程已有 runtime 上下文——本方法
+        // 会被同步命令 ai_approve_request 在 WebView2 IPC 回调线程上同步调用，
+        // 裸 spawn 在该线程直接 panic，unwind 穿透 COM extern "system" 边界
+        // 即进程 abort（应用闪退）。
+        tauri::async_runtime::spawn(
             self.clone()
                 .execute(request_id.to_string(), request, provider, model, credentials),
         );

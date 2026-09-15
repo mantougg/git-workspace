@@ -95,9 +95,12 @@ libc = "0.2"
 git2 = { version = "0.19", features = ["ssh", "https", "vendored-openssl"] }
 
 [profile.release]
-# panic 策略改为默认 unwind：abort 会把任意一处 panic（如 AI 命令层对
-# 多字节内容的字节切片）直接变成整个应用退出（Windows 用户实测）。
-# unwind 下 Tauri 命令把 panic 转为失败返回，应用保持存活。
+# panic 策略保持默认 unwind：abort 会把任意一处 panic 直接变成整个应用退出
+# （Windows 用户实测）。注意 unwind 只对 **async** Tauri 命令有保护（panic 被
+# tokio 任务兜成 JoinError）；同步（非 async）命令在 WebView2 IPC 回调线程上
+# 同步执行，panic 会穿透 wry COM 回调的 extern "system" 边界直接 abort
+# （F-43 闪退）——同步命令内禁止裸 tokio::spawn / Handle::current / block_on，
+# 派生任务一律走 tauri::async_runtime（懒初始化全局 runtime，任意线程可调）。
 panic = "unwind"
 codegen-units = 1
 lto = true

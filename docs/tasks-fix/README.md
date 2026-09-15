@@ -21,8 +21,8 @@
 
 ## 总体进度
 
-- 任务总数：**42**
-- 已完成：**41** · 修复中：**1** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**43**
+- 已完成：**41** · 修复中：**2** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -72,6 +72,7 @@
 | F-40 | 端口检测以 PID 归属为主（正则兜底）+ PID tooltip 列出全部 PID | P1 | ✅ | [F-40-port-detection-by-pid.md](./F-40-port-detection-by-pid.md) |
 | F-41 | Runtime 依赖页「刷新」不好使（静默早退 + 树/详情不联动 + 解析完成不自动同步） | P1 | ✅ | [F-41-deps-view-refresh-button.md](./F-41-deps-view-refresh-button.md) |
 | F-42 | 终端面板不自动打开真终端（默认落在不可关闭的 Git Console tab） | P1 | 🟦 | [F-42-terminal-panel-auto-open-real-shell.md](./F-42-terminal-panel-auto-open-real-shell.md) |
+| F-43 | 使用 AI 功能点击确认后应用闪退（同步命令在无 Tokio runtime 线程上调 tokio::spawn） | P0 | 🟦 | [F-43-ai-approve-sync-command-tokio-spawn-crash.md](./F-43-ai-approve-sync-command-tokio-spawn-crash.md) |
 
 ---
 
