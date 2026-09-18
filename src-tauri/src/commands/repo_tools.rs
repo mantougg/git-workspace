@@ -215,9 +215,8 @@ pub fn list_submodules(repo_path: String) -> AppResult<Vec<SubmoduleEntry>> {
         .collect())
 }
 
-/// 子模块操作：init / update / sync / add / remove。
-#[tauri::command]
-pub fn submodule_op(repo_path: String, op: String, path: Option<String>, url: Option<String>) -> AppResult<String> {
+/// 子模块操作（同步实现，供 spawn_blocking 调用）。
+fn submodule_op_inner(repo_path: String, op: String, path: Option<String>, url: Option<String>) -> AppResult<String> {
     let path_args: Vec<&str> = path.as_deref().map(|p| vec![p]).unwrap_or_default();
     match op.as_str() {
         "init" => run_git(
@@ -247,6 +246,14 @@ pub fn submodule_op(repo_path: String, op: String, path: Option<String>, url: Op
         }
         other => Err(AppError::Other(format!("未知的子模块操作：{other}"))),
     }
+}
+
+/// 子模块操作：init / update / sync / add / remove（async，避免阻塞 Tauri 主线程）。
+#[tauri::command]
+pub async fn submodule_op(repo_path: String, op: String, path: Option<String>, url: Option<String>) -> AppResult<String> {
+    tauri::async_runtime::spawn_blocking(move || submodule_op_inner(repo_path, op, path, url))
+        .await
+        .map_err(|e| AppError::Other(format!("子模块操作任务失败：{e}")))?
 }
 
 // ---------------------------------------------------------------------------
@@ -309,9 +316,8 @@ pub fn lfs_list(repo_path: String) -> AppResult<Vec<LfsFile>> {
     Ok(parse_lfs_ls_files(&out))
 }
 
-/// LFS 网络操作：fetch / pull / push。
-#[tauri::command]
-pub fn lfs_op(repo_path: String, op: String, include: Option<String>) -> AppResult<String> {
+/// LFS 网络操作（同步实现，供 spawn_blocking 调用）。
+fn lfs_op_inner(repo_path: String, op: String, include: Option<String>) -> AppResult<String> {
     ensure_lfs()?;
     let include_pattern = include;
     let mut args: Vec<String> = match op.as_str() {
@@ -328,6 +334,14 @@ pub fn lfs_op(repo_path: String, op: String, include: Option<String>) -> AppResu
     }
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_git(&repo_path, &refs, SUBMODULE_NET_TIMEOUT)
+}
+
+/// LFS 网络操作：fetch / pull / push（async，避免阻塞 Tauri 主线程）。
+#[tauri::command]
+pub async fn lfs_op(repo_path: String, op: String, include: Option<String>) -> AppResult<String> {
+    tauri::async_runtime::spawn_blocking(move || lfs_op_inner(repo_path, op, include))
+        .await
+        .map_err(|e| AppError::Other(format!("LFS 操作任务失败：{e}")))?
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -506,9 +520,8 @@ pub struct HookRunResult {
     pub output: String,
 }
 
-/// 手动运行 hook（repo 根为工作目录；hook 可能修改仓库，属用户显式动作）。
-#[tauri::command]
-pub fn run_hook(repo_path: String, name: String) -> AppResult<HookRunResult> {
+/// 手动运行 hook（同步实现，供 spawn_blocking 调用）。
+fn run_hook_inner(repo_path: String, name: String) -> AppResult<HookRunResult> {
     if !KNOWN_HOOKS.contains(&name.as_str()) {
         return Err(AppError::Other(format!("不支持的 hook：{name}")));
     }
@@ -547,6 +560,14 @@ pub fn run_hook(repo_path: String, name: String) -> AppResult<HookRunResult> {
             .rev()
             .collect(),
     })
+}
+
+/// 手动运行 hook（async，避免阻塞 Tauri 主线程）。
+#[tauri::command]
+pub async fn run_hook(repo_path: String, name: String) -> AppResult<HookRunResult> {
+    tauri::async_runtime::spawn_blocking(move || run_hook_inner(repo_path, name))
+        .await
+        .map_err(|e| AppError::Other(format!("hook 运行任务失败：{e}")))?
 }
 
 /// 平台 hook 执行器：unix 直跑（脚本自带 shebang + 执行位）；
@@ -680,7 +701,7 @@ abcdef12 * media/big.mp4 (10.2 MB)
         // run_hook：真实跑一个脚本（unix 直跑）
         #[cfg(unix)]
         {
-            let result = run_hook(repo_str.clone(), "pre-commit".into()).unwrap();
+            let result = run_hook_inner(repo_str.clone(), "pre-commit".into()).unwrap();
             assert_eq!(result.exit_code, Some(0));
             assert!(result.output.contains("hi"));
         }

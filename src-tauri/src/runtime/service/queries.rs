@@ -253,11 +253,14 @@ impl RuntimeService {
     /// 注册终端启动的 Runtime 进程。
     ///
     /// 创建一个轻量级进程记录（状态=Running），关联 PTY 会话 ID。
+    /// 若 `pty_pid` 有值，同步回填 `runtime_processes.pid`（供
+    /// process_alive / metrics 采样使用），并启动后台端口扫描线程。
     pub fn register_terminal_process(
         &self,
         workspace_id: i64,
         runtime_name: &str,
         terminal_session_id: &str,
+        pty_pid: Option<u32>,
     ) -> AppResult<i64> {
         let conn = self.db.lock().unwrap();
         let process_id = store::insert_terminal_process(
@@ -266,6 +269,10 @@ impl RuntimeService {
             runtime_name,
             terminal_session_id,
         )?;
+        // 回填 PTY 子进程 PID（供 process_alive / metrics 采样）。
+        if let Some(pid) = pty_pid {
+            let _ = store::set_pid(&conn, process_id, pid, None);
+        }
         // 发射 process_started 事件，让前端刷新进程列表
         self.emit(crate::runtime::events::EVENT_PROCESS_STARTED, &serde_json::json!({
             "workspaceId": workspace_id,
@@ -273,6 +280,69 @@ impl RuntimeService {
             "runtimeName": runtime_name,
             "terminalSessionId": terminal_session_id,
         }));
+        // 若 PID 已知，启动后台端口扫描线程（等待进程启动后枚举监听端口）。
+        if let Some(root_pid) = pty_pid {
+            let db = Arc::clone(&self.db);
+            let emitter = Arc::clone(&self.emitter);
+            let rn = runtime_name.to_string();
+            std::thread::Builder::new()
+                .name(format!("terminal-port-scan-{process_id}"))
+                .spawn(move || {
+                    // 等待进程启动并开始监听。
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    // 枚举进程树 PID 集合。
+                    let tree_pids = crate::process::collect_tree_pids(root_pid);
+                    let tree_set: std::collections::HashSet<u32> = tree_pids.iter().copied().collect();
+                    // 枚举 OS 监听表，过滤出进程树内的端口。
+                    let detected_ports: Vec<u16> = crate::process::port::detect_listening_ports()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|lp| tree_set.contains(&lp.pid))
+                        .map(|lp| lp.port)
+                        .collect::<std::collections::HashSet<u16>>()
+                        .into_iter()
+                        .collect();
+                    if detected_ports.is_empty() {
+                        log::debug!("terminal-port-scan-{process_id}: no listening ports detected in process tree [{root_pid}]");
+                        return;
+                    }
+                    // 持久化到 DB。
+                    let conn = db.lock().unwrap();
+                    if let Err(e) = store::set_ports(&conn, process_id, &detected_ports) {
+                        log::warn!("terminal-port-scan-{process_id}: failed to persist ports: {e}");
+                        return;
+                    }
+                    // 确权：与 PortAttribution 模式一致，记录端口归属。
+                    let port_pids: std::collections::BTreeMap<u16, u32> = {
+                        let all_listening = crate::process::port::detect_listening_ports().unwrap_or_default();
+                        let mut map = std::collections::BTreeMap::new();
+                        for lp in &all_listening {
+                            if tree_set.contains(&lp.pid) && detected_ports.contains(&lp.port) {
+                                map.entry(lp.port).or_insert(lp.pid);
+                            }
+                        }
+                        map
+                    };
+                    if !port_pids.is_empty() {
+                        let _ = store::set_port_attribution(&conn, process_id, &port_pids);
+                    }
+                    log::info!(
+                        "terminal-port-scan-{process_id}: detected ports {:?} for process tree [{root_pid}]",
+                        detected_ports
+                    );
+                    // 发射 process_started 事件，触发前端刷新以获取更新后的端口信息。
+                    emitter.emit(crate::runtime::events::RuntimeEmission::new(
+                        crate::runtime::events::EVENT_PROCESS_STARTED,
+                        &serde_json::json!({
+                            "workspaceId": workspace_id,
+                            "processId": process_id,
+                            "runtimeName": rn,
+                            "portsDetected": detected_ports,
+                        }),
+                    ));
+                })
+                .ok(); // 线程 spawn 失败不阻塞主流程。
+        }
         Ok(process_id)
     }
 

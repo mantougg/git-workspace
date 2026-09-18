@@ -698,6 +698,7 @@ pub fn runtime_compute_launch_preview(
 ///
 /// 创建一个轻量级进程记录（状态=Running），关联 PTY 会话 ID。
 /// 用于终端启动模式下也能在 Applications 表格中展示进程状态。
+/// 同步回填 PTY 子进程 PID（供 process_alive / metrics 采样使用）。
 #[command]
 pub fn runtime_register_terminal_process(
     workspace_id: i64,
@@ -705,9 +706,11 @@ pub fn runtime_register_terminal_process(
     session_id: String,
     state: State<'_, AppState>,
 ) -> AppResult<i64> {
+    // 从 TerminalManager 获取 PTY 子进程 PID，回填到 runtime_processes。
+    let pty_pid = state.terminal.get_session_pid(&session_id);
     state
         .runtime
-        .register_terminal_process(workspace_id, &runtime_name, &session_id)
+        .register_terminal_process(workspace_id, &runtime_name, &session_id, pty_pid)
 }
 
 /// 注销终端启动的 Runtime 进程。

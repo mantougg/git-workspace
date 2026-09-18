@@ -30,3 +30,47 @@ This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 r
 | `gitnexus://repo/git-workspace/process/{name}` | Step-by-step execution trace |
 
 <!-- gitnexus:end -->
+
+<!-- bug-fixes:start -->
+# Bug Analysis & Fixes（2026-09-19）
+
+> 来源：docs/bug-analysis-2026-09-19.md（13 个问题深度分析与修复）。
+> 测试用例：docs/test-cases-2026-09-19.md（79 个用例覆盖全部 13 个问题域）。
+
+## 已修复的关键问题
+
+### 前端
+
+| 问题 | 文件 | 修复 |
+|------|------|------|
+| Git Console 只有 "ready" | `src/components/terminal/XtermView.vue:132` | 虚拟会话（`__xxx__`）跳过 `terminal.writeln("Terminal ready.")` |
+| 文件监听不刷新变更树 | `src/views/RepositoryList.vue:1478` | 监听 `repo_status_changed_batch` 事件，800ms 防抖调用 `loadChanges()` |
+| 终端 Ctrl+Shift+V 不工作 | `src/components/terminal/XtermView.vue:152` | 新增 Ctrl+Shift+V 粘贴处理器（大小写兼容） |
+
+### 后端（Rust）
+
+| 问题 | 文件 | 修复 |
+|------|------|------|
+| 终端启动无 PID | `src-tauri/src/process/pty.rs:567` | `get_session_pid()` 方法传播 PTY child PID |
+| 终端启动无端口 | `src-tauri/src/runtime/service/queries.rs:284` | `register_terminal_process` 后 spawn 后台线程延迟 3s 扫描端口 |
+| Windows 凭证存储失败 | `src-tauri/src/ai/credentials.rs:279` | 新增 `FileCredentialStore`（XChaCha20-Poly1305 加密），OS→File→Session 三级回退 |
+| repo_tools 阻塞 UI | `src-tauri/src/commands/repo_tools.rs` | `submodule_op`/`lfs_op`/`run_hook` 改为 `spawn_blocking` |
+
+### 已有实现（确认无需修改）
+
+| 问题 | 文件 | 说明 |
+|------|------|------|
+| cleaner 阻塞 UI | `src-tauri/src/commands/cleaner.rs:111` | 已通过 `std::thread::spawn` 非阻塞执行 |
+| PID 传播 | `src-tauri/src/runtime/service/queries.rs:258` | `register_terminal_process` 已接受 `pty_pid` 参数 |
+
+## 架构关键点
+
+- **终端启动 vs 托管启动**：两种独立模式。终端启动是降级模式（无健康检查/日志持久化/AI 诊断），但已有 PID 传播和端口检测。
+- **文件 watcher vs 变更树**：两套独立数据路径。watcher 更新 `RepoStatus`（轻量），变更树需要 `RepoChanges`（完整 libgit2 扫描）。桥接方式是监听 `repo_status_changed_batch` 事件触发 `loadChanges()`。
+- **凭证存储回退链**：OS Credential Store → FileCredentialStore（`.gitworkspace/credentials/`）→ SessionStore（内存）。Windows 凭证管理器不可用时自动回退到文件存储。
+- **Tauri 命令线程模型**：同步命令内禁止裸 `tokio::spawn`（会 panic）。长阻塞操作用 `std::thread::spawn` 或改为 `async` + `spawn_blocking`。
+
+## 待复现问题
+
+- **问题 1（Pull 拉不下来）**：代码审查显示三条 pull 路径（smart_pull/batch_pull/sync_pull）实现正确，需在实际环境复现。
+<!-- bug-fixes:end -->

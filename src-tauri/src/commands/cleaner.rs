@@ -103,81 +103,123 @@ fn protected_paths() -> Vec<PathBuf> {
         .collect()
 }
 
-/// 扫描预览（只读，不删除任何东西）。进度经 `cleaner_scan_progress` 事件推送。
+/// 扫描预览（只读，不删除任何东西）。
+///
+/// **非阻塞**：立即返回 token，扫描在后台线程完成。进度经 `cleaner_scan_progress`
+/// 事件推送，最终结果经 `cleaner_scan_result` 事件推送。
 #[tauri::command]
 pub fn cleaner_scan(
     req: CleanerScanRequest,
     app: AppHandle,
     state: State<'_, CleanerState>,
-) -> AppResult<CleanerScanResult> {
+) -> Result<String, String> {
     let token = uuid::Uuid::new_v4().simple().to_string();
-    let protected = protected_paths();
-    let mut last_emit = Instant::now() - PROGRESS_THROTTLE;
-    let outcome = {
-        let token = token.clone();
-        let app = app.clone();
-        cleaner::scan(&req, &protected, move |visited, matched| {
+    let inner_arc = state.inner.clone();
+    let token_clone = token.clone();
+
+    std::thread::spawn(move || {
+        let protected = protected_paths();
+        let mut last_emit = Instant::now() - PROGRESS_THROTTLE;
+        let app_clone = app.clone();
+        let token_progress = token_clone.clone();
+
+        let outcome = match cleaner::scan(&req, &protected, move |visited, matched| {
             if last_emit.elapsed() >= PROGRESS_THROTTLE {
                 last_emit = Instant::now();
-                let _ = app.emit(
+                let _ = app_clone.emit(
                     "cleaner_scan_progress",
                     ScanProgressPayload {
-                        token: token.clone(),
+                        token: token_progress.clone(),
                         visited,
                         matched,
                         done: false,
                     },
                 );
             }
-        })?
-    };
-    let _ = app.emit(
-        "cleaner_scan_progress",
-        ScanProgressPayload {
-            token: token.clone(),
-            visited: outcome.visited,
-            matched: outcome.matched,
-            done: true,
-        },
-    );
-
-    let mut sizes = HashMap::new();
-    let items: Vec<CleanerItemInfo> = outcome
-        .items
-        .iter()
-        .map(|item| {
-            if let Some(size) = item.size {
-                sizes.insert(item.display_path.clone(), size);
+        }) {
+            Ok(o) => o,
+            Err(e) => {
+                log::warn!("cleaner scan failed: {e}");
+                // Emit a done progress event so frontend knows scan ended
+                let _ = app.emit(
+                    "cleaner_scan_progress",
+                    ScanProgressPayload {
+                        token: token_clone.clone(),
+                        visited: 0,
+                        matched: 0,
+                        done: true,
+                    },
+                );
+                // Emit error result event
+                let _ = app.emit(
+                    "cleaner_scan_result",
+                    serde_json::json!({
+                        "error": e.to_string(),
+                        "token": token_clone,
+                    }),
+                );
+                return;
             }
-            CleanerItemInfo {
-                path: item.display_path.clone(),
-                is_dir: item.is_dir,
-                size: item.size,
-            }
-        })
-        .collect();
+        };
 
-    let mut inner = state.lock()?;
-    inner.session = Some(CleanerSession {
-        token: token.clone(),
-        items: outcome.items,
-        exclude_paths: outcome.exclude_paths,
-        sizes,
+        let _ = app.emit(
+            "cleaner_scan_progress",
+            ScanProgressPayload {
+                token: token_clone.clone(),
+                visited: outcome.visited,
+                matched: outcome.matched,
+                done: true,
+            },
+        );
+
+        let mut sizes = HashMap::new();
+        let items: Vec<CleanerItemInfo> = outcome
+            .items
+            .iter()
+            .map(|item| {
+                if let Some(size) = item.size {
+                    sizes.insert(item.display_path.clone(), size);
+                }
+                CleanerItemInfo {
+                    path: item.display_path.clone(),
+                    is_dir: item.is_dir,
+                    size: item.size,
+                }
+            })
+            .collect();
+
+        {
+            let Ok(mut inner) = inner_arc.lock() else {
+                return;
+            };
+            inner.session = Some(CleanerSession {
+                token: token_clone.clone(),
+                items: outcome.items,
+                exclude_paths: outcome.exclude_paths,
+                sizes,
+            });
+        }
+
+        log::info!(
+            "cleaner scan: visited={} matched={} candidates={}",
+            outcome.visited,
+            outcome.matched,
+            items.len()
+        );
+
+        let _ = app.emit(
+            "cleaner_scan_result",
+            CleanerScanResult {
+                token: token_clone,
+                items,
+                visited: outcome.visited,
+                matched: outcome.matched,
+                warnings: outcome.warnings,
+            },
+        );
     });
 
-    log::info!(
-        "cleaner scan: visited={} matched={} candidates={}",
-        outcome.visited,
-        outcome.matched,
-        items.len()
-    );
-    Ok(CleanerScanResult {
-        token,
-        items,
-        visited: outcome.visited,
-        matched: outcome.matched,
-        warnings: outcome.warnings,
-    })
+    Ok(token)
 }
 
 /// 后台补算目录大小（扫描本身不递归统计，保证预览速度）。
@@ -254,6 +296,9 @@ pub fn cleaner_compute_sizes(
 
 /// 执行删除（**危险操作**）。
 ///
+/// **非阻塞**：验证门禁后立即返回 token，删除在后台线程完成。
+/// 最终结果经 `cleaner_execute_result` 事件推送。
+///
 /// 三重门禁：会话 token（路径必须来自最近扫描会话）+ `confirmed=true`
 /// （后端强制）+ 前端 DELETE 输入确认。执行后清除会话（一次性）。
 #[tauri::command]
@@ -261,26 +306,28 @@ pub fn cleaner_execute(
     token: String,
     paths: Vec<String>,
     confirmed: bool,
+    app: AppHandle,
     state: State<'_, CleanerState>,
-) -> AppResult<CleanerExecuteResult> {
+) -> Result<String, String> {
     if !confirmed {
-        return Err(AppError::Permission(
+        return Err(
             "删除为高危操作：请在前端完成 DELETE 确认后以 confirmed=true 调用".into(),
-        ));
+        );
     }
     if paths.is_empty() {
-        return Err(AppError::Other("未选择任何待删除项".into()));
+        return Err("未选择任何待删除项".into());
     }
+    // Pre-validate session and paths (synchronous gate before spawning).
     let (items, exclude_paths) = {
-        let inner = state.lock()?;
+        let inner = state
+            .lock()
+            .map_err(|e| format!("cleaner state lock error: {e}"))?;
         let session = inner
             .session
             .as_ref()
-            .ok_or_else(|| AppError::Other("扫描会话不存在或已过期，请重新扫描".into()))?;
+            .ok_or_else(|| "扫描会话不存在或已过期，请重新扫描".to_string())?;
         if session.token != token {
-            return Err(AppError::Conflict(
-                "扫描会话已更新，请基于最新扫描结果操作".into(),
-            ));
+            return Err("扫描会话已更新，请基于最新扫描结果操作".into());
         }
         let mut selected = Vec::with_capacity(paths.len());
         for p in &paths {
@@ -288,29 +335,40 @@ pub fn cleaner_execute(
                 .items
                 .iter()
                 .find(|i| &i.display_path == p)
-                .ok_or_else(|| {
-                    AppError::Permission(format!("路径不在本次扫描清单内，已拒绝：{p}"))
-                })?;
+                .ok_or_else(|| format!("路径不在本次扫描清单内，已拒绝：{p}"))?;
             selected.push(item.clone());
         }
         (selected, session.exclude_paths.clone())
     };
 
-    let protected = protected_paths();
-    let results = cleaner::execute(&items, &exclude_paths, &protected);
-    let deleted = results.iter().filter(|r| r.ok).count() as u32;
-    let failed = results.len() as u32 - deleted;
+    let inner_arc = state.inner.clone();
+    let token_clone = token.clone();
 
-    {
-        let mut inner = state.lock()?;
-        if inner.session.as_ref().is_some_and(|s| s.token == token) {
-            inner.session = None;
+    std::thread::spawn(move || {
+        let protected = protected_paths();
+        let results = cleaner::execute(&items, &exclude_paths, &protected);
+        let deleted = results.iter().filter(|r| r.ok).count() as u32;
+        let failed = results.len() as u32 - deleted;
+
+        {
+            let Ok(mut inner) = inner_arc.lock() else {
+                return;
+            };
+            if inner.session.as_ref().is_some_and(|s| s.token == token_clone) {
+                inner.session = None;
+            }
         }
-    }
-    log::info!("cleaner execute: deleted={deleted} failed={failed}");
-    Ok(CleanerExecuteResult {
-        deleted,
-        failed,
-        items: results,
-    })
+
+        log::info!("cleaner execute: deleted={deleted} failed={failed}");
+        let _ = app.emit(
+            "cleaner_execute_result",
+            CleanerExecuteResult {
+                deleted,
+                failed,
+                items: results,
+            },
+        );
+    });
+
+    Ok(token)
 }

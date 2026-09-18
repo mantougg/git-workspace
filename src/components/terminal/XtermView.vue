@@ -129,8 +129,11 @@ onMounted(() => {
 
   terminal.open(containerRef.value);
 
-  // 验证渲染链路：写入测试行
-  terminal.writeln("Terminal ready.");
+  // 虚拟会话（Git Console、Runtime 输出镜像）无 PTY 后端，不写验证行
+  const isVirtual = props.sessionId.startsWith("__") && props.sessionId.endsWith("__");
+  if (!isVirtual) {
+    terminal.writeln("Terminal ready.");
+  }
 
   // 注册写入回调（store 收到 terminal_output 时直接写入此 xterm）
   terminalStore.registerWriteCallback(props.sessionId, (data: Uint8Array) => {
@@ -145,9 +148,20 @@ onMounted(() => {
 
   // Ctrl+C 智能处理：有选中文本时复制，无选中文本时发送中断信号
   // Ctrl+Shift+C：始终复制选中文本
+  // Ctrl+Shift+V：粘贴剪贴板内容到终端
   terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+    // Ctrl+Shift+V：粘贴（Tauri WebView 中 key 为 "v"）
+    if (event.ctrlKey && event.shiftKey && (event.key === "v" || event.key === "V")) {
+      navigator.clipboard.readText().then((text) => {
+        if (text && terminal) {
+          // 通过 onData 回调路径写入，保持与用户输入一致
+          emit("input", encodeUtf8Base64(text));
+        }
+      }).catch((e) => console.warn("Failed to paste:", e));
+      return false;
+    }
     // Ctrl+Shift+C：始终复制
-    if (event.ctrlKey && event.shiftKey && event.key === "C") {
+    if (event.ctrlKey && event.shiftKey && (event.key === "c" || event.key === "C")) {
       const selection = terminal?.getSelection();
       if (selection && selection.length > 0) {
         navigator.clipboard.writeText(selection).catch((e) =>

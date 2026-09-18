@@ -1292,6 +1292,8 @@ onUnmounted(() =>
 );
 
 let unlistenScan: (() => void) | null = null;
+let unlistenWatcher: (() => void) | null = null;
+let watcherRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 const scanPercentage = computed(() => {
   if (!scanProgress.value || !scanProgress.value.total) return 0;
@@ -1472,6 +1474,14 @@ onMounted(async () => {
   unlistenScan = await listen<ScanProgress>("scan_progress", (event) => {
     scanProgress.value = event.payload;
   });
+
+  // PAF-fix: 监听文件 watcher 事件，自动刷新变更树（防抖 800ms）
+  unlistenWatcher = await listen("repo_status_changed_batch", () => {
+    if (watcherRefreshTimer) clearTimeout(watcherRefreshTimer);
+    watcherRefreshTimer = setTimeout(() => {
+      if (currentWorkspaceId.value) loadChanges();
+    }, 800);
+  });
 });
 
 /** Prefill from Dashboard quick actions (T-18). */
@@ -1540,6 +1550,14 @@ onUnmounted(() => {
   if (unlistenScan) {
     unlistenScan();
     unlistenScan = null;
+  }
+  if (unlistenWatcher) {
+    unlistenWatcher();
+    unlistenWatcher = null;
+  }
+  if (watcherRefreshTimer) {
+    clearTimeout(watcherRefreshTimer);
+    watcherRefreshTimer = null;
   }
 });
 
