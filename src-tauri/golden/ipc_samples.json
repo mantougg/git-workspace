@@ -2330,6 +2330,7 @@
     "startedAt": "2026-08-25T00:00:00Z",
     "status": "running",
     "stoppedAt": null,
+    "terminalSessionId": null,
     "uptimeSeconds": 42,
     "workingDir": "/ws/repo/app",
     "workspaceId": 1
