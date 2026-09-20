@@ -71,6 +71,10 @@ F-44 已让行首引号路径带上 `&` 调用运算符，故命令能进到 Pow
       （`plan_shell_command` + `assemble_command_for_shell` 组合）。
       其中 `plan_shell_command_classpath_quotes_every_unsafe_token` 是回归
       守卫：断言「会被 shell 拆开的 token 全都加了引号」
+- [x] 用例跨平台：测试数据不带盘符（Unix 下 `std::env::join_paths` 把含 `:`
+      的路径判为非法路径分隔符而返回 Err，classpath 会变空串导致 argv 序列
+      断言失配）；`shell_kind` 改为手工切分 `\` 与 `/`（`Path::file_stem` 在
+      unix 上不把 `\` 当分隔符，Windows shell 路径会被误判为 Posix）
 - [x] `AGENTS.md` 平台规范 §3 补充 PowerShell 参数模式拆参规则
 
 不在本次范围：托管启动（`spawn` 直起进程，不经 shell 解析）不受影响；
@@ -81,6 +85,8 @@ F-44 已让行首引号路径带上 `&` 调用运算符，故命令能进到 Pow
 - [x] 单测全绿：`GW_TEST_MANIFEST=1 cargo test --lib -- runtime::launch::launcher commands::terminal`
       （20/20；同批 `process::pty` 中 `smoke_dead_session_reclaimed_from_table`
       为本机预存在失败，与本次改动无关——本修复未触碰 `process/pty.rs`）
+- [x] CI（ubuntu-latest，`cargo test --lib`）全绿：首轮 CI 暴露 3 例平台依赖
+      （测试数据带盘符 + `Path::file_stem` 的平台语义），已按上一节修复
 - [x] 本机实测修复形态：对 F-45 的 argv 集合逐 token 加引号后写入 pwsh，JVM
       收到完整参数、主类正常加载（`-version` 场景与真实 classpath 场景均验证）
 - [ ] 真机实测：JDK 在 `C:\Program Files\Java\jdk-1.8`（含空格路径）的应用
@@ -102,3 +108,4 @@ F-44 已让行首引号路径带上 `&` 调用运算符，故命令能进到 Pow
 | 2026-09-20 | ⬜ | 问题录入；定位：`plan_shell_command` 对 `-Dspring.*` 裸写 → 写入 PTY → pwsh 参数模式在第一个 `.` 处把 token 拆成两个参数 → JVM 把 `.output.ansi.enabled=always` 当主类 |
 | 2026-09-20 | 🟦 | 开始修复；本机 pwsh 7.6.6 + JDK 1.8 逐字符实测出 PowerShell 参数模式的拆分/展开字符集 |
 | 2026-09-20 | 🟦 | 修复完成：`shell_quote_arg` 改用 `arg_needs_quoting` 字符集 + `""` 引号转义；新增 6 例单测全绿；AGENTS.md §3 沉淀规则；真机实测待做 |
+| 2026-09-20 | 🟦 | CI（ubuntu-latest）红：3 例失败均为平台依赖——测试数据带盘符（Unix `join_paths` 拒 `:` → classpath 空串）与 `shell_kind` 依赖 `Path::file_stem` 的平台语义（unix 不把 `\` 当分隔符，Windows shell 路径误判 Posix）。改用无盘符测试数据 + `shell_kind` 手工切分分隔符，本机复跑全绿 |

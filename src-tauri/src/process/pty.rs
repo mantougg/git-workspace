@@ -116,11 +116,16 @@ pub(crate) enum ShellKind {
 /// 按可执行文件名分类 shell（去扩展名、大小写不敏感；未知 stem 归 Posix——
 /// posix 形式不加 `&`，与本次修复前行为一致，是最安全的兜底）。
 pub(crate) fn shell_kind(shell_path: &Path) -> ShellKind {
-    let stem = shell_path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    match stem.as_str() {
+    // 手工取文件名 stem：`\` 与 `/` 都当分隔符。`Path::file_stem` 在 unix 上
+    // 不把 `\` 当分隔符（Windows 路径字符串会被整体当成文件名，退化到 Posix
+    // 兜底），故不依赖平台相关的 `Path` 语义。扩展名按最后一个 `.` 剥离。
+    let raw = shell_path.to_string_lossy();
+    let file_name = raw.rsplit(['\\', '/']).next().unwrap_or(&raw);
+    let stem = match file_name.rsplit_once('.') {
+        Some((stem, _extension)) => stem,
+        None => file_name,
+    };
+    match stem.to_lowercase().as_str() {
         "pwsh" | "powershell" => ShellKind::PowerShell,
         "cmd" => ShellKind::Cmd,
         _ => ShellKind::Posix,

@@ -268,11 +268,15 @@ mod tests {
     /// 适配补 `&` 调用运算符，且 `-D<name>.<name>` token 保持引号包裹——
     /// 否则 PowerShell 参数模式在第一个 `.` 处把 `-Dspring` 与
     /// `.output.ansi.enabled=always` 拆成两个参数，JVM 把后者当主类。
+    ///
+    /// classpath 条目不带盘符：unix 上 `std::env::join_paths` 会把含 `:` 的
+    /// 路径判为非法路径分隔符（返回 Err → classpath 变空串），本用例需跨
+    /// 平台可比对。
     #[test]
     fn powershell_launch_line_from_classpath_plan_keeps_quoted_args() {
         let plan = crate::runtime::build::LaunchPlan::JavaClasspath {
             java_exec: std::path::PathBuf::from(r"C:\Program Files\Java\jdk-1.8\bin\java.exe"),
-            classpath: vec![std::path::PathBuf::from(r"D:\ws\target\pathing.jar")],
+            classpath: vec![std::path::PathBuf::from(r"target\pathing.jar")],
             main_class: "com.example.Application".into(),
             vm_options: vec![
                 "-XX:TieredStopAtLevel=1".into(),
@@ -293,7 +297,7 @@ mod tests {
         );
         assert!(line.contains(r#" "-Dspring.output.ansi.enabled=always""#), "{line}");
         assert!(
-            line.ends_with(r#" -cp "D:\ws\target\pathing.jar" "com.example.Application""#),
+            line.ends_with(r#" -cp "target\pathing.jar" "com.example.Application""#),
             "{line}"
         );
     }

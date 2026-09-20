@@ -688,11 +688,15 @@ mod tests {
 
     /// F-45 原始案例的 LaunchPlan：jdk-1.8 在 Program Files（含空格）下，
     /// classpath 启动 + Spring Boot 默认注入的 `-Dspring.*`。
+    ///
+    /// classpath 条目不带盘符：`std::env::join_paths` 在 unix 上会把含 `:`
+    /// 的路径判为非法分隔符而返回 Err（classpath 变空串），本用例需跨平台
+    /// 可比对 argv 序列。
     fn f45_classpath_plan() -> LaunchPlan {
         LaunchPlan::JavaClasspath {
             java_exec: PathBuf::from(r"C:\Program Files\Java\jdk-1.8\bin\java.exe"),
             classpath: vec![PathBuf::from(
-                r"D:\AWork\Code\IPD\.gitworkspace\runtime\IPD原型后端\classpath\pathing-e2459fdcec83117c.jar",
+                r"IPD原型后端\classpath\pathing-e2459fdcec83117c.jar",
             )],
             main_class: "com.jxdinfo.hussar.example.HussarApplication".into(),
             vm_options: vec![
@@ -739,7 +743,7 @@ mod tests {
         assert_eq!(tokens[9], "-cp");
         assert_eq!(
             tokens[10],
-            r"D:\AWork\Code\IPD\.gitworkspace\runtime\IPD原型后端\classpath\pathing-e2459fdcec83117c.jar"
+            r"IPD原型后端\classpath\pathing-e2459fdcec83117c.jar"
         );
         assert_eq!(tokens[11], "com.jxdinfo.hussar.example.HussarApplication");
         assert_eq!(tokens.len(), 12);
