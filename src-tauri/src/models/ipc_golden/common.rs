@@ -326,9 +326,8 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 model_id: "gpt-4o-mini".into(),
                 updated_at: "2026-01-01T00:00:00Z".into(),
             }],
-            os_credential_store_available: true,
-            session_credential_count: 0,
-            legacy_review_count: 3,
+            persistent_store_available: true,
+            session_credential_count: 0,            legacy_review_count: 3,
             legacy_task_count: 4,
         }),
     );
@@ -338,7 +337,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             provider_id: "p1".into(),
             has_credential: true,
             session_only: false,
-            os_store_available: true,
+            file_store_available: true,
         }),
     );
     // AI-02 Gateway（设计文档 §7 / §8.4 / §16.1）：请求模型 / 结果模型 /

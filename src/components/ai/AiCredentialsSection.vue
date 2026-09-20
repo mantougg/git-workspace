@@ -1,13 +1,14 @@
 <template>
   <div class="section">
-    <n-alert :type="osStoreAvailable ? 'info' : 'warning'" :show-icon="false">
-      <template v-if="osStoreAvailable">
-        API Key 保存到 OS 凭证存储（Windows Credential Manager / macOS Keychain /
-        Linux Secret Service），不写入任何文件。保存后此处<b>不再显示 Key</b>，仅显示状态。
+    <n-alert :type="fileStoreAvailable ? 'info' : 'warning'" :show-icon="false">
+      <template v-if="fileStoreAvailable">
+        API Key 以加密形式保存到文件
+        <span class="mono">~/.gitworkspace/credentials/</span>（不写入系统凭证、
+        不进日志与数据库）。保存后此处<b>不再显示 Key</b>，仅显示状态。
       </template>
       <template v-else>
-        当前环境 OS 凭证存储<b>不可用</b>：只能选择「仅本次会话」临时保存（内存保存、
-        进程退出即清除，不落盘）。应用不会回退到普通文件存储。
+        加密文件存储<b>不可用</b>（无法创建 ~/.gitworkspace/credentials/）：只能选择
+        「仅本次会话」临时保存（内存保存、进程退出即清除，不落盘）。
       </template>
     </n-alert>
 
@@ -85,7 +86,7 @@ import { aiClearCredential, aiSetCredential } from "@/api/ai";
 import { errMsg } from "@/utils/error";
 import type { AiProvider, ApiType } from "@/types/ai";
 
-const props = defineProps<{ providers: AiProvider[]; osStoreAvailable: boolean }>();
+const props = defineProps<{ providers: AiProvider[]; fileStoreAvailable: boolean }>();
 const emit = defineEmits<{ refresh: [] }>();
 
 const message = useMessage();
@@ -109,13 +110,13 @@ function credentialTagType(p: AiProvider): "success" | "warning" | "default" {
 
 function credentialTagText(p: AiProvider): string {
   if (!p.hasCredential) return "未配置";
-  return p.sessionOnlyCredential ? "仅本次会话" : "已保存到系统";
+  return p.sessionOnlyCredential ? "仅本次会话" : "已加密保存";
 }
 
 function canSave(p: AiProvider, mode: "persist" | "session"): boolean {
   const key = (keyInputs[p.id] ?? "").trim();
   if (key.length === 0) return false;
-  if (mode === "persist" && !props.osStoreAvailable) return false;
+  if (mode === "persist" && !props.fileStoreAvailable) return false;
   return true;
 }
 
@@ -128,7 +129,7 @@ async function saveKey(p: AiProvider, persist: boolean) {
     keyInputs[p.id] = "";
     message.success(
       persist
-        ? `「${p.name}」API Key 已保存到系统凭证存储`
+        ? `「${p.name}」API Key 已加密保存到 ~/.gitworkspace/credentials/`
         : `「${p.name}」API Key 仅保存在本次会话（不落盘）`,
     );
     if (!status.hasCredential) {

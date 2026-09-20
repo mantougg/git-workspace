@@ -151,8 +151,8 @@ export interface AiSettingsSummary {
   modelCount: number;
   enabledModelCount: number;
   taskDefaults: AiTaskDefault[];
-  /** OS Credential Store 是否可用（不可用时可走「仅本次会话」）。 */
-  osCredentialStoreAvailable: boolean;
+  /** 持久凭证存储（加密文件 ~/.gitworkspace/credentials/）是否可用。 */
+  persistentStoreAvailable: boolean;
   /** 仅保存在本次会话内存中的凭证数量（不落盘）。 */
   sessionCredentialCount: number;
   /** 原型遗留表历史行数（兼容读取）。 */
@@ -165,7 +165,8 @@ export interface AiCredentialStatus {
   hasCredential: boolean;
   /** 仅存在于本次会话内存（不落盘）。 */
   sessionOnly: boolean;
-  osStoreAvailable: boolean;
+  /** 加密文件存储当前是否可用。 */
+  fileStoreAvailable: boolean;
 }
 
 // ---------------------------------------------------------------------------

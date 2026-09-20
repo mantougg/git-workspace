@@ -28,8 +28,8 @@ pub struct AiSettingsSummary {
     pub model_count: i64,
     pub enabled_model_count: i64,
     pub task_defaults: Vec<ai::AiTaskDefault>,
-    /// OS Credential Store 是否可用（不可用时可走「仅本次会话」）。
-    pub os_credential_store_available: bool,
+    /// 持久凭证存储（加密文件 `~/.gitworkspace/credentials/`）是否可用。
+    pub persistent_store_available: bool,
     /// 仅保存在本次会话内存中的凭证数量（不落盘）。
     pub session_credential_count: i64,
     /// 原型遗留表的历史行数（兼容读取，不破坏性删除）。
@@ -45,7 +45,8 @@ pub struct AiCredentialStatus {
     pub has_credential: bool,
     /// 仅存在于本次会话内存（不落盘）。
     pub session_only: bool,
-    pub os_store_available: bool,
+    /// 加密文件存储当前是否可用。
+    pub file_store_available: bool,
 }
 
 fn lock_db<'a>(
@@ -232,7 +233,7 @@ pub fn ai_get_settings_summary(state: tauri::State<'_, crate::state::AppState>) 
         model_count: models.len() as i64,
         enabled_model_count: models.iter().filter(|m| m.enabled).count() as i64,
         task_defaults,
-        os_credential_store_available: state.ai_credentials.os_store_available(),
+        persistent_store_available: state.ai_credentials.persistent_store_available(),
         session_credential_count: state.ai_credentials.session_count() as i64,
         legacy_review_count,
         legacy_task_count,
@@ -241,10 +242,10 @@ pub fn ai_get_settings_summary(state: tauri::State<'_, crate::state::AppState>) 
 
 /// 设置/替换 Provider 的 API Key（§6.4）。
 ///
-/// - `persist = true`：写入 OS Credential Store（不可用时返回
-///   `AiCredentialUnavailable`，**不回退普通文件**）；
+/// - `persist = true`：写入加密文件存储（`~/.gitworkspace/credentials/`，
+///   F-50 决策：固定文件存储，不再使用 OS 凭证）；
 /// - `persist = false`：仅本次会话内存保存（不落盘）。
-/// - Key 只在内存中流经本函数，不进日志、不持久化到 SQLite/文件。
+/// - Key 只在内存中流经本函数，不进日志、不持久化到 SQLite 明文。
 #[tauri::command]
 pub fn ai_set_credential(
     state: tauri::State<'_, crate::state::AppState>,
@@ -274,7 +275,7 @@ pub fn ai_set_credential(
         provider_id: provider_id.clone(),
         has_credential: state.ai_credentials.has(&cref),
         session_only: state.ai_credentials.is_session_only(&cref),
-        os_store_available: state.ai_credentials.os_store_available(),
+        file_store_available: state.ai_credentials.persistent_store_available(),
     })
 }
 
@@ -296,7 +297,7 @@ pub fn ai_clear_credential(
         provider_id,
         has_credential: state.ai_credentials.has(&cref),
         session_only: state.ai_credentials.is_session_only(&cref),
-        os_store_available: state.ai_credentials.os_store_available(),
+        file_store_available: state.ai_credentials.persistent_store_available(),
     })
 }
 

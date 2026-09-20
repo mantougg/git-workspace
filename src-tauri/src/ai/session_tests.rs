@@ -14,7 +14,7 @@ use rusqlite::Connection;
 
 use super::audit;
 use super::cache::{self, AiResultCache, PROMPT_VERSION};
-use super::credentials::{CredentialManager, SessionStore};
+use super::credentials::{CredentialManager, FileCredentialStore};
 use super::gateway::{AiGateway, GatewayConfig};
 use super::model::AiTaskKind;
 use super::model::{save_model, AiModelDefaults, ModelCapability, SaveAiModelRequest};
@@ -90,7 +90,13 @@ fn harness(steps: Vec<Step>) -> Harness {
     add_model(&conn, &provider.id, "test-model");
     add_model(&conn, &provider.id, "other-model");
     let provider_id = provider.id.clone();
-    let credentials = Arc::new(CredentialManager::with_store(Arc::new(SessionStore::new())));
+    let cred_dir = std::env::temp_dir()
+        .join("gw-cred-test")
+        .join(format!("session-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&cred_dir);
+    let credentials = Arc::new(CredentialManager::with_store(Arc::new(
+        FileCredentialStore::with_dir(cred_dir),
+    )));
     credentials
         .set(provider.credential_ref.as_deref().unwrap(), KEY, true)
         .unwrap();

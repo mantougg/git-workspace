@@ -4,12 +4,12 @@
       <div class="toolbar-left">
         <span class="page-title">AI 设置</span>
         <n-tag
-          v-if="summary && !summary.osCredentialStoreAvailable"
+          v-if="summary && !summary.persistentStoreAvailable"
           size="small"
           type="warning"
           :bordered="false"
         >
-          OS 凭证存储不可用
+          加密文件存储不可用
         </n-tag>
       </div>
       <div class="toolbar-right">
@@ -52,7 +52,7 @@
         <n-tab-pane name="credentials" tab="凭证">
           <AiCredentialsSection
             :providers="providers"
-            :os-store-available="summary?.osCredentialStoreAvailable ?? true"
+            :file-store-available="summary?.persistentStoreAvailable ?? true"
             @refresh="loadAll"
           />
         </n-tab-pane>

@@ -15,14 +15,14 @@
     </div>
 
     <n-alert
-      :type="summary?.osCredentialStoreAvailable ? 'success' : 'warning'"
+      :type="summary?.persistentStoreAvailable ? 'success' : 'warning'"
       :show-icon="false"
     >
-      <template v-if="summary?.osCredentialStoreAvailable">
-        OS 凭证存储可用：API Key 持久保存于系统凭证管理器。
+      <template v-if="summary?.persistentStoreAvailable">
+        加密文件存储可用：API Key 加密保存于 ~/.gitworkspace/credentials/。
       </template>
       <template v-else>
-        OS 凭证存储不可用：只能选择「仅本次会话」临时保存 API Key（进程退出即清除，不落盘）。
+        加密文件存储不可用：只能选择「仅本次会话」临时保存 API Key（进程退出即清除，不落盘）。
       </template>
     </n-alert>
 

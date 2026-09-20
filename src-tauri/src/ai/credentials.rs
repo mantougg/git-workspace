@@ -1,13 +1,18 @@
 //! API Key 凭证存取（设计文档 §6.4，全局约束 §4 硬规则）。
 //!
-//! - Key 优先存 OS Credential Store：Windows Credential Manager /
-//!   macOS Keychain / Linux Secret Service（`keyring` crate 三平台原生后端）。
-//! - OS Credential Store 不可用时回退到**加密文件存储**（XChaCha20-Poly1305 +
-//!   Argon2id，文件位于 `<app_data_dir>/credentials/`）。
-//! - 加密文件存储也不可用时允许本次会话临时输入（内存保存，进程退出即清除），
+//! - **持久存储固定使用加密文件**（F-50 用户决策）：XChaCha20-Poly1305 +
+//!   Argon2id，落盘 `~/.gitworkspace/credentials/`（对齐 `.claude`/`.codex`
+//!   的用户主目录习惯；不再使用 OS Credential Store——Windows Credential
+//!   Manager 有写入失败/兼容性问题）。
+//! - OS Credential Store 仅作**一次性迁移源**：文件未命中时试读 OS，命中即
+//!   写入加密文件并删除 OS 条目（存量用户升级无感）。
+//! - 加密文件也不可用时允许本次会话临时输入（内存保存，进程退出即清除），
 //!   UI 侧标记「仅本次会话」。
 //! - SQLite 只保存 `credential_ref`；Key 不进日志、错误信息、诊断导出、
 //!   进程命令行、URL。
+//!
+//! 安全边界：加密密钥由代码内固定材料派生（防明文落盘），与 `.claude`/
+//! `.codex` 同级——防不住同时拿到文件与程序本体的本机攻击者。
 
 use std::collections::HashMap;
 use std::fs;
@@ -218,11 +223,32 @@ impl CredentialStore for AvailabilityCachedStore {
     }
 }
 
-/// 会话级临时凭证（不落盘，进程退出即清除）。仅当 OS 凭证存储不可用或用户
-/// 明确选择「仅本次会话」时使用（§6.4）。
+/// 会话级临时凭证（不落盘，进程退出即清除）。仅当用户明确选择「仅本次会话」
+/// 时使用（§6.4）。
 #[derive(Default)]
 pub struct SessionStore {
     inner: Mutex<HashMap<String, String>>,
+}
+
+/// 恒不可用的 OS 迁移源（测试装配：模拟无 OS 凭证残留 / 无 Secret Service）。
+struct UnavailableOsStore;
+
+impl CredentialStore for UnavailableOsStore {
+    fn name(&self) -> &'static str {
+        "unavailable"
+    }
+    fn is_available(&self) -> bool {
+        false
+    }
+    fn get(&self, _: &str) -> Result<Option<String>, CredentialError> {
+        Err(CredentialError::Unavailable("no os credential store".into()))
+    }
+    fn set(&self, _: &str, _: &str) -> Result<(), CredentialError> {
+        Err(CredentialError::Unavailable("no os credential store".into()))
+    }
+    fn delete(&self, _: &str) -> Result<(), CredentialError> {
+        Err(CredentialError::Unavailable("no os credential store".into()))
+    }
 }
 
 impl SessionStore {
@@ -287,6 +313,22 @@ const FILE_STORE_APP_SECRET: &[u8] = b"gitworkspace-file-credential-v1";
 const FILE_STORE_SALT: &[u8] = b"gw-file-cred-salt-v1";
 const CREDENTIALS_SUBDIR: &str = "credentials";
 
+/// 加密文件凭证的规范落盘目录（F-50）：`~/.gitworkspace/credentials/`——
+/// 对齐 `.claude`/`.codex` 的用户主目录习惯；凭证是全局的，不放工作区级
+/// `.gitworkspace/`（后者已被 runtimes/environments 占用）。home 不可用时
+/// 回退旧版 `<app_data_dir>/credentials/`。
+pub fn canonical_file_store_dir() -> PathBuf {
+    match dirs::home_dir() {
+        Some(home) => home.join(".gitworkspace").join(CREDENTIALS_SUBDIR),
+        None => legacy_file_store_dir(),
+    }
+}
+
+/// 旧版文件凭证目录（F-50 前：`<app_data_dir>/credentials/`），启动时整体搬迁。
+fn legacy_file_store_dir() -> PathBuf {
+    crate::get_app_data_dir().join(CREDENTIALS_SUBDIR)
+}
+
 impl FileCredentialStore {
     /// 在指定 app_data_dir 下创建文件凭证后端。
     pub fn new(app_data_dir: &std::path::Path) -> Self {
@@ -295,10 +337,41 @@ impl FileCredentialStore {
         Self { dir, key }
     }
 
-    /// 注入自定义目录（测试装配，避免污染生产 app_data_dir）。
+    /// 注入自定义目录（测试装配，避免污染生产目录）。
     pub fn with_dir(dir: PathBuf) -> Self {
         let key = Self::derive_key();
         Self { dir, key }
+    }
+
+    /// 把旧目录下已有的凭证文件搬迁到本目录（目标已存在则跳过；失败不
+    /// 阻塞——旧文件原地保留，用户可自行清理）。
+    pub fn migrate_from(&self, legacy_dir: &std::path::Path) {
+        if legacy_dir == self.dir || !legacy_dir.is_dir() {
+            return;
+        }
+        let entries = match fs::read_dir(legacy_dir) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let src = entry.path();
+            if src.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let dest = self.dir.join(entry.file_name());
+            if dest.exists() {
+                continue;
+            }
+            if self.ensure_dir().is_err() || fs::copy(&src, &dest).is_err() {
+                continue;
+            }
+            let _ = fs::remove_file(&src);
+            log::info!(
+                "credential: 已搬迁文件凭证 {} → {}",
+                src.display(),
+                dest.display()
+            );
+        }
     }
 
     fn derive_key() -> Zeroizing<[u8; 32]> {
@@ -406,93 +479,77 @@ impl CredentialStore for FileCredentialStore {
 /// 凭证落点。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CredentialLocation {
-    OsStore,
+    /// 加密文件（唯一持久落点，F-50）。
     FileStore,
     SessionOnly,
 }
 
-/// 凭证管理器：OS 存储优先，文件加密存储次之，会话内存兜底（§6.4）。
+/// 凭证管理器（F-50）：加密文件为唯一持久落点，OS 凭证存储仅作一次性
+/// 迁移源，会话内存兜底（§6.4）。
 ///
 /// 一条 `credential_ref` 的 Key 只存在于一个落点：写入一处时会清除其余落点，
-/// 避免「会话里改了 Key 但读取时命中 OS 旧值」的歧义。
+/// 避免「会话里改了 Key 但读取时命中旧值」的歧义。
 pub struct CredentialManager {
-    os: Arc<dyn CredentialStore>,
+    /// OS Credential Store：只读的存量迁移源，不再作为写入目标。
+    legacy_os: Arc<dyn CredentialStore>,
     file: Arc<FileCredentialStore>,
     session: SessionStore,
 }
 
 impl CredentialManager {
-    /// 生产装配：OS Credential Store（带可用性缓存）+ 文件加密回退 + 会话内存。
+    /// 生产装配：加密文件（`~/.gitworkspace/credentials/`）+ OS 迁移源 +
+    /// 会话内存。启动时把旧版 app_data_dir 下的文件凭证整体搬迁到新目录。
     pub fn production() -> Self {
-        let app_data_dir = crate::get_app_data_dir();
+        let file = Arc::new(FileCredentialStore::new(&canonical_file_store_dir()));
+        file.migrate_from(&legacy_file_store_dir());
         Self {
-            os: Arc::new(AvailabilityCachedStore::new(Arc::new(KeyringStore::new()))),
-            file: Arc::new(FileCredentialStore::new(&app_data_dir)),
-            session: SessionStore::new(),
-        }
-    }
-
-    /// 测试装配：注入内存/失败后端（文件后端使用临时目录）。
-    pub fn with_store(os: Arc<dyn CredentialStore>) -> Self {
-        let tmp_dir = std::env::temp_dir().join("gw-cred-test").join(format!(
-            "{}",
-            std::process::id()
-        ));
-        Self {
-            os,
-            file: Arc::new(FileCredentialStore::with_dir(tmp_dir)),
-            session: SessionStore::new(),
-        }
-    }
-
-    /// 测试装配：注入 OS 后端和文件后端（用于需要控制两者行为的测试）。
-    #[cfg(test)]
-    pub fn with_stores(os: Arc<dyn CredentialStore>, file: Arc<FileCredentialStore>) -> Self {
-        Self {
-            os,
+            legacy_os: Arc::new(AvailabilityCachedStore::new(Arc::new(KeyringStore::new()))),
             file,
             session: SessionStore::new(),
         }
     }
 
-    pub fn os_store_available(&self) -> bool {
-        self.os.is_available()
+    /// 测试装配：注入文件凭证后端（OS 迁移源用恒不可用后端隔离）。
+    #[cfg(test)]
+    pub fn with_store(file: Arc<FileCredentialStore>) -> Self {
+        Self {
+            legacy_os: Arc::new(UnavailableOsStore),
+            file,
+            session: SessionStore::new(),
+        }
     }
 
-    /// 写入凭证。`persist = true` 要求落持久存储——先尝试 OS Credential Store，
-    /// 若 `Unavailable` 则回退到加密文件存储；`persist = false` 明确只存本次会话。
-    pub fn set(&self, credential_ref: &str, secret: &str, persist: bool) -> Result<CredentialLocation, AiError> {
+    /// 测试装配：注入文件后端与 OS 迁移源（控制迁移行为）。
+    pub fn with_stores(
+        file: Arc<FileCredentialStore>,
+        legacy_os: Arc<dyn CredentialStore>,
+    ) -> Self {
+        Self {
+            legacy_os,
+            file,
+            session: SessionStore::new(),
+        }
+    }
+
+    /// 持久存储（加密文件）当前是否可用。
+    pub fn persistent_store_available(&self) -> bool {
+        self.file.is_available()
+    }
+
+    /// 写入凭证（F-50：`persist = true` 固定写加密文件；`false` 只存会话内存）。
+    pub fn set(
+        &self,
+        credential_ref: &str,
+        secret: &str,
+        persist: bool,
+    ) -> Result<CredentialLocation, AiError> {
         if persist {
-            // PAF-21：缓存不可用时先重测一次再拒绝——keyring 晚解锁（应用
-            // 启动后 Secret Service 才解锁）场景下用户重试即可恢复，免重启。
-            let os_ok = self.os.is_available() || self.os.refresh_availability();
-            if os_ok {
-                match self.os.set(credential_ref, secret) {
-                    Ok(()) => {
-                        // 清除其余落点的旧副本，保证单落点。
-                        let _ = self.session.delete(credential_ref);
-                        let _ = self.file.delete(credential_ref);
-                        return Ok(CredentialLocation::OsStore);
-                    }
-                    Err(CredentialError::Unavailable(_)) => {
-                        // OS 写入失败（Unavailable）——回退到文件存储。
-                        log::warn!("credential: OS 存储写入失败，回退到加密文件存储: {credential_ref}");
-                    }
-                    Err(e) => {
-                        return Err(AiError::CredentialUnavailable {
-                            message: format!("凭证写入失败: {}", e),
-                        });
-                    }
-                }
-            }
-            // OS 不可用或写入 Unavailable → 回退文件存储。
             self.file
                 .set(credential_ref, secret)
                 .map_err(|e| AiError::CredentialUnavailable {
-                    message: format!("文件凭证写入失败: {}", e),
+                    message: format!("文件凭证写入失败（{}）: {}", self.file.dir.display(), e),
                 })?;
             let _ = self.session.delete(credential_ref);
-            let _ = self.os.delete(credential_ref);
             Ok(CredentialLocation::FileStore)
         } else {
             self.session
@@ -500,37 +557,34 @@ impl CredentialManager {
                 .map_err(|e| AiError::CredentialUnavailable {
                     message: format!("会话凭证写入失败: {}", e),
                 })?;
-            let _ = self.os.delete(credential_ref);
             let _ = self.file.delete(credential_ref);
             Ok(CredentialLocation::SessionOnly)
         }
     }
 
-    /// 读取凭证（OS 存储优先，文件加密存储次之，会话内存兜底）。
-    /// PAF-21：OS 后端故障（`Err`，非 `Ok(None)`）降级读文件/会话副本时必须
-    /// 可见——此时副本可能是过期值（单落点不变式只在写入时维护），打 warn 供排障；
-    /// 「无条目」（`Ok(None)`）才是静默降级。
+    /// 读取凭证：加密文件优先；未命中时试 OS 存量并**一次性迁移**（命中即写
+    /// 文件并删除 OS 条目）；会话内存兜底。OS 后端故障（`Err`）降级读会话副本
+    /// 时打 warn 供排障。
     pub fn get(&self, credential_ref: &str) -> Option<String> {
-        match self.os.get(credential_ref) {
-            Ok(Some(secret)) => return Some(secret),
-            Ok(None) => {}
+        if let Ok(Some(secret)) = self.file.get(credential_ref) {
+            return Some(secret);
+        }
+        match self.legacy_os.get(credential_ref) {
+            Ok(Some(secret)) => {
+                if self.file.set(credential_ref, &secret).is_ok() {
+                    let _ = self.legacy_os.delete(credential_ref);
+                    log::info!("credential: 存量 OS 凭证已迁移到加密文件: {credential_ref}");
+                }
+                Some(secret)
+            }
+            Ok(None) => self.session.get(credential_ref).ok().flatten(),
             Err(e) => {
                 log::warn!(
-                    "credential: OS 存储读取失败（{e}），降级读取文件/会话副本: {credential_ref}"
+                    "credential: OS 迁移源读取失败（{e}），降级读取会话副本: {credential_ref}"
                 );
+                self.session.get(credential_ref).ok().flatten()
             }
         }
-        // 文件存储回退（静默：无条目时不打 warn）。
-        match self.file.get(credential_ref) {
-            Ok(Some(secret)) => return Some(secret),
-            Ok(None) => {}
-            Err(e) => {
-                log::warn!(
-                    "credential: 文件存储读取失败（{e}），降级读取会话副本: {credential_ref}"
-                );
-            }
-        }
-        self.session.get(credential_ref).ok().flatten()
     }
 
     pub fn has(&self, credential_ref: &str) -> bool {
@@ -539,26 +593,22 @@ impl CredentialManager {
 
     /// 凭证是否仅存在于会话内存（UI 标记「仅本次会话」）。
     pub fn is_session_only(&self, credential_ref: &str) -> bool {
-        !matches!(self.os.get(credential_ref), Ok(Some(_)))
-            && !matches!(self.file.get(credential_ref), Ok(Some(_)))
+        !matches!(self.file.get(credential_ref), Ok(Some(_)))
+            && !matches!(self.legacy_os.get(credential_ref), Ok(Some(_)))
             && matches!(self.session.get(credential_ref), Ok(Some(_)))
     }
 
-    /// 删除凭证（三个落点都清）。
+    /// 删除凭证（三个落点都清；OS 迁移源条目删除失败不影响结果）。
     pub fn delete(&self, credential_ref: &str) -> Result<(), AiError> {
-        let os_result = self.os.delete(credential_ref);
         let file_result = self.file.delete(credential_ref);
         let session_result = self.session.delete(credential_ref);
-        if let Err(e) = os_result {
-            // 后端不可用不算失败（条目本来也读不到）。
-            if !matches!(e, CredentialError::Unavailable(_)) {
-                return Err(AiError::CredentialUnavailable {
-                    message: format!("凭证删除失败: {}", e),
-                });
-            }
+        if let Err(e) = self.legacy_os.delete(credential_ref) {
+            log::warn!("credential: OS 迁移源条目删除失败（{e}）: {credential_ref}");
         }
         if let Err(e) = file_result {
-            log::warn!("credential: 文件凭证删除失败（{e}）: {credential_ref}");
+            return Err(AiError::CredentialUnavailable {
+                message: format!("文件凭证删除失败: {}", e),
+            });
         }
         session_result.map_err(|e| AiError::CredentialUnavailable {
             message: format!("会话凭证删除失败: {}", e),
@@ -576,29 +626,17 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    /// 内存后端（模拟可用的 OS 存储）。
+    /// 内存后端（模拟可用的 OS 迁移源）。
     fn memory_store() -> Arc<dyn CredentialStore> {
         Arc::new(SessionStore::new())
     }
 
-    /// 恒不可用后端（模拟 Linux 无 Secret Service）。
-    struct UnavailableStore;
-    impl CredentialStore for UnavailableStore {
-        fn name(&self) -> &'static str {
-            "unavailable"
-        }
-        fn is_available(&self) -> bool {
-            false
-        }
-        fn get(&self, _: &str) -> Result<Option<String>, CredentialError> {
-            Err(CredentialError::Unavailable("no secret service".into()))
-        }
-        fn set(&self, _: &str, _: &str) -> Result<(), CredentialError> {
-            Err(CredentialError::Unavailable("no secret service".into()))
-        }
-        fn delete(&self, _: &str) -> Result<(), CredentialError> {
-            Err(CredentialError::Unavailable("no secret service".into()))
-        }
+    fn tmp_file_store(tag: &str) -> Arc<FileCredentialStore> {
+        let dir = std::env::temp_dir()
+            .join("gw-cred-file-test")
+            .join(format!("{tag}{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        Arc::new(FileCredentialStore::with_dir(dir))
     }
 
     /// 可用性可翻转的后端（模拟 keyring 晚解锁：启动时不可用，随后解锁）。
@@ -645,81 +683,61 @@ mod tests {
         }
     }
 
-    /// PAF-21：keyring 晚解锁场景——首次探测不可用，回退到文件存储；
-    /// 用户解锁后重试 `set`（persist）应经 `refresh_availability` 重测成功，
-    /// 写入 OS 存储，无需重启。
+    /// F-50：persist 固定写加密文件（不再尝试 OS 凭证存储）。
     #[test]
-    fn late_unlock_recovers_without_restart() {
-        let unlocked = Arc::new(AtomicBool::new(false));
-        let mgr = CredentialManager::with_store(Arc::new(AvailabilityCachedStore::new(Arc::new(
-            FlakyStore::new(Arc::clone(&unlocked)),
-        ))));
-
-        // 启动时后端不可用：回退到文件存储。
+    fn persist_roundtrip_via_file_store() {
+        let mgr = CredentialManager::with_store(tmp_file_store("round"));
         let loc = mgr.set("ai-provider:p1", "sk-test", true).unwrap();
         assert_eq!(loc, CredentialLocation::FileStore);
+        assert!(mgr.has("ai-provider:p1"));
+        assert!(!mgr.is_session_only("ai-provider:p1"));
         assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-test"));
+        assert!(mgr.persistent_store_available());
 
-        // 用户解锁 keyring 后重试：重测可用 → 写入 OS 成功，文件副本清除。
-        unlocked.store(true, Ordering::Relaxed);
-        let loc = mgr.set("ai-provider:p1", "sk-test", true).unwrap();
-        assert_eq!(loc, CredentialLocation::OsStore);
-        assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-test"));
-        // 可用性缓存已翻新为 true。
-        assert!(mgr.os_store_available());
+        mgr.delete("ai-provider:p1").unwrap();
+        assert!(!mgr.has("ai-provider:p1"));
     }
 
-    /// PAF-21：OS 后端故障（Err）时降级读会话副本，且操作失败使缓存失效——
-    /// 下次 `is_available` 重新探测而非使用旧 false。
+    /// F-50：存量 OS 凭证一次性迁移——文件未命中时读 OS，命中即写文件并删除
+    /// OS 条目，后续读取走文件。
     #[test]
-    fn backend_failure_invalidates_cache_and_degrades_to_session() {
+    fn legacy_os_credential_migrates_to_file() {
+        let legacy: Arc<dyn CredentialStore> = memory_store();
+        legacy.set("ai-provider:p1", "sk-os").unwrap();
+        let file = tmp_file_store("migrate");
+        let mgr = CredentialManager::with_stores(file, Arc::clone(&legacy));
+
+        // 首次读取触发迁移。
+        assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-os"));
+        // 文件已落、OS 条目已清。
+        assert_eq!(mgr.file.get("ai-provider:p1").unwrap().as_deref(), Some("sk-os"));
+        assert_eq!(legacy.get("ai-provider:p1").unwrap(), None);
+        assert!(!mgr.is_session_only("ai-provider:p1"));
+    }
+
+    /// OS 迁移源故障（Err）时降级读会话副本，不 panic；后端恢复后有条目即迁移。
+    #[test]
+    fn legacy_os_failure_degrades_to_session() {
         let unlocked = Arc::new(AtomicBool::new(false));
         let cached: Arc<dyn CredentialStore> =
             Arc::new(AvailabilityCachedStore::new(Arc::new(FlakyStore::new(Arc::clone(&unlocked)))));
-        assert!(!cached.is_available(), "首次探测不可用并缓存");
-
-        // OS 读取失败 → 静默路径改为告警 + 降级会话（此处断言降级行为）。
-        let mgr = CredentialManager::with_store(Arc::clone(&cached));
+        let mgr = CredentialManager::with_stores(tmp_file_store("flaky"), cached);
         mgr.set("ai-provider:p1", "sk-session", false).unwrap();
+        // OS 读取失败 → 降级会话值。
         assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-session"));
-
-        // Unavailable 操作使缓存失效：后端恢复后 is_available 立即为 true，
-        // 且此时 OS 侧无该条目 → 凭证仍标记「仅本次会话」（语义不回归）。
-        unlocked.store(true, Ordering::Relaxed);
-        assert!(cached.is_available());
         assert!(mgr.is_session_only("ai-provider:p1"));
-    }
 
-    #[test]
-    fn persist_roundtrip_via_os_store() {
-        let mgr = CredentialManager::with_store(memory_store());
-        let loc = mgr.set("ai-provider:p1", "sk-test", true).unwrap();
-        assert_eq!(loc, CredentialLocation::OsStore);
-        assert!(mgr.has("ai-provider:p1"));
-        assert!(!mgr.is_session_only("ai-provider:p1"));
-        assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-test"));
-
-        mgr.delete("ai-provider:p1").unwrap();
-        assert!(!mgr.has("ai-provider:p1"));
-    }
-
-    /// OS 不可用时回退到加密文件存储（非 session-only）。
-    #[test]
-    fn persist_falls_back_to_file_when_os_unavailable() {
-        let mgr = CredentialManager::with_store(Arc::new(UnavailableStore));
-        let loc = mgr.set("ai-provider:p1", "sk-test", true).unwrap();
-        assert_eq!(loc, CredentialLocation::FileStore);
-        assert!(mgr.has("ai-provider:p1"));
-        assert!(!mgr.is_session_only("ai-provider:p1"));
-        assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-test"));
-        mgr.delete("ai-provider:p1").unwrap();
-        assert!(!mgr.has("ai-provider:p1"));
+        // OS 恢复且有条目时，迁移到文件、不再是 session-only。
+        unlocked.store(true, Ordering::Relaxed);
+        mgr.legacy_os.set("ai-provider:p2", "sk-os").unwrap();
+        assert_eq!(mgr.get("ai-provider:p2").as_deref(), Some("sk-os"));
+        assert!(!mgr.is_session_only("ai-provider:p2"));
     }
 
     #[test]
     fn session_only_keeps_key_in_memory() {
-        let mgr = CredentialManager::with_store(Arc::new(UnavailableStore));
-        let loc = mgr.set("ai-provider:p1", "sk-test", false).unwrap();
+        let mgr = CredentialManager::with_store(tmp_file_store("sonly"));
+        let loc = mgr.set("ai-provider:p1", "sk-session", false).unwrap();
         assert_eq!(loc, CredentialLocation::SessionOnly);
         assert!(mgr.has("ai-provider:p1"));
         assert!(mgr.is_session_only("ai-provider:p1"));
@@ -729,46 +747,35 @@ mod tests {
         assert_eq!(mgr.session_count(), 0);
     }
 
+    /// 单落点不变式：写文件 → 改写会话-only → 文件副本清除；再写回文件 → 会话副本清除。
     #[test]
     fn single_location_invariant() {
-        let mgr = CredentialManager::with_store(memory_store());
-        mgr.set("ai-provider:p1", "sk-os", true).unwrap();
-        // 改写为会话-only：OS 副本必须清除，读取命中会话值。
+        let mgr = CredentialManager::with_store(tmp_file_store("single"));
+        mgr.set("ai-provider:p1", "sk-file", true).unwrap();
         mgr.set("ai-provider:p1", "sk-session", false).unwrap();
         assert!(mgr.is_session_only("ai-provider:p1"));
         assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-session"));
-        // 再写回 OS：会话副本清除。
-        mgr.set("ai-provider:p1", "sk-os2", true).unwrap();
+        mgr.set("ai-provider:p1", "sk-file2", true).unwrap();
         assert!(!mgr.is_session_only("ai-provider:p1"));
-        assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-os2"));
+        assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-file2"));
     }
 
-    /// 三平台真实 OS Credential Store 冒烟：环境不可用（无 Secret Service /
-    /// 无桌面会话的 CI）或往返行为异常时 skip 并打印原因，不硬失败
-    /// （全局约束 §11）；产品逻辑的可行动错误由其他测试覆盖。
+    /// OS 迁移源冒烟：环境不可用（无 Secret Service / 无桌面会话的 CI）时
+    /// skip 并打印原因，不硬失败（全局约束 §11）。OS 侧只读，不写入真实凭证。
     #[test]
-    fn os_credential_store_smoke_or_skip() {
+    fn legacy_os_migration_source_smoke_or_skip() {
         let store = KeyringStore::new();
         if !store.is_available() {
-            eprintln!("SKIP os_credential_store_smoke_or_skip: OS 凭证存储在当前环境不可用");
+            eprintln!("SKIP legacy_os_migration_source_smoke_or_skip: OS 凭证存储在当前环境不可用");
             return;
         }
-        let cref = "ai-probe:smoke-test";
-        if let Err(e) = store.set(cref, "sk-smoke") {
-            eprintln!("SKIP os_credential_store_smoke_or_skip: 写入失败: {}", e);
-            return;
-        }
-        match store.get(cref) {
-            Ok(Some(v)) if v == "sk-smoke" => {}
-            other => {
-                let shape = other.map(|o| o.map(|s| s.len()));
-                eprintln!("SKIP os_credential_store_smoke_or_skip: 往返读取异常: {:?}", shape);
-                let _ = store.delete(cref);
-                return;
+        // 只读探测路径：NoEntry = 可用；其他错误打印原因后跳过。
+        match store.get("ai-probe:smoke-test") {
+            Ok(None) | Ok(Some(_)) => {}
+            Err(e) => {
+                eprintln!("SKIP legacy_os_migration_source_smoke_or_skip: 读取失败: {}", e);
             }
         }
-        store.delete(cref).unwrap();
-        assert_eq!(store.get(cref).unwrap(), None);
     }
 
     // ── FileCredentialStore 单元测试 ──────────────────────────────────
@@ -835,34 +842,67 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// OS 不可用 → 文件回退 → 读取成功（集成测试）。
+    /// F-50：旧目录（app_data_dir/credentials）整体搬迁到新目录——
+    /// 目标已存在则跳过，旧文件删除。
     #[test]
-    fn manager_os_unavailable_falls_back_to_file() {
-        let dir = std::env::temp_dir().join("gw-cred-file-test").join(format!("mgr{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let file_store = Arc::new(FileCredentialStore::with_dir(dir.clone()));
-        let mgr = CredentialManager::with_stores(Arc::new(UnavailableStore), file_store);
+    fn file_store_migrate_from_legacy_dir() {
+        let base = std::env::temp_dir()
+            .join("gw-cred-file-test")
+            .join(format!("legacy{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let legacy_dir = base.join("old");
+        let target_dir = base.join("new");
+        let legacy = FileCredentialStore::with_dir(legacy_dir.clone());
+        legacy.set("ai-provider:p1", "sk-legacy").unwrap();
+        assert!(legacy_dir.join("ai-provider_p1.json").exists());
+
+        let target = FileCredentialStore::with_dir(target_dir.clone());
+        target.migrate_from(&legacy_dir);
+        assert!(target_dir.join("ai-provider_p1.json").exists());
+        assert!(!legacy_dir.join("ai-provider_p1.json").exists(), "旧文件应已删除");
+        assert_eq!(target.get("ai-provider:p1").unwrap().as_deref(), Some("sk-legacy"));
+
+        // 目标已存在时不覆盖。
+        legacy.set("ai-provider:p1", "sk-legacy").unwrap();
+        target.set("ai-provider:p1", "sk-target").unwrap();
+        target.migrate_from(&legacy_dir);
+        assert_eq!(target.get("ai-provider:p1").unwrap().as_deref(), Some("sk-target"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 规范目录落在 `~/.gitworkspace/credentials/`（home 不可用时回退
+    /// app_data_dir，随平台分支）。
+    #[test]
+    fn canonical_dir_uses_home_gitworkspace() {
+        let dir = canonical_file_store_dir();
+        if dirs::home_dir().is_some() {
+            assert!(dir.ends_with(".gitworkspace/credentials"), "{dir:?}");
+        } else {
+            assert!(dir.ends_with("credentials"), "{dir:?}");
+        }
+    }
+
+    /// 文件后端作为唯一持久落点（OS 迁移源不可用时 persist 仍成功）。
+    #[test]
+    fn manager_uses_file_store_for_persist() {
+        let mgr = CredentialManager::with_stores(tmp_file_store("mgr"), Arc::new(UnavailableOsStore));
         let loc = mgr.set("ai-provider:p1", "sk-file", true).unwrap();
         assert_eq!(loc, CredentialLocation::FileStore);
         assert_eq!(mgr.get("ai-provider:p1").as_deref(), Some("sk-file"));
         assert!(!mgr.is_session_only("ai-provider:p1"));
         mgr.delete("ai-provider:p1").unwrap();
         assert!(!mgr.has("ai-provider:p1"));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// session-only 不影响文件后端。
     #[test]
     fn session_only_writes_only_to_session_not_file() {
-        let dir = std::env::temp_dir().join("gw-cred-file-test").join(format!("sonly{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let file_store = Arc::new(FileCredentialStore::with_dir(dir.clone()));
-        let mgr = CredentialManager::with_stores(Arc::new(UnavailableStore), file_store);
+        let file = tmp_file_store("sonly2");
+        let mgr = CredentialManager::with_stores(Arc::clone(&file), Arc::new(UnavailableOsStore));
         let loc = mgr.set("ai-provider:p1", "sk-session", false).unwrap();
         assert_eq!(loc, CredentialLocation::SessionOnly);
         assert!(mgr.is_session_only("ai-provider:p1"));
         // 文件后端无该条目。
-        assert_eq!(mgr.file.get("ai-provider:p1").unwrap(), None);
-        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(file.get("ai-provider:p1").unwrap(), None);
     }
 }

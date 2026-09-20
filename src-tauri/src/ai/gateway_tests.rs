@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
-use super::credentials::{CredentialManager, SessionStore};
+use super::credentials::{CredentialManager, FileCredentialStore};
 use super::events::{AiEventSink, AiRequestEvent};
 use super::gateway::{AiGateway, GatewayConfig};
 use super::model::AiTaskKind;
@@ -200,8 +200,17 @@ fn credentials_with_key(key: &str) -> Arc<CredentialManager> {
     credentials_for_ref("ai-provider:p1", key)
 }
 
+/// 测试用凭证管理器：文件后端落在临时目录（F-50 后文件是唯一持久落点）。
+fn test_credential_manager() -> CredentialManager {
+    let dir = std::env::temp_dir()
+        .join("gw-cred-test")
+        .join(format!("gw-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    CredentialManager::with_store(Arc::new(FileCredentialStore::with_dir(dir)))
+}
+
 fn credentials_for_ref(credential_ref: &str, key: &str) -> Arc<CredentialManager> {
-    let mgr = CredentialManager::with_store(Arc::new(SessionStore::new()));
+    let mgr = test_credential_manager();
     mgr.set(credential_ref, key, true).unwrap();
     Arc::new(mgr)
 }
@@ -860,7 +869,7 @@ async fn migrated_legacy_provider_config_works() {
     }]));
     let (gateway, _sink) = test_gateway(test_config(), transport.clone());
     let credentials = {
-        let mgr = CredentialManager::with_store(Arc::new(SessionStore::new()));
+        let mgr = test_credential_manager();
         mgr.set("ai-provider:p-legacy", KEY, true).unwrap();
         Arc::new(mgr)
     };
@@ -1061,7 +1070,7 @@ mod real_api {
     }
 
     fn real_credentials(provider_id: &str) -> Arc<CredentialManager> {
-        let mgr = CredentialManager::with_store(Arc::new(SessionStore::new()));
+        let mgr = test_credential_manager();
         let credential_ref = format!("ai-provider:{}", provider_id);
         mgr.set(&credential_ref, &api_key(), true).unwrap();
         Arc::new(mgr)
@@ -1996,7 +2005,7 @@ diff --git a/src-tauri/src/ai/adapters/openai_chat.rs b/src-tauri/src/ai/adapter
         real_model(&conn, &provider.id);
 
         // 用无效 Key
-        let mgr = CredentialManager::with_store(Arc::new(SessionStore::new()));
+        let mgr = test_credential_manager();
         let credential_ref = format!("ai-provider:{}", provider.id);
         mgr.set(&credential_ref, "invalid-key-12345", true).unwrap();
         let credentials = Arc::new(mgr);

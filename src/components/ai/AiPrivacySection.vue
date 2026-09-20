@@ -19,8 +19,8 @@
       </n-descriptions-item>
       <n-descriptions-item label="凭证安全">
         <div class="desc-cell">
-          <n-tag size="small" :bordered="false">仅 OS 凭证存储</n-tag>
-          <span>API Key 只存 Windows Credential Manager / macOS Keychain / Linux Secret Service；存储不可用时仅本次会话内存保存，不回退普通文件。Key 不进日志、错误信息、LocalStorage 与 URL。</span>
+          <n-tag size="small" :bordered="false">加密文件存储</n-tag>
+          <span>API Key 加密（XChaCha20-Poly1305）后保存到 ~/.gitworkspace/credentials/，不写入系统凭证；存储不可用时仅本次会话内存保存。加密密钥由应用派生，防明文泄露；防不住同时拿到文件与本机的攻击者。Key 不进日志、错误信息、LocalStorage 与 URL。</span>
         </div>
       </n-descriptions-item>
       <n-descriptions-item label="上下文最小化">
