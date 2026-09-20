@@ -23,6 +23,11 @@ pub enum AiStreamChunk {
     TextDelta {
         text: String,
     },
+    /// 思考增量（F-48）：思考型模型的 reasoning 内容透传给前端实时展示；
+    /// 不计入正文 text / 输出字符，终态后不持久化。
+    ReasoningDelta {
+        text: String,
+    },
     End {
         #[serde(rename = "finishReason")]
         finish_reason: Option<String>,

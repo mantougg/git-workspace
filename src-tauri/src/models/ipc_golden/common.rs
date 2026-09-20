@@ -282,7 +282,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             max_context_tokens: 128000,
             defaults: crate::ai::AiModelDefaults {
                 temperature: Some(0.2),
-                reasoning_effort: None
+                reasoning_effort: Some(crate::ai::ReasoningEffort::Low)
             },
             enabled: true,
             created_at: "2026-01-01T00:00:00Z".into(),
@@ -293,7 +293,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         "AiModelDefaults".into(),
         json!(crate::ai::AiModelDefaults {
             temperature: Some(0.2),
-            reasoning_effort: None
+            reasoning_effort: Some(crate::ai::ReasoningEffort::Low)
         }),
     );
     m.insert(
@@ -306,7 +306,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             max_context_tokens: 128000,
             defaults: crate::ai::AiModelDefaults {
                 temperature: Some(0.2),
-                reasoning_effort: None
+                reasoning_effort: Some(crate::ai::ReasoningEffort::Low)
             },
             enabled: true,
         }),
@@ -522,6 +522,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
         "AiStreamChunk".into(),
         json!([
             crate::ai::events::AiStreamChunk::TextDelta { text: "启动".into() },
+            crate::ai::events::AiStreamChunk::ReasoningDelta { text: "思考".into() },
             crate::ai::events::AiStreamChunk::End {
                 finish_reason: Some("stop".into()),
             },

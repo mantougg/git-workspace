@@ -22,7 +22,7 @@
 ## 总体进度
 
 - 任务总数：**50**
-- 已完成：**45** · 修复中：**5** · 未开始：**0** · 仅讨论：**0**
+- 已完成：**46** · 修复中：**4** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -77,7 +77,7 @@
 | F-45 | 终端启动命令在 PowerShell 下被拆参数（`-Dspring.*` 裸 token 在第一个 `.` 处断开） | P1 | 🟦 | [F-45-terminal-launch-powershell-arg-splitting.md](./F-45-terminal-launch-powershell-arg-splitting.md) |
 | F-46 | AI 生成耗时长（思考型模型无思考控制入口）+ 生成轮询 30s 硬上限 | P1 | ✅ | [F-46-ai-reasoning-effort-and-poll-timeout.md](./F-46-ai-reasoning-effort-and-poll-timeout.md) |
 | F-47 | AI 生成 Commit Message：勾选未暂存文件时结果为空或只覆盖部分文件（staged scope 与提交语义不一致） | P0 | ✅ | [F-47-ai-commit-message-staged-scope-mismatch.md](./F-47-ai-commit-message-staged-scope-mismatch.md) |
-| F-48 | Assistant 对话框发送后无反馈（思考增量全链路丢弃 + 泵空闲超时被思考流量喂活） | P1 | 🟦 | [F-48-assistant-drawer-no-reasoning-feedback.md](./F-48-assistant-drawer-no-reasoning-feedback.md) |
+| F-48 | Assistant 对话框发送后无反馈（思考增量全链路丢弃 + 泵空闲超时被思考流量喂活） | P1 | ✅ | [F-48-assistant-drawer-no-reasoning-feedback.md](./F-48-assistant-drawer-no-reasoning-feedback.md) |
 | F-49 | AI 402 余额不足提示语义化（当前笼统显示「Provider 拒绝了请求」） | P2 | ✅ | [F-49-ai-402-quota-error-message.md](./F-49-ai-402-quota-error-message.md) |
 | F-50 | AI 凭证固定加密文件存储（~/.gitworkspace/credentials），弃用 OS 凭证存储 | P1 | ✅ | [F-50-credentials-file-only-storage.md](./F-50-credentials-file-only-storage.md) |
 | F-51 | 终端启动（ConPTY）后端日志中文乱码（JVM 输出 UTF-8，控制台代码页 GBK） | P1 | 🟦 | [F-51-terminal-launch-conpty-codepage-mojibake.md](./F-51-terminal-launch-conpty-codepage-mojibake.md) |

@@ -70,7 +70,7 @@ impl AiProviderAdapter for AnthropicMessagesAdapter {
             Ok(super::spawn_sse_pump(
                 response.body,
                 ctx.cancel.clone(),
-                ctx.timeout,
+                ctx.stream_idle_timeout,
                 map_anthropic_event,
             ))
         })
@@ -179,8 +179,16 @@ fn map_anthropic_event(event: &super::sse::SseEvent) -> super::SseAction {
                 } else {
                     SseAction::Emit(text.to_string())
                 }
+            } else if delta.get("type").and_then(|t| t.as_str()) == Some("thinking_delta") {
+                // F-48：思考增量透传，前端实时展示。
+                let thinking = delta.get("thinking").and_then(|t| t.as_str()).unwrap_or_default();
+                if thinking.is_empty() {
+                    SseAction::Skip
+                } else {
+                    SseAction::EmitReasoning(thinking.to_string())
+                }
             } else {
-                SseAction::Skip // thinking_delta 等忽略
+                SseAction::Skip // signature_delta 等忽略
             }
         }
         "message_delta" => SseAction::Finish {
@@ -356,5 +364,18 @@ mod tests {
             data: r#"{"type":"ping"}"#.into(),
         };
         assert!(matches!(map_anthropic_event(&ping), SseAction::Skip));
+    }
+
+    /// F-48：thinking_delta 增量映射为 EmitReasoning。
+    #[test]
+    fn thinking_delta_maps_to_reasoning() {
+        let chunk = super::super::sse::SseEvent {
+            event: Some("content_block_delta".into()),
+            data: r#"{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"思"}}"#.into(),
+        };
+        assert!(matches!(
+            map_anthropic_event(&chunk),
+            SseAction::EmitReasoning(t) if t == "思"
+        ));
     }
 }

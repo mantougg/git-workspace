@@ -107,8 +107,8 @@
     "usesNetwork": true
   },
   "AiCredentialStatus": {
+    "fileStoreAvailable": true,
     "hasCredential": true,
-    "osStoreAvailable": true,
     "providerId": "p1",
     "sessionOnly": false
   },
@@ -131,6 +131,7 @@
     ],
     "createdAt": "2026-01-01T00:00:00Z",
     "defaults": {
+      "reasoningEffort": "low",
       "temperature": 0.2
     },
     "displayName": "GPT-4o mini",
@@ -149,6 +150,7 @@
     "repository": null
   },
   "AiModelDefaults": {
+    "reasoningEffort": "low",
     "temperature": 0.2
   },
   "AiModelNotFoundError": {
@@ -452,7 +454,7 @@
     "legacyReviewCount": 3,
     "legacyTaskCount": 4,
     "modelCount": 2,
-    "osCredentialStoreAvailable": true,
+    "persistentStoreAvailable": true,
     "providerCount": 1,
     "sessionCredentialCount": 0,
     "taskDefaults": [
@@ -469,6 +471,10 @@
     {
       "text": "启动",
       "type": "textDelta"
+    },
+    {
+      "text": "思考",
+      "type": "reasoningDelta"
     },
     {
       "finishReason": "stop",
@@ -2425,6 +2431,7 @@
       "chat"
     ],
     "defaults": {
+      "reasoningEffort": "low",
       "temperature": 0.2
     },
     "displayName": "GPT-4o mini",

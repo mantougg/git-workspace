@@ -60,7 +60,7 @@ impl AiProviderAdapter for OpenaiResponsesAdapter {
             Ok(super::spawn_sse_pump(
                 response.body,
                 ctx.cancel.clone(),
-                ctx.timeout,
+                ctx.stream_idle_timeout,
                 map_responses_event,
             ))
         })
@@ -170,6 +170,15 @@ fn map_responses_event(event: &super::sse::SseEvent) -> super::SseAction {
                 SseAction::Skip
             } else {
                 SseAction::Emit(delta.to_string())
+            }
+        }
+        // F-48：思考增量（reasoning summary / reasoning 正文）透传。
+        "response.reasoning_summary_text.delta" | "response.reasoning_text.delta" => {
+            let delta = v.get("delta").and_then(|d| d.as_str()).unwrap_or_default();
+            if delta.is_empty() {
+                SseAction::Skip
+            } else {
+                SseAction::EmitReasoning(delta.to_string())
             }
         }
         "response.completed" | "response.incomplete" => SseAction::End {
@@ -287,5 +296,18 @@ mod tests {
             data: r#"{"type":"response.failed"}"#.into(),
         };
         assert!(matches!(map_responses_event(&failed), SseAction::Invalid));
+    }
+
+    /// F-48：reasoning summary delta 映射为 EmitReasoning。
+    #[test]
+    fn reasoning_summary_delta_maps_to_reasoning() {
+        let chunk = super::super::sse::SseEvent {
+            event: None,
+            data: r#"{"type":"response.reasoning_summary_text.delta","delta":"思"}"#.into(),
+        };
+        assert!(matches!(
+            map_responses_event(&chunk),
+            SseAction::EmitReasoning(t) if t == "思"
+        ));
     }
 }

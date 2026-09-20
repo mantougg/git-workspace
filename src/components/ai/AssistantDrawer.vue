@@ -117,6 +117,7 @@
           :messages="ai.detail?.messages ?? []"
           :can-load-earlier="ai.messagesHasMore"
           :streaming-text="ai.streamingText"
+          :streaming-reasoning="ai.streamingReasoning"
           :tool-reads="ai.toolReads"
           @load-earlier="ai.loadEarlierMessages()"
         />

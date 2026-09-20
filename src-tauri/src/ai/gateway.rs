@@ -64,6 +64,9 @@ pub struct GatewayConfig {
     pub retry_backoff: Duration,
     /// 未配置预算时的默认输出 token 上限（Anthropic 必填 max_tokens）。
     pub default_max_output_tokens: i64,
+    /// 流式泵任务块间空闲上限（F-48：与整请求超时解耦；思考增量也会
+    /// 重置它，长思考不被判死；默认与 request_timeout 相同）。
+    pub stream_idle_timeout: Duration,
 }
 
 impl Default for GatewayConfig {
@@ -74,6 +77,7 @@ impl Default for GatewayConfig {
             max_retries: 1,
             retry_backoff: Duration::from_millis(750),
             default_max_output_tokens: 4096,
+            stream_idle_timeout: Duration::from_secs(120),
         }
     }
 }
@@ -551,6 +555,7 @@ impl AiGateway {
                 transport: self.transport.as_ref(),
                 cancel: &cancel,
                 timeout: self.config.request_timeout,
+                stream_idle_timeout: self.config.stream_idle_timeout,
             };
             let call = AdapterCall {
                 endpoint: endpoint.clone(),
@@ -681,6 +686,16 @@ impl AiGateway {
                         request_id,
                         RequestPhase::Streaming,
                         Some(AiStreamChunk::TextDelta { text: delta }),
+                        text.chars().count() as i64,
+                    );
+                }
+                // F-48：思考增量透传给前端实时展示；不计入正文 text，
+                // 不计输出字符，终态后不持久化。
+                Some(Ok(StreamItem::Reasoning { delta })) => {
+                    self.emit_event(
+                        request_id,
+                        RequestPhase::Streaming,
+                        Some(AiStreamChunk::ReasoningDelta { text: delta }),
                         text.chars().count() as i64,
                     );
                 }

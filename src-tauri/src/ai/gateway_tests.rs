@@ -222,6 +222,7 @@ fn test_config() -> GatewayConfig {
         max_retries: 1,
         retry_backoff: Duration::from_millis(10),
         default_max_output_tokens: 512,
+        stream_idle_timeout: Duration::from_secs(5),
     }
 }
 
@@ -507,6 +508,52 @@ async fn three_protocols_stream_success() {
             .iter()
             .any(|e| e.phase == super::lifecycle::RequestPhase::Succeeded));
     }
+}
+
+/// F-48：思考增量透传为 ReasoningDelta 事件；不计入正文 text 与输出字符。
+#[tokio::test]
+async fn reasoning_delta_streams_through_without_touching_text() {
+    let chunks = vec![
+        format!(
+            "data: {}\n\n",
+            serde_json::json!({"choices": [{"delta": {"reasoning_content": "想"}}]})
+        ),
+        format!(
+            "data: {}\n\n",
+            serde_json::json!({"choices": [{"delta": {"content": "答"}}]})
+        ),
+        format!(
+            "data: {}\n\n",
+            serde_json::json!({"choices": [{"delta": {}, "finish_reason": "stop"}]})
+        ),
+        "data: [DONE]\n\n".to_string(),
+    ];
+    let conn = open_db();
+    let provider = add_provider(&conn, ApiType::OpenaiChatCompletions);
+    add_model(&conn, &provider.id);
+    let transport = Arc::new(FakeTransport::new(vec![Step::Respond {
+        status: 200,
+        body: Body::Chunks(chunks),
+    }]));
+    let (gateway, sink) = test_gateway(test_config(), transport.clone());
+    let credentials = credentials_for_ref(provider.credential_ref.as_deref().unwrap(), KEY);
+
+    let snapshot = run_to_end(&gateway, &conn, &credentials, make_request("rr", true)).await;
+    assert_eq!(snapshot.phase, super::lifecycle::RequestPhase::Succeeded);
+    // 正文只含 content，思考增量不混入。
+    assert!(matches!(
+        snapshot.result,
+        Some(super::request::AiResult::Answer { ref text }) if text == "答"
+    ));
+    assert_eq!(snapshot.output_chars, 1, "思考增量不计输出字符");
+    let events = sink.events.lock().unwrap();
+    assert!(events.iter().any(|e| matches!(
+        e.chunk,
+        Some(super::events::AiStreamChunk::ReasoningDelta { ref text }) if text == "想"
+    )));
+    assert!(events
+        .iter()
+        .any(|e| matches!(e.chunk, Some(super::events::AiStreamChunk::TextDelta { .. }))));
 }
 
 // ---------------------------------------------------------------------------
@@ -823,10 +870,7 @@ fn approve_from_thread_without_runtime_does_not_panic() {
                 break;
             }
         }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "请求应在超时前到达终态"
-        );
+        assert!(std::time::Instant::now() < deadline, "请求应在超时前到达终态");
         std::thread::sleep(Duration::from_millis(10));
     }
     assert_eq!(transport.call_count(), 1, "approve 触发了恰好一次执行");
@@ -1012,11 +1056,13 @@ mod real_api {
 
     use rusqlite::Connection;
 
-    use super::super::credentials::{CredentialManager, SessionStore};
+    use super::super::credentials::CredentialManager;
     use super::super::gateway::{AiGateway, GatewayConfig};
     use super::super::model::{save_model, AiModelDefaults, AiTaskKind, ModelCapability, SaveAiModelRequest};
     use super::super::provider::{save_provider, ApiType, NetworkPolicy, SaveAiProviderRequest};
-    use super::super::request::{AiMessage, AiRequest, AiResult, GitAssistantScenario, MessageRole, ResponseFormat, ToolPolicy};
+    use super::super::request::{
+        AiMessage, AiRequest, AiResult, GitAssistantScenario, MessageRole, ResponseFormat, ToolPolicy,
+    };
     use super::super::transport::ReqwestTransport;
 
     const API_BASE: &str = "https://token-plan-cn.xiaomimimo.com/v1";
@@ -1027,9 +1073,8 @@ mod real_api {
     }
 
     fn api_key() -> String {
-        std::env::var("AI_TEST_API_KEY").expect(
-            "AI_TEST_API_KEY environment variable must be set when RUN_REAL_API_TEST=1",
-        )
+        std::env::var("AI_TEST_API_KEY")
+            .expect("AI_TEST_API_KEY environment variable must be set when RUN_REAL_API_TEST=1")
     }
 
     fn real_db() -> Connection {
@@ -1083,6 +1128,7 @@ mod real_api {
             max_retries: 3,
             retry_backoff: Duration::from_secs(3),
             default_max_output_tokens: 1024,
+            stream_idle_timeout: Duration::from_secs(120),
         }
     }
 
@@ -1175,14 +1221,8 @@ mod real_api {
 
         // 验证 usage
         let usage = result.usage.expect("should have usage");
-        assert!(
-            usage.input_tokens.unwrap_or(0) > 0,
-            "input_tokens should be > 0"
-        );
-        assert!(
-            usage.output_tokens.unwrap_or(0) > 0,
-            "output_tokens should be > 0"
-        );
+        assert!(usage.input_tokens.unwrap_or(0) > 0, "input_tokens should be > 0");
+        assert!(usage.output_tokens.unwrap_or(0) > 0, "output_tokens should be > 0");
         println!(
             "[REAL TEST] Usage: input={}, output={}",
             usage.input_tokens.unwrap_or(0),
@@ -1243,14 +1283,12 @@ mod real_api {
 
         // 流式事件：至少应有 TextDelta + End
         let events = sink.events.lock().unwrap();
-        let has_text_delta = events.iter().any(|e| matches!(
-            e.chunk,
-            Some(super::super::events::AiStreamChunk::TextDelta { .. })
-        ));
-        let has_end = events.iter().any(|e| matches!(
-            e.chunk,
-            Some(super::super::events::AiStreamChunk::End { .. })
-        ));
+        let has_text_delta = events
+            .iter()
+            .any(|e| matches!(e.chunk, Some(super::super::events::AiStreamChunk::TextDelta { .. })));
+        let has_end = events
+            .iter()
+            .any(|e| matches!(e.chunk, Some(super::super::events::AiStreamChunk::End { .. })));
         assert!(has_text_delta, "should have received TextDelta events");
         assert!(has_end, "should have received End event");
         println!("[REAL TEST] Stream events count: {}", events.len());
@@ -1433,7 +1471,10 @@ index abc1234..def5678 100644
                 let pretty = serde_json::to_string_pretty(payload).unwrap();
                 println!("[REAL TEST] Code Review Report:\n{}", pretty);
                 // 验证返回了有意义的内容（AI 可能用不同的 JSON 结构）
-                assert!(!pretty.is_empty() && pretty.len() > 50, "review should contain substantial analysis");
+                assert!(
+                    !pretty.is_empty() && pretty.len() > 50,
+                    "review should contain substantial analysis"
+                );
             }
             AiResult::GeneratedText { text } => {
                 println!("[REAL TEST] Code Review Text:\n{}", text);
@@ -1520,7 +1561,10 @@ index abc1234..def5678 100644
         let ai_result = result.result.expect("should have result");
         match &ai_result {
             AiResult::ReviewReport { payload } => {
-                println!("[REAL TEST] Security Review:\n{}", serde_json::to_string_pretty(payload).unwrap());
+                println!(
+                    "[REAL TEST] Security Review:\n{}",
+                    serde_json::to_string_pretty(payload).unwrap()
+                );
             }
             AiResult::GeneratedText { text } => {
                 println!("[REAL TEST] Security Review Text:\n{}", text);
@@ -1612,7 +1656,10 @@ index abc1234..def5678 100644
             AiResult::DiagnosticReport { payload } => {
                 let pretty = serde_json::to_string_pretty(payload).unwrap();
                 println!("[REAL TEST] Diagnostic Report:\n{}", pretty);
-                assert!(!pretty.is_empty() && pretty.len() > 50, "diagnostic should contain substantial analysis");
+                assert!(
+                    !pretty.is_empty() && pretty.len() > 50,
+                    "diagnostic should contain substantial analysis"
+                );
             }
             AiResult::GeneratedText { text } => {
                 println!("[REAL TEST] Diagnostic Text:\n{}", text);
@@ -1702,7 +1749,10 @@ index abc1234..def5678 100644
         let ai_result = result.result.expect("should have result");
         match &ai_result {
             AiResult::ConflictProposal { payload } => {
-                println!("[REAL TEST] Conflict Proposal:\n{}", serde_json::to_string_pretty(payload).unwrap());
+                println!(
+                    "[REAL TEST] Conflict Proposal:\n{}",
+                    serde_json::to_string_pretty(payload).unwrap()
+                );
                 assert!(payload.get("proposedContent").is_some(), "should have proposedContent");
                 assert!(payload.get("rationale").is_some(), "should have rationale");
             }
@@ -1789,7 +1839,11 @@ index abc1234..def5678 100644
         match &ai_result {
             AiResult::Answer { text } => {
                 assert!(!text.is_empty(), "chat answer should not be empty");
-                assert!(text.len() > 20, "answer should be substantive, got {} chars", text.len());
+                assert!(
+                    text.len() > 20,
+                    "answer should be substantive, got {} chars",
+                    text.len()
+                );
                 println!("[REAL TEST] Chat Answer:\n{}", text);
             }
             AiResult::GeneratedText { text } => {
@@ -1887,7 +1941,10 @@ diff --git a/src-tauri/src/ai/adapters/openai_chat.rs b/src-tauri/src/ai/adapter
             AiResult::CommitSuggestion { payload } => {
                 let pretty = serde_json::to_string_pretty(payload).unwrap();
                 println!("[REAL TEST] Full CommitSuggestion:\n{}", pretty);
-                assert!(!pretty.is_empty() && pretty.len() > 30, "commit suggestion should contain meaningful content");
+                assert!(
+                    !pretty.is_empty() && pretty.len() > 30,
+                    "commit suggestion should contain meaningful content"
+                );
             }
             AiResult::GeneratedText { text } => {
                 println!("[REAL TEST] Full Commit Text:\n{}", text);
@@ -1979,7 +2036,10 @@ diff --git a/src-tauri/src/ai/adapters/openai_chat.rs b/src-tauri/src/ai/adapter
         let ai_result = result.result.expect("should have result");
         match &ai_result {
             AiResult::ReviewReport { payload } => {
-                println!("[REAL TEST] Bug Detection Report:\n{}", serde_json::to_string_pretty(payload).unwrap());
+                println!(
+                    "[REAL TEST] Bug Detection Report:\n{}",
+                    serde_json::to_string_pretty(payload).unwrap()
+                );
             }
             AiResult::GeneratedText { text } => {
                 println!("[REAL TEST] Bug Detection Text:\n{}", text);
@@ -2029,10 +2089,7 @@ diff --git a/src-tauri/src/ai/adapters/openai_chat.rs b/src-tauri/src/ai/adapter
             super::super::lifecycle::RequestPhase::Failed,
             "invalid key should fail"
         );
-        assert!(
-            result.error_code.is_some(),
-            "should have error code for auth failure"
-        );
+        assert!(result.error_code.is_some(), "should have error code for auth failure");
         println!(
             "[REAL TEST] Auth error: code={:?}, msg={:?}",
             result.error_code, result.error

@@ -60,7 +60,7 @@ impl AiProviderAdapter for OpenaiChatCompletionsAdapter {
             Ok(super::spawn_sse_pump(
                 response.body,
                 ctx.cancel.clone(),
-                ctx.timeout,
+                ctx.stream_idle_timeout,
                 map_chat_event,
             ))
         })
@@ -157,6 +157,15 @@ fn map_chat_event(event: &super::sse::SseEvent) -> super::SseAction {
         return SseAction::Invalid;
     };
     let choice = v.get("choices").and_then(|c| c.get(0));
+    // F-48：思考增量（深度求索/通义等 reasoning_content）透传，前端实时展示。
+    if let Some(reasoning) = choice
+        .and_then(|c| c.get("delta"))
+        .and_then(|d| d.get("reasoning_content"))
+        .and_then(|c| c.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        return SseAction::EmitReasoning(reasoning.to_string());
+    }
     if let Some(delta_text) = choice
         .and_then(|c| c.get("delta"))
         .and_then(|d| d.get("content"))
@@ -294,6 +303,19 @@ mod tests {
             data: r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#.into(),
         };
         assert!(matches!(map_chat_event(&finish), SseAction::Finish { .. }));
+    }
+
+    /// F-48：reasoning_content 增量映射为 EmitReasoning。
+    #[test]
+    fn stream_event_maps_reasoning_content() {
+        let chunk = super::super::sse::SseEvent {
+            event: None,
+            data: r#"{"choices":[{"delta":{"reasoning_content":"想"}}]}"#.into(),
+        };
+        assert!(matches!(
+            map_chat_event(&chunk),
+            SseAction::EmitReasoning(t) if t == "想"
+        ));
     }
 
     #[test]

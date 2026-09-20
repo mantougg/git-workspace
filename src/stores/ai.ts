@@ -238,6 +238,8 @@ export const useAiStore = defineStore("ai", () => {
   const previewRequest = ref<ContextPreviewRequest | null>(null);
   const activeSnapshot = ref<AiRequestSnapshot | null>(null);
   const streamingText = ref("");
+  /** 本轮流式的思考增量（F-48）：实时展示用，终态后丢弃不持久化。 */
+  const streamingReasoning = ref("");
   /** 最近一次失败（降级卡片：重试 / 配置 AI / 缩小范围）。 */
   const lastError = ref<{ message: string; code: string | null } | null>(null);
 
@@ -442,6 +444,7 @@ export const useAiStore = defineStore("ai", () => {
     detail.value = null;
     input.value = "";
     streamingText.value = "";
+    streamingReasoning.value = "";
     activeSnapshot.value = null;
     preview.value = null;
     previewRequest.value = null;
@@ -594,6 +597,7 @@ export const useAiStore = defineStore("ai", () => {
       activeSnapshot.value = approved;
       previewVisible.value = false;
       streamingText.value = "";
+    streamingReasoning.value = "";
       if (TERMINAL_PHASES.has(approved.phase)) {
         await finalize(approved);
       } else {
@@ -616,6 +620,10 @@ export const useAiStore = defineStore("ai", () => {
       unlisten = await onAiRequestEvent((event) => {
         if (event.chunk?.type === "textDelta") {
           frameBuffer?.push(event.chunk.text);
+        }
+        // F-48：思考增量单独收集（不走合帧缓冲，直接在折叠块滚动展示）。
+        if (event.chunk?.type === "reasoningDelta") {
+          streamingReasoning.value += event.chunk.text;
         }
         if (TERMINAL_PHASES.has(event.phase)) {
           void finishFromStatus(requestId);
@@ -653,10 +661,13 @@ export const useAiStore = defineStore("ai", () => {
   async function finalize(snapshot: AiRequestSnapshot) {
     disposeFollow();
     frameBuffer?.finish();
+    // F-48：思考增量只服务流式期间的实时反馈，终态后丢弃不持久化。
+    streamingReasoning.value = "";
     activeSnapshot.value = snapshot;
     if (snapshot.phase === "succeeded") {
       input.value = "";
       streamingText.value = "";
+    streamingReasoning.value = "";
       scope.value = { ...scope.value, supplementary: [], origin: null };
       toolCallCount.value = 0;
       if (currentSession.value) {
@@ -798,6 +809,7 @@ export const useAiStore = defineStore("ai", () => {
     preview,
     activeSnapshot,
     streamingText,
+    streamingReasoning,
     lastError,
     tools,
     toolReads,

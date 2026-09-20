@@ -354,6 +354,8 @@ export type RequestPhase =
 /** 归一化流式 chunk（各协议事件统一映射）。 */
 export type AiStreamChunk =
   | { type: "textDelta"; text: string }
+  /** 思考增量（F-48）：思考型模型的 reasoning 内容；不进正文，终态后丢弃。 */
+  | { type: "reasoningDelta"; text: string }
   | { type: "end"; finishReason: string | null };
 
 /** `ai-request://progress` 事件 payload。 */

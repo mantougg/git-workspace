@@ -10,7 +10,7 @@
       加载更早消息
     </n-button>
     <n-empty
-      v-if="messages.length === 0 && !streamingText && toolReads.length === 0"
+      v-if="messages.length === 0 && !streamingText && !streamingReasoning && toolReads.length === 0"
       class="conversation-empty"
       description="向 GitWorkspace Assistant 提问，或使用下方工具读取应用状态"
     />
@@ -24,6 +24,20 @@
         <n-collapse v-if="hasDetails(message)" class="message-details">
           <n-collapse-item title="查看结构化结果" name="details">
             <pre class="details-pre">{{ detailsOf(message) }}</pre>
+          </n-collapse-item>
+        </n-collapse>
+      </div>
+    </div>
+
+    <!-- 流式思考过程（F-48）：可折叠暗色块，默认折叠，不占正文 -->
+    <div v-if="streamingReasoning" class="message-row assistant">
+      <div class="message-bubble reasoning-bubble">
+        <n-collapse class="reasoning-collapse">
+          <n-collapse-item name="reasoning">
+            <template #header>
+              <span class="reasoning-title">思考过程（{{ streamingReasoning.length }} 字，实时更新中…）</span>
+            </template>
+            <pre class="reasoning-text">{{ streamingReasoning }}</pre>
           </n-collapse-item>
         </n-collapse>
       </div>
@@ -68,6 +82,8 @@ const props = defineProps<{
   messages: AiSessionMessage[];
   canLoadEarlier: boolean;
   streamingText: string;
+  /** 本轮流式思考增量（F-48），折叠块展示。 */
+  streamingReasoning: string;
   toolReads: ToolReadCard[];
 }>();
 
@@ -76,7 +92,7 @@ const emit = defineEmits<{ "load-earlier": [] }>();
 const scrollRef = ref<HTMLElement | null>(null);
 
 watch(
-  () => [props.messages.length, props.streamingText.length, props.toolReads.length],
+  () => [props.messages.length, props.streamingText.length, props.streamingReasoning.length, props.toolReads.length],
   async () => {
     await nextTick();
     scrollRef.value?.scrollTo({ top: scrollRef.value.scrollHeight });
@@ -166,6 +182,32 @@ function formatTime(value: string): string {
 
 .message-row.user .message-bubble {
   background: var(--gw-bg-hover);
+}
+
+/* F-48 思考过程折叠块：弱化样式，不占正文 */
+.reasoning-bubble {
+  opacity: 0.75;
+}
+
+.reasoning-title {
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+}
+
+.reasoning-collapse :deep(.n-collapse-item__header) {
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+}
+
+.reasoning-text {
+  margin: 0;
+  font-size: var(--gw-text-xs);
+  font-family: var(--gw-font-mono);
+  color: var(--gw-text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .message-meta {

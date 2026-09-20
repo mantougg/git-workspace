@@ -72,6 +72,7 @@ fn test_config() -> GatewayConfig {
         max_retries: 1,
         retry_backoff: Duration::from_millis(10),
         default_max_output_tokens: 512,
+        stream_idle_timeout: Duration::from_secs(5),
     }
 }
 
@@ -94,9 +95,9 @@ fn harness(steps: Vec<Step>) -> Harness {
         .join("gw-cred-test")
         .join(format!("session-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&cred_dir);
-    let credentials = Arc::new(CredentialManager::with_store(Arc::new(
-        FileCredentialStore::with_dir(cred_dir),
-    )));
+    let credentials = Arc::new(CredentialManager::with_store(Arc::new(FileCredentialStore::with_dir(
+        cred_dir,
+    ))));
     credentials
         .set(provider.credential_ref.as_deref().unwrap(), KEY, true)
         .unwrap();

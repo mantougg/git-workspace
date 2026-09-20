@@ -38,6 +38,8 @@ use super::transport::{
 pub enum StreamItem {
     /// 文本增量。
     Text { delta: String },
+    /// 思考增量（F-48）：思考型模型的 reasoning 内容；不进正文。
+    Reasoning { delta: String },
     /// 流结束（正常结束或上游给出终止信号）。
     End {
         finish_reason: Option<String>,
@@ -92,8 +94,13 @@ pub struct AdapterCall {
 pub struct AdapterContext<'a> {
     pub transport: &'a dyn HttpTransport,
     pub cancel: &'a CancelToken,
-    /// 非流式 = 整请求上限；流式 = 到响应头为止 + 泵任务块间空闲上限。
+    /// 非流式 = 整请求上限；流式 = 到响应头为止的等待上限。
     pub timeout: Duration,
+    /// 流式泵任务的块间空闲上限（F-48 与整请求超时解耦）：语义是「连接
+    /// 疑似死亡」判定，不是「请求总时长」——思考型模型的字节流量会持续
+    /// 重置它（长思考不该被判死），需要更短上限时独立调小即可，不影响
+    /// 非流式整请求超时。
+    pub stream_idle_timeout: Duration,
 }
 
 /// Provider Adapter trait（§7.2）。
@@ -325,6 +332,8 @@ fn truncate_label(s: &str) -> String {
 pub(super) enum SseAction {
     /// 文本增量。
     Emit(String),
+    /// 思考增量（F-48）。
+    EmitReasoning(String),
     /// 记录终止原因/用量，但不结束流（等 [DONE]/message_stop）。
     Finish {
         finish_reason: String,
@@ -392,6 +401,11 @@ where
                 match map_event(&event) {
                     SseAction::Emit(delta) => {
                         if tx.send(Ok(StreamItem::Text { delta })).await.is_err() {
+                            return; // 接收端已放弃（取消/超时）
+                        }
+                    }
+                    SseAction::EmitReasoning(delta) => {
+                        if tx.send(Ok(StreamItem::Reasoning { delta })).await.is_err() {
                             return; // 接收端已放弃（取消/超时）
                         }
                     }
