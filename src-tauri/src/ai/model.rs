@@ -42,6 +42,35 @@ impl ModelCapability {
 pub struct AiModelDefaults {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
+    /// 思考程度（F-46）：`None` = 不传任何思考参数（由 Provider 模型默认值
+    /// 决定，零回归）；`off` 关闭思考（Commit Message 等轻任务省时）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffort>,
+}
+
+/// 思考程度档位（F-46）。序列化为 camelCase 字符串，与 TS 字符串联合对齐。
+/// 各协议方言映射见 adapter `build_body`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReasoningEffort {
+    Off,
+    Low,
+    Medium,
+    High,
+}
+
+impl ReasoningEffort {
+    /// OpenAI 系 `reasoning_effort` / Responses `reasoning.effort` 取值
+    /// （`off` 在 Responses 方言下映射为 `minimal`，OpenAI Chat 方言由
+    /// `enable_thinking`/`thinking` 承担关闭语义）。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ReasoningEffort::Off => "off",
+            ReasoningEffort::Low => "low",
+            ReasoningEffort::Medium => "medium",
+            ReasoningEffort::High => "high",
+        }
+    }
 }
 
 /// 模型目录条目（§6.2）。`id` 是 Provider 侧的模型 ID（如 `gpt-4o-mini`），
@@ -542,7 +571,10 @@ mod tests {
             display_name: id.into(),
             capabilities: caps,
             max_context_tokens: 128000,
-            defaults: AiModelDefaults { temperature: Some(0.2) },
+            defaults: AiModelDefaults {
+                temperature: Some(0.2),
+                reasoning_effort: None,
+            },
             enabled: true,
         }
     }

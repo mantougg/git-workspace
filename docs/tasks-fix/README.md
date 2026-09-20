@@ -22,7 +22,7 @@
 ## 总体进度
 
 - 任务总数：**50**
-- 已完成：**43** · 修复中：**7** · 未开始：**0** · 仅讨论：**0**
+- 已完成：**44** · 修复中：**6** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -75,7 +75,7 @@
 | F-43 | 使用 AI 功能点击确认后应用闪退（同步命令在无 Tokio runtime 线程上调 tokio::spawn） | P0 | 🟦 | [F-43-ai-approve-sync-command-tokio-spawn-crash.md](./F-43-ai-approve-sync-command-tokio-spawn-crash.md) |
 | F-44 | 终端启动命令在 PowerShell 下解析失败（行首引号路径缺 `&` 调用运算符） | P1 | 🟦 | [F-44-terminal-launch-powershell-call-operator.md](./F-44-terminal-launch-powershell-call-operator.md) |
 | F-45 | 终端启动命令在 PowerShell 下被拆参数（`-Dspring.*` 裸 token 在第一个 `.` 处断开） | P1 | 🟦 | [F-45-terminal-launch-powershell-arg-splitting.md](./F-45-terminal-launch-powershell-arg-splitting.md) |
-| F-46 | AI 生成耗时长（思考型模型无思考控制入口）+ 生成轮询 30s 硬上限 | P1 | 🟦 | [F-46-ai-reasoning-effort-and-poll-timeout.md](./F-46-ai-reasoning-effort-and-poll-timeout.md) |
+| F-46 | AI 生成耗时长（思考型模型无思考控制入口）+ 生成轮询 30s 硬上限 | P1 | ✅ | [F-46-ai-reasoning-effort-and-poll-timeout.md](./F-46-ai-reasoning-effort-and-poll-timeout.md) |
 | F-47 | AI 生成 Commit Message：勾选未暂存文件时结果为空或只覆盖部分文件（staged scope 与提交语义不一致） | P0 | 🟦 | [F-47-ai-commit-message-staged-scope-mismatch.md](./F-47-ai-commit-message-staged-scope-mismatch.md) |
 | F-48 | Assistant 对话框发送后无反馈（思考增量全链路丢弃 + 泵空闲超时被思考流量喂活） | P1 | 🟦 | [F-48-assistant-drawer-no-reasoning-feedback.md](./F-48-assistant-drawer-no-reasoning-feedback.md) |
 | F-49 | AI 402 余额不足提示语义化（当前笼统显示「Provider 拒绝了请求」） | P2 | ✅ | [F-49-ai-402-quota-error-message.md](./F-49-ai-402-quota-error-message.md) |

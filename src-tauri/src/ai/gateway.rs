@@ -376,11 +376,7 @@ impl AiGateway {
         drop(records);
         self.track_record_order(&request_id);
         self.enforce_record_capacity();
-        let snapshot = self
-            .lock_records()
-            .get(&request_id)
-            .expect("just inserted")
-            .snapshot();
+        let snapshot = self.lock_records().get(&request_id).expect("just inserted").snapshot();
 
         log::info!(
             "ai request submitted: id={} task={} provider={} model={} ctx_items={} redacted={} est_tokens={} stream={}",
@@ -439,10 +435,13 @@ impl AiGateway {
         // 会被同步命令 ai_approve_request 在 WebView2 IPC 回调线程上同步调用，
         // 裸 spawn 在该线程直接 panic，unwind 穿透 COM extern "system" 边界
         // 即进程 abort（应用闪退）。
-        tauri::async_runtime::spawn(
-            self.clone()
-                .execute(request_id.to_string(), request, provider, model, credentials),
-        );
+        tauri::async_runtime::spawn(self.clone().execute(
+            request_id.to_string(),
+            request,
+            provider,
+            model,
+            credentials,
+        ));
         Ok(self.status(request_id).expect("record exists"))
     }
 
@@ -830,6 +829,8 @@ impl AiGateway {
             temperature,
             max_output_tokens,
             json_mode: request.response_format == ResponseFormat::Json,
+            // F-46：思考程度只来自模型默认值；请求级不带该维度。
+            reasoning_effort: model.defaults.reasoning_effort,
         }
     }
 
@@ -859,8 +860,7 @@ impl AiGateway {
         let mut removed = 0;
         let mut kept = VecDeque::with_capacity(order.len());
         while let Some(id) = order.pop_front() {
-            let evictable = removed < surplus
-                && records.get(&id).is_some_and(|rec| rec.lifecycle.is_terminal());
+            let evictable = removed < surplus && records.get(&id).is_some_and(|rec| rec.lifecycle.is_terminal());
             if evictable {
                 records.remove(&id);
                 removed += 1;

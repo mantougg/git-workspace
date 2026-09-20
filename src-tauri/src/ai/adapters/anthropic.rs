@@ -13,6 +13,7 @@
 use serde_json::json;
 
 use super::super::error::AiError;
+use super::super::model::ReasoningEffort;
 use super::super::request::{AiTokenUsage, MessageRole};
 use super::super::transport::BoxFuture;
 use super::SseAction;
@@ -103,6 +104,25 @@ fn build_body(request: &ProviderRequest, stream: bool) -> serde_json::Value {
     }
     if let Some(t) = request.temperature {
         obj.insert("temperature".into(), json!(t));
+    }
+    // F-46 思考程度：low/medium/high 发 Extended Thinking（budget_tokens 须
+    // ≥1024 且 < max_tokens，不足时降级不传）；off 不传即不思考（默认如此）。
+    // thinking 与自定义 temperature 不兼容，开启思考时移除 temperature。
+    if let Some(level) = request.reasoning_effort {
+        if level != ReasoningEffort::Off {
+            let max_tokens = request.max_output_tokens.unwrap_or(4096);
+            if max_tokens > 1024 {
+                let budget = match level {
+                    ReasoningEffort::Low => 1024,
+                    ReasoningEffort::Medium => 4096,
+                    ReasoningEffort::High => 16384,
+                    ReasoningEffort::Off => unreachable!(),
+                }
+                .min(max_tokens - 1);
+                obj.insert("thinking".into(), json!({"type": "enabled", "budget_tokens": budget}));
+                obj.remove("temperature");
+            }
+        }
     }
     // 无原生 structured output 参数：json_mode 降级为不传（§7.2）。
     body
@@ -204,6 +224,7 @@ mod tests {
             temperature: Some(0.1),
             max_output_tokens: Some(1024),
             json_mode: true,
+            reasoning_effort: None,
         };
         let body = build_body(&req, true);
         assert_eq!(body["system"], "sys\n\nextra sys");
@@ -211,6 +232,61 @@ mod tests {
         assert_eq!(body["messages"][0]["role"], "user");
         assert!(body.get("response_format").is_none(), "无原生 json 参数");
         assert_eq!(body["stream"], true);
+        // F-46：缺省不传 thinking（零回归），temperature 保留
+        assert!(body.get("thinking").is_none());
+        assert_eq!(body["temperature"], 0.1);
+    }
+
+    /// F-46：low/medium/high 发 Extended Thinking；thinking 与自定义
+    /// temperature 不兼容，开启思考时移除；off 不传（本就如此）。
+    #[test]
+    fn reasoning_levels_emit_thinking_budget() {
+        let base = ProviderRequest {
+            model_id: "claude-x".into(),
+            system: None,
+            messages: vec![],
+            temperature: Some(0.7),
+            max_output_tokens: Some(20000),
+            json_mode: false,
+            reasoning_effort: None,
+        };
+        for (level, budget) in [
+            (ReasoningEffort::Low, 1024),
+            (ReasoningEffort::Medium, 4096),
+            (ReasoningEffort::High, 16384),
+        ] {
+            let mut r = base.clone();
+            r.reasoning_effort = Some(level);
+            let body = build_body(&r, false);
+            assert_eq!(body["thinking"]["type"], "enabled");
+            assert_eq!(body["thinking"]["budget_tokens"], budget);
+            assert!(body.get("temperature").is_none(), "thinking 开启时移除 temperature");
+        }
+        let mut off = base.clone();
+        off.reasoning_effort = Some(ReasoningEffort::Off);
+        let body = build_body(&off, false);
+        assert!(body.get("thinking").is_none());
+        assert_eq!(body["temperature"], 0.7, "off 不影响 temperature");
+    }
+
+    /// F-46：budget_tokens 须 < max_tokens；max_tokens 不足以容纳最小
+    /// budget（1024）时降级不传 thinking。
+    #[test]
+    fn thinking_budget_clamped_below_max_tokens() {
+        let mut r = ProviderRequest {
+            model_id: "claude-x".into(),
+            system: None,
+            messages: vec![],
+            temperature: None,
+            max_output_tokens: Some(2000),
+            json_mode: false,
+            reasoning_effort: Some(ReasoningEffort::High),
+        };
+        let body = build_body(&r, false);
+        assert_eq!(body["thinking"]["budget_tokens"], 1999, "钳到 max_tokens-1");
+        r.max_output_tokens = Some(1024);
+        let body = build_body(&r, false);
+        assert!(body.get("thinking").is_none(), "max_tokens<=1024 时降级不传");
     }
 
     #[test]
@@ -222,6 +298,7 @@ mod tests {
             temperature: None,
             max_output_tokens: None,
             json_mode: false,
+            reasoning_effort: None,
         };
         assert!(AnthropicMessagesAdapter.validate(&test_model(), &req).is_err());
     }

@@ -8,6 +8,7 @@
 use serde_json::json;
 
 use super::super::error::AiError;
+use super::super::model::ReasoningEffort;
 use super::super::request::{AiTokenUsage, MessageRole};
 use super::super::transport::BoxFuture;
 use super::SseAction;
@@ -89,6 +90,19 @@ fn build_body(request: &ProviderRequest, stream: bool) -> serde_json::Value {
     }
     if request.json_mode {
         obj.insert("response_format".into(), json!({"type": "json_object"}));
+    }
+    // F-46 思考程度方言：off 同时带国产方言与 OpenAI 系参数（不识别的字段
+    // 被 Provider 忽略）；其余档发 OpenAI 系 reasoning_effort。
+    match request.reasoning_effort {
+        Some(ReasoningEffort::Off) => {
+            obj.insert("enable_thinking".into(), json!(false)); // 通义 Qwen3
+            obj.insert("thinking".into(), json!({"type": "disabled"})); // 火山 Doubao / 智谱 GLM
+            obj.insert("reasoning_effort".into(), json!("minimal")); // OpenAI 系
+        }
+        Some(level) => {
+            obj.insert("reasoning_effort".into(), json!(level.as_str()));
+        }
+        None => {}
     }
     body
 }
@@ -189,6 +203,7 @@ mod tests {
             temperature: Some(0.2),
             max_output_tokens: Some(512),
             json_mode: true,
+            reasoning_effort: None,
         }
     }
 
@@ -202,6 +217,39 @@ mod tests {
         assert_eq!(body["temperature"], 0.2);
         assert_eq!(body["max_tokens"], 512);
         assert_eq!(body["response_format"]["type"], "json_object");
+        // F-46：缺省不传任何思考参数（零回归）
+        assert!(body.get("reasoning_effort").is_none());
+        assert!(body.get("enable_thinking").is_none());
+        assert!(body.get("thinking").is_none());
+    }
+
+    /// F-46：off 同时覆盖国产方言（enable_thinking / thinking.disabled）
+    /// 与 OpenAI 系（reasoning_effort=minimal）。
+    #[test]
+    fn reasoning_off_emits_all_dialects() {
+        let mut r = req();
+        r.reasoning_effort = Some(ReasoningEffort::Off);
+        let body = build_body(&r, false);
+        assert_eq!(body["enable_thinking"], false);
+        assert_eq!(body["thinking"]["type"], "disabled");
+        assert_eq!(body["reasoning_effort"], "minimal");
+    }
+
+    /// F-46：其余档只发 OpenAI 系 reasoning_effort。
+    #[test]
+    fn reasoning_levels_emit_reasoning_effort_only() {
+        for (level, expect) in [
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+        ] {
+            let mut r = req();
+            r.reasoning_effort = Some(level);
+            let body = build_body(&r, false);
+            assert_eq!(body["reasoning_effort"], expect);
+            assert!(body.get("enable_thinking").is_none());
+            assert!(body.get("thinking").is_none());
+        }
     }
 
     #[test]

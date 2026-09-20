@@ -131,6 +131,15 @@
             placeholder="留空使用默认"
           />
         </n-form-item>
+        <n-form-item label="思考程度">
+          <n-select
+            v-model:value="form.reasoningEffort"
+            :options="reasoningEffortOptions"
+          />
+          <template #feedback>
+            Commit Message 等轻任务建议「关闭」以省时；Provider 不识别的参数可能被拒（400），此时请改回默认
+          </template>
+        </n-form-item>
         <n-form-item label="启用">
           <n-switch v-model:value="form.enabled" />
         </n-form-item>
@@ -187,6 +196,15 @@ const providerOptions = computed(() =>
 
 const providerName = (id: string) => props.providers.find((p) => p.id === id)?.name ?? id;
 
+// F-46：思考程度档位；空串 = 默认（不传任何思考参数，由 Provider 决定）。
+const reasoningEffortOptions = [
+  { label: "默认（由 Provider 决定）", value: "" },
+  { label: "关闭思考（轻任务省时）", value: "off" },
+  { label: "低", value: "low" },
+  { label: "中", value: "medium" },
+  { label: "高", value: "high" },
+];
+
 const form = reactive({
   show: false,
   saving: false,
@@ -197,6 +215,7 @@ const form = reactive({
   capabilities: [] as ModelCapability[],
   maxContextTokens: 0,
   temperature: null as number | null,
+  reasoningEffort: "" as "" | "off" | "low" | "medium" | "high",
   enabled: true,
 });
 
@@ -267,6 +286,7 @@ function openCreate() {
     capabilities: ["chat"] as ModelCapability[],
     maxContextTokens: 128000,
     temperature: null,
+    reasoningEffort: "",
     enabled: true,
   });
   fetchedModels.value = [];
@@ -285,6 +305,7 @@ function openEdit(m: AiModel) {
     capabilities: [...m.capabilities],
     maxContextTokens: m.maxContextTokens,
     temperature: m.defaults.temperature ?? null,
+    reasoningEffort: m.defaults.reasoningEffort ?? "",
     enabled: m.enabled,
   });
 }
@@ -302,7 +323,10 @@ async function save() {
           displayName: id,
           capabilities: form.capabilities,
           maxContextTokens: form.maxContextTokens ?? 0,
-          defaults: { temperature: form.temperature ?? undefined },
+          defaults: {
+            temperature: form.temperature ?? undefined,
+            reasoningEffort: form.reasoningEffort || undefined,
+          },
           enabled: form.enabled,
         });
       }
@@ -317,7 +341,10 @@ async function save() {
       displayName: form.displayName.trim(),
       capabilities: form.capabilities,
       maxContextTokens: form.maxContextTokens ?? 0,
-      defaults: { temperature: form.temperature ?? undefined },
+      defaults: {
+        temperature: form.temperature ?? undefined,
+        reasoningEffort: form.reasoningEffort || undefined,
+      },
       enabled: form.enabled,
     });
     message.success("已保存");

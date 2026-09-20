@@ -9,6 +9,7 @@
 use serde_json::json;
 
 use super::super::error::AiError;
+use super::super::model::ReasoningEffort;
 use super::super::request::{AiTokenUsage, MessageRole};
 use super::super::transport::BoxFuture;
 use super::SseAction;
@@ -98,6 +99,14 @@ fn build_body(request: &ProviderRequest, stream: bool) -> serde_json::Value {
     }
     if request.json_mode {
         obj.insert("text".into(), json!({"format": {"type": "json_object"}}));
+    }
+    // F-46 思考程度：Responses 方言为 reasoning.effort；off 映射 minimal。
+    if let Some(level) = request.reasoning_effort {
+        let effort = match level {
+            ReasoningEffort::Off => "minimal",
+            other => other.as_str(),
+        };
+        obj.insert("reasoning".into(), json!({"effort": effort}));
     }
     body
 }
@@ -192,6 +201,7 @@ mod tests {
             temperature: None,
             max_output_tokens: Some(256),
             json_mode: true,
+            reasoning_effort: None,
         };
         let body = build_body(&req, false);
         assert_eq!(body["instructions"], "sys");
@@ -199,6 +209,33 @@ mod tests {
         assert_eq!(body["max_output_tokens"], 256);
         assert_eq!(body["text"]["format"]["type"], "json_object");
         assert_eq!(body["stream"], false);
+        // F-46：缺省不传 reasoning（零回归）
+        assert!(body.get("reasoning").is_none());
+    }
+
+    /// F-46：Responses 方言 reasoning.effort；off 映射 minimal。
+    #[test]
+    fn reasoning_effort_maps_to_reasoning_object() {
+        let base = ProviderRequest {
+            model_id: "gpt-5".into(),
+            system: None,
+            messages: vec![],
+            temperature: None,
+            max_output_tokens: Some(256),
+            json_mode: false,
+            reasoning_effort: None,
+        };
+        for (level, expect) in [
+            (ReasoningEffort::Off, "minimal"),
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Medium, "medium"),
+            (ReasoningEffort::High, "high"),
+        ] {
+            let mut r = base.clone();
+            r.reasoning_effort = Some(level);
+            let body = build_body(&r, true);
+            assert_eq!(body["reasoning"]["effort"], expect);
+        }
     }
 
     #[test]

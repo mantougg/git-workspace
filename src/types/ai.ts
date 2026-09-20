@@ -103,6 +103,11 @@ export interface AiProviderTestResult {
 
 export interface AiModelDefaults {
   temperature?: number;
+  /**
+   * 思考程度（F-46）：缺省 = 不传任何思考参数（Provider 模型默认值）；
+   * off = 关闭思考（Commit Message 等轻任务省时）。
+   */
+  reasoningEffort?: "off" | "low" | "medium" | "high";
 }
 
 export interface AiModel {

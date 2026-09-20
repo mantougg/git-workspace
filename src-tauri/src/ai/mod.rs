@@ -66,7 +66,7 @@ pub use gateway::{AiGateway, AiRequestSnapshot, GatewayConfig};
 pub use lifecycle::RequestPhase;
 pub use model::{
     ensure_task_capability, list_models, list_task_defaults, resolve_model, AiModel, AiModelDefaults, AiTaskDefault,
-    AiTaskKind, ModelCapability, ModelResolutionSource, ResolvedModel, SaveAiModelRequest,
+    AiTaskKind, ModelCapability, ModelResolutionSource, ReasoningEffort, ResolvedModel, SaveAiModelRequest,
 };
 pub use proposal::{ActionKind, ActionProposal, ProposalStatus, RiskLevel};
 pub use provider::{

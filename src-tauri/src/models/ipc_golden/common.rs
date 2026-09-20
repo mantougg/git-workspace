@@ -280,7 +280,10 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 crate::ai::ModelCapability::StructuredOutput,
             ],
             max_context_tokens: 128000,
-            defaults: crate::ai::AiModelDefaults { temperature: Some(0.2) },
+            defaults: crate::ai::AiModelDefaults {
+                temperature: Some(0.2),
+                reasoning_effort: None
+            },
             enabled: true,
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
@@ -288,7 +291,10 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
     );
     m.insert(
         "AiModelDefaults".into(),
-        json!(crate::ai::AiModelDefaults { temperature: Some(0.2) }),
+        json!(crate::ai::AiModelDefaults {
+            temperature: Some(0.2),
+            reasoning_effort: None
+        }),
     );
     m.insert(
         "SaveAiModelRequest".into(),
@@ -298,7 +304,10 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             display_name: "GPT-4o mini".into(),
             capabilities: vec![crate::ai::ModelCapability::Chat],
             max_context_tokens: 128000,
-            defaults: crate::ai::AiModelDefaults { temperature: Some(0.2) },
+            defaults: crate::ai::AiModelDefaults {
+                temperature: Some(0.2),
+                reasoning_effort: None
+            },
             enabled: true,
         }),
     );
@@ -327,7 +336,8 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 updated_at: "2026-01-01T00:00:00Z".into(),
             }],
             persistent_store_available: true,
-            session_credential_count: 0,            legacy_review_count: 3,
+            session_credential_count: 0,
+            legacy_review_count: 3,
             legacy_task_count: 4,
         }),
     );

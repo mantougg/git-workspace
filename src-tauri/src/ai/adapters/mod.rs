@@ -25,7 +25,7 @@ use std::time::Duration;
 use crate::error::AppResult;
 
 use super::error::AiError;
-use super::model::AiModel;
+use super::model::{AiModel, ReasoningEffort};
 use super::provider::ApiType;
 use super::provider::ANTHROPIC_API_VERSION;
 use super::request::{AiMessage, AiTokenUsage};
@@ -68,6 +68,8 @@ pub struct ProviderRequest {
     pub max_output_tokens: Option<i64>,
     /// structured output 请求（协议不支持时降级为不传参数）。
     pub json_mode: bool,
+    /// 思考程度（F-46）：`None` = 不传任何思考参数，保持 Provider 默认。
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 /// 目标端点（baseUrl + 凭证）。Key 只在内存流经，不进日志/URL。

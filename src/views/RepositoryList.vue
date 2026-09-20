@@ -1825,7 +1825,9 @@ async function submitCommits(commits: CommitRequest[]) {
 // ---------------------------------------------------------------------------
 
 async function pollAiResult(requestId: string): Promise<AiResult | null> {
-  for (let i = 0; i < 60; i++) {
+  // F-46：轮询上限与后端请求超时（120s）对齐；思考型模型思考阶段长，
+  // 30s 的任意上限会在后端终将成功时提前报错放弃。
+  for (let i = 0; i < 240; i++) {
     await new Promise((r) => setTimeout(r, 500));
     const status = await aiGetRequestStatus(requestId);
     if (status?.phase === "succeeded" && status.result) {
@@ -1835,7 +1837,7 @@ async function pollAiResult(requestId: string): Promise<AiResult | null> {
       throw new Error(status.error || "AI 请求失败");
     }
   }
-  throw new Error("AI 生成超时");
+  throw new Error("AI 生成超时（已等待 120 秒）。思考型模型耗时较长，可在「AI 设置 → 模型」中关闭/调低思考后重试");
 }
 
 async function generateCommitMessage() {
