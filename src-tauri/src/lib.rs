@@ -285,6 +285,7 @@ pub fn run() {
             diff::get_unstaged_diff,
             diff::get_staged_diff,
             diff::read_file_as_diff,
+            diff::read_workdir_file,
             diff::get_revision_diff,
             diff::get_commit_diff,
             // Hunk / line staging commands (T-12)

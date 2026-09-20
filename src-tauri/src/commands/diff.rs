@@ -92,6 +92,46 @@ pub fn read_file_as_diff(repo_path: String, file_path: String) -> AppResult<Vec<
     }])
 }
 
+/// Upper bound for full-file reads (「查看整个文件」模式)。超大文件直接拒绝，
+/// 让前端回落到差异视图，避免把巨型文件整体拉进内存 / WebView。
+const WORKDIR_FILE_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Full working-directory file content for the "view entire file" mode.
+///
+/// Per-line git status is not computed here: the frontend overlays it from
+/// the diff hunks it already holds (added / modified / deleted markers).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkdirFile {
+    pub total_lines: u32,
+    pub lines: Vec<String>,
+}
+
+/// Read a working-directory file in full (Tauri command).
+///
+/// Rejects binary / non-UTF-8 files and files over `WORKDIR_FILE_MAX_BYTES`
+/// with actionable errors so the UI can fall back to the diff view.
+#[tauri::command]
+pub fn read_workdir_file(repo_path: String, file_path: String) -> AppResult<WorkdirFile> {
+    let full = Path::new(&repo_path).join(&file_path);
+    let meta = std::fs::metadata(&full)
+        .map_err(|e| AppError::Other(format!("读取文件失败: {e}")))?;
+    if meta.len() > WORKDIR_FILE_MAX_BYTES {
+        return Err(AppError::Other(format!(
+            "文件过大（{} 字节，上限 {} 字节），请使用差异视图",
+            meta.len(),
+            WORKDIR_FILE_MAX_BYTES
+        )));
+    }
+    let content = std::fs::read_to_string(&full)
+        .map_err(|e| AppError::Other(format!("读取文件失败（可能是二进制文件）: {e}")))?;
+    let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    Ok(WorkdirFile {
+        total_lines: lines.len() as u32,
+        lines,
+    })
+}
+
 /// Diff between two arbitrary revisions (T-12 双点 Diff): branch / tag /
 /// commit specs, e.g. `main` vs `feature`, `v1.0` vs `v1.1`, or two oids.
 ///
@@ -366,5 +406,24 @@ mod tests {
         assert_eq!(unstaged_adds, vec!["THREE"]);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// read_workdir_file returns the full file content as lines.
+    #[test]
+    fn read_workdir_file_returns_all_lines() {
+        let dir = tmpdir("fullfile");
+        std::fs::write(dir.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+        let f = read_workdir_file(dir.to_string_lossy().to_string(), "a.txt".to_string()).unwrap();
+        assert_eq!(f.total_lines, 3);
+        assert_eq!(f.lines, vec!["one", "two", "three"]);
+    }
+
+    /// Missing files must fail with an actionable error (UI falls back to diff).
+    #[test]
+    fn read_workdir_file_missing_file_errors() {
+        let dir = tmpdir("fullfile_missing");
+        let err = read_workdir_file(dir.to_string_lossy().to_string(), "nope.txt".to_string())
+            .unwrap_err();
+        assert!(err.to_string().contains("读取文件失败"), "{err}");
     }
 }

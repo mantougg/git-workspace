@@ -33,6 +33,7 @@ declare module 'vue' {
     CommitHeatmap: typeof import('./components/repo/CommitHeatmap.vue')['default']
     ContextMenu: typeof import('./components/shell/ContextMenu.vue')['default']
     ConversationView: typeof import('./components/ai/ConversationView.vue')['default']
+    FileContent: typeof import('./components/diff/FileContent.vue')['default']
     GroupTree: typeof import('./components/common/GroupTree.vue')['default']
     LogManager: typeof import('./components/common/LogManager.vue')['default']
     NAlert: typeof import('naive-ui')['NAlert']

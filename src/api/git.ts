@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { FileDiff } from "@/types/git";
+import type { FileDiff, WorkdirFile } from "@/types/git";
 
 /** Diff rendering options (Roadmap §9 diff settings). */
 export interface DiffOptions {
@@ -30,6 +30,17 @@ export function readFileAsDiff(
   filePath: string,
 ): Promise<FileDiff[]> {
   return invoke<FileDiff[]>("read_file_as_diff", { repoPath, filePath });
+}
+
+/**
+ * Read a working-directory file in full (「查看整个文件」模式)。
+ * 二进制 / 非 UTF-8 / 超大文件会返回可行动错误，由前端回落到差异视图。
+ */
+export function readWorkdirFile(
+  repoPath: string,
+  filePath: string,
+): Promise<WorkdirFile> {
+  return invoke<WorkdirFile>("read_workdir_file", { repoPath, filePath });
 }
 
 /** Staged changes only (HEAD tree → index), matching `git diff --cached`. */

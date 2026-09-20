@@ -38,6 +38,7 @@
         ]"
         @click="toggleLine(item)"
       >
+        <span class="gutter-bar" :class="item.status" />
         <span class="line-num old">{{ item.line.oldLine ?? "" }}</span>
         <span class="line-num new">{{ item.line.newLine ?? "" }}</span>
         <span class="line-prefix">{{ prefix(item.line.lineType) }}</span>
@@ -51,6 +52,7 @@
 import { computed, ref, watch } from "vue";
 import VirtualList from "@/components/common/VirtualList.vue";
 import type { DiffLine, FileDiff } from "@/types/git";
+import { refineHunkLines, type RefinedLineStatus } from "@/utils/diffStatus";
 
 /** A staging operation requested from the diff view (T-12). */
 export interface StageOp {
@@ -88,6 +90,8 @@ type Row =
       lineIndex: number;
       selectable: boolean;
       selected: boolean;
+      /** IDEA 风格精化状态（-后跟 + 为 modified），驱动行号栅格色条。 */
+      status: RefinedLineStatus;
     };
 
 /** Selected change lines, keyed `${hunkIndex}:${lineIndex}`. */
@@ -105,6 +109,7 @@ const rows = computed<Row[]>(() => {
   const out: Row[] = [];
   const interactive = props.mode !== null;
   props.file.hunks.forEach((hunk, hunkIndex) => {
+    const refined = refineHunkLines(hunk);
     const selectedCount = interactive ? countSelected(hunkIndex) : 0;
     out.push({
       type: "header",
@@ -123,6 +128,7 @@ const rows = computed<Row[]>(() => {
         lineIndex,
         selectable,
         selected: selectable && selection.value.has(`${hunkIndex}:${lineIndex}`),
+        status: refined[lineIndex],
       });
     });
   });
@@ -253,6 +259,30 @@ function prefix(type: string): string {
 
 .diff-line.selected.delete {
   background: color-mix(in srgb, var(--gw-danger) 22%, transparent);
+}
+
+/* 行号栏 git 状态色条（IDEA 风格）：绿=新增、蓝=修改、红=删除。 */
+.gutter-bar {
+  align-self: stretch;
+  width: 3px;
+  flex-shrink: 0;
+  margin-right: 5px;
+}
+
+.gutter-bar.added {
+  background: var(--gw-success);
+}
+
+.gutter-bar.modified {
+  background: var(--gw-accent);
+}
+
+.gutter-bar.deleted {
+  background: var(--gw-danger);
+}
+
+.gutter-bar.context {
+  background: transparent;
 }
 
 .line-num {

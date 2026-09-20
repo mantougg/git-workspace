@@ -203,6 +203,11 @@
               {{ statusText(selectedDiff.file.status) }}
             </n-tag>
           </div>
+          <n-radio-group v-model:value="diffViewMode" size="small">
+            <n-radio-button value="unified">统一</n-radio-button>
+            <n-radio-button value="side">并排</n-radio-button>
+            <n-radio-button value="file">全文</n-radio-button>
+          </n-radio-group>
           <n-button
             size="small"
             text
@@ -211,9 +216,18 @@
             <template #icon><n-icon><CloseOutline /></n-icon></template>
           </n-button>
         </div>
-        <n-spin :show="diffLoading" class="diff-pane-spin">
+        <n-spin :show="diffLoading || fullFileLoading" class="diff-pane-spin">
           <div class="diff-pane-body">
-            <UnifiedDiff :file="selectedDiff.file" />
+            <UnifiedDiff v-if="diffViewMode === 'unified'" :file="selectedDiff.file" />
+            <SideBySideDiff
+              v-else-if="diffViewMode === 'side'"
+              :file="selectedDiff.file"
+            />
+            <FileContent
+              v-else-if="fullFile && fullFileStatus"
+              :lines="fullFile.lines"
+              :line-status="fullFileStatus"
+            />
           </div>
         </n-spin>
       </div>
@@ -761,7 +775,7 @@ import {
   SparklesOutline,
   WarningOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon, NTag, useMessage, useDialog } from "naive-ui";
+import { NButton, NIcon, NRadioButton, NRadioGroup, NTag, useMessage, useDialog } from "naive-ui";
 import { listen } from "@tauri-apps/api/event";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
@@ -798,17 +812,20 @@ import type {
   WorkspaceStashItemEntry,
   WorkspaceStashSummary,
 } from "@/types/workspaceStash";
-import { getDiff, getUnstagedDiff, readFileAsDiff } from "@/api/git";
+import { getDiff, getUnstagedDiff, readFileAsDiff, readWorkdirFile } from "@/api/git";
 import { batchAdd, batchRestore, getWorkspaceChanges, type AddRequest, type RestoreRequest } from "@/api/changes";
 import type { CommitRequest } from "@/types/task";
 import type { RepoChanges } from "@/types/changes";
 import type { ScanProgress } from "@/types/events";
-import type { FileDiff } from "@/types/git";
+import type { FileDiff, WorkdirFile } from "@/types/git";
 import ChangeTree, {
   type ChangeNode,
   type TreeSelection,
 } from "@/components/repo/ChangeTree.vue";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
+import FileContent from "@/components/diff/FileContent.vue";
+import SideBySideDiff from "@/components/diff/SideBySideDiff.vue";
+import { buildFileLineStatus } from "@/utils/diffStatus";
 import LogManager from "@/components/common/LogManager.vue";
 import { errMsg } from "@/utils/error";
 import { COMMIT_REQUEST_EVENT } from "@/commands/registry";
@@ -1159,6 +1176,56 @@ const wsStashCheck = ref({
 const scanProgress = ref<{ found: number; current: number; total: number | null } | null>(null);
 const selectedDiff = ref<SelectedDiff | null>(null);
 const diffLoading = ref(false);
+
+// diff 面板三态：统一 / 并排 / 全文。选择持久化（同侧栏折叠），全文按需加载。
+const DIFF_VIEW_MODE_KEY = "gw-diff-view-mode";
+type DiffViewMode = "unified" | "side" | "file";
+const savedDiffViewMode = localStorage.getItem(DIFF_VIEW_MODE_KEY);
+const diffViewMode = ref<DiffViewMode>(
+  savedDiffViewMode === "side" || savedDiffViewMode === "file"
+    ? savedDiffViewMode
+    : "unified",
+);
+const fullFile = ref<WorkdirFile | null>(null);
+const fullFileLoading = ref(false);
+/** 全文加载序列号：快速切换文件时丢弃过期响应（同 diffLoadSeq 模式）。 */
+let fullFileSeq = 0;
+/** 由当前文件的 diff hunks 投影出的全文行状态（行号栏色条用）。 */
+const fullFileStatus = computed(() =>
+  selectedDiff.value ? buildFileLineStatus(selectedDiff.value.file) : null,
+);
+
+watch(diffViewMode, (mode) => {
+  localStorage.setItem(DIFF_VIEW_MODE_KEY, mode);
+  if (mode === "file" && !fullFile.value) loadFullFile();
+});
+
+// 切换文件时丢弃旧全文；若仍停留在全文模式则重新加载。
+watch(selectedDiff, () => {
+  fullFile.value = null;
+  if (diffViewMode.value === "file") loadFullFile();
+});
+
+async function loadFullFile() {
+  if (!selectedDiff.value) return;
+  const seq = ++fullFileSeq;
+  fullFileLoading.value = true;
+  try {
+    const file = await readWorkdirFile(
+      selectedDiff.value.repoPath,
+      selectedDiff.value.relPath,
+    );
+    if (seq !== fullFileSeq) return;
+    fullFile.value = file;
+  } catch (e) {
+    if (seq !== fullFileSeq) return;
+    // 二进制 / 超大 / 已删除文件：提示后回落到统一差异。
+    message.error("读取整个文件失败: " + errMsg(e));
+    diffViewMode.value = "unified";
+  } finally {
+    if (seq === fullFileSeq) fullFileLoading.value = false;
+  }
+}
 
 const treeSelection = ref<TreeSelection>({ repoPaths: [], filesByRepo: new Map() });
 const changeTreeRef = ref<InstanceType<typeof ChangeTree> | null>(null);

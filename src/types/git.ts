@@ -19,3 +19,10 @@ export interface DiffLine {
   oldLine: number | null;
   newLine: number | null;
 }
+
+/** Full working-directory file content (「查看整个文件」模式，后端 read_workdir_file)。
+ *  每行的 git 状态由前端从 diff hunks 叠加，不由后端计算。 */
+export interface WorkdirFile {
+  totalLines: number;
+  lines: string[];
+}

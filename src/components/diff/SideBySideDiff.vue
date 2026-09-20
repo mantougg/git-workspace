@@ -10,6 +10,7 @@
           :title="item.old?.content"
         >
           <template v-if="item.old">
+            <span class="gutter-bar" :class="item.old.status" />
             <span class="line-num">{{ item.old.num ?? "" }}</span>
             <span class="line-prefix">{{ item.old.type === "delete" ? "-" : " " }}</span>
             <span class="line-content">{{ item.old.content }}</span>
@@ -20,6 +21,7 @@
           :title="item.new?.content"
         >
           <template v-if="item.new">
+            <span class="gutter-bar" :class="item.new.status" />
             <span class="line-num">{{ item.new.num ?? "" }}</span>
             <span class="line-prefix">{{ item.new.type === "add" ? "+" : " " }}</span>
             <span class="line-content">{{ item.new.content }}</span>
@@ -33,7 +35,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import VirtualList from "@/components/common/VirtualList.vue";
-import type { FileDiff, Hunk } from "@/types/git";
+import type { FileDiff } from "@/types/git";
+import { refineHunkLines, type RefinedLineStatus } from "@/utils/diffStatus";
 
 const props = defineProps<{
   file: FileDiff;
@@ -46,34 +49,20 @@ interface AlignedLine {
   num: number | null;
   content: string;
   type: string;
+  /** IDEA 风格精化状态，驱动行号栏色条（与 UnifiedDiff 同源）。 */
+  status: RefinedLineStatus;
 }
 
 type Row =
   | { type: "header"; text: string }
   | { type: "pair"; old: AlignedLine | null; new: AlignedLine | null };
 
-function oldLines(hunk: Hunk): AlignedLine[] {
-  return hunk.lines
-    .filter((l) => l.lineType !== "add")
-    .map((l) => ({
-      num: l.oldLine,
-      content: l.content,
-      type: l.lineType,
-    }));
-}
-
-function newLines(hunk: Hunk): AlignedLine[] {
-  return hunk.lines
-    .filter((l) => l.lineType !== "delete")
-    .map((l) => ({
-      num: l.newLine,
-      content: l.content,
-      type: l.lineType,
-    }));
-}
-
 // Flatten hunks into header + paired old/new rows so a single virtual window
 // bounds the DOM node count (T-04 frontend rendering budget).
+//
+// 配对规则：一段连续的 `-` 后紧跟一段连续的 `+` 视为同一个「修改块」，
+// 两侧按 1:1 对齐（多出的一侧单独成行）——按索引硬配会在两侧行数
+// 不等时把不相关的行对到一起。context 行两侧同时出现。
 const rows = computed<Row[]>(() => {
   const out: Row[] = [];
   for (const hunk of props.file.hunks) {
@@ -81,15 +70,33 @@ const rows = computed<Row[]>(() => {
       type: "header",
       text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
     });
-    const left = oldLines(hunk);
-    const right = newLines(hunk);
-    for (let i = 0; i < Math.max(left.length, right.length); i++) {
-      out.push({
-        type: "pair",
-        old: left[i] ?? null,
-        new: right[i] ?? null,
-      });
-    }
+    const refined = refineHunkLines(hunk);
+    let dels: AlignedLine[] = [];
+    let adds: AlignedLine[] = [];
+    const flush = () => {
+      const n = Math.max(dels.length, adds.length);
+      for (let i = 0; i < n; i++) {
+        out.push({ type: "pair", old: dels[i] ?? null, new: adds[i] ?? null });
+      }
+      dels = [];
+      adds = [];
+    };
+    hunk.lines.forEach((l, i) => {
+      const status = refined[i];
+      if (l.lineType === "delete") {
+        dels.push({ num: l.oldLine, content: l.content, type: l.lineType, status });
+      } else if (l.lineType === "add") {
+        adds.push({ num: l.newLine, content: l.content, type: l.lineType, status });
+      } else {
+        flush();
+        out.push({
+          type: "pair",
+          old: { num: l.oldLine, content: l.content, type: "context", status },
+          new: { num: l.newLine, content: l.content, type: "context", status },
+        });
+      }
+    });
+    flush();
   }
   return out;
 });
@@ -97,7 +104,7 @@ const rows = computed<Row[]>(() => {
 
 <style scoped>
 .side-by-side-diff {
-  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-family: var(--gw-font-mono);
   font-size: 13px;
 }
 
@@ -145,6 +152,30 @@ const rows = computed<Row[]>(() => {
 
 .diff-cell.context {
   background: var(--gw-bg-hover);
+}
+
+/* 行号栏 git 状态色条（IDEA 风格）：绿=新增、蓝=修改、红=删除。 */
+.gutter-bar {
+  align-self: stretch;
+  width: 3px;
+  flex-shrink: 0;
+  margin-right: 5px;
+}
+
+.gutter-bar.added {
+  background: var(--gw-success);
+}
+
+.gutter-bar.modified {
+  background: var(--gw-accent);
+}
+
+.gutter-bar.deleted {
+  background: var(--gw-danger);
+}
+
+.gutter-bar.context {
+  background: transparent;
 }
 
 .line-num {
