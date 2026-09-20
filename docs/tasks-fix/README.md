@@ -1,6 +1,6 @@
 # GitWorkspace 问题修复任务总览
 
-> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）；2026-09-03 追加 1 项（F-32，CI 失败）与 3 项（F-33~F-35，用户反馈）；2026-09-04 追加 2 项（F-36~F-37，LAN 加密聊天用户反馈）与 4 项（F-38~F-41，用户反馈）；2026-09-20 追加 2 项（F-44、F-45，用户反馈）。
+> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）；2026-09-03 追加 1 项（F-32，CI 失败）与 3 项（F-33~F-35，用户反馈）；2026-09-04 追加 2 项（F-36~F-37，LAN 加密聊天用户反馈）与 4 项（F-38~F-41，用户反馈）；2026-09-20 追加 8 项（F-44、F-45、F-46~F-51，用户反馈）。
 > 注：2026-09-13 项目全景分析报告的修复批次（26 项）独立成系列，见 [docs/tasks-project-analysis-fix/](../tasks-project-analysis-fix/README.md)（PAF-01~PAF-26），不占用本系列编号。
 > 拆分原则：**每个问题一个独立文档**（同目录下 `F-XX-<slug>.md`），可独立跟踪修复进度与验收。
 > 本文件是唯一的修复进度索引；每个任务文档内另有自己的「进度」章节。
@@ -21,8 +21,8 @@
 
 ## 总体进度
 
-- 任务总数：**44**
-- 已完成：**41** · 修复中：**3** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**50**
+- 已完成：**42** · 修复中：**8** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -75,6 +75,12 @@
 | F-43 | 使用 AI 功能点击确认后应用闪退（同步命令在无 Tokio runtime 线程上调 tokio::spawn） | P0 | 🟦 | [F-43-ai-approve-sync-command-tokio-spawn-crash.md](./F-43-ai-approve-sync-command-tokio-spawn-crash.md) |
 | F-44 | 终端启动命令在 PowerShell 下解析失败（行首引号路径缺 `&` 调用运算符） | P1 | 🟦 | [F-44-terminal-launch-powershell-call-operator.md](./F-44-terminal-launch-powershell-call-operator.md) |
 | F-45 | 终端启动命令在 PowerShell 下被拆参数（`-Dspring.*` 裸 token 在第一个 `.` 处断开） | P1 | 🟦 | [F-45-terminal-launch-powershell-arg-splitting.md](./F-45-terminal-launch-powershell-arg-splitting.md) |
+| F-46 | AI 生成耗时长（思考型模型无思考控制入口）+ 生成轮询 30s 硬上限 | P1 | 🟦 | [F-46-ai-reasoning-effort-and-poll-timeout.md](./F-46-ai-reasoning-effort-and-poll-timeout.md) |
+| F-47 | AI 生成 Commit Message：勾选未暂存文件时结果为空或只覆盖部分文件（staged scope 与提交语义不一致） | P0 | 🟦 | [F-47-ai-commit-message-staged-scope-mismatch.md](./F-47-ai-commit-message-staged-scope-mismatch.md) |
+| F-48 | Assistant 对话框发送后无反馈（思考增量全链路丢弃 + 泵空闲超时被思考流量喂活） | P1 | 🟦 | [F-48-assistant-drawer-no-reasoning-feedback.md](./F-48-assistant-drawer-no-reasoning-feedback.md) |
+| F-49 | AI 402 余额不足提示语义化（当前笼统显示「Provider 拒绝了请求」） | P2 | ✅ | [F-49-ai-402-quota-error-message.md](./F-49-ai-402-quota-error-message.md) |
+| F-50 | AI 凭证固定加密文件存储（~/.gitworkspace/credentials），弃用 OS 凭证存储 | P1 | 🟦 | [F-50-credentials-file-only-storage.md](./F-50-credentials-file-only-storage.md) |
+| F-51 | 终端启动（ConPTY）后端日志中文乱码（JVM 输出 UTF-8，控制台代码页 GBK） | P1 | 🟦 | [F-51-terminal-launch-conpty-codepage-mojibake.md](./F-51-terminal-launch-conpty-codepage-mojibake.md) |
 
 ---
 

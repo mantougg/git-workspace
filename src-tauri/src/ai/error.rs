@@ -72,6 +72,14 @@ pub enum AiError {
     #[error("Provider 拒绝了请求: {message}")]
     PolicyRejected { message: String },
 
+    /// Provider 返回 402：账户余额/额度不足（充值或更换 Key）。
+    #[error("AI 额度不足: {message}")]
+    QuotaExceeded {
+        message: String,
+        provider_id: String,
+        model_id: String,
+    },
+
     /// 工具名不在注册表中（§9.3：工具是类型化包装，不是任意函数执行器）。
     #[error("AI 工具不存在: {name}")]
     ToolNotFound { name: String },
@@ -137,6 +145,7 @@ impl AiError {
             AiError::ResponseInvalid { .. } => "AiResponseInvalid",
             AiError::PreviewRequired { .. } => "AiPreviewRequired",
             AiError::PolicyRejected { .. } => "AiPolicyRejected",
+            AiError::QuotaExceeded { .. } => "AiQuotaExceeded",
             AiError::ToolNotFound { .. } => "AiToolNotFound",
             AiError::ToolNotAllowed { .. } => "AiToolNotAllowed",
             AiError::ToolScopeViolation { .. } => "AiToolScopeViolation",
@@ -209,6 +218,13 @@ impl AiError {
             }
             AiError::PolicyRejected { .. } => {
                 vec!["调整请求内容后重试", "检查 Provider 的内容策略与账户权限"]
+            }
+            AiError::QuotaExceeded { .. } => {
+                vec![
+                    "为该 Provider 账户充值或提升额度",
+                    "在 AI 设置中检查任务默认链解析到的 Provider",
+                    "更换有额度的 Provider / API Key",
+                ]
             }
             AiError::ToolNotFound { .. } => {
                 vec!["从工具注册表中选择可用工具", "检查工具名拼写"]
@@ -305,6 +321,14 @@ impl AiError {
             }),
             AiError::ExternalConfirmationRequired { tool } => serde_json::json!({
                 "tool": tool,
+            }),
+            AiError::QuotaExceeded {
+                provider_id,
+                model_id,
+                ..
+            } => serde_json::json!({
+                "providerId": provider_id,
+                "modelId": model_id,
             }),
             _ => serde_json::json!({}),
         };
@@ -403,6 +427,14 @@ mod tests {
                 "AiPolicyRejected",
             ),
             (
+                AiError::QuotaExceeded {
+                    message: "402".into(),
+                    provider_id: "p1".into(),
+                    model_id: "m1".into(),
+                },
+                "AiQuotaExceeded",
+            ),
+            (
                 AiError::ToolNotFound {
                     name: "git.nope".into(),
                 },
@@ -460,8 +492,7 @@ mod tests {
     /// 重试分类（§7.4）：临时网络/429 可重试；Key 无效、超时、策略拒绝等
     /// 直接失败。
     #[test]
-    fn retryable_classification_matches_design() {
-        assert!(AiError::ProviderUnavailable {
+    fn retryable_classification_matches_design() {        assert!(AiError::ProviderUnavailable {
             message: "connect reset".into(),
             transient: true
         }
@@ -514,5 +545,26 @@ mod tests {
         let details: serde_json::Value = serde_json::from_str(&too_large.details_json()).unwrap();
         assert_eq!(details["estimatedTokens"], 120);
         assert_eq!(details["budgetTokens"], 100);
+    }
+
+    /// 402 → QuotaExceeded（F-49）：不可重试但可恢复，details 带
+    /// providerId/modelId（定位任务默认链解析到了谁），建议行动指向额度。
+    #[test]
+    fn quota_exceeded_is_actionable_and_not_retried() {
+        let err = AiError::QuotaExceeded {
+            message: "402".into(),
+            provider_id: "p1".into(),
+            model_id: "m1".into(),
+        };
+        assert!(!err.is_retryable(), "充值类失败重试无意义");
+        assert!(err.recoverable());
+        assert!(
+            err.suggested_actions().iter().any(|a| a.contains("额度")),
+            "建议行动必须指向额度: {:?}",
+            err.suggested_actions()
+        );
+        let details: serde_json::Value = serde_json::from_str(&err.details_json()).unwrap();
+        assert_eq!(details["providerId"], "p1");
+        assert_eq!(details["modelId"], "m1");
     }
 }

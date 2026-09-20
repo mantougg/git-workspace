@@ -214,6 +214,7 @@ pub(super) fn transport_error(e: TransportError) -> AiError {
 
 /// HTTP 状态码归一化（§17）：
 /// - 401/403 → `AiAuthenticationFailed`（不可重试）
+/// - 402 → `AiQuotaExceeded`（账户余额/额度不足，不可重试，F-49）
 /// - 429 → `AiRateLimited`（可重试）
 /// - 404 + 模型不存在特征 → `AiModelNotFound`
 /// - 其余 4xx → `AiPolicyRejected`（Provider 拒绝，含 413 载荷过大）
@@ -237,6 +238,18 @@ async fn classify_status(
                 "Provider 认证失败（HTTP {}）：请在 AI 设置-凭证中检查或替换 API Key",
                 status
             ),
+        });
+    }
+    if status == 402 {
+        return Err(AiError::QuotaExceeded {
+            message: format!(
+                "Provider 返回 HTTP 402（余额/额度不足{}）：请为该账户充值或更换有额度的 Key",
+                api_error_label(&body_text)
+                    .map(|l| format!("，{}", l))
+                    .unwrap_or_default(),
+            ),
+            provider_id: provider_id.to_string(),
+            model_id: model_id.to_string(),
         });
     }
     if status == 429 {
