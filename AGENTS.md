@@ -79,6 +79,16 @@ This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 r
 
 ## 3. 进程与系统命令
 
+- **写入 PTY 的命令行必须按目标 shell 语法适配（F-44）**：PowerShell 把行首
+  引号字符串当表达式——引号路径调用必须补 `&` 调用运算符
+  （`& "C:\Program Files\...\java.exe" args`），否则 ParserError
+  「表达式或语句中存在意外的标记」；cmd 与 POSIX sh 的引号首词原生作为
+  命令词，无需处理。env 注入语法三分流：PowerShell `$env:K='V'; …`
+  （`;` 连接兼容 Windows PowerShell 5.1，`&&` 仅 pwsh 7+；`set` 是
+  Set-Variable 别名，不注入进程环境）、cmd `set K=V && …`、posix
+  `K=V …`。参照实现：`commands/terminal.rs::assemble_command_for_shell`
+  + `process/pty.rs::shell_kind`（先解析 shell 再适配，并把同一路径显式
+  传给 `open`，保证适配目标与实际 shell 一致）。
 - **端口占用检测**：Windows `netstat -ano` + `tasklist`；Unix `lsof` + `/proc/<pid>/comm`
   （`process/port.rs`）。解析函数保持纯函数（输入输出样例可单测），系统调用只留
   `detect_port_occupier` 一个入口。

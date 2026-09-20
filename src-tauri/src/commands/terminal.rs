@@ -6,8 +6,8 @@
 use tauri::State;
 
 use crate::process::pty::{
-    ShellInfo, TerminalCloseParams, TerminalOpenParams, TerminalResizeParams, TerminalSessionInfo,
-    TerminalWriteParams,
+    detect_default_shell, shell_kind, ShellInfo, ShellKind, TerminalCloseParams,
+    TerminalOpenParams, TerminalResizeParams, TerminalSessionInfo, TerminalWriteParams,
 };
 use crate::state::AppState;
 
@@ -91,7 +91,7 @@ pub async fn terminal_list_shells(state: State<'_, AppState>) -> Result<Vec<Shel
 /// 打开一个可交互 Shell tab 并写入启动命令执行。
 /// 此模式无健康检查/端口检测/日志落盘，UI 需明示降级。
 ///
-/// 支持 env 注入（平台感知）和脱敏闸门。
+/// 支持 env 注入（按目标 shell 语法适配）和脱敏闸门。
 #[tauri::command]
 pub async fn runtime_start_in_terminal(
     state: State<'_, AppState>,
@@ -111,8 +111,12 @@ pub async fn runtime_start_in_terminal(
         }
     }
 
-    // 1. 组装命令（platform-aware env 注入）
-    let full_command = assemble_command_with_env(&command, env.as_ref());
+    // 1. 先解析目标 shell，按 shell 语法适配命令行（F-44：PowerShell 行首
+    //    引号路径需 `&` 调用运算符，否则 ParserError；env 注入语法随之分流）。
+    //    解析来源与 TerminalManager::open 的默认探测是同一个函数，随后把
+    //    同一路径显式传给 open，保证适配目标与实际 shell 始终一致。
+    let shell_path = detect_default_shell()?;
+    let full_command = assemble_command_for_shell(&command, env.as_ref(), shell_kind(&shell_path));
 
     // 2. 打开 PTY 会话
     let default_cwd = cwd.unwrap_or_else(|| {
@@ -125,7 +129,7 @@ pub async fn runtime_start_in_terminal(
     let session_id = state.terminal.open(
         TerminalOpenParams {
             cwd: Some(default_cwd.clone()),
-            shell: None, // 使用默认 shell
+            shell: Some(shell_path.to_string_lossy().to_string()),
             cols: 80,
             rows: 24,
         },
@@ -141,35 +145,55 @@ pub async fn runtime_start_in_terminal(
     Ok(session_id)
 }
 
-/// 组装带 env 注入的命令（platform-aware）。
+/// 组装写入 PTY 的完整命令行（按目标 shell 语法适配，F-44）。
 ///
-/// unix: `A=b C=d cmd` 前缀
-/// Windows cmd: `set A=b && set C=d && cmd`
-fn assemble_command_with_env(
+/// - PowerShell：行首为引号（含空格路径被 `launcher::plan_shell_command`
+///   加双引号）时补 `&` 调用运算符——否则 PowerShell 把行首字符串当表达式，
+///   后续参数触发 ParserError（"表达式或语句中存在意外的标记"）。env 注入
+///   `$env:K='V'; …`（`;` 连接兼容 Windows PowerShell 5.1——`&&` 仅 pwsh 7+；
+///   `set` 在 PowerShell 是 Set-Variable 别名，不注入进程环境）。
+/// - cmd：`set K=V && …`；cmd 的引号首词原生作为命令名，无需 `&`。
+/// - posix sh：`K=V …` 前缀；引号首词原生作为命令词，无需处理。
+fn assemble_command_for_shell(
     command: &str,
     env: Option<&std::collections::HashMap<String, String>>,
+    kind: ShellKind,
 ) -> String {
+    let command = match kind {
+        ShellKind::PowerShell if command.starts_with('"') || command.starts_with('\'') => {
+            format!("& {command}")
+        }
+        _ => command.to_string(),
+    };
     let Some(env_map) = env else {
-        return command.to_string();
+        return command;
     };
     if env_map.is_empty() {
-        return command.to_string();
+        return command;
     }
-
-    if cfg!(windows) {
-        // Windows: `set A=b && set C=d && cmd`
-        let sets: Vec<String> = env_map
-            .iter()
-            .map(|(k, v)| format!("set {}={}", k, v))
-            .collect();
-        format!("{} && {}", sets.join(" && "), command)
-    } else {
-        // Unix: `A=b C=d cmd`
-        let prefix: Vec<String> = env_map
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect();
-        format!("{} {}", prefix.join(" "), command)
+    match kind {
+        ShellKind::PowerShell => {
+            // 单引号字符串（PowerShell 不展开变量），内部 `'` 转义为 `''`
+            let sets: Vec<String> = env_map
+                .iter()
+                .map(|(k, v)| format!("$env:{} = '{}'", k, v.replace('\'', "''")))
+                .collect();
+            format!("{}; {}", sets.join("; "), command)
+        }
+        ShellKind::Cmd => {
+            let sets: Vec<String> = env_map
+                .iter()
+                .map(|(k, v)| format!("set {}={}", k, v))
+                .collect();
+            format!("{} && {}", sets.join(" && "), command)
+        }
+        ShellKind::Posix => {
+            let prefix: Vec<String> = env_map
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect();
+            format!("{} {}", prefix.join(" "), command)
+        }
     }
 }
 
@@ -200,4 +224,110 @@ fn is_sensitive_env(key: &str, value: &str) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn env_of(pairs: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    /// F-44 原始案例：jdk-1.8 在 Program Files（含空格）下，plan_shell_command
+    /// 产出引号路径命令，写入 PowerShell 必须带 `&` 调用运算符。
+    #[test]
+    fn powershell_quoted_executable_gets_call_operator() {
+        let cmd = r#""C:\Program Files\Java\jdk-1.8\bin\java.exe" -XX:TieredStopAtLevel=1 -Dmanagement.endpoints.jmx.exposure.include=* -cp pathing.jar com.jxdinfo.hussar.example.HussarApplication"#;
+        let line = assemble_command_for_shell(cmd, None, ShellKind::PowerShell);
+        assert_eq!(line, format!("& {cmd}"));
+    }
+
+    /// 非引号首词在 PowerShell 下原生可执行，不应加 `&`。
+    #[test]
+    fn powershell_unquoted_executable_unchanged() {
+        let cmd = r"C:\tools\mvn.cmd spring-boot:run";
+        assert_eq!(
+            assemble_command_for_shell(cmd, None, ShellKind::PowerShell),
+            cmd
+        );
+    }
+
+    /// cmd 与 posix sh 的引号首词原生作为命令名/命令词，永不加 `&`。
+    #[test]
+    fn cmd_and_posix_never_get_call_operator() {
+        let cmd = r#""C:\Program Files\Java\jdk-1.8\bin\java.exe" -jar app.jar"#;
+        assert_eq!(assemble_command_for_shell(cmd, None, ShellKind::Cmd), cmd);
+        assert_eq!(assemble_command_for_shell(cmd, None, ShellKind::Posix), cmd);
+    }
+
+    #[test]
+    fn powershell_env_uses_env_provider_and_semicolon_join() {
+        let env = env_of(&[("SERVER_PORT", "8080"), ("PROFILE", "dev")]);
+        let line =
+            assemble_command_for_shell("java -jar app.jar", Some(&env), ShellKind::PowerShell);
+        // HashMap 顺序不定：两个赋值都出现、以 `; ` 收尾接命令即可
+        assert!(line.contains("$env:SERVER_PORT = '8080'"));
+        assert!(line.contains("$env:PROFILE = 'dev'"));
+        assert!(line.ends_with("; java -jar app.jar"));
+    }
+
+    /// PowerShell 单引号字符串内的 `'` 必须转义为 `''`。
+    #[test]
+    fn powershell_env_value_single_quote_escaped() {
+        let env = env_of(&[("A", "x'y")]);
+        assert_eq!(
+            assemble_command_for_shell("cmdline", Some(&env), ShellKind::PowerShell),
+            "$env:A = 'x''y'; cmdline"
+        );
+    }
+
+    /// PowerShell env + 引号路径：`&` 保留在命令上，赋值在前。
+    #[test]
+    fn powershell_env_with_quoted_executable() {
+        let env = env_of(&[("A", "1")]);
+        let cmd = r#""C:\Program Files\Java\jdk-1.8\bin\java.exe" -jar app.jar"#;
+        assert_eq!(
+            assemble_command_for_shell(cmd, Some(&env), ShellKind::PowerShell),
+            format!("$env:A = '1'; & {cmd}")
+        );
+    }
+
+    #[test]
+    fn cmd_env_uses_set_and_double_ampersand() {
+        let env = env_of(&[("A", "1")]);
+        assert_eq!(
+            assemble_command_for_shell("java -jar app.jar", Some(&env), ShellKind::Cmd),
+            "set A=1 && java -jar app.jar"
+        );
+    }
+
+    #[test]
+    fn posix_env_uses_prefix_assignments() {
+        let env = env_of(&[("A", "1"), ("B", "2")]);
+        let line = assemble_command_for_shell("./run.sh", Some(&env), ShellKind::Posix);
+        assert!(line.starts_with("A=1 ") || line.starts_with("B=2 "));
+        assert!(line.ends_with(" ./run.sh"));
+        assert!(line.contains("A=1") && line.contains("B=2"));
+    }
+
+    #[test]
+    fn none_or_empty_env_returns_command_itself() {
+        let cmd = r#""C:\a b\java.exe" -jar app.jar"#;
+        for kind in [ShellKind::PowerShell, ShellKind::Cmd, ShellKind::Posix] {
+            let expected = if kind == ShellKind::PowerShell {
+                format!("& {cmd}")
+            } else {
+                cmd.to_string()
+            };
+            assert_eq!(assemble_command_for_shell(cmd, None, kind), expected);
+            assert_eq!(
+                assemble_command_for_shell(cmd, Some(&std::collections::HashMap::new()), kind),
+                expected
+            );
+        }
+    }
 }

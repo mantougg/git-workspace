@@ -16,7 +16,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -88,7 +88,11 @@ fn shell_candidates() -> Vec<(&'static str, &'static str, String)> {
 }
 
 /// 探测默认 shell（§5.1 顺序，找到第一个即返回）。
-fn detect_default_shell() -> Result<PathBuf, String> {
+///
+/// `pub(crate)`：F-44 起 `runtime_start_in_terminal` 在 open 前先解析 shell，
+/// 以便按 shell 类型适配写入 PTY 的命令行（PowerShell 需 `&` 调用运算符），
+/// 并把同一路径显式传给 `open`，保证适配目标与实际 shell 一致。
+pub(crate) fn detect_default_shell() -> Result<PathBuf, String> {
     let candidates = shell_candidates();
     for (_id, _label, name) in &candidates {
         if let Some(path) = find_in_path(name) {
@@ -96,6 +100,31 @@ fn detect_default_shell() -> Result<PathBuf, String> {
         }
     }
     Err("PATH 上未找到可用 shell。请安装 zsh/bash/sh 或在 Windows 上安装 PowerShell。".to_string())
+}
+
+/// Shell 种类（F-44：写入 PTY 的命令行需按目标 shell 语法适配）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShellKind {
+    /// pwsh / powershell：行首引号路径需 `&` 调用运算符；env 注入 `$env:K='V'`。
+    PowerShell,
+    /// cmd.exe：env 注入 `set K=V && …`。
+    Cmd,
+    /// sh 系（bash/zsh/sh）：引号首词原生作为命令词；env 注入 `K=V` 前缀。
+    Posix,
+}
+
+/// 按可执行文件名分类 shell（去扩展名、大小写不敏感；未知 stem 归 Posix——
+/// posix 形式不加 `&`，与本次修复前行为一致，是最安全的兜底）。
+pub(crate) fn shell_kind(shell_path: &Path) -> ShellKind {
+    let stem = shell_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    match stem.as_str() {
+        "pwsh" | "powershell" => ShellKind::PowerShell,
+        "cmd" => ShellKind::Cmd,
+        _ => ShellKind::Posix,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -747,6 +776,34 @@ mod tests {
     }
 
     // -- 纯函数单测 --
+
+    /// F-44：按可执行文件名 stem 分类 shell（大小写不敏感、去扩展名）。
+    #[test]
+    fn shell_kind_classifies_by_executable_stem() {
+        assert_eq!(
+            shell_kind(Path::new(r"C:\Program Files\PowerShell\7\pwsh.exe")),
+            ShellKind::PowerShell
+        );
+        assert_eq!(
+            shell_kind(Path::new(
+                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+            )),
+            ShellKind::PowerShell
+        );
+        assert_eq!(
+            shell_kind(Path::new(r"C:\Windows\System32\cmd.exe")),
+            ShellKind::Cmd
+        );
+        // 大小写不敏感
+        assert_eq!(
+            shell_kind(Path::new(r"C:\WINDOWS\system32\CMD.EXE")),
+            ShellKind::Cmd
+        );
+        assert_eq!(shell_kind(Path::new("/bin/bash")), ShellKind::Posix);
+        assert_eq!(shell_kind(Path::new("/usr/bin/zsh")), ShellKind::Posix);
+        // 未知 stem 归 Posix（不加 `&`，与修复前行为一致的最安全兜底）
+        assert_eq!(shell_kind(Path::new("/usr/bin/fish")), ShellKind::Posix);
+    }
 
     #[test]
     fn shell_candidates_returns_correct_order_on_linux() {

@@ -1,6 +1,6 @@
 # GitWorkspace 问题修复任务总览
 
-> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）；2026-09-03 追加 1 项（F-32，CI 失败）与 3 项（F-33~F-35，用户反馈）；2026-09-04 追加 2 项（F-36~F-37，LAN 加密聊天用户反馈）与 4 项（F-38~F-41，用户反馈）。
+> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）；2026-09-03 追加 1 项（F-32，CI 失败）与 3 项（F-33~F-35，用户反馈）；2026-09-04 追加 2 项（F-36~F-37，LAN 加密聊天用户反馈）与 4 项（F-38~F-41，用户反馈）；2026-09-20 追加 1 项（F-44，用户反馈）。
 > 注：2026-09-13 项目全景分析报告的修复批次（26 项）独立成系列，见 [docs/tasks-project-analysis-fix/](../tasks-project-analysis-fix/README.md)（PAF-01~PAF-26），不占用本系列编号。
 > 拆分原则：**每个问题一个独立文档**（同目录下 `F-XX-<slug>.md`），可独立跟踪修复进度与验收。
 > 本文件是唯一的修复进度索引；每个任务文档内另有自己的「进度」章节。
@@ -21,8 +21,8 @@
 
 ## 总体进度
 
-- 任务总数：**43**
-- 已完成：**41** · 修复中：**2** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**44**
+- 已完成：**41** · 修复中：**3** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -73,6 +73,7 @@
 | F-41 | Runtime 依赖页「刷新」不好使（静默早退 + 树/详情不联动 + 解析完成不自动同步） | P1 | ✅ | [F-41-deps-view-refresh-button.md](./F-41-deps-view-refresh-button.md) |
 | F-42 | 终端面板不自动打开真终端（默认落在不可关闭的 Git Console tab） | P1 | 🟦 | [F-42-terminal-panel-auto-open-real-shell.md](./F-42-terminal-panel-auto-open-real-shell.md) |
 | F-43 | 使用 AI 功能点击确认后应用闪退（同步命令在无 Tokio runtime 线程上调 tokio::spawn） | P0 | 🟦 | [F-43-ai-approve-sync-command-tokio-spawn-crash.md](./F-43-ai-approve-sync-command-tokio-spawn-crash.md) |
+| F-44 | 终端启动命令在 PowerShell 下解析失败（行首引号路径缺 `&` 调用运算符） | P1 | 🟦 | [F-44-terminal-launch-powershell-call-operator.md](./F-44-terminal-launch-powershell-call-operator.md) |
 
 ---
 
