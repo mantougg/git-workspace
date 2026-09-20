@@ -1869,7 +1869,10 @@ async function generateCommitMessage() {
       processId: null,
       project: null,
       userInstruction: "",
-      diffScope: "staged",
+      // F-47：批量提交在提交那一刻才 stage 勾选文件，staged diff 里不存在
+      // 未暂存的勾选文件；workdir（HEAD→workdir+index 含 untracked）与
+      // 提交内容语义一致，includePaths 过滤保证只看勾选文件。
+      diffScope: "workdir",
       diffSelection: { repositories },
       supplementary: undefined,
       exclusions: [],
@@ -1887,13 +1890,30 @@ async function generateCommitMessage() {
     // 轮询等待结果
     const result = await pollAiResult(approved.requestId);
 
-    // 填入输入框
+    // 填入输入框（F-47 加固：title 为空用 body/降级文本兜底；模型未返回
+    // 合法 JSON 时后端降级为 answer/generatedText，直接把文本填入；
+    // 全部落空才提示失败，不弹成功）
     if (result?.type === "commitSuggestion") {
       const { title, body } = result.payload as { title: string; body?: string[] };
-      commitForm.value.message = body?.length
-        ? `${title}\n\n${body.join("\n")}`
-        : title;
-      message.success("AI 已生成 Commit Message");
+      const text = title?.trim()
+        ? body?.length
+          ? `${title}\n\n${body.join("\n")}`
+          : title
+        : body?.filter((l) => l.trim()).join("\n") ?? "";
+      if (text.trim()) {
+        commitForm.value.message = text;
+        message.success("AI 已生成 Commit Message");
+      } else {
+        message.warning("AI 返回的提交建议为空，请重试或调低模型思考程度");
+      }
+    } else if (result?.type === "answer" || result?.type === "generatedText") {
+      const text = result.text?.trim() ?? "";
+      if (text) {
+        commitForm.value.message = text;
+        message.success("AI 已生成 Commit Message（纯文本）");
+      } else {
+        message.warning("AI 返回内容为空，请重试或调低模型思考程度");
+      }
     } else {
       message.warning("AI 未返回有效的提交建议");
     }
