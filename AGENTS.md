@@ -89,6 +89,16 @@ This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 r
   `K=V …`。参照实现：`commands/terminal.rs::assemble_command_for_shell`
   + `process/pty.rs::shell_kind`（先解析 shell 再适配，并把同一路径显式
   传给 `open`，保证适配目标与实际 shell 一致）。
+- **PowerShell 参数模式会拆裸 token（F-45）**：写进 PTY 的命令行会被 shell
+  当源码重解析，**单个 `-` 前缀且含 `.` 的裸 token 在第一个 `.` 处被拆成两
+  个参数**（`-Dspring.output.ansi.enabled=always` → `-Dspring` +
+  `.output.ansi.enabled=always`，JVM 把后者当主类报「找不到或无法加载主
+  类」）；`--` 双横线前缀不受影响。同类字符：`,`（ParserError）、`;` `|` `&`
+  （断开命令，多条目 classpath 的 `;` 分隔符命中）、`$`/反引号（展开/转义）、
+  `'` `(` `)` `{`（ParserError）。**每个 token 组装时就要按字符集判定并加双
+  引号**，不能只判空格。参照实现：
+  `runtime/launch/launcher.rs::plan_shell_command` + `arg_needs_quoting`
+  /`shell_quote_arg`（内含双引号用 `""` 转义，PowerShell 与 cmd CRT 一致）。
 - **端口占用检测**：Windows `netstat -ano` + `tasklist`；Unix `lsof` + `/proc/<pid>/comm`
   （`process/port.rs`）。解析函数保持纯函数（输入输出样例可单测），系统调用只留
   `detect_port_occupier` 一个入口。

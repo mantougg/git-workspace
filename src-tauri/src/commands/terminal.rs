@@ -264,6 +264,40 @@ mod tests {
         assert_eq!(assemble_command_for_shell(cmd, None, ShellKind::Posix), cmd);
     }
 
+    /// F-44 + F-45 组合：`plan_shell_command` 的引号路径命令经 PowerShell
+    /// 适配补 `&` 调用运算符，且 `-D<name>.<name>` token 保持引号包裹——
+    /// 否则 PowerShell 参数模式在第一个 `.` 处把 `-Dspring` 与
+    /// `.output.ansi.enabled=always` 拆成两个参数，JVM 把后者当主类。
+    #[test]
+    fn powershell_launch_line_from_classpath_plan_keeps_quoted_args() {
+        let plan = crate::runtime::build::LaunchPlan::JavaClasspath {
+            java_exec: std::path::PathBuf::from(r"C:\Program Files\Java\jdk-1.8\bin\java.exe"),
+            classpath: vec![std::path::PathBuf::from(r"D:\ws\target\pathing.jar")],
+            main_class: "com.example.Application".into(),
+            vm_options: vec![
+                "-XX:TieredStopAtLevel=1".into(),
+                "-Dspring.output.ansi.enabled=always".into(),
+            ],
+            program_arguments: vec![],
+            env: vec![],
+            working_dir: std::path::PathBuf::from(r"D:\ws"),
+            preview: String::new(),
+        };
+        let command = crate::runtime::launch::launcher::plan_shell_command(&plan);
+        let line = assemble_command_for_shell(&command, None, ShellKind::PowerShell);
+        assert!(
+            line.starts_with(
+                r#"& "C:\Program Files\Java\jdk-1.8\bin\java.exe" -XX:TieredStopAtLevel=1 "-Dspring.output.ansi.enabled=always""#
+            ),
+            "{line}"
+        );
+        assert!(line.contains(r#" "-Dspring.output.ansi.enabled=always""#), "{line}");
+        assert!(
+            line.ends_with(r#" -cp "D:\ws\target\pathing.jar" "com.example.Application""#),
+            "{line}"
+        );
+    }
+
     #[test]
     fn powershell_env_uses_env_provider_and_semicolon_join() {
         let env = env_of(&[("SERVER_PORT", "8080"), ("PROFILE", "dev")]);

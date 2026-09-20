@@ -123,8 +123,9 @@ pub fn plan_preview(plan: &LaunchPlan) -> String {
 ///
 /// 与 [`plan_preview`]（展示/落库用，空格 join、不加引号）不同，本函数用
 /// 结构化字段重新组装：剥 Windows verbatim 前缀（`\\?\`，PowerShell/cmd
-/// 不识别其作为命令名）、含空格参数加双引号。preview 字符串把含空格路径
-/// 拆散后无法可靠还原，故必须在持有 `LaunchPlan` 结构化字段处组装。
+/// 不识别其作为命令名）、按 [`arg_needs_quoting`] 的字符集对每个 token
+/// 加双引号。preview 字符串把含空格路径拆散后无法可靠还原，故必须在持有
+/// `LaunchPlan` 结构化字段处组装。
 pub fn plan_shell_command(plan: &LaunchPlan) -> String {
     match plan {
         LaunchPlan::MavenGoal { request, .. } => crate::maven::executor::build_command(request)
@@ -175,20 +176,67 @@ pub fn plan_shell_command(plan: &LaunchPlan) -> String {
     }
 }
 
-/// 路径参数：剥 verbatim 前缀后含空格则加双引号。
+/// 路径参数：剥 verbatim 前缀后按 [`shell_quote_arg`] 的字符集判定加引号
+/// （`Program Files` / `.jar` 后缀都会命中）。
 fn shell_quote_path(path: &std::path::Path) -> String {
     shell_quote_arg(&crate::pathutil::strip_windows_verbatim_prefix(
         &path.to_string_lossy(),
     ))
 }
 
-/// 普通参数：含空格 / tab / 双引号则加双引号（内部 `"` 转义为 `\"`）。
+/// 普通参数：含 shell 不安全字符则加双引号（F-45）。
+///
+/// 命令字符串经 PTY 写入交互 shell 后会被当**源码**重解析，token 的形状直接
+/// 决定它收到几个参数。PowerShell 参数模式下实测（本机 pwsh 7.6.6 + JDK 1.8）：
+/// - 单个 `-` 前缀且含 `.` 的**裸** token 在第一个 `.` 处被拆成两个参数
+///   （`-Dspring.output.ansi.enabled=always` → `-Dspring` +
+///   `.output.ansi.enabled=always`，JVM 把后者当主类，报「找不到或无法加载
+///   主类」）——Spring Boot 默认注入的 `-Dspring.*` 全覆盖命中；
+/// - `,` 触发 ParserError；`;` `|` `&` 直接断开命令（`-cp a.jar;b.jar` 的
+///   Windows 路径分隔符同样命中）；`$` 变量展开、反引号转义；
+/// - 加双引号即作为单个 token 原样传入；`-XX:TieredStopAtLevel=1`（无 `.`）
+///   等良构 token 保持裸写。
+/// cmd 与 POSIX sh 的引号首词/引号 token 同样是单参数语义，加引号无害。
 fn shell_quote_arg(arg: &str) -> String {
-    if arg.contains(' ') || arg.contains('\t') || arg.contains('"') {
-        format!("\"{}\"", arg.replace('"', "\\\""))
+    if arg_needs_quoting(arg) {
+        // `""` 是双引号串内的字面引号转义（PowerShell 与 cmd CRT 一致）。
+        format!("\"{}\"", arg.replace('"', "\"\""))
     } else {
         arg.to_string()
     }
+}
+
+/// 需要引号包裹的字符：空白/引号、PowerShell 参数模式的拆分与展开字符、
+/// 以及 cmd 的元字符（`%` `^` `!` `&` `|` `<` `>`）。
+fn arg_needs_quoting(arg: &str) -> bool {
+    arg.chars()
+        .any(|c| matches!(
+            c,
+            ' ' | '\t'
+                | '\r'
+                | '\n'
+                | '"'
+                | '\''
+                | '`'
+                | '$'
+                | '.'
+                | ','
+                | ';'
+                | '|'
+                | '&'
+                | '<'
+                | '>'
+                | '('
+                | ')'
+                | '{'
+                | '}'
+                | '@'
+                | '#'
+                | '~'
+                | '%'
+                | '^'
+                | '!'
+        ))
 }
 
 /// LaunchPlan 的工作目录（MavenGoal = Maven 请求的工作目录）。
@@ -577,6 +625,140 @@ mod tests {
         assert!(rendered.contains("spring-boot:run"));
         assert_eq!(command.get_current_dir(), Some(Path::new("/ws/repo")));
     }
+
+    /// 按空格切分命令字符串，同时识别双引号包裹；返回 `(token, 是否整体加引号)`。
+    fn split_quoted(command: &str) -> Vec<(String, bool)> {
+        let mut tokens = Vec::new();
+        let mut current = String::new();
+        let mut quoted = false;
+        let mut in_quotes = false;
+        let mut has_content = false;
+        for c in command.chars() {
+            if c == ' ' && !in_quotes {
+                if has_content {
+                    tokens.push((std::mem::take(&mut current), quoted));
+                    quoted = false;
+                    has_content = false;
+                }
+                continue;
+            }
+            if c == '"' {
+                in_quotes = !in_quotes;
+                quoted = true;
+            } else {
+                current.push(c);
+            }
+            has_content = true;
+        }
+        if has_content {
+            tokens.push((current, quoted));
+        }
+        tokens
+    }
+
+    #[test]
+    fn shell_quote_arg_covers_powershell_argument_mode_hazards() {
+        // PowerShell 参数模式：单 `-` 前缀 + 含 `.` 的裸 token 在第一个 `.`
+        // 处被拆成两个参数；`,` 直接 ParserError；`;`/`|`/`&` 断开命令；
+        // `$`/反引号展开转义（F-45）。
+        for arg in [
+            "-Dspring.output.ansi.enabled=always",
+            "-Dfoo=bar.baz",
+            "--server.port=8080",
+            "-Dfoo=a,b",
+            "a.jar;b.jar",
+            "-Dfoo=a|b",
+            "-Dfoo=$HOME",
+            "-Dfoo=a`tb",
+        ] {
+            assert_eq!(
+                shell_quote_arg(arg),
+                format!("\"{arg}\""),
+                "应被整体加引号：{arg}"
+            );
+        }
+        // 良构 token 保持裸写（PowerShell / cmd / sh 都不拆）。
+        for arg in ["-jar", "-cp", "-XX:TieredStopAtLevel=1", "-Dfoo=bar", "mvn"] {
+            assert_eq!(shell_quote_arg(arg), arg, "裸写即可：{arg}");
+        }
+        // 含空格仍走引号；内含双引号按 `""` 转义（PowerShell 与 cmd CRT 一致）。
+        assert_eq!(shell_quote_arg("a b"), "\"a b\"");
+        assert_eq!(shell_quote_arg("a\"b"), "\"a\"\"b\"");
+    }
+
+    /// F-45 原始案例的 LaunchPlan：jdk-1.8 在 Program Files（含空格）下，
+    /// classpath 启动 + Spring Boot 默认注入的 `-Dspring.*`。
+    fn f45_classpath_plan() -> LaunchPlan {
+        LaunchPlan::JavaClasspath {
+            java_exec: PathBuf::from(r"C:\Program Files\Java\jdk-1.8\bin\java.exe"),
+            classpath: vec![PathBuf::from(
+                r"D:\AWork\Code\IPD\.gitworkspace\runtime\IPD原型后端\classpath\pathing-e2459fdcec83117c.jar",
+            )],
+            main_class: "com.jxdinfo.hussar.example.HussarApplication".into(),
+            vm_options: vec![
+                "-XX:TieredStopAtLevel=1".into(),
+                "-Dspring.output.ansi.enabled=always".into(),
+                "-Dcom.sun.management.jmxremote".into(),
+                "-Dspring.jmx.enabled=true".into(),
+                "-Dspring.liveBeansView.mbeanDomain".into(),
+                "-Dspring.application.admin.enabled=true".into(),
+                "-Dmanagement.endpoints.jmx.exposure.include=*".into(),
+                "-Dfile.encoding=UTF-8".into(),
+            ],
+            program_arguments: vec![],
+            env: vec![],
+            working_dir: PathBuf::from(r"D:\AWork\Code\IPD\docs\03原型\hussar-web"),
+            preview: String::new(),
+        }
+    }
+
+    /// F-45 回归：组装出的命令行里不存在「会被 PowerShell 拆开却没加引号」
+    /// 的 token（原 bug 下 `-Dspring` + `.output.ansi.enabled=always` 被当
+    /// 两个参数，JVM 把后者当主类）。
+    #[test]
+    fn plan_shell_command_classpath_quotes_every_unsafe_token() {
+        let cmd = plan_shell_command(&f45_classpath_plan());
+        for (token, quoted) in split_quoted(&cmd) {
+            assert!(
+                quoted || !arg_needs_quoting(&token),
+                "未加引号的危险 token：{token}；完整命令：{cmd}"
+            );
+        }
+    }
+
+    /// 引号只是包裹：剥掉引号后的 argv 序列必须与 `launch_command` 一致。
+    #[test]
+    fn plan_shell_command_classpath_token_sequence() {
+        let cmd = plan_shell_command(&f45_classpath_plan());
+        let tokens: Vec<String> = split_quoted(&cmd).into_iter().map(|(t, _)| t).collect();
+        assert_eq!(tokens[0], r"C:\Program Files\Java\jdk-1.8\bin\java.exe");
+        assert_eq!(tokens[1], "-XX:TieredStopAtLevel=1");
+        // 8 个 vm option（idx 1..=8）之后是 `-cp`、classpath、主类
+        assert_eq!(tokens[2], "-Dspring.output.ansi.enabled=always");
+        assert_eq!(tokens[8], "-Dfile.encoding=UTF-8");
+        assert_eq!(tokens[9], "-cp");
+        assert_eq!(
+            tokens[10],
+            r"D:\AWork\Code\IPD\.gitworkspace\runtime\IPD原型后端\classpath\pathing-e2459fdcec83117c.jar"
+        );
+        assert_eq!(tokens[11], "com.jxdinfo.hussar.example.HussarApplication");
+        assert_eq!(tokens.len(), 12);
+    }
+
+    /// 危险的程序参数同样逐 token 加引号（Node 服务 / 任意 `Script` plan）。
+    #[test]
+    fn plan_shell_command_script_quotes_dangerous_arguments() {
+        let plan = LaunchPlan::Script {
+            executable: PathBuf::from(r"C:\tools\npm.cmd"),
+            args: vec!["run".into(), "dev".into(), "--".into(), "--host=a,b".into()],
+            env: vec![],
+            working_dir: PathBuf::from(r"D:\ws\web"),
+            preview: String::new(),
+        };
+        let cmd = plan_shell_command(&plan);
+        assert_eq!(cmd, r#""C:\tools\npm.cmd" run dev -- "--host=a,b""#);
+    }
+
 
     #[test]
     fn fake_runner_stays_alive_until_terminated_then_reports_exit_code() {
