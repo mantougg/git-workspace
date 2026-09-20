@@ -215,6 +215,14 @@ pub fn probe_version(executable_path: &str) -> (MavenVersionInfo, bool) {
     let exe = Path::new(executable_path);
     // Windows 下 `.cmd` / `.bat` 需经 `cmd /c` 调用（§19 / 任务文档注意点）。
     let mut cmd = build_version_command(exe);
+    // GUI 进程（无控制台）spawn 控制台子进程必须 CREATE_NO_WINDOW，否则
+    // Windows 为其弹可见 conhost 窗口（「在终端中启动」时 Maven 探测弹窗根因；
+    // 平台规范 §3，同 process/streaming.rs）。
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
     let output = cmd.stdout(std::process::Stdio::piped());
     let output = output.stderr(std::process::Stdio::piped());
     let child = match output.spawn() {

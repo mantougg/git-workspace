@@ -119,6 +119,78 @@ pub fn plan_preview(plan: &LaunchPlan) -> String {
     }
 }
 
+/// LaunchPlan 的 shell 可执行命令（TM-06 终端启动）。
+///
+/// 与 [`plan_preview`]（展示/落库用，空格 join、不加引号）不同，本函数用
+/// 结构化字段重新组装：剥 Windows verbatim 前缀（`\\?\`，PowerShell/cmd
+/// 不识别其作为命令名）、含空格参数加双引号。preview 字符串把含空格路径
+/// 拆散后无法可靠还原，故必须在持有 `LaunchPlan` 结构化字段处组装。
+pub fn plan_shell_command(plan: &LaunchPlan) -> String {
+    match plan {
+        LaunchPlan::MavenGoal { request, .. } => crate::maven::executor::build_command(request)
+            .iter()
+            .map(|part| shell_quote_arg(&crate::pathutil::strip_windows_verbatim_prefix(part)))
+            .collect::<Vec<_>>()
+            .join(" "),
+        LaunchPlan::JavaJar {
+            java_exec,
+            jar_path,
+            vm_options,
+            program_arguments,
+            ..
+        } => {
+            let mut parts = vec![shell_quote_path(java_exec)];
+            parts.extend(vm_options.iter().map(|a| shell_quote_arg(a)));
+            parts.push("-jar".into());
+            parts.push(shell_quote_path(jar_path));
+            parts.extend(program_arguments.iter().map(|a| shell_quote_arg(a)));
+            parts.join(" ")
+        }
+        LaunchPlan::JavaClasspath {
+            java_exec,
+            classpath,
+            main_class,
+            vm_options,
+            program_arguments,
+            ..
+        } => {
+            let cp = std::env::join_paths(classpath)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let mut parts = vec![shell_quote_path(java_exec)];
+            parts.extend(vm_options.iter().map(|a| shell_quote_arg(a)));
+            parts.push("-cp".into());
+            parts.push(shell_quote_arg(&cp));
+            parts.push(shell_quote_arg(main_class));
+            parts.extend(program_arguments.iter().map(|a| shell_quote_arg(a)));
+            parts.join(" ")
+        }
+        LaunchPlan::Script {
+            executable, args, ..
+        } => {
+            let mut parts = vec![shell_quote_path(executable)];
+            parts.extend(args.iter().map(|a| shell_quote_arg(a)));
+            parts.join(" ")
+        }
+    }
+}
+
+/// 路径参数：剥 verbatim 前缀后含空格则加双引号。
+fn shell_quote_path(path: &std::path::Path) -> String {
+    shell_quote_arg(&crate::pathutil::strip_windows_verbatim_prefix(
+        &path.to_string_lossy(),
+    ))
+}
+
+/// 普通参数：含空格 / tab / 双引号则加双引号（内部 `"` 转义为 `\"`）。
+fn shell_quote_arg(arg: &str) -> String {
+    if arg.contains(' ') || arg.contains('\t') || arg.contains('"') {
+        format!("\"{}\"", arg.replace('"', "\\\""))
+    } else {
+        arg.to_string()
+    }
+}
+
 /// LaunchPlan 的工作目录（MavenGoal = Maven 请求的工作目录）。
 pub fn plan_working_dir(plan: &LaunchPlan) -> PathBuf {
     match plan {

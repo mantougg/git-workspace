@@ -302,10 +302,12 @@ impl RuntimeProcessManager {
         Ok(found.and_then(|candidate| candidate.default_main_class.clone()))
     }
 
-    /// 按需计算启动命令预览（不 spawn 进程）。
+    /// 按需计算启动命令（不 spawn 进程）。
     ///
     /// 先查缓存，未命中则执行 prepare + build 计算出 LaunchPlan，
-    /// 缓存后返回 `(preview, working_dir)`。供终端启动使用。
+    /// 缓存后返回 `(shell_command, working_dir)`。供终端启动使用——
+    /// 返回 [`launcher::plan_shell_command`] 的 shell 可执行形式（剥
+    /// verbatim 前缀、含空格参数加引号），非展示用 preview。
     pub fn compute_launch_plan(
         &self,
         workspace_id: i64,
@@ -316,7 +318,7 @@ impl RuntimeProcessManager {
             let cache = self.launch_cache.lock().unwrap();
             let key = (workspace_id, runtime_name.to_string());
             if let Some(cached) = cache.get(&key) {
-                let preview = launcher::plan_preview(&cached.plan);
+                let preview = launcher::plan_shell_command(&cached.plan);
                 let working_dir = launcher::plan_working_dir(&cached.plan);
                 return Ok((preview, working_dir.to_string_lossy().to_string()));
             }
@@ -368,7 +370,7 @@ impl RuntimeProcessManager {
             }
         };
 
-        let preview = launcher::plan_preview(&plan);
+        let preview = launcher::plan_shell_command(&plan);
         let working_dir = launcher::plan_working_dir(&plan);
         Ok((preview, working_dir.to_string_lossy().to_string()))
     }

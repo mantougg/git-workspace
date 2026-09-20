@@ -444,6 +444,9 @@ const processPagination = reactive({
 });
 const savingScheduler = ref(false);
 const nodeProjects = ref<NodeProjectNode[]>([]);
+/** 正在启动（计算 preview/构建/spawn）中的 runtime name：终端启动在注册进程
+ *  记录前 isBusy 为 false，用本地集合覆盖这段窗口，防重复点击。 */
+const launching = ref<Set<string>>(new Set());
 
 /** Applications 表格行 class：选中行高亮。naive-ui 的 row-class-name 只拿
  *  (row, index)，用 rowKeyOf 归一后与选中 key 比对。 */
@@ -681,6 +684,7 @@ const selectedPortPidsLines = computed(() => {
 });
 
 function isBusy(name: string): boolean {
+  if (launching.value.has(name)) return true;
   const p = processOf(name);
   if (!p) return false;
   return ["preparing", "resolving", "building", "starting", "stopping"].includes(p.status);
@@ -970,6 +974,7 @@ const configColumns = [
           {
             size: "small",
             type: "primary",
+            loading: launching.value.has(row.name),
             disabled: isBusy(row.name),
             onClick: () => onLaunchInTerminal(row),
           },
@@ -1252,16 +1257,20 @@ const approvalColumns = [
 
 async function onStart(name: string) {
   clearError();
+  launching.value.add(name);
   try {
     await store.start(name);
     message.success(`已提交启动任务：${name}`);
   } catch (e) {
     handleError("启动", e, () => onStart(name));
+  } finally {
+    launching.value.delete(name);
   }
 }
 
 async function onLaunchInTerminal(row: RuntimeConfigSummary) {
   clearError();
+  launching.value.add(row.name);
   try {
     const { useTerminalStore } = await import("@/stores/terminal");
     const { runtimeComputeLaunchPreview, runtimeRegisterTerminalProcess } = await import("@/api/runtime");
@@ -1276,6 +1285,8 @@ async function onLaunchInTerminal(row: RuntimeConfigSummary) {
     message.success(`已在终端中启动：${row.name}`);
   } catch (e) {
     handleError("在终端中启动", e);
+  } finally {
+    launching.value.delete(row.name);
   }
 }
 
