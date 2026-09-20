@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **git-workspace** (15115 symbols, 32848 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
@@ -28,6 +28,17 @@ This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 r
 | `gitnexus://repo/git-workspace/clusters` | All functional areas |
 | `gitnexus://repo/git-workspace/processes` | All execution flows |
 | `gitnexus://repo/git-workspace/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
 
@@ -99,6 +110,15 @@ This project is indexed by GitNexus as **git-workspace** (12431 symbols, 27724 r
   引号**，不能只判空格。参照实现：
   `runtime/launch/launcher.rs::plan_shell_command` + `arg_needs_quoting`
   /`shell_quote_arg`（内含双引号用 `""` 转义，PowerShell 与 cmd CRT 一致）。
+- **ConPTY 输出乱码 = 控制台代码页错配（F-51）**：中文 Windows 控制台输出
+  代码页默认 GBK(936)，conhost 按它把子进程输出字节转 UTF-16 再编码成
+  UTF-8 发给 PTY master——子进程输出 UTF-8（如带 `-Dfile.encoding=UTF-8`
+  的 JVM）会被按 GBK 解码成乱码（「请求路径」→「璇锋眰璺緞」）；反向
+  （子进程 GBK + 控制台 65001）同样成立。应用拉起的终端启动命令必须先
+  `chcp 65001` 切 UTF-8（cmd `chcp 65001 >nul && …`、PowerShell
+  `chcp 65001 | Out-Null; …`，参照 `commands/terminal.rs::utf8_console_prefix`），
+  切完后 JVM 的 `stdout.encoding`（跟随控制台 CP）与显式 UTF-8 设置双向
+  对齐。**交互式 shell tab 不要加**——那是用户自己的会话状态。
 - **端口占用检测**：Windows `netstat -ano` + `tasklist`；Unix `lsof` + `/proc/<pid>/comm`
   （`process/port.rs`）。解析函数保持纯函数（输入输出样例可单测），系统调用只留
   `detect_port_occupier` 一个入口。

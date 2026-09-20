@@ -116,7 +116,18 @@ pub async fn runtime_start_in_terminal(
     //    解析来源与 TerminalManager::open 的默认探测是同一个函数，随后把
     //    同一路径显式传给 open，保证适配目标与实际 shell 始终一致。
     let shell_path = detect_default_shell()?;
-    let full_command = assemble_command_for_shell(&command, env.as_ref(), shell_kind(&shell_path));
+    let kind = shell_kind(&shell_path);
+    let mut full_command = assemble_command_for_shell(&command, env.as_ref(), kind);
+    // F-51：Windows ConPTY 控制台输出代码页默认 GBK(936)，conhost 会把子进程
+    // 的 UTF-8 输出（如带 -Dfile.encoding=UTF-8 的 JVM 日志）按 GBK 解码成
+    // 乱码（「请求路径」→「璇锋眰璺緞」）。启动命令前把控制台切到 UTF-8——
+    // 切完后 JVM 的 stdout.encoding（跟随控制台 CP）与显式 UTF-8 设置双向对齐。
+    // 仅 runtime 启动命令加此前缀：交互式 shell tab 是用户自己的会话，不动。
+    if cfg!(windows) {
+        if let Some(prefix) = utf8_console_prefix(kind) {
+            full_command = format!("{prefix}{full_command}");
+        }
+    }
 
     // 2. 打开 PTY 会话
     let default_cwd = cwd.unwrap_or_else(|| {
@@ -194,6 +205,20 @@ fn assemble_command_for_shell(
                 .collect();
             format!("{} {}", prefix.join(" "), command)
         }
+    }
+}
+
+/// Windows ConPTY 的 UTF-8 代码页切换前缀（F-51）。
+///
+/// 返回写入 PTY 的命令行前缀：cmd `chcp 65001 >nul && `、PowerShell
+/// `chcp 65001 | Out-Null; `（`&&` 仅 pwsh 7+，`;` 连接兼容 Windows
+/// PowerShell 5.1）；Posix shell 无代码页概念返回 None。纯函数以便跨平台
+/// 单测；调用方仅在 `cfg!(windows)` 下使用。
+fn utf8_console_prefix(kind: ShellKind) -> Option<&'static str> {
+    match kind {
+        ShellKind::Cmd => Some("chcp 65001 >nul && "),
+        ShellKind::PowerShell => Some("chcp 65001 | Out-Null; "),
+        ShellKind::Posix => None,
     }
 }
 
@@ -367,5 +392,41 @@ mod tests {
                 expected
             );
         }
+    }
+
+    /// F-51：Windows ConPTY UTF-8 代码页前缀——cmd/PowerShell 有，Posix 无。
+    #[test]
+    fn utf8_console_prefix_per_shell_kind() {
+        assert_eq!(
+            utf8_console_prefix(ShellKind::Cmd),
+            Some("chcp 65001 >nul && ")
+        );
+        assert_eq!(
+            utf8_console_prefix(ShellKind::PowerShell),
+            Some("chcp 65001 | Out-Null; ")
+        );
+        assert_eq!(utf8_console_prefix(ShellKind::Posix), None);
+    }
+
+    /// F-51 组合形态：chcp 前缀在最前，其后是 env 注入与 F-44 的 `&` 调用
+    /// 运算符——保证前缀不改变既有命令行适配的相对顺序。
+    #[test]
+    fn utf8_prefix_composes_with_env_and_call_operator() {
+        let cmd = r#""C:\Program Files\Java\jdk-1.8\bin\java.exe" -jar app.jar"#;
+        let env = env_of(&[("A", "1")]);
+
+        let line = assemble_command_for_shell(cmd, Some(&env), ShellKind::PowerShell);
+        let full = format!("{}{}", utf8_console_prefix(ShellKind::PowerShell).unwrap(), line);
+        assert_eq!(
+            full,
+            r#"chcp 65001 | Out-Null; $env:A = '1'; & "C:\Program Files\Java\jdk-1.8\bin\java.exe" -jar app.jar"#
+        );
+
+        let line = assemble_command_for_shell(cmd, None, ShellKind::Cmd);
+        let full = format!("{}{}", utf8_console_prefix(ShellKind::Cmd).unwrap(), line);
+        assert_eq!(
+            full,
+            r#"chcp 65001 >nul && "C:\Program Files\Java\jdk-1.8\bin\java.exe" -jar app.jar"#
+        );
     }
 }
