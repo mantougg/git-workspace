@@ -1,6 +1,6 @@
 # GitWorkspace 问题修复任务总览
 
-> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）；2026-09-03 追加 1 项（F-32，CI 失败）与 3 项（F-33~F-35，用户反馈）；2026-09-04 追加 2 项（F-36~F-37，LAN 加密聊天用户反馈）与 4 项（F-38~F-41，用户反馈）；2026-09-20 追加 8 项（F-44、F-45、F-46~F-51，用户反馈）。
+> 来源：2026-08-27 用户实测反馈的问题清单（10 项）；2026-08-28 追加 3 项（F-17~F-19）；2026-08-28 下午场追加 3 项（F-20~F-22）；2026-09-02 追加 7 项（F-25~F-31）；2026-09-03 追加 1 项（F-32，CI 失败）与 3 项（F-33~F-35，用户反馈）；2026-09-04 追加 2 项（F-36~F-37，LAN 加密聊天用户反馈）与 4 项（F-38~F-41，用户反馈）；2026-09-20 追加 8 项（F-44、F-45、F-46~F-51，用户反馈）；2026-09-21 追加 1 项（F-52，CI 失败）。
 > 注：2026-09-13 项目全景分析报告的修复批次（26 项）独立成系列，见 [docs/tasks-project-analysis-fix/](../tasks-project-analysis-fix/README.md)（PAF-01~PAF-26），不占用本系列编号。
 > 拆分原则：**每个问题一个独立文档**（同目录下 `F-XX-<slug>.md`），可独立跟踪修复进度与验收。
 > 本文件是唯一的修复进度索引；每个任务文档内另有自己的「进度」章节。
@@ -21,8 +21,8 @@
 
 ## 总体进度
 
-- 任务总数：**50**
-- 已完成：**46** · 修复中：**5** · 未开始：**0** · 仅讨论：**0**
+- 任务总数：**51**
+- 已完成：**46** · 修复中：**6** · 未开始：**0** · 仅讨论：**0**
 
 ---
 
@@ -81,6 +81,7 @@
 | F-49 | AI 402 余额不足提示语义化（当前笼统显示「Provider 拒绝了请求」） | P2 | ✅ | [F-49-ai-402-quota-error-message.md](./F-49-ai-402-quota-error-message.md) |
 | F-50 | AI 凭证固定加密文件存储（~/.gitworkspace/credentials），弃用 OS 凭证存储 | P1 | ✅ | [F-50-credentials-file-only-storage.md](./F-50-credentials-file-only-storage.md) |
 | F-51 | 终端启动（ConPTY）后端日志中文乱码（JVM 输出 UTF-8，控制台代码页 GBK） | P1 | 🟦 | [F-51-terminal-launch-conpty-codepage-mojibake.md](./F-51-terminal-launch-conpty-codepage-mojibake.md) |
+| F-52 | LAN 聊天 Gossip 中继偶发丢消息（入站方登记 peer 晚于回握手帧，中继跳 peers 表未落表即被转发） | P1 | 🟦 | [F-52-lan-chat-gossip-relay-registration-race.md](./F-52-lan-chat-gossip-relay-registration-race.md) |
 
 ---
 

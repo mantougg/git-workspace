@@ -445,7 +445,11 @@ impl ChatManager {
             return Ok(());
         }
 
-        if !self.finish_registration(conn.clone(), send, recv, remote, addr, true).await {
+        // 出站方：握手帧已在上面直接写出，登记后无需再补发控制帧。
+        if !self
+            .finish_registration(conn.clone(), send, recv, remote, addr, true, Vec::new())
+            .await
+        {
             conn.close(0u32.into(), b"duplicate");
         }
         Ok(())
@@ -473,7 +477,7 @@ impl ChatManager {
             .await
             .map_err(|e| AppError::LanChat(format!("入站连接失败: {e}")))?;
         let remote_addr = conn.remote_address();
-        let (mut send, mut recv) = conn
+        let (send, mut recv) = conn
             .accept_bi()
             .await
             .map_err(|e| AppError::LanChat(format!("入站流建立失败: {e}")))?;
@@ -499,18 +503,28 @@ impl ChatManager {
             return Ok(());
         }
 
-        // 回握手 + Peer Exchange。
+        // 回握手 + Peer Exchange 由 finish_registration 在「peer 已登记」之后
+        // 发出（见其 post_register_frames 参数说明）——顺序反了会让对端的
+        // join() 先返回、本节点 peers 表后落表，gossip 转发静默丢帧（F-52）。
         let reply = self.handshake_envelope()?;
-        if protocol::write_frame(&mut send, &reply).await.is_err() {
-            conn.close(0u32.into(), b"closed");
-            return Ok(());
-        }
         let listen_addr = SocketAddr::new(remote_addr.ip(), remote.listen_port);
+        let mut post_register = vec![reply];
         if let Ok(px) = self.peer_exchange_envelope(Some(listen_addr)) {
-            let _ = protocol::write_frame(&mut send, &px).await;
+            post_register.push(px);
         }
 
-        if !self.finish_registration(conn.clone(), send, recv, remote, remote_addr, false).await {
+        if !self
+            .finish_registration(
+                conn.clone(),
+                send,
+                recv,
+                remote,
+                remote_addr,
+                false,
+                post_register,
+            )
+            .await
+        {
             conn.close(0u32.into(), b"duplicate");
         }
         Ok(())
@@ -531,19 +545,31 @@ impl ChatManager {
         Ok(hs)
     }
 
-    /// 握手后注册连接：去重（tie-break）→ 建 writer → 登记 → 互认 → 读循环。
+    /// 握手后注册连接：去重（tie-break）→ 登记 → 回控制帧 → 建 writer → 读循环。
     /// 返回 false 表示因重复连接被拒绝（调用方负责关闭）。
+    ///
+    /// `post_register_frames`：peer 登记完成后、writer 任务启动前要直接写给
+    /// 对端的帧（入站方的握手回复 + Peer Exchange；出站方传空 Vec——它的握手
+    /// 帧已在拨号时先行写出）。
+    ///
+    /// **必须先登记、后回握手**：对端的 `join()`/`connect()` 一读到握手回复
+    /// 就会返回并开始发消息；若那时本节点还没把它登记进 peers 表，随后到达的
+    /// gossip 帧就无处可转（A—B—C 链路上 B 尚未登记 C 时，A 的消息被静默丢弃，
+    /// F-52）。writer 任务同样推迟到控制帧写完之后再起，避免排队帧插到
+    /// 握手回复前面。
+    #[allow(clippy::too_many_arguments)]
     async fn finish_registration(
         self: &Arc<Self>,
         conn: quinn::Connection,
-        send: quinn::SendStream,
+        mut send: quinn::SendStream,
         recv: quinn::RecvStream,
         remote: HandshakePayload,
         remote_addr: SocketAddr,
         outbound: bool,
+        post_register_frames: Vec<Envelope>,
     ) -> bool {
         let peer_id = remote.peer_id.clone();
-        let tx = self.spawn_writer(send);
+        let (tx, rx) = mpsc::unbounded_channel::<Envelope>();
         let handle = PeerHandle {
             peer_id: peer_id.clone(),
             addr: remote_addr,
@@ -556,6 +582,15 @@ impl ChatManager {
             return false;
         }
         log::info!("LAN chat peer connected: {} ({})", peer_id, remote_addr);
+
+        // 已登记 → 现在才回握手 / Peer Exchange（顺序见 doc comment）。
+        for env in post_register_frames {
+            if protocol::write_frame(&mut send, &env).await.is_err() {
+                log::debug!("LAN chat post-registration write to {} failed", peer_id);
+                break;
+            }
+        }
+        self.spawn_writer(rx, send);
 
         // 告知新 peer 我们的昵称（等值于定向 Presence）。
         if let Ok(env) = self.presence_envelope(PresenceStatus::Join) {
@@ -609,8 +644,9 @@ impl ChatManager {
         true
     }
 
-    fn spawn_writer(&self, mut send: quinn::SendStream) -> mpsc::UnboundedSender<Envelope> {
-        let (tx, mut rx) = mpsc::unbounded_channel::<Envelope>();
+    /// 启动 writer 任务：串行写出 channel 里的帧；写失败即退出
+    /// （对端会从 read_loop 侧感知连接已断并清理）。
+    fn spawn_writer(&self, mut rx: mpsc::UnboundedReceiver<Envelope>, mut send: quinn::SendStream) {
         let alive = Arc::clone(&self.alive);
         let handle = tokio::spawn(async move {
             while let Some(env) = rx.recv().await {
@@ -624,7 +660,6 @@ impl ChatManager {
             let _ = send.finish();
         });
         self.tasks.lock().unwrap_or_else(|e| e.into_inner()).push(handle);
-        tx
     }
 
     // ------------------------------------------------------------------
@@ -1247,16 +1282,37 @@ mod tests {
             .await
             .expect("c joins");
 
+        // 中继路径的两跳都必须先落表：A→B（b 侧已登记 A）与 B→C（b 侧已登记 C）。
+        // 只断言 b/c 各自 ≥1 不够——C 的 join() 在读到的握手回复后就返回，而
+        // B 登记 C 发生在回握手之后，竞态下 B 的 peers 表里可能还没有 C，此时
+        // A 的消息经 B 转发会静默丢弃（F-52 的测试侧守卫）。
+        let topology = wait_until(
+            || a.connected_count() >= 1 && b.connected_count() >= 2 && c.connected_count() >= 1,
+            10,
+        )
+        .await;
         assert!(
-            wait_until(|| b.connected_count() >= 1 && c.connected_count() >= 1, 10).await,
-            "chain topology should establish"
+            topology,
+            "relay topology should establish (peers a={}, b={}, c={})",
+            a.connected_count(),
+            b.connected_count(),
+            c.connected_count()
         );
 
         a.send_message("relay me").await.unwrap();
-        let msg = tokio::time::timeout(Duration::from_secs(10), rx_c.recv())
-            .await
-            .expect("c should receive relayed message within 10s")
-            .expect("channel open");
+        let msg = tokio::time::timeout(Duration::from_secs(10), rx_c.recv()).await;
+        let msg = msg.unwrap_or_else(|_| {
+            panic!(
+                "c should receive relayed message within 10s (peers a={}, b={}, c={}; members a={}, b={}, c={})",
+                a.connected_count(),
+                b.connected_count(),
+                c.connected_count(),
+                a.member_count(),
+                b.member_count(),
+                c.member_count()
+            )
+        });
+        let msg = msg.expect("channel open");
         assert_eq!(msg.content, "relay me");
         assert_eq!(msg.sender_name, "alice");
 
