@@ -2858,6 +2858,7 @@
       "workspaceRoot": "/ws"
     },
     "path": "/ws/web",
+    "pathExists": true,
     "projectId": 7,
     "repositoryId": 3,
     "source": "node",

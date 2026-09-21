@@ -36,6 +36,8 @@ export interface UnifiedProjectNode {
   path: string;
   name: string;
   version: string;
+  /** F-54：path 当前是否存在于磁盘（索引陈旧/目录已移动时为 false）。 */
+  pathExists: boolean;
   node: UnifiedNodeProjectPayload | null;
   maven: UnifiedMavenProjectPayload | null;
 }

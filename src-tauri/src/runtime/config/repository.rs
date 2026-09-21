@@ -354,6 +354,16 @@ fn validate_for_workspace(conn: &Connection, workspace_id: i64, config: &Runtime
         return Ok(());
     }
     let script = config.node_script.as_deref().unwrap_or_default().trim();
+    // F-54：项目目录/package.json 已不存在（目录被移动/重命名）时优先报
+    // ProjectNotFound——否则索引 miss + 磁盘 miss 会误报 ScriptNotFound（且
+    // available 为空），掩盖"项目已搬走"的真实问题。
+    let package_path = resolve_package_json_path(conn, workspace_id, &config.project);
+    if !package_path.as_ref().is_some_and(|path| path.is_file()) {
+        return Err(AppError::ProjectNotFound(format!(
+            "Node 项目路径不存在：{}（目录可能已被移动/重命名，请编辑应用重新选择项目）",
+            config.project
+        )));
+    }
     let project_key = normalize_path(Path::new(&config.project));
     let indexed = {
         let mut stmt = conn.prepare("SELECT path, scripts_json FROM node_projects WHERE workspace_id = ?1")?;
@@ -396,18 +406,25 @@ fn validate_for_workspace(conn: &Connection, workspace_id: i64, config: &Runtime
 }
 
 fn read_scripts_from_disk(conn: &Connection, workspace_id: i64, project: &str) -> Option<serde_json::Value> {
+    let package = resolve_package_json_path(conn, workspace_id, project)?;
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(package).ok()?).ok()?;
+    value.get("scripts").cloned()
+}
+
+/// 解析 config.project 指向的 package.json 路径：project 可直接指向
+/// package.json 文件，也可指向其所在目录；相对路径按 workspace 根拼接
+/// （与 read_scripts_from_disk 的同源解析，F-54 抽取复用）。
+fn resolve_package_json_path(conn: &Connection, workspace_id: i64, project: &str) -> Option<PathBuf> {
     let root = workspace_root(conn, workspace_id).ok()?;
     let mut path = PathBuf::from(project);
     if !path.is_absolute() {
         path = root.join(path);
     }
-    let package = if path.is_file() {
+    Some(if path.is_file() {
         path
     } else {
         path.join("package.json")
-    };
-    let value: serde_json::Value = serde_json::from_slice(&fs::read(package).ok()?).ok()?;
-    value.get("scripts").cloned()
+    })
 }
 
 fn normalize_path(path: &Path) -> String {

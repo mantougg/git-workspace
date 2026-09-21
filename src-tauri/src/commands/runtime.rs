@@ -150,6 +150,10 @@ pub struct UnifiedProjectNode {
     pub path: String,
     pub name: String,
     pub version: String,
+    /// F-54：`path` 当前是否存在于磁盘（maven 按 pom.xml `is_file()`，
+    /// node 按项目目录 `is_dir()`）。索引陈旧（目录被移动/重命名）时为
+    /// `false`，供 UI 标注失效条目并引导重新解析依赖。
+    pub path_exists: bool,
     /// node 独有（maven 项目为 `None`）。
     pub node: Option<UnifiedNodeProjectPayload>,
     /// maven 独有（node 项目为 `None`）。
@@ -206,6 +210,7 @@ pub fn runtime_list_unified_projects(
                 path: project.path.to_string_lossy().into_owned(),
                 name: project.coordinates.artifact_id.clone(),
                 version: project.coordinates.version.clone(),
+                path_exists: project.path.is_file(),
                 node: None,
                 maven: Some(UnifiedMavenProjectPayload {
                     coordinates: project.coordinates,
@@ -247,6 +252,7 @@ pub fn runtime_list_unified_projects(
             path: project.path.to_string_lossy().into_owned(),
             name: project.name,
             version: project.version,
+            path_exists: project.path.is_dir(),
             node: Some(UnifiedNodeProjectPayload {
                 package_manager: project.package_manager,
                 scripts_json: project.scripts_json,

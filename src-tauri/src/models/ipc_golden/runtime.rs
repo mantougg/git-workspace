@@ -343,6 +343,7 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             path: "/ws/web".into(),
             name: "web".into(),
             version: "1.2.3".into(),
+            path_exists: true,
             node: Some(crate::commands::runtime::UnifiedNodeProjectPayload {
                 package_manager: Some("npm".into()),
                 scripts_json: r#"{"dev":"vite"}"#.into(),

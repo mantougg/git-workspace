@@ -213,6 +213,64 @@ fn node_runtime_falls_back_to_disk_when_index_is_stale() {
     let _ = fs::remove_dir_all(root);
 }
 
+/// F-54：Node 项目目录已不存在（移动/重命名）时报 ProjectNotFound，
+/// 不再误报 ScriptNotFound（索引 miss + 磁盘 miss 的旧路径）。
+#[test]
+fn node_runtime_missing_project_dir_reports_project_not_found() {
+    let (conn, root) = open_db();
+    let mut config = sample("moved");
+    config.kind = RuntimeKind::Node;
+    config.project = root.join("gone").to_string_lossy().to_string();
+    config.node_script = Some("serve".into());
+    let error = create_config(
+        &conn,
+        &CreateRuntimeConfigRequest {
+            workspace_id: 1,
+            config,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), "ProjectNotFound");
+    let payload = serde_json::to_value(&error).unwrap();
+    let message = payload["message"].as_str().unwrap();
+    assert!(message.contains("项目路径不存在"), "message: {message}");
+    assert!(!message.contains("Some("), "message: {message}");
+    let _ = fs::remove_dir_all(root);
+}
+
+/// F-54：项目目录存在但脚本缺失时仍报 ScriptNotFound（并附 available）。
+#[test]
+fn node_runtime_existing_project_missing_script_keeps_script_not_found() {
+    let (conn, root) = open_db();
+    let project_dir = root.join("web");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::write(
+        project_dir.join("package.json"),
+        r#"{"name":"web","scripts":{"dev":"vite"}}"#,
+    )
+    .unwrap();
+    let mut config = sample("web");
+    config.kind = RuntimeKind::Node;
+    config.project = project_dir.to_string_lossy().to_string();
+    config.node_script = Some("serve".into());
+    let error = create_config(
+        &conn,
+        &CreateRuntimeConfigRequest {
+            workspace_id: 1,
+            config,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), "ScriptNotFound");
+    let payload = serde_json::to_value(&error).unwrap();
+    let message = payload["message"].as_str().unwrap();
+    assert!(message.contains("script 'serve'"), "message: {message}");
+    assert!(!message.contains("Some("), "message: {message}");
+    let details: serde_json::Value = serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+    assert_eq!(details["availableScripts"], serde_json::json!(["dev"]));
+    let _ = fs::remove_dir_all(root);
+}
+
 #[test]
 fn spring_boot_rejects_node_fields() {
     let (conn, _root) = open_db();

@@ -66,7 +66,8 @@ pub enum AppError {
     PackageManagerNotFound(String),
 
     /// N-03: Node Runtime 配置引用了缺失的 npm script。
-    #[error("script {script:?} not found in Node project {project}")]
+    /// F-54：Display 不泄漏 `Some(...)` Debug 包装（用户面向消息）。
+    #[error("script '{}' not found in Node project {project}", .script.as_deref().unwrap_or("<未指定>"))]
     ScriptNotFound {
         project: String,
         script: Option<String>,
@@ -424,6 +425,25 @@ mod tests {
             assert_eq!(payload["code"], code);
             assert_eq!(payload["recoverable"], true);
         }
+    }
+
+    #[test]
+    fn script_not_found_message_hides_option_debug_wrapper() {
+        let error = AppError::ScriptNotFound {
+            project: "/ws/web".into(),
+            script: Some("serve".into()),
+            available: vec!["dev".into()],
+        };
+        let message = error.to_string();
+        assert!(message.contains("script 'serve'"), "message: {message}");
+        assert!(!message.contains("Some("), "message: {message}");
+
+        let unnamed = AppError::ScriptNotFound {
+            project: "/ws/web".into(),
+            script: None,
+            available: vec![],
+        };
+        assert!(!unnamed.to_string().contains("Some("));
     }
 
     #[test]

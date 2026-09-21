@@ -74,13 +74,32 @@
           <n-select
             v-else
             v-model:value="form.project"
-            :options="store.projects.map(p => ({ label: projectLabel(p), value: p.path }))"
+            :options="mavenProjectOptions"
             placeholder="选择 workspace 内的 Maven 项目"
             filterable
-            :loading="store.loading"
+            :loading="mavenLoading"
             style="width: 100%; max-width: 560px"
             @update:value="onProjectChange"
           />
+          <!-- F-54：索引陈旧（目录被移动/重命名）时，失效条目禁用并引导重新解析依赖。 -->
+          <n-alert
+            v-if="!isNode && missingMavenCount > 0"
+            type="warning"
+            :show-icon="true"
+            :bordered="false"
+            class="projects-empty-alert"
+          >
+            {{ missingMavenCount }} 个 Maven 项目的 pom.xml 路径已不存在（项目可能已移动/重命名）。点击「解析依赖」刷新索引。
+          </n-alert>
+          <n-alert
+            v-if="selectedMavenMissing"
+            type="warning"
+            :show-icon="true"
+            :bordered="false"
+            class="projects-empty-alert"
+          >
+            当前应用配置的 Maven 项目路径已失效：{{ form.project }}。请先「解析依赖」刷新索引，再重新选择项目。
+          </n-alert>
           <!-- R-14 空态引导：索引为空（未解析依赖 / 仓库无 .git 标记）时给出
                明确动作，而不是裸 no data。 -->
           <n-alert
@@ -104,7 +123,7 @@
             刷新前端项目
           </n-button>
           <n-alert
-            v-if="!isNode && store.workspaceId && store.projects.length === 0 && !store.loading"
+            v-if="!isNode && store.workspaceId && mavenProjects.length === 0 && !mavenLoading"
             type="info"
             :show-icon="true"
             :bordered="false"
@@ -114,7 +133,7 @@
             也可在 Dashboard 执行，长任务进度见任务面板）。
           </n-alert>
           <n-button
-            v-if="!isNode && store.workspaceId && store.projects.length === 0"
+            v-if="!isNode && store.workspaceId && (mavenProjects.length === 0 || missingMavenCount > 0)"
             size="small"
             type="primary"
             dashed
@@ -362,7 +381,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from "vue";
+import { computed, h, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NButton, NIcon, NInput, NModal, NFormItem, NSelect, NSpace, NTag, useMessage } from "naive-ui";
 import {
@@ -383,7 +402,7 @@ import {
 import { detectMvnd } from "@/api/maven";
 import { LAUNCH_PRESETS } from "@/config/launchPresets";
 import type { JdkInstallation } from "@/types/jdk";
-import type { MavenProjectNode, RuntimeScope } from "@/types/maven";
+import type { RuntimeScope } from "@/types/maven";
 import type { NodeProjectNode } from "@/types/node";
 import type {
   RuntimeApplicationConfig,
@@ -431,6 +450,64 @@ const form = reactive<{
 const isNode = computed(() => form.kind === "node");
 const nodeProjects = ref<NodeProjectNode[]>([]);
 const nodeLoading = ref(false);
+
+/**
+ * F-54：Maven 下拉改走 N-09 unified 列表（含 pathExists 失效标注）。
+ * 索引陈旧（目录被移动/重命名）时 DB 索引仍返回旧路径——store.projects
+ * 不带存在性信息，unified 列表由后端逐条 `is_file()` 标注。
+ */
+interface MavenEntry {
+  path: string;
+  artifactId: string;
+  pathExists: boolean;
+}
+const mavenProjects = ref<MavenEntry[]>([]);
+const mavenLoading = ref(false);
+
+async function loadMavenProjects() {
+  if (!store.workspaceId) return;
+  mavenLoading.value = true;
+  try {
+    const unified = await runtimeListUnifiedProjects(store.workspaceId);
+    mavenProjects.value = unified
+      .filter((entry) => entry.source === "maven" && entry.maven)
+      .map((entry) => ({
+        path: entry.path,
+        artifactId: entry.maven?.coordinates.artifactId ?? entry.name,
+        pathExists: entry.pathExists,
+      }));
+  } catch (e) {
+    message.error("加载 Maven 项目失败：" + errMsg(e));
+  } finally {
+    mavenLoading.value = false;
+  }
+}
+
+const mavenProjectOptions = computed(() =>
+  mavenProjects.value.map((p) => ({
+    label: `${p.artifactId}  (${p.path})${p.pathExists ? "" : "  ⚠ 路径不存在"}`,
+    value: p.path,
+    disabled: !p.pathExists,
+  })),
+);
+const missingMavenCount = computed(() => mavenProjects.value.filter((p) => !p.pathExists).length);
+const selectedMavenEntry = computed(() =>
+  mavenProjects.value.find((p) => normalizePath(p.path) === normalizePath(form.project)),
+);
+/** 编辑旧配置 / 索引陈旧：所选路径不在索引或已不存在于磁盘。 */
+const selectedMavenMissing = computed(
+  () => !isNode.value && !!form.project && (!selectedMavenEntry.value || !selectedMavenEntry.value.pathExists),
+);
+
+// 解析依赖完成后 store.projects 由 dependencyResolved 事件刷新——以此为触发
+// 重拉向导的 unified Maven 列表，失效条目自动消失、新路径自动出现。
+watch(
+  () => store.projects,
+  () => {
+    if (!isNode.value) void loadMavenProjects();
+  },
+);
+
 const nodeProjectOptions = computed(() =>
   nodeProjects.value.map((project) => ({
     label: `${project.name || "package.json"}  (${project.path})${
@@ -585,6 +662,7 @@ async function onKindChange(kind: RuntimeKind) {
     await loadNodeProjects();
   } else {
     form.nodePackageManager = "auto";
+    await loadMavenProjects();
   }
 }
 
@@ -766,10 +844,6 @@ const jdkOptions = computed(() => {
 // 初始化 / 加载
 // ------------------------------------------------------------------
 
-function projectLabel(p: MavenProjectNode): string {
-  return `${p.coordinates.artifactId}  (${p.path})`;
-}
-
 function toConfig(): RuntimeApplicationConfig {
   const env: Record<string, string> = {};
   for (const row of envRows.value) {
@@ -903,7 +977,7 @@ async function onDetectMainClass() {
     // 平台规范 §1，F-05 修复：hussar-base-web 曾因分隔符不一致匹配失败）。
     const norm = (s: string) => s.replace(/\\/g, "/");
     const needle = norm(form.project);
-    const project = result.projects.find((p) => {
+    let project = result.projects.find((p) => {
       const pomPath = norm(p.projectPath);
       return (
         needle === pomPath ||
@@ -912,10 +986,29 @@ async function onDetectMainClass() {
         needle.endsWith(`/${p.module}`)
       );
     });
+    // F-54：路径精确匹配失败（索引陈旧/目录已移动）时按 artifactId 唯一
+    // 匹配兜底——检测到即预填，同时提示用户刷新索引更新配置路径。
+    let pathMismatch = false;
+    if (!project) {
+      const artifactId = selectedMavenEntry.value?.artifactId;
+      if (artifactId) {
+        const byModule = result.projects.filter((p) => p.module === artifactId);
+        if (byModule.length === 1) {
+          project = byModule[0];
+          pathMismatch = norm(project.projectPath) !== needle;
+        }
+      }
+    }
     const candidate = project?.defaultMainClass || project?.candidates?.[0]?.className;
     if (candidate) {
       form.mainClass = candidate;
-      message.success(`已预填 Main Class：${candidate}`);
+      if (pathMismatch) {
+        message.warning(
+          `已按同 artifactId 预填 Main Class：${candidate}。注意：所选项目的索引路径已失效（项目可能已移动），请重新「解析依赖」刷新索引后更新应用配置`,
+        );
+      } else {
+        message.success(`已预填 Main Class：${candidate}`);
+      }
     } else {
       message.info("该项目未检测到 Spring Boot Main Class，可手动填写");
     }
@@ -994,11 +1087,16 @@ onMounted(async () => {
     try {
       const config = await store.loadConfigDetail(name);
       fillForm(config);
-      if (form.kind === "node") await loadNodeProjects();
     } catch (e) {
       message.error("加载配置失败：" + errMsg(e));
       goBack();
     }
+  }
+  // F-54：Maven 列表向导自持（unified + pathExists）；node 列表维持原逻辑。
+  if (isNode.value) {
+    await loadNodeProjects();
+  } else {
+    await loadMavenProjects();
   }
 });
 </script>
