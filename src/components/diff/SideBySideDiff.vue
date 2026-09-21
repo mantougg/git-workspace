@@ -1,5 +1,12 @@
 <template>
-  <VirtualList :items="rows" :item-height="ROW_HEIGHT" class="side-by-side-diff">
+  <!-- F-56：零 hunk（纯行尾符/权限差异、二进制文件等）时给出明确空态，
+       避免空白面板被误认为功能故障。 -->
+  <n-empty
+    v-if="rows.length === 0"
+    class="diff-empty"
+    description="没有可展示的行级差异（可能仅行尾符/权限变化，或为二进制文件）"
+  />
+  <VirtualList v-else :items="rows" :item-height="ROW_HEIGHT" class="side-by-side-diff">
     <template #row="{ item }">
       <div v-if="item.type === 'header'" class="hunk-header">
         {{ item.text }}
@@ -34,6 +41,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { NEmpty } from "naive-ui";
 import VirtualList from "@/components/common/VirtualList.vue";
 import type { FileDiff } from "@/types/git";
 import { refineHunkLines, type RefinedLineStatus } from "@/utils/diffStatus";
@@ -103,6 +111,10 @@ const rows = computed<Row[]>(() => {
 </script>
 
 <style scoped>
+.diff-empty {
+  margin-top: var(--gw-space-4);
+}
+
 .side-by-side-diff {
   font-family: var(--gw-font-mono);
   font-size: 13px;
