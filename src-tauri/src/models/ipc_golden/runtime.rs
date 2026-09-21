@@ -1163,6 +1163,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("FileDiff", "types/git.ts", "FileDiff"),
     ("Hunk", "types/git.ts", "Hunk"),
     ("DiffLine", "types/git.ts", "DiffLine"),
+    ("WorkdirFile", "types/git.ts", "WorkdirFile"),
     ("CommitInfo", "types/graph.ts", "CommitInfo"),
     ("BranchInfo", "types/graph.ts", "BranchInfo"),
     ("BranchEntry", "types/branch.ts", "BranchEntry"),

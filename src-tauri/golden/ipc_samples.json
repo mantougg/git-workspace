@@ -2916,6 +2916,13 @@
     "name": "ws2",
     "scanDepth": null
   },
+  "WorkdirFile": {
+    "lines": [
+      "line1",
+      "line2"
+    ],
+    "totalLines": 2
+  },
   "Workspace": {
     "createdAt": "2026-01-01T00:00:00Z",
     "id": 1,

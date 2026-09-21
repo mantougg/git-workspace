@@ -41,6 +41,14 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             new_line: Some(3),
         }),
     );
+    // commands/diff.rs（「查看整个文件」模式）
+    m.insert(
+        "WorkdirFile".into(),
+        json!(diff_cmd::WorkdirFile {
+            total_lines: 2,
+            lines: vec!["line1".into(), "line2".into()],
+        }),
+    );
 
     // core/graph.rs
     m.insert(
