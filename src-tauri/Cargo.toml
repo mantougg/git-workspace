@@ -80,6 +80,9 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_LibraryLoader",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# F-53：读 IE 系统代理（HKCU Internet Settings），给检查更新的
+# check({proxy}) 兜底用。winreg 已是依赖树传递依赖，提升无新增编译量。
+winreg = "0.55"
 
 # N-07：launch 子进程独立进程组（CommandExt::process_group）+ killpg 整组
 # 终止——SIGTERM 后 npm 先退、vite 被 reparent 后 parent 链 kill_tree 杀不到

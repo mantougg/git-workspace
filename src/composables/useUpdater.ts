@@ -19,6 +19,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** F-53：传输层失败（GitHub 直连被重置/DNS 污染/超时）才值得代理重试。 */
+function isTransportError(error: unknown): boolean {
+  return /error sending request|connect|timed?\s*out|dns|tls/i.test(errorMessage(error));
+}
+
 /** Owns the updater resource and exposes a small, view-friendly state machine. */
 export function useUpdater() {
   const status = ref<UpdaterStatus>("idle");
@@ -44,9 +49,21 @@ export function useUpdater() {
     downloadProgress.value = null;
     status.value = "checking";
 
+    // F-53：GitHub 直连失败时，取系统代理重试一次（代理同样作用于
+    // 后续下载，check({proxy}) 返回的 Update 复用该客户端配置）。
+    let retriedWithProxy = false;
     try {
       await closePendingUpdate();
-      const result = await check();
+      let result: Update | null;
+      try {
+        result = await check();
+      } catch (directCause) {
+        if (!isTransportError(directCause)) throw directCause;
+        const proxy = await invoke<string | null>("get_system_proxy").catch(() => null);
+        if (!proxy) throw directCause;
+        retriedWithProxy = true;
+        result = await check({ proxy });
+      }
       if (!result) {
         status.value = "upToDate";
         return;
@@ -58,7 +75,13 @@ export function useUpdater() {
       status.value = "available";
     } catch (cause) {
       status.value = "error";
-      error.value = errorMessage(cause);
+      const detail = errorMessage(cause);
+      error.value =
+        retriedWithProxy && isTransportError(cause)
+          ? `无法连接 GitHub 更新服务器（直连与系统代理均失败）：${detail}`
+          : isTransportError(cause)
+            ? `无法连接 GitHub 更新服务器（未检测到系统代理）：${detail}`
+            : detail;
     }
   }
 
