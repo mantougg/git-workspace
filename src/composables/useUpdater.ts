@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from "vue";
+import { onBeforeUnmount, ref, shallowRef } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import {
   check,
@@ -27,7 +27,11 @@ function isTransportError(error: unknown): boolean {
 /** Owns the updater resource and exposes a small, view-friendly state machine. */
 export function useUpdater() {
   const status = ref<UpdaterStatus>("idle");
-  const update = ref<Update | null>(null);
+  // F-55：必须浅响应式。ref() 会深度 Proxy 包裹 Update 实例，而 Update
+  // 继承的 Resource 基类把 rid 存在 WeakMap 私有字段里——在 Proxy 上访问
+  // this.rid 直接抛 "Cannot read private member from an object whose
+  // class did not declare it"（downloadAndInstall/close 均触发）。
+  const update = shallowRef<Update | null>(null);
   const updateVersion = ref("");
   const updateBody = ref("");
   const downloadProgress = ref<number | null>(null);
