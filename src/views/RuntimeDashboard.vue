@@ -392,7 +392,6 @@ import {
 import Panel from "@/components/shell/Panel.vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRuntimeStore } from "@/stores/runtime";
-import { useTaskStore } from "@/stores/task";
 import * as runtimeApi from "@/api/runtime";
 import { nodeListProjects, nodeInstall } from "@/api/node";
 import type {
@@ -415,7 +414,6 @@ import type { DiagnosticErrorInput, RuntimeDiagnosticRequest } from "@/types/ai"
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
 const store = useRuntimeStore();
-const taskStore = useTaskStore();
 const message = useMessage();
 const dialog = useDialog();
 const { openAssistant } = useAiAssistant();
@@ -1261,6 +1259,11 @@ async function onStart(name: string) {
   try {
     await store.start(name);
     message.success(`已提交启动任务：${name}`);
+    // TM-08：托管启动即打开终端面板聚焦 `<应用名>` tab（懒创建于首行
+    // 输出的 __runtime_ 镜像 tab 在此预创建，保证可聚焦）。
+    const { useTerminalStore } = await import("@/stores/terminal");
+    const terminalStore = useTerminalStore();
+    terminalStore.focusMirrorTab(`__runtime_${name}`, name);
   } catch (e) {
     handleError("启动", e, () => onStart(name));
   } finally {
@@ -1280,8 +1283,7 @@ async function onLaunchInTerminal(row: RuntimeConfigSummary) {
     // 的操作习惯保留。
     await store.start(row.name);
     message.success(`已提交启动任务：${row.name}`);
-    terminalStore.showPanel({ autoOpen: false });
-    terminalStore.switchTab(`__runtime_${row.name}`);
+    terminalStore.focusMirrorTab(`__runtime_${row.name}`, row.name);
   } catch (e) {
     handleError("在终端中启动", e);
   } finally {
@@ -1314,6 +1316,10 @@ async function onBuild(name: string) {
   try {
     await store.build(name);
     message.success(`已提交构建任务：${name}`);
+    // TM-08：构建输出镜像到 `__build_<应用名>` tab，点击后聚焦。
+    const { useTerminalStore } = await import("@/stores/terminal");
+    const terminalStore = useTerminalStore();
+    terminalStore.focusMirrorTab(`__build_${name}`, `${name} · 构建`);
   } catch (e) {
     handleError("构建", e, () => onBuild(name));
   }
@@ -1366,7 +1372,12 @@ async function onInstallDeps(row: RuntimeConfigSummary) {
   try {
     const taskId = await nodeInstall({ ...request, confirmed: true });
     message.success(`依赖安装任务已提交：${taskId}`);
-    taskStore.showPanel();
+    // TM-08：登记 taskId → 应用名，装依赖逐行输出镜像到
+    // `__install_<应用名>` tab 并聚焦（N-08 确认闸门保留在上方）。
+    const { useTerminalStore } = await import("@/stores/terminal");
+    const terminalStore = useTerminalStore();
+    terminalStore.bindInstallTask(taskId, row.name);
+    terminalStore.focusMirrorTab(`__install_${row.name}`, `${row.name} · 装依赖`);
   } catch (e) {
     handleError("依赖安装", e, () => onInstallDeps(row));
   }

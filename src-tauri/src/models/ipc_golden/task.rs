@@ -151,6 +151,22 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             output: "ok".into(),
         }),
     );
+    // TM-08 命令流事件条目（前端 append-only 事件日志；无 IPC 命令消费，
+    // 仅为类型安全与 golden 快照注册）。
+    m.insert(
+        "TaskEventEntry".into(),
+        json!({
+            "seq": 1,
+            "taskId": "t-1",
+            "at": 1735689600000i64,
+            "repoPath": "/ws/repo",
+            "repoName": "repo",
+            "taskType": {"type": "fetch"},
+            "status": {"type": "failed", "error": "boom"},
+            "durationMs": 1200,
+            "batchId": null,
+        }),
+    );
 
     // models/task.rs (T-24 DAG) + core/pipeline.rs (T-23)
     m.insert(

@@ -53,12 +53,34 @@ const GIT_CONSOLE_SESSION_ID = "__git_console__";
 /** Runtime 输出镜像会话 ID 前缀（自动创建，可关闭）。 */
 const RUNTIME_SESSION_PREFIX = "__runtime_";
 
-/** 判定「真正的终端会话」：排除 Git Console 与 Runtime 输出镜像 tab。 */
+/** 装依赖输出镜像会话 ID 前缀（TM-08）。 */
+const INSTALL_SESSION_PREFIX = "__install_";
+
+/** 构建输出镜像会话 ID 前缀（TM-08）。 */
+const BUILD_SESSION_PREFIX = "__build_";
+
+/** 判定「真正的终端会话」：排除 Git Console 与全部输出镜像 tab。 */
 function isRealShellSession(session: TerminalSession): boolean {
   return (
     session.sessionId !== GIT_CONSOLE_SESSION_ID &&
-    !session.sessionId.startsWith(RUNTIME_SESSION_PREFIX)
+    !session.sessionId.startsWith(RUNTIME_SESSION_PREFIX) &&
+    !session.sessionId.startsWith(INSTALL_SESSION_PREFIX) &&
+    !session.sessionId.startsWith(BUILD_SESSION_PREFIX)
   );
+}
+
+/** `node_install_output` 事件 payload（task worker 发射）。 */
+interface NodeInstallOutputPayload {
+  taskId: string;
+  stream: "stdout" | "stderr";
+  line: string;
+}
+
+/** `runtime_build_output` 事件 payload（EmittingBuildSink 发射）。 */
+interface BuildOutputEventPayload {
+  runtimeName: string;
+  stream: "stdout" | "stderr";
+  line: string;
 }
 
 /** 排干 await IPC 期间缓冲的 PTY 输出（shell prompt 等）并入会话。 */
@@ -96,10 +118,19 @@ export const useTerminalStore = defineStore("terminal", () => {
   let unlistenRuntimeOutput: UnlistenFn | null = null;
   let unlistenRuntimeStarted: UnlistenFn | null = null;
   let unlistenRuntimeStopped: UnlistenFn | null = null;
+  let unlistenNodeInstallOutput: UnlistenFn | null = null;
+  let unlistenBuildOutput: UnlistenFn | null = null;
   let listenersReady: Promise<void> | null = null;
 
   /** 活跃 runtime 进程列表（用于工具条按钮状态）。 */
   const runtimeProcesses = ref<RuntimeProcessInfo[]>([]);
+
+  /**
+   * TM-08：node_install 任务 id → 应用名映射。装依赖经 N-08 两跳确认流程，
+   * 任务 id 与 runtime 名的关联只在前端（提交任务处）可得，故由调用方在提交
+   * 后回调 `bindInstallTask` 登记。
+   */
+  const installTaskNames = new Map<string, string>();
 
   // -- Getters --
   const activeSession = computed(() =>
@@ -208,6 +239,20 @@ export const useTerminalStore = defineStore("terminal", () => {
         handler: () => { refreshRuntimeProcesses(); },
         assign: (un: UnlistenFn) => { unlistenRuntimeStopped = un; },
       },
+      {
+        // TM-08：装依赖逐行输出（后端 task worker 已发射；前端此前无消费方）。
+        event: "node_install_output",
+        handler: (e: { payload: NodeInstallOutputPayload }) =>
+          handleNodeInstallOutput(e.payload),
+        assign: (un: UnlistenFn) => { unlistenNodeInstallOutput = un; },
+      },
+      {
+        // TM-08：构建逐行输出（EmittingBuildSink 经 emitter 发射）。
+        event: RUNTIME_EVENTS.buildOutput,
+        handler: (e: { payload: BuildOutputEventPayload }) =>
+          handleBuildOutput(e.payload),
+        assign: (un: UnlistenFn) => { unlistenBuildOutput = un; },
+      },
     ];
 
     listenersReady = (async () => {
@@ -283,8 +328,77 @@ export const useTerminalStore = defineStore("terminal", () => {
     return session;
   }
 
-  /** 处理 terminal_output 事件：通过回调直接写入 xterm，或缓冲到 writeBuffer。 */
-  function handleOutput(event: TerminalOutputEvent) {
+  /**
+   * TM-08：确保指定 id 的输出镜像 tab 存在并返回它（幂等）。
+   *
+   * 与 ensureGitConsoleSession 同一套懒创建模式；kind 恒为 "runtime"
+   * （TerminalPanel 据此隐藏交互输入，见 isRuntimeTab）。
+   */
+  function ensureMirrorSession(sessionId: string, title: string): TerminalSession {
+    const existing = sessions.value.find((s) => s.sessionId === sessionId);
+    if (existing) return existing;
+    const session: TerminalSession = {
+      sessionId,
+      kind: "runtime",
+      title,
+      cwd: "",
+      alive: true,
+      writeBuffer: [],
+      paused: false,
+    };
+    sessions.value.push(session);
+    return session;
+  }
+
+  /** 向输出镜像 tab 写一行（stderr 黄色着色；`\r\n` 收尾适配 xterm）。 */
+  function writeMirrorLine(sessionId: string, line: string, stream: string) {
+    const session = ensureMirrorSession(sessionId, sessionId);
+    const colored = stream === "stderr" ? `\x1b[33m${line}\x1b[0m` : line;
+    const bytes = new TextEncoder().encode(`${colored}\r\n`);
+    if (session.writeCallback) {
+      session.writeCallback(bytes);
+    } else {
+      session.writeBuffer.push(bytes);
+      trimWriteBuffer(session.writeBuffer);
+    }
+  }
+
+  /** TM-08：node_install_output —— 写入 `__install_<应用名>` 镜像 tab。 */
+  function handleNodeInstallOutput(payload: NodeInstallOutputPayload) {
+    const runtimeName = installTaskNames.get(payload.taskId);
+    // 未登记映射（非 RuntimeDashboard 装依赖流程发起的 install）不镜像，
+    // 避免出现无主 tab。
+    if (!runtimeName) return;
+    writeMirrorLine(`${INSTALL_SESSION_PREFIX}${runtimeName}`, payload.line, payload.stream);
+  }
+
+  /** TM-08：runtime_build_output —— 写入 `__build_<应用名>` 镜像 tab。 */
+  function handleBuildOutput(payload: BuildOutputEventPayload) {
+    writeMirrorLine(
+      `${BUILD_SESSION_PREFIX}${payload.runtimeName}`,
+      payload.line,
+      payload.stream
+    );
+  }
+
+  /** TM-08：登记 node_install 任务 id → 应用名（提交任务后调用）。 */
+  function bindInstallTask(taskId: string, runtimeName: string) {
+    installTaskNames.set(taskId, runtimeName);
+  }
+
+  /**
+   * TM-08：打开面板并聚焦输出镜像 tab（不自动开真终端）。
+   *
+   * tab 不存在时预创建——「点了启动/构建就在终端面板里看这个应用」的
+   * 操作习惯要求启动瞬间即可聚焦。同一应用重复触发聚焦已有 tab。
+   */
+  function focusMirrorTab(sessionId: string, title: string) {
+    ensureMirrorSession(sessionId, title);
+    showPanel({ autoOpen: false });
+    switchTab(sessionId);
+  }
+
+  /** 处理 terminal_output 事件：通过回调直接写入 xterm，或缓冲到 writeBuffer。 */  function handleOutput(event: TerminalOutputEvent) {
     // base64 解码为 Uint8Array
     const binary = atob(event.dataBase64);
     const bytes = new Uint8Array(binary.length);
@@ -690,6 +804,10 @@ export const useTerminalStore = defineStore("terminal", () => {
     unlistenRuntimeOutput?.();
     unlistenRuntimeStarted?.();
     unlistenRuntimeStopped?.();
+    unlistenNodeInstallOutput?.();
+    unlistenBuildOutput?.();
+    unlistenNodeInstallOutput = null;
+    unlistenBuildOutput = null;
     unlistenOutput = null;
     unlistenExit = null;
     unlistenGitOp = null;
@@ -730,6 +848,8 @@ export const useTerminalStore = defineStore("terminal", () => {
     startRuntime,
     stopRuntime,
     restartRuntime,
+    focusMirrorTab,
+    bindInstallTask,
     refreshRuntimeProcesses,
     cleanup,
   };

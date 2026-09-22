@@ -36,6 +36,7 @@ pub const EVENT_PROJECT_DISCOVERED: &str = "runtime_project_discovered";
 pub const EVENT_DEPENDENCY_RESOLVED: &str = "runtime_dependency_resolved";
 pub const EVENT_BUILD_STARTED: &str = "runtime_build_started";
 pub const EVENT_BUILD_PROGRESS: &str = "runtime_build_progress";
+pub const EVENT_BUILD_OUTPUT: &str = "runtime_build_output";
 pub const EVENT_BUILD_COMPLETED: &str = "runtime_build_completed";
 pub const EVENT_PROCESS_STARTED: &str = "runtime_process_started";
 pub const EVENT_PROCESS_OUTPUT: &str = "runtime_process_output";
@@ -129,6 +130,17 @@ pub struct BuildProgressPayload {
     pub process_id: Option<i64>,
     pub stage: RuntimeStage,
     pub at: String,
+}
+
+/// `runtime_build_output`：构建逐行输出（TM-08，前端 `__build_<应用名>`
+/// 镜像 tab 的数据源）。行经 pipeline 层脱敏后才到 sink，可安全外发。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildOutputPayload {
+    pub runtime_name: String,
+    /// `stdout` / `stderr`（与 `node_install_output` 的 stream 取值一致）。
+    pub stream: String,
+    pub line: String,
 }
 
 /// `runtime.build_completed`：构建阶段结束（成功或失败；skip-build 命中

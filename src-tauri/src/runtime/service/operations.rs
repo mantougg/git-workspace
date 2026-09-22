@@ -8,13 +8,14 @@ use crate::error::{AppError, AppResult};
 use crate::maven;
 use crate::models::task::{RuntimeOp, RuntimeTaskOptions, TaskRequest, TaskType};
 use crate::runtime::build::pipeline::execute_build;
-use crate::runtime::build::{BuildRequest, RingTail};
+use crate::process::streaming::OutputStream;
+use crate::runtime::build::{BuildOutputSink, BuildRequest, RingTail};
 use crate::runtime::config;
 use crate::runtime::events::{
-    BuildCompletedPayload, BuildProgressPayload, BuildStartedPayload, DependencyResolvedPayload,
-    ProjectDiscoveredPayload, RestartCompletedPayload, RestartStartedPayload, RuntimeStage, EVENT_BUILD_COMPLETED,
-    EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED, EVENT_DEPENDENCY_RESOLVED, EVENT_PROJECT_DISCOVERED,
-    EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
+    BuildCompletedPayload, BuildOutputPayload, BuildProgressPayload, BuildStartedPayload,
+    DependencyResolvedPayload, ProjectDiscoveredPayload, RestartCompletedPayload, RestartStartedPayload,
+    RuntimeStage, EVENT_BUILD_COMPLETED, EVENT_BUILD_OUTPUT, EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED,
+    EVENT_DEPENDENCY_RESOLVED, EVENT_PROJECT_DISCOVERED, EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
 };
 use crate::runtime::launch::RuntimeProcessInfo;
 use crate::runtime::script_approval::{self, ScriptApproval};
@@ -190,6 +191,11 @@ impl RuntimeService {
     /// Build-only 任务直接驱动 R-09 流水线（不经 Process Manager，
     /// 无进程行、无日志会话；输出行进 RingTail 仅供错误上下文）。
     /// 构建期间不持有 DB 锁（execute_build 按阶段自行加锁，R-12）。
+    ///
+    /// TM-08：sink 由纯 RingTail 换成 `EmittingBuildSink`——逐行输出除
+    /// 保留尾部错误上下文外，同步发射 `runtime_build_output` 事件，前端
+    /// 镜像到 `__build_<应用名>` 终端 tab。发射经 `self.emitter`（F-43：
+    /// 该任务跑在 spawn_blocking 线程，AppHandle emit 线程安全）。
     fn run_build(
         &self,
         workspace_id: i64,
@@ -203,7 +209,11 @@ impl RuntimeService {
             runtime_name: runtime_name.to_string(),
             options: build_options_of(options),
         };
-        let mut sink = RingTail::new();
+        let mut sink = EmittingBuildSink {
+            inner: RingTail::new(),
+            emitter: Arc::clone(&self.emitter),
+            runtime_name: runtime_name.to_string(),
+        };
         execute_build(
             &self.db,
             &workspace_root,
@@ -454,4 +464,33 @@ fn display_path(root: &std::path::Path, pom_path: &std::path::Path) -> String {
         .to_string_lossy()
         .to_string();
     relative.strip_suffix("/pom.xml").unwrap_or(&relative).to_string()
+}
+
+/// TM-08: Build output sink - RingTail (error-context tail) plus per-line
+/// `runtime_build_output` events (frontend `__build_<name>` mirror tab).
+///
+/// Lines reaching the sink are already redacted by the pipeline layer
+/// (RedactingSink), so they are safe to forward over IPC.
+struct EmittingBuildSink {
+    inner: RingTail,
+    emitter: Arc<dyn crate::runtime::events::RuntimeEventEmitter>,
+    runtime_name: String,
+}
+
+impl BuildOutputSink for EmittingBuildSink {
+    fn on_line(&mut self, stream: OutputStream, line: &str) {
+        self.inner.on_line(stream, line);
+        let stream = match stream {
+            OutputStream::Stdout => "stdout",
+            OutputStream::Stderr => "stderr",
+        };
+        let _ = self.emitter.emit(crate::runtime::events::RuntimeEmission::new(
+            EVENT_BUILD_OUTPUT,
+            &BuildOutputPayload {
+                runtime_name: self.runtime_name.clone(),
+                stream: stream.to_string(),
+                line: line.to_string(),
+            },
+        ));
+    }
 }

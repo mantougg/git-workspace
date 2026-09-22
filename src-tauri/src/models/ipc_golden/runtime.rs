@@ -1150,6 +1150,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("Task", "types/task.ts", "Task"),
     ("TaskRequest", "types/task.ts", "TaskRequest"),
     ("TaskProgress", "types/task.ts", "TaskProgress"),
+    ("TaskEventEntry", "types/task.ts", "TaskEventEntry"),
     ("GitCommandResult", "types/task.ts", "GitCommandResult"),
     ("CommitRequest", "types/task.ts", "CommitRequest"),
     ("CommitScanFinding", "types/commit.ts", "CommitScanFinding"),

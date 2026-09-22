@@ -31,6 +31,7 @@ export const RUNTIME_EVENTS = {
   dependencyResolved: "runtime_dependency_resolved",
   buildStarted: "runtime_build_started",
   buildProgress: "runtime_build_progress",
+  buildOutput: "runtime_build_output",
   buildCompleted: "runtime_build_completed",
   processStarted: "runtime_process_started",
   processOutput: "runtime_process_output",

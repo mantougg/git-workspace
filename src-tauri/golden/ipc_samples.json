@@ -2663,6 +2663,22 @@
       "type": "fetch"
     }
   },
+  "TaskEventEntry": {
+    "at": 1735689600000,
+    "batchId": null,
+    "durationMs": 1200,
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "seq": 1,
+    "status": {
+      "error": "boom",
+      "type": "failed"
+    },
+    "taskId": "t-1",
+    "taskType": {
+      "type": "fetch"
+    }
+  },
   "TaskProgress": {
     "batchId": "b-1",
     "repoName": "repo",

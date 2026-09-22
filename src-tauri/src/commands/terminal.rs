@@ -85,21 +85,3 @@ pub async fn terminal_list(
 pub async fn terminal_list_shells(state: State<'_, AppState>) -> Result<Vec<ShellInfo>, String> {
     Ok(state.terminal.list_shells())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn terminal_commands_module_exposes_pty_commands_only() {
-        // TM-08 退役 runtime_start_in_terminal 后，本模块仅保留 5 个 PTY
-        // command；此处锁定模块不再引入 shell 字符串适配依赖。
-        let _ = (
-            terminal_open as fn(
-                State<'_, AppState>,
-                TerminalOpenParams,
-            ) -> _,
-            terminal_list_shells as fn(State<'_, AppState>) -> _,
-        );
-    }
-}
