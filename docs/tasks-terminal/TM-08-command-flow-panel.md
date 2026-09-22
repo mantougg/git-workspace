@@ -125,3 +125,4 @@ DB：无表结构变更（仅删访问 terminal_session_id 的代码路径，列
 | 2026-09-22 | 🟦 | B 批（a3400fa）：退役 TM-06 字符串启动路径（terminal.rs / launcher.rs / start.rs / store.rs / commands/runtime.rs / queries.rs / pty.rs shell_kind / lib.rs / api 层） |
 | 2026-09-22 | 🟦 | C+D 批（f6d1f12）：终端 tab 应用名命名（__runtime_/__install_/__build_ 前缀 + focusMirrorTab）+ 装依赖/构建输出镜像（后端 runtime_build_output 事件 + EmittingBuildSink；前端 node_install_output/buildOutput 消费 + bindInstallTask）+ ipc_golden 注册 TaskEventEntry |
 | 2026-09-22 | ✅ | E 批：文档同步（AGENTS.md F-44/F-45/F-51 规则收缩；TM-06 spec 标记退役；terminal-feature-plan §4.5/§6）；cargo test --lib（失败集与基线一致，无回归）、pnpm build、gitnexus detect_changes 通过，4 批提交完成 |
+| 2026-09-22 | ✅ | 收尾补缺：`submit`/`submit_dag` 任务入队即补发 queued `task_progress`（原实现仅 worker 取出时发 running，命令流首行缺「排队中」）；`pty.rs` 清理已退役 IPC 的注释引用 |

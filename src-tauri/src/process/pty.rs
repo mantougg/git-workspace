@@ -564,8 +564,7 @@ impl TerminalManager {
             .collect())
     }
 
-    /// 获取会话的子进程 PID（供 `register_terminal_process` 回填 `runtime_processes.pid`）。
-    /// 返回 `None` 表示会话不存在或 pid=0（spawn 未返回 pid）。
+    /// 获取会话的子进程 PID。返回 `None` 表示会话不存在或 pid=0（spawn 未返回 pid）。
     pub fn get_session_pid(&self, session_id: &str) -> Option<u32> {
         let sessions = self.sessions.lock().ok()?;
         let pid = sessions.get(session_id)?.pid;

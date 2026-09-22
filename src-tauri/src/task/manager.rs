@@ -173,6 +173,11 @@ impl TaskManager {
                 return Err(AppError::Task(format!("Failed to queue task: {}", e)));
             }
 
+            // TM-08: emit the initial Queued progress so the command-flow
+            // timeline's first row for the task is "排队中" (the worker only
+            // emits Running once it dequeues).
+            worker::emit_progress(&self.app_handle, &task);
+
             ids.push(id);
         }
 
@@ -245,8 +250,11 @@ impl TaskManager {
                 batch_id: Some(dag_id.clone()),
             };
             let row = self.persist_new_task(&task);
-            self.active_tasks.insert(id.clone(), task);
+            self.active_tasks.insert(id.clone(), task.clone());
             self.cancel_flags.insert(id.clone(), Arc::new(AtomicBool::new(false)));
+            // TM-08: initial Queued progress so blocked DAG nodes (not sent
+            // to the worker channel yet) still get a timeline first row.
+            worker::emit_progress(&self.app_handle, &task);
             task_ids.push(id);
             row_ids.push(row);
         }
