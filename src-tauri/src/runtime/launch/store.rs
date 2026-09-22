@@ -58,42 +58,6 @@ pub fn insert_process(conn: &Connection, workspace_id: i64, runtime_name: &str) 
     Ok(conn.last_insert_rowid())
 }
 
-/// 新建终端启动的进程记录（状态 `Running`，记录 terminal_session_id）。
-/// 返回行 id。
-pub fn insert_terminal_process(
-    conn: &Connection,
-    workspace_id: i64,
-    runtime_name: &str,
-    terminal_session_id: &str,
-) -> AppResult<i64> {
-    let now = now();
-    conn.execute(
-        "INSERT INTO runtime_processes (workspace_id, runtime_name, status, terminal_session_id, started_at, updated_at)
-         VALUES (?1, ?2, 'running', ?3, ?4, ?4)",
-        params![workspace_id, runtime_name, terminal_session_id, now],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
-
-/// 根据 terminal_session_id 查找活跃（非终态）的进程记录。
-pub fn find_by_terminal_session(
-    conn: &Connection,
-    terminal_session_id: &str,
-) -> AppResult<Option<RuntimeProcessRow>> {
-    conn.query_row(
-        &format!(
-            "SELECT {COLUMNS} FROM runtime_processes
-             WHERE terminal_session_id = ?1
-               AND status NOT IN ('stopped', 'failed')
-             ORDER BY id DESC LIMIT 1"
-        ),
-        params![terminal_session_id],
-        map_row,
-    )
-    .optional()
-    .map_err(AppError::from)
-}
-
 /// 生命周期迁移的 SQL 落点：读-校验-写在调用方持有的同一连接锁内完成
 /// （单写者连接 + 互斥锁序列化并发迁移）。
 ///

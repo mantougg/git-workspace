@@ -1273,16 +1273,15 @@ async function onLaunchInTerminal(row: RuntimeConfigSummary) {
   launching.value.add(row.name);
   try {
     const { useTerminalStore } = await import("@/stores/terminal");
-    const { runtimeComputeLaunchPreview, runtimeRegisterTerminalProcess } = await import("@/api/runtime");
     const terminalStore = useTerminalStore();
-
-    const [command, cwd] = await runtimeComputeLaunchPreview(row.workspaceId, row.name);
-    const sessionId = await terminalStore.launchInTerminal(command, cwd);
-    // 注册终端进程，创建进程记录
-    if (sessionId) {
-      await runtimeRegisterTerminalProcess(row.workspaceId, row.name, sessionId);
-    }
-    message.success(`已在终端中启动：${row.name}`);
+    // TM-08：结构化启动（服务端 spawn argv + env + 管道），不再降级成
+    // shell 字符串写入用户 PTY。启动提交后打开终端面板并聚焦
+    // `__runtime_<应用名>` tab——「点了启动就在终端面板里看这个应用跑」
+    // 的操作习惯保留。
+    await store.start(row.name);
+    message.success(`已提交启动任务：${row.name}`);
+    terminalStore.showPanel({ autoOpen: false });
+    terminalStore.switchTab(`__runtime_${row.name}`);
   } catch (e) {
     handleError("在终端中启动", e);
   } finally {
@@ -1293,17 +1292,8 @@ async function onLaunchInTerminal(row: RuntimeConfigSummary) {
 async function onStop(name: string) {
   clearError();
   try {
-    const p = processOf(name);
-    if (p?.terminalSessionId) {
-      // 终端启动的进程，调用专用停止方法
-      const { runtimeStopTerminalProcess } = await import("@/api/runtime");
-      await runtimeStopTerminalProcess(p.processId);
-      message.success(`已停止终端进程：${name}`);
-    } else {
-      // 托管启动的进程
-      await store.stop(name);
-      message.success(`已提交停止任务：${name}`);
-    }
+    await store.stop(name);
+    message.success(`已提交停止任务：${name}`);
   } catch (e) {
     handleError("停止", e);
   }

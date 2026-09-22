@@ -31,8 +31,6 @@ export interface TerminalSession extends TerminalSessionInfo {
   paused: boolean;
   /** xterm 写入回调（XtermView 挂载时注册，卸载时清除）。 */
   writeCallback?: (data: Uint8Array) => void;
-  /** TM-06：是否为「在终端中启动」模式（显示降级提示条）。 */
-  launchedInTerminal?: boolean;
 }
 
 /**
@@ -318,22 +316,13 @@ export const useTerminalStore = defineStore("terminal", () => {
     }
   }
 
-  /** 处理 terminal_exit 事件：标记会话死亡，同步更新 Runtime 进程状态。 */
+  /** 处理 terminal_exit 事件：标记会话死亡。 */
   async function handleExit(event: TerminalExitEvent) {
     const session = sessions.value.find(
       (s) => s.sessionId === event.sessionId
     );
     if (session) {
       session.alive = false;
-      // 如果是终端启动的 Runtime 进程，同步更新进程状态
-      if (session.launchedInTerminal) {
-        try {
-          const { runtimeUnregisterTerminalProcess } = await import("@/api/runtime");
-          await runtimeUnregisterTerminalProcess(event.sessionId, event.exitCode);
-        } catch (e) {
-          console.error("Failed to unregister terminal process:", e);
-        }
-      }
     }
   }
 
@@ -500,33 +489,6 @@ export const useTerminalStore = defineStore("terminal", () => {
     await useRuntimeStore().restart(runtimeName);
   }
 
-  /** TM-06：在终端中启动 runtime。返回 sessionId 供调用方注册进程记录。 */
-  async function launchInTerminal(command: string, cwd?: string, env?: Record<string, string>): Promise<string> {
-    // 本函数紧接着就会开出自己的会话，面板打开时不要自动再开一个默认 shell
-    showPanel({ autoOpen: false });
-    await registerEventListeners().catch((e) =>
-      console.warn("terminal: event listener registration failed (launchInTerminal):", e),
-    );
-    const sessionId = await terminalApi.runtimeStartInTerminal(command, cwd, env);
-    const session: TerminalSession = {
-      sessionId,
-      kind: "shell",
-      title: "Terminal",
-      cwd: cwd ?? "",
-      alive: true,
-      writeBuffer: [],
-      paused: false,
-      launchedInTerminal: true,
-    };
-
-    // 排干 await 期间缓冲的 PTY 输出
-    drainPendingOutput(pendingOutput, sessionId, session);
-
-    sessions.value.push(session);
-    activeTabId.value = sessionId;
-    return sessionId;
-  }
-
   /** 打开新 PTY 会话。 */
   async function openSession(params?: {
     cwd?: string;
@@ -645,7 +607,6 @@ export const useTerminalStore = defineStore("terminal", () => {
           writeBuffer: prev?.writeBuffer ?? [],
           paused: prev?.paused ?? false,
           writeCallback: prev?.writeCallback,
-          launchedInTerminal: prev?.launchedInTerminal,
         };
       });
       // 保留前端独有的 session（Git Console、runtime tab 等，不存在于 Rust HashMap）
@@ -769,7 +730,6 @@ export const useTerminalStore = defineStore("terminal", () => {
     startRuntime,
     stopRuntime,
     restartRuntime,
-    launchInTerminal,
     refreshRuntimeProcesses,
     cleanup,
   };

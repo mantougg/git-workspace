@@ -554,14 +554,6 @@ pub fn run() {
             commands::runtime::runtime_delete_template,
             commands::runtime::runtime_save_config_as_template,
             commands::runtime::runtime_apply_template,
-            // TM-06：获取缓存的启动命令预览（非降级模式）
-            commands::runtime::runtime_get_launch_preview,
-            // TM-06：按需计算启动命令预览（构建 + 缓存）
-            commands::runtime::runtime_compute_launch_preview,
-            // 终端启动进程管理
-            commands::runtime::runtime_register_terminal_process,
-            commands::runtime::runtime_unregister_terminal_process,
-            commands::runtime::runtime_stop_terminal_process,
             // Application lifecycle commands
             commands::app::restart_app,
             // F-38：关于页清除数据（历史与缓存表，配置保留）
@@ -637,14 +629,13 @@ pub fn run() {
             commands::automation::delete_scheduled_task,
             commands::automation::export_pipeline_template,
             commands::automation::import_pipeline_template,
-            // Terminal commands (TM-01 / TM-06)
+            // Terminal commands (TM-01)
             commands::terminal::terminal_open,
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_close,
             commands::terminal::terminal_list,
             commands::terminal::terminal_list_shells,
-            commands::terminal::runtime_start_in_terminal,
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitWorkspace")
