@@ -121,3 +121,7 @@ DB：无表结构变更（仅删访问 terminal_session_id 的代码路径，列
 | 日期 | 状态 | 记录 |
 |---|---|---|
 | 2026-09-21 | 🟦 | 任务登记：影响分析完成（见上表），开始改造 |
+| 2026-09-22 | 🟦 | A 批（6e2c6ff）：任务面板改命令流事件视图 + App 级监听 + StatusBar 失败标识；后端 submit 补发 queued 事件 |
+| 2026-09-22 | 🟦 | B 批（a3400fa）：退役 TM-06 字符串启动路径（terminal.rs / launcher.rs / start.rs / store.rs / commands/runtime.rs / queries.rs / pty.rs shell_kind / lib.rs / api 层） |
+| 2026-09-22 | 🟦 | C+D 批（f6d1f12）：终端 tab 应用名命名（__runtime_/__install_/__build_ 前缀 + focusMirrorTab）+ 装依赖/构建输出镜像（后端 runtime_build_output 事件 + EmittingBuildSink；前端 node_install_output/buildOutput 消费 + bindInstallTask）+ ipc_golden 注册 TaskEventEntry |
+| 2026-09-22 | ✅ | E 批：文档同步（AGENTS.md F-44/F-45/F-51 规则收缩；TM-06 spec 标记退役；terminal-feature-plan §4.5/§6）；cargo test --lib（失败集与基线一致，无回归）、pnpm build、gitnexus detect_changes 通过，4 批提交完成 |

@@ -141,7 +141,7 @@ Events：
 ### 4.5 Runtime 输出终端化（TM-05）与「在终端中启动」（TM-06）
 
 - **TM-05**：终端面板为每个活跃 runtime 开只读 tab，数据源是 `stores/runtime.ts` 的 `logBuffers`（行内 ANSI 保留，`writeln` 即可）。前提：`store.subscribe()` 从 `useRuntimeWorkspace` 上移到 App 级（注意 5000 行环形上限已有，内存可控）；`RuntimeLogsView` 保持原样不受影响。同时新增**面板操作工具条**（对标 IDEA Run 面板）：activeTab 为受管 runtime tab 时显示 启动 / 重启 / 停止 按钮，调用 `stores/runtime.ts` 既有 `start/stop/restart`（走任务队列，TaskPanel 照常追踪），按钮可用性跟随该 runtime 运行态；shell / Git Console tab 不显示该组按钮。
-- **TM-06**：新增 `runtime_start_in_terminal(runtimeName)`：构建走原链路产出 `LaunchPlan`，然后开一个 Shell tab 并写入 `plan.preview`（现成的可读命令串）+ 回车执行。UI 明示降级：此模式下无健康检查/端口检测/日志落盘，Stop = 关闭该 PTY 会话（kill 进程树）。`LaunchPlan.preview` 缺失或含需脱敏 env 时禁止该模式并提示。
+- **TM-06（已退役，TM-08）**：原设计为「LaunchPlan 降级成 shell 字符串写入 PTY」，因 F-44/F-45/F-51 一整轮 shell 适配坑已整体退役。**替代设计**：结构化 spawn（`launcher::launch_command`，argv + env + 管道不经 shell 解析）+ 输出镜像到以应用名命名的终端 tab。详见 [tasks-terminal/TM-08-command-flow-panel.md](./tasks-terminal/TM-08-command-flow-panel.md)。
 
 ---
 
@@ -176,7 +176,7 @@ Events：
 |---|---|---|
 | 一期 · 终端基础 | TM-01 PTY 会话后端 / TM-02 终端面板前端 / TM-03 交互式 Shell 端到端 | portable-pty 接入 + IPC 契约；xterm 面板骨架；三平台联通冒烟 |
 | 二期 · Git 镜像 | TM-04 Git 输出流式化 + Git Console | `run_git` 流式化、`git_op_output`、libgit2 合成 meta 行 |
-| 三期 · Runtime 终端化 | TM-05 Runtime 输出 xterm tab + 面板操作工具条 / TM-06 在终端中启动 | App 级订阅 + 启动/重启/停止按钮；`runtime_start_in_terminal`（降级模式） |
+| 三期 · Runtime 终端化 | TM-05 Runtime 输出 xterm tab + 面板操作工具条 / TM-06 在终端中启动（已退役，TM-08 起结构化启动 + 输出镜像） | App 级订阅 + 启动/重启/停止按钮；原 `runtime_start_in_terminal` 降级模式已删除 |
 | 增量 · 打磨 | TM-07 终端交互打磨 | 面板内搜索 / 链接路径识别 / 复制粘贴 / shell profile 选择 / 清屏重开 / 面板最大化（明确不含选中即复制） |
 
 依赖链：TM-01 ─► TM-02 ─► TM-03 ─► TM-04；TM-03 ─► TM-05 ─► TM-06（详见 tasks-terminal/README.md）。

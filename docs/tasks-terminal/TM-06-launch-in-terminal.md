@@ -1,12 +1,24 @@
-# TM-06 在终端中启动（LaunchPlan.preview 入 PTY，完整模式 + 降级模式）
+# TM-06 在终端中启动（LaunchPlan.preview 入 PTY，完整模式 + 降级模式）— 已退役
 
-> **开发前必读**：[../terminal-feature-plan.md](../terminal-feature-plan.md) §4.5（TM-06 部分）/ §8（风险：secret 泄露）+ [00-全局开发约束.md](./00-全局开发约束.md) §3；直接依赖：TM-05。关键现状：`LaunchPlan`（`src-tauri/src/runtime/build/mod.rs:140`）各变体均带可读 `preview` 命令串与 `env`/`working_dir`。
+> **退役说明（TM-08，2026-09-21）**：本任务的「LaunchPlan 降级成 shell 字符串
+> 写入用户 PTY」链路已整体退役。原因：字符串链路把结构化 LaunchPlan 降级为
+> shell 命令串，由此产生 F-44（PowerShell `&` 调用运算符）、F-45（裸 token
+> 引号包裹）、F-51（chcp 65001 前缀）一整轮 shell 适配坑；而结构化执行路径
+> （`launcher::launch_command` 直接 spawn argv + env + 管道）与 runtime 输出
+> 镜像 tab 本已存在。
+>
+> **替代方案**：「在终端中启动」入口保留、改写为**结构化启动**（同
+> managed_start 的服务端路径）+ 打开终端面板聚焦 `__runtime_<应用名>` tab；
+> 装依赖/构建输出镜像到 `__install_/__build_<应用名>` tab。详见
+> [TM-08-command-flow-panel.md](./TM-08-command-flow-panel.md)。
+>
+> 以下内容为历史存档，不再适用。
 
 | 项 | 值 |
 |---|---|
 | 阶段 | 三期 · Runtime 终端化 |
 | 优先级 | P2 |
-| 状态 | ✅ 已完成 |
+| 状态 | ⏸️ 已退役（TM-08 起由结构化启动 + 输出镜像 tab 替代） |
 | 依赖 | TM-05 |
 | 对应方案 | §4.5 在终端中启动 |
 
@@ -60,3 +72,4 @@
 | 2026-09-08 | ✅ | 开发完成：前端优先使用真实命令（完整模式），无缓存时降级提示，cargo check + pnpm build 通过 |
 | 2026-09-08 | ✅ | 非降级模式集成 LaunchPlan（后端 runtime_get_launch_preview + 前端优先使用真实命令） |
 | 2026-09-08 | ✅ | 验收标准全部更新（含非降级模式验收标准） |
+| 2026-09-21 | ⏸️ | **已退役（TM-08）**：字符串降级链路易引发 F-44/F-45/F-51 一轮 shell 适配坑，结构化 spawn 路径本已存在；删除 runtime_start_in_terminal / assemble_command_for_shell / plan_shell_command 等，「在终端中启动」入口改写为结构化启动 + 聚焦 __runtime_<应用名> tab，装依赖/构建输出镜像到 __install_/__build_ tab。历史内容存档备查 |

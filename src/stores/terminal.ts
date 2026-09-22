@@ -156,7 +156,7 @@ export const useTerminalStore = defineStore("terminal", () => {
    *
    * `autoOpen` 默认 true：打开面板时保证有一个可用的真终端（见 `ensureRealSession`）。
    * 调用方**自身会立刻创建会话**时传 false，避免一次操作开出两个 shell
-   * （`terminal:new-shell` 命令、`launchInTerminal`）。
+   * （`terminal:new-shell` 命令、`focusMirrorTab`）。
    */
   function showPanel(options?: { autoOpen?: boolean }) {
     panelVisible.value = true;

@@ -90,35 +90,29 @@ This project is indexed by GitNexus as **git-workspace** (15115 symbols, 32848 r
 
 ## 3. 进程与系统命令
 
-- **写入 PTY 的命令行必须按目标 shell 语法适配（F-44）**：PowerShell 把行首
-  引号字符串当表达式——引号路径调用必须补 `&` 调用运算符
+- **向用户交互 shell 注入命令必须按目标 shell 语法适配（F-44，仅适用于命令面板等注入场景）**：PowerShell 把行首引号字符串当表达式——引号路径调用必须补 `&` 调用运算符
   （`& "C:\Program Files\...\java.exe" args`），否则 ParserError
   「表达式或语句中存在意外的标记」；cmd 与 POSIX sh 的引号首词原生作为
   命令词，无需处理。env 注入语法三分流：PowerShell `$env:K='V'; …`
   （`;` 连接兼容 Windows PowerShell 5.1，`&&` 仅 pwsh 7+；`set` 是
   Set-Variable 别名，不注入进程环境）、cmd `set K=V && …`、posix
-  `K=V …`。参照实现：`commands/terminal.rs::assemble_command_for_shell`
-  + `process/pty.rs::shell_kind`（先解析 shell 再适配，并把同一路径显式
-  传给 `open`，保证适配目标与实际 shell 一致）。
-- **PowerShell 参数模式会拆裸 token（F-45）**：写进 PTY 的命令行会被 shell
-  当源码重解析，**单个 `-` 前缀且含 `.` 的裸 token 在第一个 `.` 处被拆成两
-  个参数**（`-Dspring.output.ansi.enabled=always` → `-Dspring` +
-  `.output.ansi.enabled=always`，JVM 把后者当主类报「找不到或无法加载主
-  类」）；`--` 双横线前缀不受影响。同类字符：`,`（ParserError）、`;` `|` `&`
-  （断开命令，多条目 classpath 的 `;` 分隔符命中）、`$`/反引号（展开/转义）、
+  `K=V …`。TM-08 起 Runtime 启动不再走「命令串写入 PTY」降级路径
+  （结构化 spawn 见 `launcher::launch_command`），本规则仅约束仍向交互
+  shell 注入命令的场景（如命令面板）。
+- **PowerShell 参数模式会拆裸 token（F-45，仅适用于命令注入场景）**：写进
+  PTY 的命令行会被 shell 当源码重解析，**单个 `-` 前缀且含 `.` 的裸 token
+  在第一个 `.` 处被拆成两个参数**（`-Dspring.output.ansi.enabled=always` →
+  `-Dspring` + `.output.ansi.enabled=always`）；`--` 双横线前缀不受影响。
+  同类字符：`,`（ParserError）、`;` `|` `&`（断开命令）、`$`/反引号（展开/转义）、
   `'` `(` `)` `{`（ParserError）。**每个 token 组装时就要按字符集判定并加双
-  引号**，不能只判空格。参照实现：
-  `runtime/launch/launcher.rs::plan_shell_command` + `arg_needs_quoting`
-  /`shell_quote_arg`（内含双引号用 `""` 转义，PowerShell 与 cmd CRT 一致）。
+  引号**，不能只判空格。结构化 spawn 路径不经 shell 解析，不受此影响。
 - **ConPTY 输出乱码 = 控制台代码页错配（F-51）**：中文 Windows 控制台输出
   代码页默认 GBK(936)，conhost 按它把子进程输出字节转 UTF-16 再编码成
   UTF-8 发给 PTY master——子进程输出 UTF-8（如带 `-Dfile.encoding=UTF-8`
   的 JVM）会被按 GBK 解码成乱码（「请求路径」→「璇锋眰璺緞」）；反向
-  （子进程 GBK + 控制台 65001）同样成立。应用拉起的终端启动命令必须先
-  `chcp 65001` 切 UTF-8（cmd `chcp 65001 >nul && …`、PowerShell
-  `chcp 65001 | Out-Null; …`，参照 `commands/terminal.rs::utf8_console_prefix`），
-  切完后 JVM 的 `stdout.encoding`（跟随控制台 CP）与显式 UTF-8 设置双向
-  对齐。**交互式 shell tab 不要加**——那是用户自己的会话状态。
+  （子进程 GBK + 控制台 65001）同样成立。**交互式 shell tab 是用户自己的
+  会话，不要注入 `chcp` 等前缀**；应用自行 spawn 的子进程（结构化执行）
+  不经过 conhost 代码页转换，无此问题。
 - **端口占用检测**：Windows `netstat -ano` + `tasklist`；Unix `lsof` + `/proc/<pid>/comm`
   （`process/port.rs`）。解析函数保持纯函数（输入输出样例可单测），系统调用只留
   `detect_port_occupier` 一个入口。

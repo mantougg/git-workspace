@@ -18,8 +18,8 @@
 ## 总体进度
 
 - 任务总数：**8**
-- 已完成：**7** · 进行中：**1** · 未开始：**0**
-- 完成度：**7 / 8（87.5%）**
+- 已完成：**8** · 进行中：**0** · 未开始：**0**
+- 完成度：**8 / 8（100%）**
 
 ---
 
@@ -44,7 +44,7 @@
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
 | TM-05 | Runtime 输出 xterm tab + App 级订阅 + 面板操作工具条 | P1 | ✅ | TM-03 | [TM-05-runtime-output-xterm.md](./TM-05-runtime-output-xterm.md) |
-| TM-06 | 在终端中启动（LaunchPlan.preview 入 PTY，降级模式） | P2 | ✅ | TM-05 | [TM-06-launch-in-terminal.md](./TM-06-launch-in-terminal.md) |
+| TM-06 | 在终端中启动（LaunchPlan.preview 入 PTY，降级模式） | P2 | ⏸️ 已退役 | TM-05 | [TM-06-launch-in-terminal.md](./TM-06-launch-in-terminal.md) |
 
 ### 增量 · 打磨（1 个）
 
@@ -58,7 +58,7 @@
 
 | 编号 | 任务 | 优先级 | 状态 | 依赖 | 文档 |
 |---|---|---|---|---|---|
-| TM-08 | 命令流任务面板 + 退役 TM-06 字符串启动 + 终端 tab 应用名命名与装依赖/构建输出镜像 | P1 | 🟦 | TM-05, TM-07 | [TM-08-command-flow-panel.md](./TM-08-command-flow-panel.md) |
+| TM-08 | 命令流任务面板 + 退役 TM-06 字符串启动 + 终端 tab 应用名命名与装依赖/构建输出镜像 | P1 | ✅ | TM-05, TM-07 | [TM-08-command-flow-panel.md](./TM-08-command-flow-panel.md) |
 
 ---
 
