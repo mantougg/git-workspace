@@ -74,6 +74,29 @@ export interface Task {
   batchId?: string | null;
 }
 
+/**
+ * TM-08：命令流事件条目（append-only）。每次状态迁移记一条，面板按时间序
+ * 渲染；不上屏的瞬时迁移（queued→running 的高频刷新）也会落条目，但面板
+ * 折叠连续同态事件只保留边界态（queued / 首个 running / 终态）。
+ */
+export interface TaskEventEntry {
+  /** 单调递增序列号（同一事件重放去重 / 排序用）。 */
+  seq: number;
+  /** 任务 id；batch 行事件与子任务共享同一 batch id 以外的任务 id。 */
+  taskId: string;
+  at: number;
+  repoPath: string;
+  repoName: string;
+  taskType: TaskType;
+  status: TaskStatus;
+  /** 状态迁移耗时（ms）；queued / running 首帧为 undefined。 */
+  durationMs?: number;
+  batchId?: string | null;
+}
+
+/** 命令流事件上限（防无限增长，超限丢最旧，同 terminal writeBuffer 策略）。 */
+export const TASK_EVENT_LOG_MAX = 200;
+
 export interface TaskRequest {
   taskType: TaskType;
   repoPath: string;

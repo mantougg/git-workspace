@@ -8,7 +8,7 @@
   >
     <div class="drawer-resize" @mousedown="startResize"></div>
     <div class="drawer-title">
-      <span class="drawer-title-text">任务面板</span>
+      <span class="drawer-title-text">命令流</span>
     </div>
     <div class="task-panel-content">
       <div class="task-panel-toolbar">
@@ -21,215 +21,166 @@
       </div>
 
       <n-scrollbar class="task-scroll">
-        <div v-if="tasks.length === 0" class="empty-tasks">
-          <n-empty description="暂无任务" />
+        <div v-if="timeline.length === 0" class="empty-tasks">
+          <n-empty description="暂无命令记录" />
         </div>
         <div
-          v-for="task in standaloneTasks"
-          :key="task.id"
-          class="task-item"
+          v-for="row in timeline"
+          :key="row.key"
+          class="event-row"
+          :class="{
+            'event-failed': row.status.type === 'failed',
+            'event-cancelled': row.status.type === 'cancelled',
+            'event-batch': row.isBatch,
+          }"
         >
-          <div class="task-info">
-            <span class="task-type-badge" :class="taskTypeClass(task)">
-              {{ taskTypeLabel(task) }}
-            </span>
-            <span class="task-repo">{{ task.repoName }}</span>
-          </div>
-          <div class="task-status">
+          <!-- 时间列 -->
+          <span class="event-time">{{ row.time }}</span>
+          <!-- 类型 badge -->
+          <span class="task-type-badge" :class="taskTypeClass(row.taskType)">
+            {{ taskTypeLabel(row.taskType) }}
+          </span>
+          <!-- repo 名（可点击跳转仓库视图） -->
+          <span
+            class="event-repo"
+            :title="row.repoPath"
+            @click="openRepo(row.repoPath)"
+          >
+            {{ row.repoName }}
+          </span>
+          <!-- 状态 / 耗时 -->
+          <span class="event-status">
             <n-tag
-              v-if="task.status.type === 'queued'"
+              v-if="row.status.type === 'queued'"
               type="default"
               size="small"
             >
               排队中
             </n-tag>
             <n-tag
-              v-else-if="task.status.type === 'running'"
+              v-else-if="row.status.type === 'running'"
               type="warning"
               size="small"
             >
               <n-spin :size="12" /> 执行中
             </n-tag>
             <n-tag
-              v-else-if="task.status.type === 'success'"
+              v-else-if="row.status.type === 'success'"
               type="success"
               size="small"
             >
               成功
             </n-tag>
             <n-tag
-              v-else-if="task.status.type === 'failed'"
+              v-else-if="row.status.type === 'partialSuccess'"
+              type="warning"
+              size="small"
+            >
+              部分成功 {{ row.status.succeeded }}/{{
+                row.status.succeeded + row.status.failed
+              }}
+            </n-tag>
+            <n-tag
+              v-else-if="row.status.type === 'failed'"
               type="error"
               size="small"
             >
               失败
             </n-tag>
             <n-tag
-              v-else-if="task.status.type === 'partialSuccess'"
-              type="warning"
-              size="small"
-            >
-              部分成功
-            </n-tag>
-            <n-tag
-              v-else-if="task.status.type === 'cancelled'"
+              v-else-if="row.status.type === 'cancelled'"
               type="default"
               size="small"
             >
               已取消
             </n-tag>
-          </div>
-          <div class="task-actions">
+            <span v-if="row.durationText" class="event-duration">
+              {{ row.durationText }}
+            </span>
+          </span>
+          <!-- 行内操作 -->
+          <span class="event-actions">
             <n-button
-              v-if="task.status.type === 'queued'"
+              v-if="row.isBatch && row.childCount > 0"
+              size="small"
+              text
+              @click="toggleBatch(row.taskId)"
+            >
+              {{ expandedBatches.has(row.taskId) ? '收起' : `明细 ${row.childCount}` }}
+            </n-button>
+            <n-button
+              v-if="row.task && row.task.status.type === 'queued'"
               size="small"
               text
               type="error"
-              @click="handleCancel(task.id)"
+              @click="handleCancel(row.taskId)"
             >
               取消
             </n-button>
-          </div>
-          <div
-            v-if="task.status.type === 'failed'"
-            class="task-error"
-          >
-            {{ task.status.error }}
-          </div>
-        </div>
-        <!-- Batch groups (T-20): aggregate row + expandable per-repo results -->
-        <div
-          v-for="batch in batchRows"
-          :key="batch.id"
-          class="task-item batch-item"
-        >
-          <div class="task-info">
-            <span class="task-type-badge" :class="taskTypeClass(batch)">
-              {{ taskTypeLabel(batch) }}
-            </span>
-            <span class="task-repo">{{ batch.repoName }}</span>
-          </div>
-          <div class="task-status">
-            <n-tag
-              v-if="batch.status.type === 'running'"
-              type="warning"
+            <n-button
+              v-if="row.status.type === 'failed' && row.status.error"
               size="small"
+              text
+              @click="toggleError(row.seq)"
             >
-              <n-spin :size="12" /> 执行中
-            </n-tag>
-            <n-tag
-              v-else-if="batch.status.type === 'success'"
-              type="success"
-              size="small"
-            >
-              成功
-            </n-tag>
-            <n-tag
-              v-else-if="batch.status.type === 'partialSuccess'"
-              type="warning"
-              size="small"
-            >
-              部分成功 {{ batch.status.succeeded }}/{{
-                batch.status.succeeded + batch.status.failed
-              }}
-            </n-tag>
-            <n-tag
-              v-else-if="batch.status.type === 'failed'"
-              type="error"
-              size="small"
-            >
-              失败
-            </n-tag>
-          </div>
-          <div class="task-actions">
-            <n-button size="small" text @click="toggleBatch(batch.id)">
-              {{ expandedBatches.has(batch.id) ? '收起' : '明细' }}
+              {{ expandedErrors.has(row.seq) ? '收起错误' : '展开错误' }}
             </n-button>
+          </span>
+          <!-- 失败错误详情 -->
+          <div
+            v-if="row.status.type === 'failed' && expandedErrors.has(row.seq)"
+            class="event-error"
+          >
+            {{ row.status.error }}
           </div>
-          <div v-if="expandedBatches.has(batch.id)" class="batch-children">
+          <!-- batch 子行 -->
+          <div v-if="row.isBatch && expandedBatches.has(row.taskId)" class="batch-children">
             <div
-              v-for="child in childrenOf(batch.id)"
-              :key="child.id"
+              v-for="child in childrenOf(row.taskId)"
+              :key="child.key"
               class="batch-child"
+              :class="child.status.type"
             >
+              <span class="child-time">{{ child.time }}</span>
               <span :class="['child-mark', child.status.type]">
                 {{ childMark(child) }}
               </span>
-              <span class="child-repo">{{ child.repoName }}</span>
+              <span class="child-repo" @click="openRepo(child.repoPath)">
+                {{ child.repoName }}
+              </span>
+              <span v-if="child.durationText" class="child-duration">
+                {{ child.durationText }}
+              </span>
               <span
-                v-if="child.status.type === 'failed'"
+                v-if="child.status.type === 'failed' && expandedErrors.has(child.seq)"
                 class="child-error"
               >
                 {{ child.status.error }}
               </span>
+              <n-button
+                v-else-if="child.status.type === 'failed' && child.status.error"
+                size="tiny"
+                text
+                @click="toggleError(child.seq)"
+              >
+                展开错误
+              </n-button>
             </div>
           </div>
         </div>
       </n-scrollbar>
-
-      <!-- Git command output (IDE-style console) -->
-      <div class="git-console">
-        <div class="git-console-header">
-          <span class="git-console-title">Git 命令输出</span>
-          <n-button
-            v-if="gitLogs.length > 0"
-            size="small"
-            text
-            @click="gitLogs = []"
-          >
-            清空
-          </n-button>
-        </div>
-        <n-scrollbar height="160px">
-          <div v-if="gitLogs.length === 0" class="empty-git-log">
-            暂无命令输出
-          </div>
-          <div
-            v-for="(log, i) in gitLogs"
-            :key="i"
-            class="git-log-item"
-            :class="{ 'log-failed': !log.success }"
-          >
-            <div class="git-log-head">
-              <span class="git-log-time">{{ log.time }}</span>
-              <span class="git-log-repo">{{ log.repoName }}</span>
-              <span class="git-log-cmd">{{ log.command }}</span>
-              <n-tag
-                :type="log.success ? 'success' : 'error'"
-                size="small"
-                :bordered="false"
-              >
-                {{ log.success ? "成功" : "失败" }}
-              </n-tag>
-            </div>
-            <pre v-if="log.output" class="git-log-output">{{
-              log.output
-            }}</pre>
-          </div>
-        </n-scrollbar>
-      </div>
     </div>
   </n-drawer>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { listen } from "@tauri-apps/api/event";
+import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useTaskStore } from "@/stores/task";
-import { useTaskProgress } from "@/composables/useTaskProgress";
-import type { GitCommandResult, Task } from "@/types/task";
+import type { Task, TaskType, TaskStatus } from "@/types/task";
 
 const taskStore = useTaskStore();
-useTaskProgress();
-
-interface GitLogEntry extends GitCommandResult {
-  time: string;
-}
-
-const gitLogs = ref<GitLogEntry[]>([]);
-let unlistenGit: (() => void) | null = null;
-
-const panelHeight = ref(420);
+const router = useRouter();const panelHeight = ref(420);
 let resizeStartY = 0;
 let resizeStartH = 0;
 
@@ -243,10 +194,10 @@ function startResize(e: MouseEvent) {
 }
 
 function onResizeMove(e: MouseEvent) {
-  const delta = resizeStartY - e.clientY; // drag up -> taller
+  const delta = e.clientY - resizeStartY; // drag up -> taller
   panelHeight.value = Math.max(
     240,
-    Math.min(window.innerHeight * 0.85, resizeStartH + delta),
+    Math.min(window.innerHeight * 0.85, resizeStartH + delta)
   );
 }
 
@@ -254,23 +205,6 @@ function endResize() {
   document.removeEventListener("mousemove", onResizeMove);
   document.removeEventListener("mouseup", endResize);
 }
-
-onMounted(async () => {
-  unlistenGit = await listen<GitCommandResult>("git_command_result", (e) => {
-    gitLogs.value.unshift({
-      ...e.payload,
-      time: new Date().toLocaleTimeString(),
-    });
-    if (gitLogs.value.length > 50) gitLogs.value.pop();
-  });
-});
-
-onUnmounted(() => {
-  if (unlistenGit) {
-    unlistenGit();
-    unlistenGit = null;
-  }
-});
 
 const visible = computed({
   get: () => taskStore.panelVisible,
@@ -281,8 +215,8 @@ const tasks = computed(() => taskStore.tasks);
 const activeCount = computed(
   () =>
     tasks.value.filter(
-      (t) => t.status.type === "queued" || t.status.type === "running",
-    ).length,
+      (t) => t.status.type === "queued" || t.status.type === "running"
+    ).length
 );
 const finishedCount = computed(
   () =>
@@ -291,44 +225,136 @@ const finishedCount = computed(
         t.status.type === "success" ||
         t.status.type === "failed" ||
         t.status.type === "cancelled" ||
-        t.status.type === "partialSuccess",
-    ).length,
+        t.status.type === "partialSuccess"
+    ).length
 );
 
-// Batch grouping (T-20): children carry batchId; the batch row itself has
-// batchId null and its id equals the children's batchId.
-const batchIds = computed(() =>
-  new Set(
-    tasks.value
-      .map((t) => t.batchId)
-      .filter((b): b is string => !!b),
-  ),
-);
-const batchRows = computed(() =>
-  tasks.value.filter((t) => batchIds.value.has(t.id)),
-);
-const standaloneTasks = computed(() =>
-  tasks.value.filter((t) => !t.batchId && !batchIds.value.has(t.id)),
-);
+// ---------------------------------------------------------------------------
+// TM-08：命令流时间线
+// ---------------------------------------------------------------------------
 
-const expandedBatches = ref<Set<string>>(new Set());
-
-function childrenOf(batchId: string): Task[] {
-  return tasks.value.filter((t) => t.batchId === batchId);
+interface TimelineRow {
+  key: string;
+  seq: number;
+  taskId: string;
+  time: string;
+  repoPath: string;
+  repoName: string;
+  taskType: TaskType;
+  status: TaskStatus;
+  durationText: string;
+  isBatch: boolean;
+  childCount: number;
+  /** 关联的当前任务快照（queued 取消按钮用；刷新后无对应任务则为 undefined）。 */
+  task?: Task;
 }
 
-function toggleBatch(batchId: string) {
+function hhmmss(at: number): string {
+  const d = new Date(at);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function durationText(ms?: number): string {
+  if (ms === undefined) return "";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/**
+ * 事件流行：事件按 seq 升序；batch 父行（id ∈ children 的 batchId 集合）
+ * 插入到其**首个 child 事件**的时间点，子行收在父行「明细」里。
+ */
+const timeline = computed<TimelineRow[]>(() => {
+  const events = taskStore.events;
+  const batchIds = new Set(
+    events
+      .map((e) => e.batchId)
+      .filter((b): b is string => !!b)
+  );
+  const rows: TimelineRow[] = [];
+  const firstChildSeqByBatch = new Map<string, number>();
+  for (const e of events) {
+    if (e.batchId && !firstChildSeqByBatch.has(e.batchId)) {
+      firstChildSeqByBatch.set(e.batchId, e.seq);
+    }
+  }
+  for (const e of events) {
+    const isBatch = !e.batchId && batchIds.has(e.taskId);
+    const insertAt = isBatch
+      ? (firstChildSeqByBatch.get(e.taskId) ?? e.seq) - 0.5
+      : e.seq;
+    rows.push({
+      key: `e${e.seq}`,
+      seq: e.seq,
+      taskId: e.taskId,
+      time: hhmmss(e.at),
+      repoPath: e.repoPath,
+      repoName: e.repoName,
+      taskType: e.taskType,
+      status: e.status,
+      durationText: durationText(e.durationMs),
+      isBatch,
+      childCount: isBatch
+        ? events.filter((c) => c.batchId === e.taskId).length
+        : 0,
+      task: tasks.value.find((t) => t.id === e.taskId),
+      // insertAt 参与排序：batch 父行排在其首个子事件之前
+      ...(isBatch ? {} : {}),
+    });
+    if (isBatch) {
+      // 用 -0.5 偏移保证父行先于同刻子事件；seq 为整数，直接减 0.5 即可
+      rows[rows.length - 1].seq = insertAt;
+    }
+  }
+  // batch 行按首个子事件时间插入；其余按事件序
+  rows.sort((a, b) => a.seq - b.seq);
+  return rows;
+});
+
+function childrenOf(batchTaskId: string): TimelineRow[] {
+  return taskStore.events
+    .filter((e) => e.batchId === batchTaskId)
+    .map((e) => ({
+      key: `c${e.seq}`,
+      seq: e.seq,
+      taskId: e.taskId,
+      time: hhmmss(e.at),
+      repoPath: e.repoPath,
+      repoName: e.repoName,
+      taskType: e.taskType,
+      status: e.status,
+      durationText: durationText(e.durationMs),
+      isBatch: false,
+      childCount: 0,
+    }));
+}
+
+const expandedBatches = ref<Set<string>>(new Set());
+const expandedErrors = ref<Set<number>>(new Set());
+
+function toggleBatch(taskId: string) {
   const next = new Set(expandedBatches.value);
-  if (next.has(batchId)) {
-    next.delete(batchId);
+  if (next.has(taskId)) {
+    next.delete(taskId);
   } else {
-    next.add(batchId);
+    next.add(taskId);
   }
   expandedBatches.value = next;
 }
 
-function childMark(task: Task): string {
-  switch (task.status.type) {
+function toggleError(seq: number) {
+  const next = new Set(expandedErrors.value);
+  if (next.has(seq)) {
+    next.delete(seq);
+  } else {
+    next.add(seq);
+  }
+  expandedErrors.value = next;
+}
+
+function childMark(row: { status: TaskStatus }): string {
+  switch (row.status.type) {
     case "success":
       return "✓";
     case "failed":
@@ -340,8 +366,8 @@ function childMark(task: Task): string {
   }
 }
 
-function taskTypeLabel(task: Task): string {
-  switch (task.taskType.type) {
+function taskTypeLabel(taskType: TaskType): string {
+  switch (taskType.type) {
     case "fetch":
       return "Fetch";
     case "pull":
@@ -371,8 +397,14 @@ function taskTypeLabel(task: Task): string {
   }
 }
 
-function taskTypeClass(task: Task): string {
-  return `task-type-${task.taskType.type}`;
+function taskTypeClass(taskType: TaskType): string {
+  return `task-type-${taskType.type}`;
+}
+
+/** 点击行跳转仓库视图（RepositoryList 的 query.repo 既有模式）。 */
+function openRepo(repoPath: string) {
+  if (!repoPath) return;
+  router.push({ name: "repositories", query: { repo: repoPath } });
 }
 
 async function handleCancel(taskId: string) {
@@ -450,20 +482,36 @@ async function handleClear() {
   color: var(--gw-text-dim);
 }
 
-.task-item {
+/* ---- 事件流行（TM-08） ---- */
+
+.event-row {
   display: flex;
   align-items: center;
   gap: var(--gw-space-2);
-  padding: 6px 8px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--gw-border);
   flex-wrap: wrap;
+  font-size: 13px;
 }
 
-.task-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
+.event-row.event-failed {
+  background: color-mix(in srgb, var(--gw-danger) 10%, transparent);
+}
+
+.event-row.event-cancelled {
+  opacity: 0.75;
+}
+
+.event-row.event-batch {
+  font-weight: 600;
+}
+
+.event-time {
+  font-family: var(--gw-font-mono);
+  font-size: 11px;
+  color: var(--gw-text-dim);
+  flex-shrink: 0;
+  min-width: 56px;
 }
 
 .task-type-badge {
@@ -471,6 +519,7 @@ async function handleClear() {
   padding: 1px 6px;
   border-radius: 3px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .task-type-fetch {
@@ -484,22 +533,62 @@ async function handleClear() {
 }
 
 .task-type-push {
-  background: var(--gw-warning);
+  background: var(--gw-bg-hover);
   color: var(--gw-warning);
 }
 
 .task-type-commit {
-  background: var(--gw-danger);
+  background: var(--gw-bg-hover);
+  color: var(--gw-danger);
+}
+
+.task-type-runtime,
+.task-type-nodeInstall {
+  background: var(--gw-bg-hover);
   color: var(--gw-accent);
 }
 
-.task-repo {
-  font-size: 13px;
+.event-repo {
   font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--gw-radius-sm);
 }
 
-.batch-item {
-  flex-wrap: wrap;
+.event-repo:hover {
+  color: var(--gw-accent);
+  text-decoration: underline;
+}
+
+.event-status {
+  display: flex;
+  align-items: center;
+  gap: var(--gw-space-1);
+  margin-left: auto;
+}
+
+.event-duration {
+  font-family: var(--gw-font-mono);
+  font-size: 11px;
+  color: var(--gw-text-dim);
+}
+
+.event-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.event-error {
+  width: 100%;
+  font-size: 12px;
+  font-family: var(--gw-font-mono);
+  color: var(--gw-danger);
+  padding: 4px 6px;
+  margin-top: 2px;
+  background: var(--gw-bg-hover);
+  border-radius: var(--gw-radius-sm);
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .batch-children {
@@ -514,7 +603,15 @@ async function handleClear() {
   align-items: baseline;
   gap: var(--gw-space-2);
   font-size: 12px;
+  font-weight: 400;
   padding: 1px 0;
+}
+
+.child-time {
+  font-family: var(--gw-font-mono);
+  font-size: 11px;
+  color: var(--gw-text-dim);
+  min-width: 56px;
 }
 
 .child-mark {
@@ -531,16 +628,30 @@ async function handleClear() {
   color: var(--gw-danger);
 }
 
+.child-mark.cancelled {
+  color: var(--gw-text-dim);
+}
+
+.child-repo {
+  cursor: pointer;
+  border-radius: var(--gw-radius-sm);
+}
+
+.child-repo:hover {
+  color: var(--gw-accent);
+  text-decoration: underline;
+}
+
+.child-duration {
+  font-family: var(--gw-font-mono);
+  font-size: 11px;
+  color: var(--gw-text-dim);
+  margin-left: auto;
+}
+
 .child-error {
   color: var(--gw-danger);
   word-break: break-all;
-}
-
-.task-error {
-  width: 100%;
-  font-size: 12px;
-  color: var(--gw-danger);
-  padding: 2px 0;
 }
 
 .empty-tasks {
@@ -548,89 +659,5 @@ async function handleClear() {
   justify-content: center;
   align-items: center;
   height: 200px;
-}
-
-.git-console {
-  margin-top: 8px;
-  border-top: 1px solid var(--gw-border);
-  padding-top: 6px;
-}
-
-.git-console-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 4px;
-}
-
-.git-console-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--gw-text);
-}
-
-.empty-git-log {
-  font-size: 12px;
-  color: var(--gw-text-dim);
-  text-align: center;
-  padding: 12px 0;
-}
-
-.git-log-item {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--gw-border);
-}
-
-.git-log-head {
-  display: flex;
-  align-items: center;
-  gap: var(--gw-space-2);
-  flex-wrap: wrap;
-}
-
-.git-log-time {
-  font-size: 11px;
-  color: var(--gw-text-dim);
-  flex-shrink: 0;
-}
-
-.git-log-repo {
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.git-log-cmd {
-  font-family: Consolas, monospace;
-  font-size: 12px;
-  color: var(--gw-accent);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.git-log-output {
-  font-family: Consolas, monospace;
-  font-size: 11px;
-  color: var(--gw-text-dim);
-  background: var(--gw-bg-hover);
-  padding: 4px 8px;
-  border-radius: 3px;
-  margin: 4px 0 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 80px;
-  overflow-y: auto;
-}
-
-.git-log-item.log-failed .git-log-cmd {
-  color: var(--gw-danger);
-}
-
-.git-log-item.log-failed .git-log-output {
-  color: var(--gw-danger);
-  background: var(--gw-danger);
 }
 </style>

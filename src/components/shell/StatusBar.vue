@@ -24,14 +24,23 @@
 
     <div class="statusbar-divider" />
 
-    <!-- 任务数槽位 -->
+    <!-- 任务数槽位：TM-08 增加失败红色标识 -->
     <div
       class="statusbar-slot statusbar-tasks"
-      :class="{ clickable: runningTaskCount > 0 }"
+      :class="{
+        clickable: runningTaskCount > 0 || failedTaskCount > 0,
+        'task-failed': failedTaskCount > 0,
+      }"
+      :title="failedTaskCount > 0 ? `${failedTaskCount} 个任务失败` : undefined"
       @click="onTasksClick"
     >
-      <n-icon :size="12"><PlayOutline /></n-icon>
-      <span>{{ runningTaskCount > 0 ? `${runningTaskCount} 个任务` : '无任务' }}</span>
+      <n-icon :size="12">
+        <AlertCircleOutline v-if="failedTaskCount > 0" />
+        <PlayOutline v-else />
+      </n-icon>
+      <span v-if="runningTaskCount > 0">{{ runningTaskCount }} 个任务</span>
+      <span v-else-if="failedTaskCount > 0">{{ failedTaskCount }} 个失败</span>
+      <span v-else>无任务</span>
     </div>
 
     <!-- 内嵌终端槽位（TM-02，StatusBar 全局唯一开合入口） -->
@@ -136,7 +145,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { NIcon, NPopover } from "naive-ui";
-import { ChevronDownOutline, CodeOutline, FolderOpenOutline, GitBranchOutline, PlayOutline, SparklesOutline, TerminalOutline } from "@vicons/ionicons5";
+import { ChevronDownOutline, CodeOutline, FolderOpenOutline, GitBranchOutline, PlayOutline, SparklesOutline, TerminalOutline, AlertCircleOutline } from "@vicons/ionicons5";
 import { WATCHER_EVENTS, watcherStatus } from "@/api/git_ops";
 import { listIntegrationTargets, openInIde, openInFileManager, openWithSystemApp, IDE_DISPLAY_NAMES, type IdeKind } from "@/api/integration";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -235,6 +244,10 @@ const runningTaskCount = computed(() =>
     (t) => t.status.type === "queued" || t.status.type === "running"
   ).length
 );
+// TM-08：失败任务计数（命令流红色标识）
+const failedTaskCount = computed(() =>
+  taskStore.tasks.filter((t) => t.status.type === "failed").length
+);
 
 function showWorkspaceSwitcher() {
   showWsPopover.value = !showWsPopover.value;
@@ -308,6 +321,11 @@ onUnmounted(() => {
 .statusbar-slot.clickable:hover {
   background: var(--gw-bg-hover);
   color: var(--gw-text);
+}
+
+/* TM-08：任务槽失败红色标识 */
+.statusbar-tasks.task-failed {
+  color: var(--gw-danger);
 }
 
 .statusbar-divider {

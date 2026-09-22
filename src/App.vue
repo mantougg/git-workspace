@@ -37,6 +37,11 @@ import type { CommandContext } from "@/commands/registry";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
 import { useAiStore } from "@/stores/ai";
+import { useTaskProgress } from "@/composables/useTaskProgress";
+
+// TM-08：task_progress 监听上提到 App 级——TaskPanel 在 n-drawer 里，
+// 隐藏时 content 卸载会丢事件；命令流事件日志需要全程在线。
+useTaskProgress();
 
 // D-02：主题机制
 const { resolved } = useTheme();
