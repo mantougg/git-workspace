@@ -6,9 +6,10 @@ use crate::runtime::build::runner::{FakeMavenRunner, FakeRun};
 use crate::runtime::build::{BuildOutputSink, RunStrategy};
 use crate::runtime::config::{CreateRuntimeConfigRequest, RuntimeApplicationConfig};
 use crate::runtime::events::{
-    VecEmitter, EVENT_BUILD_COMPLETED, EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED, EVENT_DEPENDENCY_RESOLVED,
-    EVENT_ENVIRONMENT_COMPLETED, EVENT_ENVIRONMENT_PROGRESS, EVENT_HEALTH_CHANGED, EVENT_PROCESS_STARTED,
-    EVENT_PROCESS_STOPPED, EVENT_PROJECT_DISCOVERED, EVENT_RESTART_COMPLETED, EVENT_RESTART_STARTED,
+    VecEmitter, EVENT_BUILD_COMPLETED, EVENT_BUILD_OUTPUT, EVENT_BUILD_PROGRESS, EVENT_BUILD_STARTED,
+    EVENT_DEPENDENCY_RESOLVED, EVENT_ENVIRONMENT_COMPLETED, EVENT_ENVIRONMENT_PROGRESS, EVENT_HEALTH_CHANGED,
+    EVENT_PROCESS_STARTED, EVENT_PROCESS_STOPPED, EVENT_PROJECT_DISCOVERED, EVENT_RESTART_COMPLETED,
+    EVENT_RESTART_STARTED,
 };
 use crate::runtime::launch::launcher::FakeLaunchRunner;
 use crate::runtime::launch::LifecycleStatus;
@@ -136,11 +137,29 @@ fn runtime_task(op: RuntimeOp, workspace_id: i64, name: &str, options: RuntimeTa
 
 /// §63/§65：Build 任务经 handler 执行成功，事件序列
 /// build_started → build_progress(building) → build_completed(success)。
+/// TM-08：mvn 逐行输出经 EmittingBuildSink 补发 runtime_build_output，
+/// 夹在 build_progress 与 build_completed 之间（本测试用 FakeRun 编排，
+/// 无 mvn 环境也覆盖该行为）。
 #[test]
 fn build_op_succeeds_and_emits_event_sequence() {
     let fixture = maven_fixture("build");
     let emitter = Arc::new(VecEmitter::default());
-    let maven = Arc::new(FakeMavenRunner::successful());
+    let maven = Arc::new(FakeMavenRunner::new(vec![
+        FakeRun {
+            lines: vec![
+                (OutputStream::Stdout, "[INFO] --- maven-compiler-plugin:3.1:compile".into()),
+                (OutputStream::Stderr, "[WARNING] deprecated API".into()),
+            ],
+            ..Default::default()
+        },
+        FakeRun {
+            lines: vec![
+                (OutputStream::Stdout, "[INFO] --- maven-compiler-plugin:3.1:compile".into()),
+                (OutputStream::Stderr, "[WARNING] deprecated API".into()),
+            ],
+            ..Default::default()
+        },
+    ]));
     let service = test_service(
         &fixture,
         Arc::clone(&emitter),
@@ -161,11 +180,41 @@ fn build_op_succeeds_and_emits_event_sequence() {
     let output = service.execute(&task, cancel).unwrap();
     assert!(output.unwrap().contains("构建完成"));
 
+    let collected = emitter.collected();
+    let names: Vec<&str> = collected.iter().map(|e| e.name).collect();
+    let lifecycle: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|n| *n != EVENT_BUILD_OUTPUT)
+        .collect();
     assert_eq!(
-        emitter.names(),
+        lifecycle,
         vec![EVENT_BUILD_STARTED, EVENT_BUILD_PROGRESS, EVENT_BUILD_COMPLETED]
     );
-    let completed = &emitter.collected()[2];
+
+    // TM-08：输出事件带应用名/流/行内容，且位于 progress 与 completed 之间。
+    let output_events: Vec<&serde_json::Value> = collected
+        .iter()
+        .filter(|e| e.name == EVENT_BUILD_OUTPUT)
+        .map(|e| &e.payload)
+        .collect();
+    assert!(!output_events.is_empty());
+    for payload in &output_events {
+        assert_eq!(payload["runtimeName"], serde_json::json!("app"));
+        assert!(matches!(payload["stream"].as_str(), Some("stdout" | "stderr")));
+        assert!(payload["line"].as_str().is_some_and(|l| !l.is_empty()));
+    }
+    let progress_idx = names.iter().position(|n| *n == EVENT_BUILD_PROGRESS).unwrap();
+    let completed_idx = names.iter().position(|n| *n == EVENT_BUILD_COMPLETED).unwrap();
+    let output_idx: Vec<usize> = names
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| **n == EVENT_BUILD_OUTPUT)
+        .map(|(i, _)| i)
+        .collect();
+    assert!(output_idx.iter().all(|i| progress_idx < *i && *i < completed_idx));
+
+    let completed = collected.iter().find(|e| e.name == EVENT_BUILD_COMPLETED).unwrap();
     assert_eq!(completed.payload["success"], serde_json::json!(true));
     assert!(completed.payload["durationMs"].is_number());
 }
@@ -1363,6 +1412,8 @@ fn spring_boot_fixture(tag: &str) -> Fixture {
 
 /// R-12 端到端：Build 任务驱动真实 mvn 走完 Synthetic Reactor 构建
 /// （ClasspathRun = compile + dependency:build-classpath），事件序列完整。
+/// TM-08：mvn 每行输出经 EmittingBuildSink 补发 `runtime_build_output`，
+/// 夹在 build_progress(building) 与 build_completed 之间。
 #[test]
 fn build_op_with_real_maven_builds_synthetic_reactor() {
     if !maven_available() {
@@ -1400,12 +1451,45 @@ fn build_op_with_real_maven_builds_synthetic_reactor() {
     assert!(fixture.root.join(".gitworkspace/runtime/app").exists());
     assert!(!fixture.root.join("repo/.gitworkspace").exists());
 
-    let names = emitter.names();
+    let collected = emitter.collected();
+    let names: Vec<&str> = collected.iter().map(|e| e.name).collect();
+    // 生命周期事件序列不受逐行输出事件影响。
+    let lifecycle: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|n| *n != EVENT_BUILD_OUTPUT)
+        .collect();
     assert_eq!(
-        names,
+        lifecycle,
         vec![EVENT_BUILD_STARTED, EVENT_BUILD_PROGRESS, EVENT_BUILD_COMPLETED]
     );
-    assert_eq!(emitter.collected()[2].payload["success"], serde_json::json!(true));
+
+    // TM-08：真实 mvn 有逐行输出事件，payload 带应用名/流/行内容，
+    // 且全部夹在 build_progress 之后、build_completed 之前。
+    let output_events: Vec<&serde_json::Value> = collected
+        .iter()
+        .filter(|e| e.name == EVENT_BUILD_OUTPUT)
+        .map(|e| &e.payload)
+        .collect();
+    assert!(!output_events.is_empty());
+    for payload in &output_events {
+        assert_eq!(payload["runtimeName"], serde_json::json!("app"));
+        assert!(matches!(payload["stream"].as_str(), Some("stdout" | "stderr")));
+        // mvn 正常会输出空行（阶段分隔），行内容存在即可。
+        assert!(payload["line"].is_string());
+    }
+    let progress_idx = names.iter().position(|n| *n == EVENT_BUILD_PROGRESS).unwrap();
+    let completed_idx = names.iter().position(|n| *n == EVENT_BUILD_COMPLETED).unwrap();
+    let output_idx: Vec<usize> = names
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| **n == EVENT_BUILD_OUTPUT)
+        .map(|(i, _)| i)
+        .collect();
+    assert!(output_idx.iter().all(|i| progress_idx < *i && *i < completed_idx));
+
+    let completed = collected.iter().find(|e| e.name == EVENT_BUILD_COMPLETED).unwrap();
+    assert_eq!(completed.payload["success"], serde_json::json!(true));
 
     let _ = std::fs::remove_dir_all(&fixture.root);
 }
