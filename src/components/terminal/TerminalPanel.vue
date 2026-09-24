@@ -298,6 +298,21 @@ onMounted(() => {
           </button>
           <div class="terminal-toolbar-divider" />
         </template>
+        <!-- GF-07：单仓网络操作取消入口（sync_*/push_branch；与 TaskPanel 取消体验对齐） -->
+        <template v-if="terminalStore.gitOpsInFlight.length > 0">
+          <n-button
+            v-for="op in terminalStore.gitOpsInFlight"
+            :key="op.opId"
+            size="small"
+            text
+            type="error"
+            :title="`取消 ${op.command}（${op.repoName}）`"
+            @click="terminalStore.cancelGitOp(op.opId)"
+          >
+            取消
+          </n-button>
+          <div class="terminal-toolbar-divider" />
+        </template>
         <!-- 搜索按钮 -->
         <button class="terminal-toolbar-btn" title="搜索（Ctrl+F）" @click="toggleSearch">🔍</button>
         <!-- 清屏按钮 -->

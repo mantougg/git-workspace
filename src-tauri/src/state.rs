@@ -100,6 +100,11 @@ pub struct AppState {
 
     /// TM-01：PTY 会话管理器（终端面板后端，portable-pty）。
     pub terminal: Arc<crate::process::pty::TerminalManager>,
+
+    /// GF-07：单仓网络操作（sync_fetch/pull/push、smart_pull、push_branch）的
+    /// 取消注册表（op_id → cancel flag）。这批命令不走任务队列，但仍需与队列
+    /// `cancel_flags` 同模式的「前端可取消」通道。
+    pub single_ops: Arc<crate::task::single_ops::SingleOpRegistry>,
 }
 
 /// AI 结果缓存的内存 LRU 上限（§16.1：每个 LRU 都有上限）。条目是结构化
@@ -156,6 +161,8 @@ impl AppState {
             // TM-01：TerminalManager（TauriTerminalEmitter 延迟初始化，
             // setup 闭包中通过 set_app_handle 注入 AppHandle）。
             terminal: Arc::new(crate::process::pty::TerminalManager::new()),
+            // GF-07：单仓网络操作取消注册表（空表起步，随命令调用增删）。
+            single_ops: Arc::new(crate::task::single_ops::SingleOpRegistry::default()),
         }
     }
 }

@@ -38,10 +38,15 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { useRepositoryStore } from "@/stores/repository";
 import { useAiStore } from "@/stores/ai";
 import { useTaskProgress } from "@/composables/useTaskProgress";
+import { useGitOpMirror } from "@/composables/useGitOpMirror";
 
 // TM-08：task_progress 监听上提到 App 级——TaskPanel 在 n-drawer 里，
 // 隐藏时 content 卸载会丢事件；命令流事件日志需要全程在线。
 useTaskProgress();
+
+// GF-07：git_op_* 监听同样上提——单仓网络操作的 Git Console 镜像与取消
+// 入口在终端面板从未打开时也要在线（否则首批事件丢失，退回静默转圈）。
+useGitOpMirror();
 
 // D-02：主题机制
 const { resolved } = useTheme();

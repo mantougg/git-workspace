@@ -1,8 +1,11 @@
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{Emitter, State};
+use uuid::Uuid;
 
 use crate::core::git_ops::GitOps;
 use crate::core::git_status;
@@ -14,10 +17,15 @@ use crate::models::commit::{CommitIdentity, CommitScanFinding};
 use crate::models::repository::RepoStatus;
 use crate::models::task::{TaskRequest, TaskType};
 use crate::state::AppState;
+use crate::task::console::{
+    emit_git_op_finished, emit_git_op_started, finish_streaming, ConsoleStreamer,
+};
+use crate::task::single_ops::SingleOpGuard;
 
 /// PAF-08：sync 网络命令硬超时（与任务队列 TASK_TIMEOUT 对齐）。超时后
 /// `run_git_streaming` 杀掉 git 进程树，避免无限占用执行线程。
-const SYNC_GIT_TIMEOUT: Duration = Duration::from_secs(300);
+/// GF-07：单仓 `push_branch`（commands/branch.rs）共用同一预算。
+pub(crate) const SYNC_GIT_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Result of a smart pull operation (fetch + intelligent merge).
 #[derive(Debug, Clone, Serialize)]
@@ -196,40 +204,119 @@ pub fn set_group_identity(
 /// PAF-08：原为同步命令——git 网络挂起时在 Tauri 主线程无限阻塞且无超时。
 /// 改 async + `spawn_blocking` 并走 `fetch_streaming`：执行移出主线程，
 /// 超时杀 git 进程树。
+///
+/// GF-07：`on_line` 接流式——git 输出逐行（100ms 聚合）镜像到 Git Console
+/// （`git_op_output`，与批次操作同一事件），并经 `git_op_started` /
+/// `git_op_finished` 生命周期事件提供前端取消入口（`cancel_git_op`）。
+/// `op_id` 缺省时后端生成。
 #[tauri::command]
-pub async fn sync_fetch(repo_path: String) -> AppResult<()> {
-    tauri::async_runtime::spawn_blocking(move || {
+pub async fn sync_fetch(
+    repo_path: String,
+    op_id: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let (op_id, cancel, _guard) = register_single_op(&state, op_id);
+    let repo_name = repo_display_name(&repo_path);
+    let command = "git fetch <remote>".to_string();
+    emit_git_op_started(&app, &op_id, &repo_path, &repo_name, &command);
+    let app_for_finish = app.clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let ops = GitOps::with_default_ssh();
-        ops.fetch_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})
-            .map(|_| ())
+        let mut streamer = ConsoleStreamer::new(app, repo_path.clone(), repo_name, command);
+        streamer.emit_meta_header();
+        let r = ops.fetch_streaming(
+            Path::new(&repo_path),
+            Some(cancel.as_ref()),
+            Some(SYNC_GIT_TIMEOUT),
+            &mut |s, l| streamer.on_line(s, l),
+        );
+        streamer.flush();
+        finish_streaming(r, &streamer, SYNC_GIT_TIMEOUT)
     })
     .await
-    .map_err(|e| AppError::Other(format!("sync_fetch join error: {e}")))?
+    .map_err(|e| AppError::Other(format!("sync_fetch join error: {e}")))?;
+
+    emit_op_finished(&app_for_finish, &op_id, &result);
+    result.map(|_| ())
 }
 
 /// Sync pull for a single repo (not queued). Returns the refreshed status after pulling.
+///
+/// GF-07：同 `sync_fetch`——流式镜像 + 取消入口（见 `git_op_started` /
+/// `git_op_finished` 与 `cancel_git_op`）。
 #[tauri::command]
-pub async fn sync_pull(repo_path: String) -> AppResult<RepoStatus> {
-    tauri::async_runtime::spawn_blocking(move || {
+pub async fn sync_pull(
+    repo_path: String,
+    op_id: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<RepoStatus> {
+    let (op_id, cancel, _guard) = register_single_op(&state, op_id);
+    let repo_name = repo_display_name(&repo_path);
+    let command = "git pull --ff-only".to_string();
+    emit_git_op_started(&app, &op_id, &repo_path, &repo_name, &command);
+    let app_for_finish = app.clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let ops = GitOps::with_default_ssh();
-        ops.pull_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+        let mut streamer = ConsoleStreamer::new(app, repo_path.clone(), repo_name, command);
+        streamer.emit_meta_header();
+        let r = ops.pull_streaming(
+            Path::new(&repo_path),
+            Some(cancel.as_ref()),
+            Some(SYNC_GIT_TIMEOUT),
+            &mut |s, l| streamer.on_line(s, l),
+        );
+        streamer.flush();
+        finish_streaming(r, &streamer, SYNC_GIT_TIMEOUT)?;
         git_status::get_repo_status(Path::new(&repo_path))
     })
     .await
-    .map_err(|e| AppError::Other(format!("sync_pull join error: {e}")))?
+    .map_err(|e| AppError::Other(format!("sync_pull join error: {e}")))?;
+
+    emit_op_finished(&app_for_finish, &op_id, &result);
+    result
 }
 
 /// Smart pull: fetch via CLI then merge via libgit2.
 /// If fast-forward is possible, performs FF; otherwise does a full merge.
 /// Returns conflict info when the merge cannot be auto-resolved.
+///
+/// GF-07：fetch / 回退 pull 阶段均流式镜像到 Git Console（各阶段一个
+/// ConsoleStreamer，命令标题行区分），整操作用同一 `op_id` 登记取消。
 #[tauri::command]
-pub async fn smart_pull(repo_path: String) -> AppResult<SmartPullResult> {
-    tauri::async_runtime::spawn_blocking(move || {
+pub async fn smart_pull(
+    repo_path: String,
+    op_id: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<SmartPullResult> {
+    let (op_id, cancel, _guard) = register_single_op(&state, op_id);
+    let repo_name = repo_display_name(&repo_path);
+    let command = "git fetch <remote>".to_string();
+    emit_git_op_started(&app, &op_id, &repo_path, &repo_name, &command);
+    let app_for_finish = app.clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let path = Path::new(&repo_path);
         let ops = GitOps::with_default_ssh();
 
-        // 1. Fetch via CLI (credential manager / SSH support).
-        ops.fetch_streaming(path, None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+        // 1. Fetch via CLI (credential manager / SSH support) — 流式镜像。
+        {
+            let mut streamer =
+                ConsoleStreamer::new(app.clone(), repo_path.clone(), repo_name.clone(), command.clone());
+            streamer.emit_meta_header();
+            let r = ops.fetch_streaming(
+                path,
+                Some(cancel.as_ref()),
+                Some(SYNC_GIT_TIMEOUT),
+                &mut |s, l| streamer.on_line(s, l),
+            );
+            streamer.flush();
+            finish_streaming(r, &streamer, SYNC_GIT_TIMEOUT)?;
+        }
 
         // 2. Determine upstream branch name (must resolve before borrowing repo).
         let upstream_name = {
@@ -241,7 +328,7 @@ pub async fn smart_pull(repo_path: String) -> AppResult<SmartPullResult> {
         let shorthand = match upstream_name {
             Some(s) => s,
             None => {
-                ops.pull_streaming(path, None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+                smart_pull_fallback_pull(&app, &repo_path, &repo_name, &cancel)?;
                 return Ok(SmartPullResult::Success {
                     commit_oid: String::new(),
                 });
@@ -258,7 +345,7 @@ pub async fn smart_pull(repo_path: String) -> AppResult<SmartPullResult> {
         let upstream = match upstream {
             Some(u) => u,
             None => {
-                ops.pull_streaming(path, None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})?;
+                smart_pull_fallback_pull(&app, &repo_path, &repo_name, &cancel)?;
                 return Ok(SmartPullResult::Success {
                     commit_oid: String::new(),
                 });
@@ -269,7 +356,36 @@ pub async fn smart_pull(repo_path: String) -> AppResult<SmartPullResult> {
         smart_pull_inner(path, &upstream)
     })
     .await
-    .map_err(|e| AppError::Other(format!("smart_pull join error: {e}")))?
+    .map_err(|e| AppError::Other(format!("smart_pull join error: {e}")))?;
+
+    emit_op_finished(&app_for_finish, &op_id, &result);
+    result
+}
+
+/// smart_pull 的回退路径：拿不到 upstream 时退回 `git pull --ff-only`
+/// （与批次 Pull 同一命令标题行），流式镜像到 Git Console。
+fn smart_pull_fallback_pull(
+    app: &tauri::AppHandle,
+    repo_path: &str,
+    repo_name: &str,
+    cancel: &AtomicBool,
+) -> AppResult<()> {
+    let ops = GitOps::with_default_ssh();
+    let mut streamer = ConsoleStreamer::new(
+        app.clone(),
+        repo_path.to_string(),
+        repo_name.to_string(),
+        "git pull --ff-only".to_string(),
+    );
+    streamer.emit_meta_header();
+    let r = ops.pull_streaming(
+        Path::new(repo_path),
+        Some(cancel),
+        Some(SYNC_GIT_TIMEOUT),
+        &mut |s, l| streamer.on_line(s, l),
+    );
+    streamer.flush();
+    finish_streaming(r, &streamer, SYNC_GIT_TIMEOUT).map(|_| ())
 }
 
 /// Core smart-pull logic: merge_analysis → fast-forward or full merge.
@@ -330,15 +446,80 @@ fn smart_pull_inner(path: &Path, upstream: &str) -> AppResult<SmartPullResult> {
 }
 
 /// Sync push for a single repo (not queued).
+///
+/// GF-07：同 `sync_fetch`——流式镜像 + 取消入口。
 #[tauri::command]
-pub async fn sync_push(repo_path: String) -> AppResult<()> {
-    tauri::async_runtime::spawn_blocking(move || {
+pub async fn sync_push(
+    repo_path: String,
+    op_id: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let (op_id, cancel, _guard) = register_single_op(&state, op_id);
+    let repo_name = repo_display_name(&repo_path);
+    let command = "git push".to_string();
+    emit_git_op_started(&app, &op_id, &repo_path, &repo_name, &command);
+    let app_for_finish = app.clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
         let ops = GitOps::with_default_ssh();
-        ops.push_streaming(Path::new(&repo_path), None, Some(SYNC_GIT_TIMEOUT), &mut |_, _| {})
-            .map(|_| ())
+        let mut streamer = ConsoleStreamer::new(app, repo_path.clone(), repo_name, command);
+        streamer.emit_meta_header();
+        let r = ops.push_streaming(
+            Path::new(&repo_path),
+            Some(cancel.as_ref()),
+            Some(SYNC_GIT_TIMEOUT),
+            &mut |s, l| streamer.on_line(s, l),
+        );
+        streamer.flush();
+        finish_streaming(r, &streamer, SYNC_GIT_TIMEOUT)
     })
     .await
-    .map_err(|e| AppError::Other(format!("sync_push join error: {e}")))?
+    .map_err(|e| AppError::Other(format!("sync_push join error: {e}")))?;
+
+    emit_op_finished(&app_for_finish, &op_id, &result);
+    result.map(|_| ())
+}
+
+/// GF-07：取消一个进行中的单仓网络操作（sync_fetch/sync_pull/sync_push/
+/// smart_pull/push_branch）。`op_id` 来自命令入参或 `git_op_started` 事件。
+/// op 已结束（或从未存在）时返回 NotFound——前端取消入口通常已因
+/// `git_op_finished` 撤下，此时静默忽略即可。
+#[tauri::command]
+pub fn cancel_git_op(op_id: String, state: State<'_, AppState>) -> AppResult<()> {
+    if state.single_ops.cancel(&op_id) {
+        log::info!("单仓网络操作 {} 已请求取消", op_id);
+        Ok(())
+    } else {
+        Err(AppError::NotFound(format!("操作 {} 不存在或已结束", op_id)))
+    }
+}
+
+/// GF-07：命令展示名——仓库路径末段（与 `batch_fetch` 的任务名同源）。
+pub(super) fn repo_display_name(repo_path: &str) -> String {
+    Path::new(repo_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+/// GF-07：登记一次单仓网络操作：`op_id` 缺省时后端生成（经 `git_op_started`
+/// 下发），返回取消 flag 与 RAII 守卫（drop 时从注册表摘除，防 panic 泄漏）。
+pub(super) fn register_single_op(
+    state: &AppState,
+    op_id: Option<String>,
+) -> (String, Arc<AtomicBool>, SingleOpGuard) {
+    let op_id = op_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let flag = state.single_ops.register(&op_id);
+    let guard = SingleOpGuard::new(Arc::clone(&state.single_ops), op_id.clone());
+    (op_id, flag, guard)
+}
+
+/// GF-07：操作收尾——发 `git_op_finished`（错误信息一并带出，供前端提示）。
+pub(super) fn emit_op_finished<T>(app: &tauri::AppHandle, op_id: &str, result: &AppResult<T>) {
+    let error = result.as_ref().err().map(|e| e.to_string());
+    emit_git_op_finished(app, op_id, error.is_none(), error.as_deref());
 }
 
 /// Start watching repositories for file changes.

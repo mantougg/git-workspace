@@ -23,20 +23,30 @@ export function batchCommit(commits: CommitRequest[]): Promise<string[]> {
   return invoke<string[]>("batch_commit", { commits });
 }
 
-export function syncFetch(repoPath: string): Promise<void> {
-  return invoke<void>("sync_fetch", { repoPath });
+export function syncFetch(repoPath: string, opId?: string): Promise<void> {
+  return invoke<void>("sync_fetch", { repoPath, opId: opId ?? null });
 }
 
-export function syncPull(repoPath: string): Promise<RepoStatus> {
-  return invoke<RepoStatus>("sync_pull", { repoPath });
+export function syncPull(repoPath: string, opId?: string): Promise<RepoStatus> {
+  return invoke<RepoStatus>("sync_pull", { repoPath, opId: opId ?? null });
 }
 
-export function smartPull(repoPath: string): Promise<SmartPullResult> {
-  return invoke<SmartPullResult>("smart_pull", { repoPath });
+export function smartPull(repoPath: string, opId?: string): Promise<SmartPullResult> {
+  return invoke<SmartPullResult>("smart_pull", { repoPath, opId: opId ?? null });
 }
 
-export function syncPush(repoPath: string): Promise<void> {
-  return invoke<void>("sync_push", { repoPath });
+export function syncPush(repoPath: string, opId?: string): Promise<void> {
+  return invoke<void>("sync_push", { repoPath, opId: opId ?? null });
+}
+
+/**
+ * GF-07：取消一个进行中的单仓网络操作。
+ *
+ * `opId` 来自调用方传入或 `git_op_started` 事件（见 GIT_OP_EVENTS）。
+ * op 已结束时后端返回 NotFound——取消入口通常已撤下，调用方可忽略。
+ */
+export function cancelGitOp(opId: string): Promise<void> {
+  return invoke<void>("cancel_git_op", { opId });
 }
 
 export function startWatcher(repoPaths: string[]): Promise<void> {

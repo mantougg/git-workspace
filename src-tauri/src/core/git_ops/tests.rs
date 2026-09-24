@@ -422,3 +422,140 @@ fn execute_dispatches_stage_and_restore_task_types() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------------------
+// GF-07：push_branch_streaming（流式 push 指定分支 + upstream 目标解析）
+// ---------------------------------------------------------------------------
+
+/// 本地 file:// 裸库作远程：推送到真实目标并逐行收到输出。与网络无关，
+/// Windows / Unix 均可跑（路径转 forward-slash + file:/// 前缀）。
+fn file_url(p: &Path) -> String {
+    let s = p.to_string_lossy().replace('\\', "/");
+    if s.starts_with('/') {
+        format!("file://{}", s)
+    } else {
+        format!("file:///{}", s)
+    }
+}
+
+/// 当前 HEAD 的分支名（git2 init 的默认分支名随配置而变，不写死）。
+/// 与 `head_commit` 同一 leak 手法：shorthand 借自 Reference，进程退出即回收。
+fn head_branch(dir: &Path) -> String {
+    let repo = Box::leak(Box::new(git2::Repository::open(dir).unwrap()));
+    repo.head().unwrap().shorthand().unwrap().to_string()
+}
+
+/// 流式 push 到可达远程：成功、有逐行输出、远程真的收到分支。
+#[test]
+fn push_branch_streaming_pushes_to_reachable_remote() {
+    let dir = tmpdir("pushstream_ok");
+    init_repo(&dir, "a.txt", "one\n");
+    let branch = head_branch(&dir);
+
+    let bare = tmpdir("pushstream_ok_remote");
+    git2::Repository::init_bare(&bare).unwrap();
+    {
+        let repo = git2::Repository::open(&dir).unwrap();
+        repo.remote("origin", &file_url(&bare)).unwrap();
+    }
+
+    let ops = GitOps::with_default_ssh();
+    let mut lines: Vec<(String, String)> = Vec::new();
+    ops.push_branch_streaming(&dir, &branch, None, None, &mut |s, l| {
+        lines.push((format!("{:?}", s), l.to_string()));
+    })
+    .unwrap();
+
+    assert!(
+        !lines.is_empty(),
+        "streaming push must forward output lines, got none"
+    );
+    // 远程必须真的收到该分支（remote.rs resolve_push_target 的 (origin, branch)
+    // 回退路径生效）。裸库里分支落在 refs/heads/ 下（无 remote-tracking）。
+    let remote_repo = git2::Repository::open(&bare).unwrap();
+    assert!(
+        remote_repo
+            .find_reference(&format!("refs/heads/{}", branch))
+            .is_ok(),
+        "remote must have received the branch"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&bare);
+}
+
+/// 配了 upstream 的分支：目标解析取 (上游远程, "本地:远程分支")。
+#[test]
+fn push_branch_streaming_uses_configured_upstream() {
+    let dir = tmpdir("pushstream_upstream");
+    init_repo(&dir, "a.txt", "one\n");
+
+    let bare = tmpdir("pushstream_upstream_remote");
+    git2::Repository::init_bare(&bare).unwrap();
+    {
+        let repo = git2::Repository::open(&dir).unwrap();
+        repo.remote("origin", &file_url(&bare)).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.branch("feature", &head, false).unwrap();
+        // libgit2 的 set_upstream 要求 remote-tracking ref 已存在，先造一个。
+        // 远端分支名与本地不同（target-branch ≠ feature）——只有走 upstream
+        // 解析路径才会落到 target-branch，可区分 (origin, branch) 回退路径。
+        repo.reference(
+            "refs/remotes/origin/target-branch",
+            head.id(),
+            true,
+            "test upstream",
+        )
+        .unwrap();
+        repo.find_branch("feature", git2::BranchType::Local)
+            .unwrap()
+            .set_upstream(Some("origin/target-branch"))
+            .unwrap();
+    }
+
+    let ops = GitOps::with_default_ssh();
+    // upstream 为 origin/target-branch → refspec "feature:target-branch"。
+    ops.push_branch_streaming(&dir, "feature", None, None, &mut |_, _| {})
+        .unwrap();
+
+    let remote_repo = git2::Repository::open(&bare).unwrap();
+    assert!(
+        remote_repo.find_reference("refs/heads/target-branch").is_ok(),
+        "upstream-configured push must land on the upstream's remote branch name"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&bare);
+}
+
+/// 远程不可达：错误必须冒泡（不被吞）且带 "exited with code" 语义——命令层
+/// 的 ConsoleStreamer 凭 stderr 尾部还原可读原因（GF-08 联动保证）。
+#[test]
+fn push_branch_streaming_unreachable_remote_errors() {
+    let dir = tmpdir("pushstream_unreachable");
+    init_repo(&dir, "a.txt", "one\n");
+    let branch = head_branch(&dir);
+    {
+        let repo = git2::Repository::open(&dir).unwrap();
+        repo.remote("origin", "file:///nonexistent/nowhere.git").unwrap();
+    }
+
+    let ops = GitOps::with_default_ssh();
+    let mut saw_stderr = false;
+    let err = ops
+        .push_branch_streaming(&dir, &branch, None, None, &mut |s, _| {
+            if matches!(s, crate::process::OutputStream::Stderr) {
+                saw_stderr = true;
+            }
+        })
+        .unwrap_err();
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("exited with code"),
+        "unreachable remote must surface a non-zero exit error, got: {msg}"
+    );
+    assert!(saw_stderr, "failure output must reach the on_line callback");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

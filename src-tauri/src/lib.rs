@@ -361,6 +361,8 @@ pub fn run() {
             git_ops::sync_pull,
             git_ops::smart_pull,
             git_ops::sync_push,
+            // GF-07：单仓网络操作取消入口（sync_* / push_branch 共用）
+            git_ops::cancel_git_op,
             git_ops::start_watcher,
             git_ops::watcher_status,
             git_ops::stop_watcher,

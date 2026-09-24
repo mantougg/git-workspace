@@ -63,9 +63,18 @@ export function trackRemoteBranch(
   return invoke<void>("track_remote_branch", { repoPath, remoteBranch });
 }
 
-/** Push a specific local branch; returns the git command output. */
-export function pushBranch(repoPath: string, branch: string): Promise<string> {
-  return invoke<string>("push_branch", { repoPath, branch });
+/**
+ * Push a specific local branch; returns the git command output.
+ *
+ * GF-07：`opId` 可选——传入后该次 push 可经 `cancelGitOp` 取消；缺省时后端
+ * 自行生成并经 `git_op_started` 事件下发（Git Console 的取消入口用它）。
+ */
+export function pushBranch(
+  repoPath: string,
+  branch: string,
+  opId?: string,
+): Promise<string> {
+  return invoke<string>("push_branch", { repoPath, branch, opId: opId ?? null });
 }
 
 /** Compare two revisions: commit差集 in both directions + tree diff. */

@@ -10,6 +10,9 @@ use crate::core::git_ops::GitOps;
 use crate::db::dao;
 use crate::error::AppResult;
 use crate::state::AppState;
+use crate::task::console::{emit_git_op_started, finish_streaming, ConsoleStreamer};
+
+use super::git_ops::{emit_op_finished, register_single_op, repo_display_name, SYNC_GIT_TIMEOUT};
 
 /// List local branches (with upstream ahead/behind), remote-tracking branches
 /// and tags, persisting a snapshot into the branches / remote_branches / tags
@@ -88,9 +91,46 @@ pub fn track_remote_branch(repo_path: String, remote_branch: String) -> AppResul
 
 /// Push a specific local branch (network op via the git CLI, so the user's
 /// credential manager / SSH setup applies). Returns the command output.
+///
+/// GF-07：原为**同步命令**——远程挂起时直接阻塞 WebView IPC 回调线程，整个
+/// 界面失去响应，且无超时。改 async + `spawn_blocking` 并走
+/// `push_branch_streaming`：执行移出 IPC 线程；输出逐行（100ms 聚合）镜像到
+/// Git Console；`op_id` + `cancel_git_op` 提供取消入口；300s 硬超时杀 git
+/// 进程树（`SYNC_GIT_TIMEOUT`）。错误经 stderr 尾部还原后原样冒泡（GF-08
+/// 认证错误分类的语义不变）。
 #[tauri::command]
-pub fn push_branch(repo_path: String, branch: String) -> AppResult<String> {
-    GitOps::with_default_ssh().push_branch(Path::new(&repo_path), &branch)
+pub async fn push_branch(
+    repo_path: String,
+    branch: String,
+    op_id: Option<String>,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let (op_id, cancel, _guard) = register_single_op(&state, op_id);
+    let repo_name = repo_display_name(&repo_path);
+    let command = format!("git push {}", branch);
+    emit_git_op_started(&app, &op_id, &repo_path, &repo_name, &command);
+    let app_for_finish = app.clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let ops = GitOps::with_default_ssh();
+        let mut streamer = ConsoleStreamer::new(app, repo_path.clone(), repo_name, command);
+        streamer.emit_meta_header();
+        let r = ops.push_branch_streaming(
+            Path::new(&repo_path),
+            &branch,
+            Some(cancel.as_ref()),
+            Some(SYNC_GIT_TIMEOUT),
+            &mut |s, l| streamer.on_line(s, l),
+        );
+        streamer.flush();
+        finish_streaming(r, &streamer, SYNC_GIT_TIMEOUT)
+    })
+    .await
+    .map_err(|e| crate::error::AppError::Other(format!("push_branch join error: {e}")))?;
+
+    emit_op_finished(&app_for_finish, &op_id, &result);
+    result
 }
 
 /// Compare two revisions (branch / tag / oid): commit差集 in both directions

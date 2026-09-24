@@ -64,6 +64,22 @@ export interface GitOpOutputEvent {
   line: string;
 }
 
+/** GF-07：单仓网络操作开始事件（sync_fetch/pull/push、smart_pull、push_branch）。 */
+export interface GitOpStartedEvent {
+  /** 取消凭据：传给 `cancel_git_op` 命令。 */
+  opId: string;
+  repoPath: string;
+  repoName: string;
+  command: string;
+}
+
+/** GF-07：单仓网络操作结束事件（成功 / 失败 / 取消都经此收口）。 */
+export interface GitOpFinishedEvent {
+  opId: string;
+  success: boolean;
+  error: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Event names（常量，snake_case，无 `.`）
 // ---------------------------------------------------------------------------
@@ -71,7 +87,13 @@ export interface GitOpOutputEvent {
 export const TERMINAL_EVENTS = {
   OUTPUT: "terminal_output",
   EXIT: "terminal_exit",
-  GIT_OP_OUTPUT: "git_op_output",
+} as const;
+
+/** TM-04/GF-07：Git Console 镜像与单仓网络操作生命周期事件族。 */
+export const GIT_OP_EVENTS = {
+  OUTPUT: "git_op_output",
+  STARTED: "git_op_started",
+  FINISHED: "git_op_finished",
 } as const;
 
 // ---------------------------------------------------------------------------

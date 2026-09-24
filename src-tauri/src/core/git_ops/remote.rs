@@ -60,6 +60,18 @@ impl super::GitOps {
     /// upstream remote + remote branch name when set; otherwise pushes to the
     /// default remote under the same branch name.
     pub fn push_branch(&self, repo_path: &Path, branch: &str) -> AppResult<String> {
+        let (remote_name, refspec) = self.resolve_push_target(repo_path, branch)?;
+
+        log::info!("Pushing branch '{}' to '{}' for {:?}", branch, remote_name, repo_path);
+        let out = run_git(repo_path, &["push", &remote_name, &refspec])?;
+        log::info!("Push branch completed for {:?}", repo_path);
+        Ok(out)
+    }
+
+    /// 解析 push 目标：分支配了 upstream 时取 `(上游远程, "本地:远程分支")`，
+    /// 否则 `(默认远程, 同名分支)`。`push_branch` / `push_branch_streaming`
+    /// 共用，保证两条路径推同一个目标。
+    fn resolve_push_target(&self, repo_path: &Path, branch: &str) -> AppResult<(String, String)> {
         let repo = git2::Repository::open(repo_path)?;
         let upstream = repo
             .find_branch(branch, git2::BranchType::Local)
@@ -67,21 +79,16 @@ impl super::GitOps {
             .and_then(|b| b.upstream().ok())
             .and_then(|u| u.name().ok().flatten().map(String::from));
 
-        let (remote_name, refspec) = match upstream.as_deref() {
+        match upstream.as_deref() {
             // "origin/feature-x" -> push to origin as local:feature-x
             Some(u) => {
                 let mut parts = u.splitn(2, '/');
                 let remote = parts.next().unwrap_or("origin").to_string();
                 let remote_branch = parts.next().unwrap_or(branch).to_string();
-                (remote, format!("{}:{}", branch, remote_branch))
+                Ok((remote, format!("{}:{}", branch, remote_branch)))
             }
-            None => (self.find_default_remote_name(&repo)?, branch.to_string()),
-        };
-
-        log::info!("Pushing branch '{}' to '{}' for {:?}", branch, remote_name, repo_path);
-        let out = run_git(repo_path, &["push", &remote_name, &refspec])?;
-        log::info!("Push branch completed for {:?}", repo_path);
-        Ok(out)
+            None => Ok((self.find_default_remote_name(&repo)?, branch.to_string())),
+        }
     }
 
     /// Push the current branch to its upstream remote.
@@ -148,6 +155,27 @@ impl super::GitOps {
     ) -> AppResult<StreamingExit> {
         log::info!("Pushing (streaming) for {:?}", repo_path);
         run_git_streaming(repo_path, &["push"], cancel, timeout, on_line)
+    }
+
+    /// 流式 push 指定本地分支（GF-07）：与 `push_branch` 相同的 upstream
+    /// 解析，但经 `run_git_streaming` 执行——支持取消、超时（杀 git 进程树）
+    /// 与逐行输出回调（Git Console 实时镜像）。
+    pub fn push_branch_streaming(
+        &self,
+        repo_path: &Path,
+        branch: &str,
+        cancel: Option<&AtomicBool>,
+        timeout: Option<Duration>,
+        on_line: &mut dyn FnMut(OutputStream, &str),
+    ) -> AppResult<StreamingExit> {
+        let (remote_name, refspec) = self.resolve_push_target(repo_path, branch)?;
+        log::info!(
+            "Pushing branch '{}' to '{}' (streaming) for {:?}",
+            branch,
+            remote_name,
+            repo_path
+        );
+        run_git_streaming(repo_path, &["push", &remote_name, &refspec], cancel, timeout, on_line)
     }
 
     /// 流式 clone：逐行 emit 输出到回调。

@@ -14,8 +14,11 @@ import type {
   TerminalOutputEvent,
   TerminalExitEvent,
   GitOpOutputEvent,
+  GitOpStartedEvent,
+  GitOpFinishedEvent,
   ShellInfo,
 } from "@/api/terminal";
+import * as gitOpsApi from "@/api/git_ops";
 import { RUNTIME_EVENTS } from "@/api/runtime";
 import type { ProcessOutputPayload, RuntimeProcessInfo } from "@/types/runtime";
 
@@ -58,6 +61,18 @@ const INSTALL_SESSION_PREFIX = "__install_";
 
 /** 构建输出镜像会话 ID 前缀（TM-08）。 */
 const BUILD_SESSION_PREFIX = "__build_";
+
+/**
+ * GF-07：进行中的单仓网络操作（Git Console 取消入口的数据源）。
+ * `git_op_started` 入列、`git_op_finished` 出列；事件监听在 App 级
+ * （useGitOpMirror，对齐 useTaskProgress），面板懒注册（F-42）不会丢。
+ */
+export interface GitOpInFlight {
+  opId: string;
+  repoPath: string;
+  repoName: string;
+  command: string;
+}
 
 /** 判定「真正的终端会话」：排除 Git Console 与全部输出镜像 tab。 */
 function isRealShellSession(session: TerminalSession): boolean {
@@ -114,7 +129,6 @@ export const useTerminalStore = defineStore("terminal", () => {
   /** 事件监听 unlisten 句柄（面板首次打开时注册）。 */
   let unlistenOutput: UnlistenFn | null = null;
   let unlistenExit: UnlistenFn | null = null;
-  let unlistenGitOp: UnlistenFn | null = null;
   let unlistenRuntimeOutput: UnlistenFn | null = null;
   let unlistenRuntimeStarted: UnlistenFn | null = null;
   let unlistenRuntimeStopped: UnlistenFn | null = null;
@@ -124,6 +138,9 @@ export const useTerminalStore = defineStore("terminal", () => {
 
   /** 活跃 runtime 进程列表（用于工具条按钮状态）。 */
   const runtimeProcesses = ref<RuntimeProcessInfo[]>([]);
+
+  /** GF-07：进行中的单仓网络操作（Git Console 取消入口数据源）。 */
+  const gitOpsInFlight = ref<GitOpInFlight[]>([]);
 
   /**
    * TM-08：node_install 任务 id → 应用名映射。装依赖经 N-08 两跳确认流程，
@@ -218,11 +235,6 @@ export const useTerminalStore = defineStore("terminal", () => {
         event: terminalApi.TERMINAL_EVENTS.EXIT,
         handler: (e: { payload: TerminalExitEvent }) => handleExit(e.payload),
         assign: (un: UnlistenFn) => { unlistenExit = un; },
-      },
-      {
-        event: terminalApi.TERMINAL_EVENTS.GIT_OP_OUTPUT,
-        handler: (e: { payload: GitOpOutputEvent }) => handleGitOpOutput(e.payload),
-        assign: (un: UnlistenFn) => { unlistenGitOp = un; },
       },
       {
         event: RUNTIME_EVENTS.processOutput,
@@ -440,8 +452,12 @@ export const useTerminalStore = defineStore("terminal", () => {
     }
   }
 
-  /** TM-04：处理 git_op_output 事件，写入 Git Console xterm（懒创建，见 F-42）。 */
-  function handleGitOpOutput(event: GitOpOutputEvent) {
+  /**
+   * TM-04：git_op_output —— 写入 Git Console xterm（懒创建，见 F-42）。
+   * 事件监听在 App 级（useGitOpMirror），面板未开时输出进 tab 缓冲，
+   * 打开面板后由 registerWriteCallback 补写，不丢。
+   */
+  function onGitOpOutput(event: GitOpOutputEvent) {
     const session = ensureGitConsoleSession();
 
     // 格式化输出行
@@ -466,6 +482,44 @@ export const useTerminalStore = defineStore("terminal", () => {
     } else {
       session.writeBuffer.push(bytes);
       trimWriteBuffer(session.writeBuffer);
+    }
+  }
+
+  /**
+   * GF-07：git_op_started —— 单仓网络操作开始。登记取消入口数据，
+   * 并弹出终端面板聚焦 Git Console（TM-08 focusMirrorTab 同款模式：
+   * 「点了操作就在终端面板里看输出」，不再静默转圈）。
+   */
+  function onGitOpStarted(event: GitOpStartedEvent) {
+    if (!gitOpsInFlight.value.some((op) => op.opId === event.opId)) {
+      gitOpsInFlight.value.push({
+        opId: event.opId,
+        repoPath: event.repoPath,
+        repoName: event.repoName,
+        command: event.command,
+      });
+    }
+    ensureGitConsoleSession();
+    showPanel({ autoOpen: false });
+    switchTab(GIT_CONSOLE_SESSION_ID);
+  }
+
+  /** GF-07：git_op_finished —— 出列取消入口（幂等）。 */
+  function onGitOpFinished(event: GitOpFinishedEvent) {
+    gitOpsInFlight.value = gitOpsInFlight.value.filter((op) => op.opId !== event.opId);
+  }
+
+  /**
+   * GF-07：取消一个单仓网络操作。后端可能已自然结束（NotFound）——
+   * 本地同样出列，让取消入口立即消失。
+   */
+  async function cancelGitOp(opId: string) {
+    try {
+      await gitOpsApi.cancelGitOp(opId);
+    } catch (e) {
+      console.warn("cancel git op failed (likely already finished):", e);
+    } finally {
+      gitOpsInFlight.value = gitOpsInFlight.value.filter((op) => op.opId !== opId);
     }
   }
 
@@ -800,7 +854,6 @@ export const useTerminalStore = defineStore("terminal", () => {
   function cleanup() {
     unlistenOutput?.();
     unlistenExit?.();
-    unlistenGitOp?.();
     unlistenRuntimeOutput?.();
     unlistenRuntimeStarted?.();
     unlistenRuntimeStopped?.();
@@ -810,7 +863,6 @@ export const useTerminalStore = defineStore("terminal", () => {
     unlistenBuildOutput = null;
     unlistenOutput = null;
     unlistenExit = null;
-    unlistenGitOp = null;
     unlistenRuntimeOutput = null;
     unlistenRuntimeStarted = null;
     unlistenRuntimeStopped = null;
@@ -825,6 +877,8 @@ export const useTerminalStore = defineStore("terminal", () => {
     panelVisible,
     availableShells,
     runtimeProcesses,
+    // GF-07：进行中的单仓网络操作（Git Console 取消入口）
+    gitOpsInFlight,
     // Getters
     activeSession,
     aliveSessions,
@@ -851,6 +905,11 @@ export const useTerminalStore = defineStore("terminal", () => {
     focusMirrorTab,
     bindInstallTask,
     refreshRuntimeProcesses,
+    // GF-07：git_op_* 事件入口（App 级 useGitOpMirror 调用）
+    onGitOpOutput,
+    onGitOpStarted,
+    onGitOpFinished,
+    cancelGitOp,
     cleanup,
   };
 });
