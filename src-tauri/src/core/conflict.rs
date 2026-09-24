@@ -309,6 +309,59 @@ mod tests {
         assert!(matches!(outcome, crate::core::merge::MergeOutcome::Conflict { .. }));
     }
 
+    /// Commit a deletion of `name` (removed from index + worktree) on HEAD.
+    fn commit_delete(repo: &git2::Repository, dir: &Path, name: &str, msg: &str) {
+        let _ = std::fs::remove_file(dir.join(name));
+        let mut index = repo.index().unwrap();
+        index.remove_path(Path::new(name)).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let sig = git2::Signature::now("tester", "t@example.com").unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &[&parent])
+            .unwrap();
+    }
+
+    /// Build a repo whose merge of `side` produces a delete/modify conflict
+    /// on a.txt. `deleted_on` names the side that deleted the file:
+    /// "ours" = the merge target (master) deleted it → deleted-by-us;
+    /// "theirs" = side deleted it → deleted-by-them. Returns when the
+    /// merge is in conflict.
+    fn setup_deletion_conflict(dir: &Path, deleted_on: &str) {
+        {
+            let repo = git2::Repository::init(dir).unwrap();
+            commit_file(&repo, dir, "a.txt", "base\n", "init");
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.branch("side", &head, false).unwrap();
+            drop(head);
+            if deleted_on == "ours" {
+                commit_delete(&repo, dir, "a.txt", "master delete");
+            } else {
+                commit_file(&repo, dir, "a.txt", "ours\n", "master change");
+            }
+            drop(repo);
+        }
+        crate::core::branch::checkout_branch(dir, "side").unwrap();
+        {
+            let repo = git2::Repository::open(dir).unwrap();
+            if deleted_on == "ours" {
+                commit_file(&repo, dir, "a.txt", "theirs\n", "side change");
+            } else {
+                commit_delete(&repo, dir, "a.txt", "side delete");
+            }
+            drop(repo);
+        }
+        crate::core::branch::checkout_branch(dir, "master").unwrap();
+
+        let outcome = crate::core::merge::merge(dir, "side", "normal").unwrap();
+        assert!(
+            matches!(outcome, crate::core::merge::MergeOutcome::Conflict { .. }),
+            "expected a delete/modify conflicted merge (deleted on {})",
+            deleted_on
+        );
+    }
+
     /// Detection: operation_state reports the merge + the conflicted file.
     #[test]
     fn detects_merge_conflict_state() {
@@ -324,6 +377,74 @@ mod tests {
         assert_eq!(state.conflicts[0].conflict_type, "both-modified");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-12 acceptance: delete/modify conflicts keep their real shape
+    /// (deleted-by-us / deleted-by-them) instead of collapsing to
+    /// both-modified — the SmartMergeDialog type icons + default
+    /// recommendation depend on this per-file granularity.
+    #[test]
+    fn deletion_conflict_types_are_distinguished() {
+        for (deleted_on, expected) in [("ours", "deleted-by-us"), ("theirs", "deleted-by-them")] {
+            let dir = tmpdir(&format!("del_type_{deleted_on}"));
+            setup_deletion_conflict(&dir, deleted_on);
+
+            let state = operation_state(&dir).unwrap();
+            assert!(state.merge);
+            assert_eq!(state.conflicts.len(), 1, "deleted on {deleted_on}");
+            assert_eq!(state.conflicts[0].path, "a.txt");
+            assert_eq!(
+                state.conflicts[0].conflict_type, expected,
+                "deleted on {deleted_on} must report {expected}"
+            );
+
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    /// GF-12 acceptance: each deletion shape's strategies resolve like
+    /// `git checkout --ours/--theirs` + `git add` — the deleted side removes
+    /// the file, the surviving side keeps its content, and the merge can be
+    /// continued afterwards. These are exactly the actions the dialog's
+    /// recommended buttons invoke.
+    #[test]
+    fn deletion_conflict_resolution_matches_git_add() {
+        // (deleted_on, strategy, expected worktree state after resolve)
+        let cases = [
+            ("ours", "theirs", Some("theirs\n")), // deleted-by-us → keep their modification
+            ("ours", "ours", None),               // deleted-by-us → confirm deletion
+            ("theirs", "ours", Some("ours\n")),   // deleted-by-them → keep our modification
+            ("theirs", "theirs", None),           // deleted-by-them → confirm deletion
+        ];
+        for (deleted_on, strategy, expected) in cases {
+            let dir = tmpdir(&format!("del_resolve_{deleted_on}_{strategy}"));
+            setup_deletion_conflict(&dir, deleted_on);
+
+            resolve_conflict(&dir, "a.txt", strategy).unwrap();
+
+            assert_eq!(
+                operation_state(&dir).unwrap().conflicts.len(),
+                0,
+                "{deleted_on} + {strategy} must clear the conflict"
+            );
+            let path = dir.join("a.txt");
+            match expected {
+                Some(content) => assert_eq!(
+                    std::fs::read_to_string(&path).unwrap().replace("\r\n", "\n"),
+                    content,
+                    "{deleted_on} + {strategy} must keep the surviving side"
+                ),
+                None => assert!(
+                    !path.exists(),
+                    "{deleted_on} + {strategy} must remove the file"
+                ),
+            }
+
+            let oid = crate::core::merge::merge_continue(&dir, None).unwrap();
+            assert!(!oid.is_empty(), "{deleted_on} + {strategy} must continue");
+
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     /// Three-way content loads base/ours/theirs + worktree markers.
