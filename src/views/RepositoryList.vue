@@ -1088,9 +1088,10 @@ async function onContextmenuSelect(key: string) {
         const stageIds = await batchAdd([
           { repoPath, repoName: repo.repoName, files: [node.relPath] },
         ]);
-        // PAF-11：任务队列异步执行，等收口后再刷新视图
-        await taskStore.waitForTasks(stageIds);
-        message.success(`已暂存 ${node.relPath}`);
+        // GF-02：等收口（后端任务队列异步执行）；失败则汇总提示。
+        if (!(await waitBatchAndReport("暂存", stageIds))) {
+          message.success(`已暂存 ${node.relPath}`);
+        }
         await loadChanges();
         break;
       }
@@ -1107,9 +1108,10 @@ async function onContextmenuSelect(key: string) {
               const discardIds = await batchRestore([
                 { repoPath, repoName: repo.repoName, files: [file] },
               ]);
-              // PAF-11：任务队列异步执行，等收口后再刷新视图
-              await taskStore.waitForTasks(discardIds);
-              message.success(`已丢弃 ${file}`);
+              // GF-02：等收口（后端任务队列异步执行）；失败则汇总提示。
+              if (!(await waitBatchAndReport("回退", discardIds))) {
+                message.success(`已丢弃 ${file}`);
+              }
               await loadChanges();
             } catch (e) {
               message.error("discard 失败: " + errMsg(e));
@@ -1607,7 +1609,9 @@ async function applyRoutePrefill() {
         actionLoading.value = true;
         try {
           const ids = await batchFetch(paths);
-          message.success(`已提交 ${ids.length} 个 fetch 任务`);
+          if (!(await waitBatchAndReport("批量 fetch", ids))) {
+            message.success(`已提交 ${ids.length} 个 fetch 任务`);
+          }
           await loadChanges();
         } finally {
           actionLoading.value = false;
@@ -1633,8 +1637,12 @@ async function applyRoutePrefill() {
         if (paths.length === 0) break;
         actionLoading.value = true;
         try {
-          await batchFetch(paths);
-          message.success(`已提交 ${paths.length} 个 fetch 任务`);
+          const ids = await batchFetch(paths);
+          // GF-02：等 fetch 收口后再预演——dry run 读 remote-tracking refs，
+          // 收口后的预演结果才是 fetch 之后的真实状态。
+          if (!(await waitBatchAndReport("批量 fetch", ids))) {
+            message.success(`已提交 ${paths.length} 个 fetch 任务`);
+          }
           await loadChanges();
         } finally {
           actionLoading.value = false;
@@ -1803,9 +1811,10 @@ async function handleAdd() {
   actionLoading.value = true;
   try {
     const stageIds = await batchAdd(requests);
-    // PAF-11：任务队列异步执行，等收口后再刷新视图
-    await taskStore.waitForTasks(stageIds);
-    message.success(`已暂存 ${requests.length} 个仓库的文件`);
+    // GF-02：等收口后若有仓库失败则汇总提示；全成功提示与现状一致。
+    if (!(await waitBatchAndReport("批量暂存", stageIds))) {
+      message.success(`已暂存 ${requests.length} 个仓库的文件`);
+    }
     await loadChanges();
   } catch (e) {
     message.error("暂存失败: " + errMsg(e));
@@ -1846,9 +1855,10 @@ async function handleRestore() {
   actionLoading.value = true;
   try {
     const restoreIds = await batchRestore(requests);
-    // PAF-11：任务队列异步执行，等收口后再刷新视图
-    await taskStore.waitForTasks(restoreIds);
-    message.success(`已回退 ${requests.length} 个仓库的文件`);
+    // GF-02：等收口后若有仓库失败则汇总提示；全成功提示与现状一致。
+    if (!(await waitBatchAndReport("批量回退", restoreIds))) {
+      message.success(`已回退 ${requests.length} 个仓库的文件`);
+    }
     await loadChanges();
   } catch (e) {
     message.error("回退失败: " + errMsg(e));
@@ -1914,8 +1924,10 @@ async function submitCommits(commits: CommitRequest[]) {
   actionLoading.value = true;
   try {
     const taskIds = await batchCommit(commits);
-    message.success(`已提交 ${taskIds.length} 个 commit 任务`);
     commitForm.value.message = "";
+    if (!(await waitBatchAndReport("批量 commit", taskIds))) {
+      message.success(`已提交 ${taskIds.length} 个 commit 任务`);
+    }
     await loadChanges();
   } catch (e) {
     message.error("提交失败: " + errMsg(e));
@@ -2188,8 +2200,10 @@ async function handleBranchOp() {
   d.loading = true;
   try {
     const ids = await batchBranchOp(branchOpTargets.value, d.op, d.name.trim(), d.force);
-    message.success(`已提交 ${ids.length} 个分支任务`);
     d.show = false;
+    if (!(await waitBatchAndReport("批量分支操作", ids))) {
+      message.success(`已提交 ${ids.length} 个分支任务`);
+    }
   } catch (e) {
     message.error("操作失败: " + errMsg(e));
   } finally {
@@ -2226,12 +2240,11 @@ async function executeDryRun() {
   const op = dryRunDialog.value.op;
   dryRunDialog.value.show = false;
   try {
-    if (op === "pull") {
-      await batchPull(paths);
-    } else {
-      await batchPush(paths);
+    const ids =
+      op === "pull" ? await batchPull(paths) : await batchPush(paths);
+    if (!(await waitBatchAndReport(op === "pull" ? "批量 pull" : "批量 push", ids))) {
+      message.success(`已提交 ${paths.length} 个任务`);
     }
-    message.success(`已提交 ${paths.length} 个任务`);
   } catch (e) {
     message.error("执行失败: " + errMsg(e));
   }
@@ -2453,6 +2466,134 @@ function wsStashCheckTagType(s: string): "success" | "warning" | "error" | "info
   )[s] ?? "info";
 }
 
+// ---------------------------------------------------------------------------
+// GF-02：批量操作失败汇总。语义不变——单仓失败不中断批次——缺的是收口反馈：
+// 失败清单（仓库名 + 简短原因）汇总提示，附「查看任务面板」动作。
+// ---------------------------------------------------------------------------
+
+interface BatchFailure {
+  repoName: string;
+  reason: string;
+}
+
+/** 单行简短失败原因：errMsg 取首行（不含 GF-08 追加的引导行）并截断。 */
+function shortFailureReason(e: unknown): string {
+  const first = errMsg(e).split("\n", 1)[0].trim();
+  return first.length > 80 ? `${first.slice(0, 79)}…` : (first || "未知错误");
+}
+
+/**
+ * 从任务队列终态收集失败项。数据来源与 TaskPanel 同源：`task_progress` 事件
+ * 喂给 `taskStore.tasks`，后端 `list_active` 30s 内保留终态任务
+ * （`waitForTasks` 的轮询源）——不新造轮询或监听。
+ */
+function collectBatchFailures(taskIds: string[]): BatchFailure[] {
+  const failures: BatchFailure[] = [];
+  for (const id of taskIds) {
+    const t = taskStore.tasks.find((x) => x.id === id);
+    if (!t) continue;
+    if (t.status.type === "failed") {
+      failures.push({
+        repoName: t.repoName,
+        reason: shortFailureReason(t.status.error),
+      });
+    } else if (t.status.type === "partialSuccess") {
+      failures.push({
+        repoName: t.repoName,
+        reason: `部分文件失败（成功 ${t.status.succeeded} / 失败 ${t.status.failed}）`,
+      });
+    } else if (t.status.type === "cancelled") {
+      failures.push({ repoName: t.repoName, reason: "任务已取消" });
+    }
+  }
+  return failures;
+}
+
+/**
+ * GF-02：批量失败汇总 toast。清单渲染进 toast（不用自定义 modal——失败通常
+ * 1~3 条，toast 即可承载，且不打断当前操作），最多列 5 条其余折叠计数；
+ * 「查看任务面板」按钮走 `taskStore.showPanel()`（与 ManifestView /
+ * ChangeSetView 一致）。
+ * 注意：用 content 渲染函数而非 message 的 `render` 选项——后者会整块替换
+ * 默认卡片（丢 error 图标/样式/关闭按钮）。内联样式 + tokens（toast 挂在
+ * 全局 MessageProvider 下，SFC scoped 样式不生效）。
+ */
+function showBatchFailureToast(
+  opLabel: string,
+  failures: BatchFailure[],
+  succeeded = 0,
+) {
+  const shown = failures.slice(0, 5);
+  const rest = failures.length - shown.length;
+  message.error(
+    () =>
+      h("div", { style: "max-width: 440px" }, [
+        h(
+          "div",
+          { style: "font-weight: 600" },
+          `${opLabel}：${succeeded} 个仓库成功，${failures.length} 个失败`,
+        ),
+        h(
+          "div",
+          {
+            style:
+              "margin-top: var(--gw-space-2); font-size: var(--gw-text-sm); color: var(--gw-text-dim)",
+          },
+          shown.map((f, i) =>
+            h(
+              "div",
+              { key: i, style: "margin-bottom: var(--gw-space-1)" },
+              [
+                h("span", { style: "font-weight: 600" }, f.repoName),
+                h("span", null, `：${f.reason}`),
+              ],
+            ),
+          ),
+        ),
+        rest > 0
+          ? h(
+              "div",
+              {
+                style:
+                  "margin-top: var(--gw-space-1); font-size: var(--gw-text-sm); color: var(--gw-text-dim)",
+              },
+              `…等共 ${failures.length} 个仓库失败`,
+            )
+          : null,
+        h(
+          NButton,
+          {
+            size: "tiny",
+            type: "primary",
+            secondary: true,
+            style: "margin-top: var(--gw-space-2)",
+            onClick: () => taskStore.showPanel(),
+          },
+          () => "查看任务面板",
+        ),
+      ]),
+    { duration: 10_000, closable: true },
+  );
+}
+
+/**
+ * GF-02：批量入队命令收口。等全部任务到终态（复用 taskStore.waitForTasks
+ * 既有轮询，与新造机制无关），有失败则汇总 toast。返回是否含失败——调用方
+ * 据此决定是否保留原「全成功」提示（验收标准 3：成功场景提示与现状一致）。
+ */
+async function waitBatchAndReport(
+  opLabel: string,
+  taskIds: string[],
+): Promise<boolean> {
+  await taskStore.waitForTasks(taskIds);
+  const failures = collectBatchFailures(taskIds);
+  if (failures.length > 0) {
+    showBatchFailureToast(opLabel, failures, taskIds.length - failures.length);
+    return true;
+  }
+  return false;
+}
+
 async function handleFetch(paths?: string[]) {
   const targets = paths ?? batchTargetRepos();
   if (targets.length === 0) {
@@ -2462,7 +2603,9 @@ async function handleFetch(paths?: string[]) {
   actionLoading.value = true;
   try {
     const taskIds = await batchFetch(targets);
-    message.success(`已提交 ${taskIds.length} 个 fetch 任务`);
+    if (!(await waitBatchAndReport("批量 fetch", taskIds))) {
+      message.success(`已提交 ${taskIds.length} 个 fetch 任务`);
+    }
     await loadChanges();
   } catch (e) {
     message.error("fetch 失败: " + errMsg(e));
@@ -2479,6 +2622,8 @@ async function handlePull(paths?: string[]) {
   }
   actionLoading.value = true;
   const queue: SmartMergeQueueItem[] = [];
+  // GF-02：失败仓库不再凭空消失——记入清单，收口时汇总提示。
+  const failures: BatchFailure[] = [];
   let successCount = 0;
   try {
     for (const p of targets) {
@@ -2489,15 +2634,18 @@ async function handlePull(paths?: string[]) {
         } else {
           successCount++;
         }
-      } catch {
-        // Individual repo failure doesn't stop the batch
+      } catch (e) {
+        // Individual repo failure doesn't stop the batch（GF-02：但要反馈）
+        failures.push({ repoName: repoNameOf(p), reason: shortFailureReason(e) });
       }
     }
     if (queue.length > 0) {
       smartMergeQueue.value = queue;
       openNextConflict();
     }
-    if (successCount > 0) {
+    if (failures.length > 0) {
+      showBatchFailureToast("批量 Pull", failures, successCount);
+    } else if (successCount > 0) {
       message.success(`${successCount} 个仓库 Pull 完成`);
     }
     if (queue.length === 0) {
@@ -2570,8 +2718,10 @@ async function doPush() {
   actionLoading.value = true;
   try {
     const taskIds = await batchPush(pushSelection.value);
-    message.success(`已提交 ${taskIds.length} 个 push 任务`);
     showPushDialog.value = false;
+    if (!(await waitBatchAndReport("批量 push", taskIds))) {
+      message.success(`已提交 ${taskIds.length} 个 push 任务`);
+    }
     await loadChanges();
   } catch (e) {
     message.error("push 失败: " + errMsg(e));
@@ -2588,14 +2738,19 @@ function collapseAll() {
   changeTreeRef.value?.collapseAll();
 }
 
-async function startFileWatcher() {
+async function startFileWatcher(): Promise<boolean> {
   const paths = changes.value.map((c) => c.repoPath);
-  if (paths.length === 0) return;
+  if (paths.length === 0) return false;
   try {
     await startWatcher(paths);
     watcherActive.value = true;
+    return true;
   } catch (e) {
-    console.error("Failed to start watcher:", e);
+    // GF-02：启动失败不再只 console.error——原样反馈原因（errMsg 已附带
+    // Git 错误分类的原因与建议）。
+    watcherActive.value = false;
+    message.error("启动文件监听失败: " + errMsg(e));
+    return false;
   }
 }
 
@@ -2609,10 +2764,15 @@ async function toggleWatcher() {
       message.error("停止监听失败: " + errMsg(e));
     }
   } else {
+    if (changes.value.length === 0) {
+      message.warning("当前工作区没有可监听的文件变更");
+      return;
+    }
     await startFileWatcher();
     if (watcherActive.value) {
       message.success("文件监听已启动");
     }
+    // 启动失败的原因已由 startFileWatcher 的 message.error 展示（GF-02）。
   }
 }
 
