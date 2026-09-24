@@ -351,6 +351,10 @@ pub fn run() {
             commands::merge_rebase::rebase_skip,
             commands::merge_rebase::rebase_abort,
             commands::merge_rebase::get_rebase_state,
+            // GF-17: structured previews for destructive single-repo ops
+            // (read-only; consumed inside the Dangerous confirms)
+            commands::preview::preview_reset,
+            commands::preview::preview_merge,
             // Conflict Resolver commands (T-16)
             commands::conflict::get_operation_state,
             commands::conflict::get_conflict_content,

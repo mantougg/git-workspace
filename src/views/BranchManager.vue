@@ -185,6 +185,42 @@
           <n-radio value="no-ff">--no-ff（始终生成合并提交）</n-radio>
           <n-radio value="squash">--squash（压成暂存更改，不产生合并提交）</n-radio>
         </n-radio-group>
+        <!-- GF-17：结构化预演 —— 「Merge 会发生什么」（Roadmap §46） -->
+        <n-spin :show="mergePreviewLoading" size="small" class="merge-preview">
+          <div v-if="mergePreviewError" class="merge-preview-error">
+            预演加载失败：{{ mergePreviewError }}（仍可执行，执行时会再次校验）
+          </div>
+          <template v-else-if="mergePreview">
+            <div class="merge-preview-line">
+              <n-tag size="small" :type="mergePreview.conflictPredicted ? 'error' : 'default'">
+                {{ mergeKindLabel(mergePreview.kind) }}
+              </n-tag>
+              将并入
+              <strong :class="{ 'danger-text': mergePreview.conflictPredicted }">{{
+                mergePreview.incomingCount
+              }}</strong>
+              个提交，影响
+              <strong>{{ mergePreview.affectedFilesCount }}</strong>
+              个文件
+              <span v-if="mergePreview.conflictPredicted" class="danger-text">
+                （预判冲突：{{ mergePreview.conflictFiles.slice(0, 3).join("、") }}{{
+                  mergePreview.conflictFiles.length > 3 ? " 等" : ""
+                }}）
+              </span>
+            </div>
+            <ul v-if="mergePreview.incomingCommits.length" class="merge-preview-list">
+              <li v-for="c in mergePreview.incomingCommits" :key="c.oid">
+                <span class="mono">{{ c.shortOid }}</span>
+                <span class="merge-preview-msg">{{ c.summary }}</span>
+              </li>
+            </ul>
+            <div v-if="mergePreviewKindDetail" class="dim-text">{{ mergePreviewKindDetail }}</div>
+            <div v-if="mergePreview.dirtyBlocked" class="danger-text">
+              工作区有 {{ mergePreview.dirtyFilesCount }} 个未提交变更，Merge 会被拒绝（请先提交或
+              stash）：{{ mergePreview.dirtyFiles.slice(0, 5).join("、") }}
+            </div>
+          </template>
+        </n-spin>
       </div>
       <template #footer>
         <n-button @click="mergeDialog.show = false">取消</n-button>
@@ -403,7 +439,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
@@ -459,7 +495,9 @@ import Panel from "@/components/shell/Panel.vue";
 import VirtualList from "@/components/common/VirtualList.vue";
 import { getMergeInProgress, mergeAbort, mergeBranch, mergeContinue } from "@/api/merge";
 import { getRebaseState, rebaseAbort, rebaseContinue, rebaseSkip } from "@/api/rebase";
+import { previewMerge } from "@/api/preview";
 import type { MergeOutcome } from "@/types/merge";
+import type { MergePreview } from "@/types/preview";
 import type { RebaseOutcome, RebaseState } from "@/types/rebase";
 import { errMsg } from "@/utils/error";
 
@@ -752,6 +790,67 @@ const headOid = computed(
 
 // --- T-15 merge / rebase state ---
 const mergeDialog = reactive({ show: false, branch: "", mode: "normal", loading: false });
+/** GF-17：merge 结构化预演（只读命令 preview_merge 的结果）。 */
+const mergePreview = ref<MergePreview | null>(null);
+const mergePreviewLoading = ref(false);
+const mergePreviewError = ref("");
+
+/** GF-17：打开 merge 确认框 / 切换模式时刷新预演（只读，失败不阻塞执行流）。 */
+async function loadMergePreview() {
+  if (!repoPath.value || !mergeDialog.branch) return;
+  mergePreviewLoading.value = true;
+  mergePreviewError.value = "";
+  try {
+    mergePreview.value = await previewMerge(
+      repoPath.value,
+      mergeDialog.branch,
+      mergeDialog.mode as "normal" | "no-ff" | "squash",
+    );
+  } catch (e) {
+    mergePreview.value = null;
+    mergePreviewError.value = errMsg(e);
+  } finally {
+    mergePreviewLoading.value = false;
+  }
+}
+
+watch(
+  () => mergeDialog.show,
+  (show) => {
+    if (show) loadMergePreview();
+  },
+);
+
+watch(
+  () => mergeDialog.mode,
+  () => {
+    if (mergeDialog.show) loadMergePreview();
+  },
+);
+
+/** 预演类型的中文标签。 */
+function mergeKindLabel(kind: string): string {
+  switch (kind) {
+    case "fast_forward":
+      return "可快进（不产生合并提交）";
+    case "up_to_date":
+      return "已是最新（无需合并）";
+    default:
+      return "将创建合并提交";
+  }
+}
+
+/** 预演类型的补充说明（无预演 / 无补充时为空）。 */
+const mergePreviewKindDetail = computed(() => {
+  const p = mergePreview.value;
+  if (!p) return "";
+  if (p.kind === "up_to_date") return "目标分支的提交已全部在当前分支中。";
+  if (p.kind === "fast_forward") return "当前分支落后且无分叉，Merge 只会移动分支指针。";
+  if (p.incomingCommits.length < p.incomingCount || p.affectedFiles.length < p.affectedFilesCount) {
+    return `列表为截断显示：提交显示前 ${p.incomingCommits.length}/${p.incomingCount} 个，文件显示前 ${p.affectedFiles.length}/${p.affectedFilesCount} 个。`;
+  }
+  return "";
+});
 const rebaseDialogVisible = ref(false);
 const mergeInProgress = ref(false);
 const rebaseState = ref<RebaseState | null>(null);
@@ -1258,11 +1357,18 @@ async function handleDelete(b: BranchEntry) {
 async function runMerge() {
   const { branch, mode } = mergeDialog;
   // Warning-level confirm (§46): history-changing op with impact scope.
+  // GF-17: 二次确认正文附带结构化预演事实（并入提交数 / 影响文件数 / 冲突预判）。
+  const p = mergePreview.value;
+  const previewLine = p
+    ? `\n将并入 ${p.incomingCount} 个提交，影响 ${p.affectedFilesCount} 个文件` +
+      (p.conflictPredicted ? `；预判冲突（${p.conflictFiles.slice(0, 3).join("、")}${p.conflictFiles.length > 3 ? " 等" : ""}）` : "；未预判冲突") +
+      (p.dirtyBlocked ? `\n注意：工作区有 ${p.dirtyFilesCount} 个未提交变更，Merge 会被拒绝` : "")
+    : "";
   try {
     await new Promise<void>((resolve, reject) => {
       dialog.warning({
         title: "Merge 确认（Warning）",
-        content: `仓库：${repoPath.value}\n将把分支 ${branch} 合并到当前分支 ${overview.value?.current ?? "HEAD"}（模式：${mode}）。\n若产生冲突，仓库会进入 Merge 状态，可解决后继续或中止恢复。`,
+        content: `仓库：${repoPath.value}\n将把分支 ${branch} 合并到当前分支 ${overview.value?.current ?? "HEAD"}（模式：${mode}）。${previewLine}\n若产生冲突，仓库会进入 Merge 状态，可解决后继续或中止恢复。`,
         positiveText: "执行 Merge",
         negativeText: "取消",
         onPositiveClick: () => resolve(),
@@ -1809,5 +1915,50 @@ async function runCompare() {
   display: flex;
   flex-direction: column;
   gap: var(--gw-space-2);
+}
+
+/* GF-17：结构化预演区块（Roadmap §46 Repository/Branch/Files/Potential Data Loss） */
+.merge-preview {
+  display: block;
+  margin-top: var(--gw-space-3);
+  padding-top: var(--gw-space-3);
+  border-top: 1px solid var(--gw-border);
+  min-height: 24px;
+}
+
+.merge-preview-line {
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.merge-preview-list {
+  margin: var(--gw-space-1) 0;
+  padding-left: var(--gw-space-4);
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.merge-preview-msg {
+  margin-left: var(--gw-space-2);
+  color: var(--gw-text-dim);
+}
+
+.merge-preview-error {
+  font-size: 12px;
+  color: var(--gw-warning);
+}
+
+.danger-text {
+  color: var(--gw-danger);
+}
+
+.dim-text {
+  color: var(--gw-text-dim);
+}
+
+.mono {
+  font-family: var(--gw-font-mono);
 }
 </style>

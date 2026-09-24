@@ -106,6 +106,59 @@
         <n-radio value="mixed">mixed — 移动 HEAD + 重置暂存区，保留工作区</n-radio>
         <n-radio value="hard">hard — 重置全部，丢弃未提交更改（危险）</n-radio>
       </n-radio-group>
+      <!-- GF-17：结构化预演 —— 「操作会发生什么」（Roadmap §46） -->
+      <n-spin :show="resetDialog.previewLoading" size="small" class="reset-preview">
+        <div v-if="resetDialog.previewError" class="reset-preview-error">
+          预演加载失败：{{ resetDialog.previewError }}（仍可执行，执行时会再次校验）
+        </div>
+        <template v-else-if="resetDialog.preview">
+          <div class="reset-preview-line">
+            将丢弃
+            <strong :class="{ 'danger-text': resetDialog.preview.discardedCount > 0 }">{{
+              resetDialog.preview.discardedCount
+            }}</strong>
+            个提交
+            <span
+              v-if="resetDialog.preview.discardedCommits.length < resetDialog.preview.discardedCount"
+              class="dim-text"
+            >
+              （仅显示前 {{ resetDialog.preview.discardedCommits.length }} 个）
+            </span>
+          </div>
+          <ul v-if="resetDialog.preview.discardedCommits.length" class="reset-preview-list">
+            <li v-for="c in resetDialog.preview.discardedCommits" :key="c.oid">
+              <span class="mono">{{ c.shortOid }}</span>
+              <span class="reset-preview-msg">{{ c.summary }}</span>
+            </li>
+          </ul>
+          <div class="reset-preview-line">
+            将丢弃
+            <strong :class="{ 'danger-text': resetDialog.preview.unrecoverable }">{{
+              resetDialog.preview.lostChangesCount
+            }}</strong>
+            个未提交变更
+            <span v-if="resetDialog.preview.unrecoverable" class="danger-text">
+              （不可恢复，reflog 无法找回）
+            </span>
+          </div>
+          <ul v-if="resetDialog.preview.lostFileChanges.length" class="reset-preview-list">
+            <li
+              v-for="f in resetDialog.preview.lostFileChanges"
+              :key="f.path"
+              :class="{ 'danger-text': resetDialog.preview.unrecoverable }"
+            >
+              <span class="mono">{{ f.path }}</span>
+              <span class="dim-text">（{{ f.status }}）</span>
+            </li>
+          </ul>
+          <div v-if="resetDialog.mode === 'soft'" class="dim-text">
+            soft：被丢弃提交的内容会进入暂存区，文件变更不丢失。
+          </div>
+          <div v-else-if="resetDialog.mode === 'mixed'" class="dim-text">
+            mixed：暂存区被重置，未提交内容保留在工作区。
+          </div>
+        </template>
+      </n-spin>
       <template #footer>
         <n-button @click="resetDialog.show = false">取消</n-button>
         <n-button
@@ -202,7 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
@@ -216,7 +269,9 @@ import {
   resetTo,
   revertCommit,
 } from "@/api/history";
+import { previewReset } from "@/api/preview";
 import type { PickOutcome } from "@/types/history";
+import type { ResetPreview } from "@/types/preview";
 import type { CommitInfo, BranchInfo } from "@/types/graph";
 import type { FileDiff } from "@/types/git";
 import CommitGraph from "@/components/graph/CommitGraph.vue";
@@ -279,7 +334,11 @@ const resetDialog = reactive<{
   show: boolean;
   commit: CommitInfo | null;
   mode: "soft" | "mixed" | "hard";
-}>({ show: false, commit: null, mode: "mixed" });
+  /** GF-17：结构化预演（只读命令 preview_reset 的结果）。 */
+  preview: ResetPreview | null;
+  previewLoading: boolean;
+  previewError: string;
+}>({ show: false, commit: null, mode: "mixed", preview: null, previewLoading: false, previewError: "" });
 const conflictDialog = reactive<{
   show: boolean;
   opLabel: string;
@@ -428,6 +487,7 @@ function onCommitAction(action: string, commit: CommitInfo) {
       resetDialog.commit = commit;
       resetDialog.mode = "mixed";
       resetDialog.show = true;
+      loadResetPreview();
       break;
   }
 }
@@ -472,6 +532,7 @@ async function onCommitMenuSelect(key: string) {
       resetDialog.commit = commit;
       resetDialog.mode = "hard";
       resetDialog.show = true;
+      loadResetPreview();
       break;
     case "copy-hash":
       try {
@@ -552,17 +613,61 @@ async function handleRevert(commit: CommitInfo) {
   }
 }
 
+/** GF-17：加载 reset 结构化预演（只读；失败不阻塞确认流，执行时会再次校验）。 */
+async function loadResetPreview() {
+  const commit = resetDialog.commit;
+  if (!commit || !repoPath.value) return;
+  resetDialog.previewLoading = true;
+  resetDialog.previewError = "";
+  try {
+    resetDialog.preview = await previewReset(repoPath.value, commit.oid, resetDialog.mode);
+  } catch (e) {
+    resetDialog.preview = null;
+    resetDialog.previewError = errMsg(e);
+  } finally {
+    resetDialog.previewLoading = false;
+  }
+}
+
+// 模式影响「不可恢复」判定（hard + 未提交变更），切换时重取预演。
+watch(
+  () => resetDialog.mode,
+  () => {
+    if (resetDialog.show) loadResetPreview();
+  },
+);
+
 async function confirmReset() {
   const commit = resetDialog.commit;
   if (!commit) return;
   const mode = resetDialog.mode;
+  const preview = resetDialog.preview;
 
   if (mode === "hard") {
-    // Dangerous (§46): impact scope + data-loss + recovery hint.
+    // Dangerous (§46): impact scope + data loss + recovery hint.
+    // GF-17: 文案与结构化预演事实并列（提交数 / 变更数 / 不可恢复标注）。
+    const impact = preview
+      ? [
+          `仓库：${repoPath.value}`,
+          `当前分支：${preview.branch}`,
+          `目标：${commit.shortOid}（${firstLine(commit.message)}）`,
+          `将丢弃 ${preview.discardedCount} 个提交（${preview.discardedCommits
+            .slice(0, 3)
+            .map((c) => c.shortOid)
+            .join(", ")}${preview.discardedCount > 3 ? " 等" : ""}）`,
+          preview.lostChangesCount > 0
+            ? `将丢弃 ${preview.lostChangesCount} 个未提交变更${preview.unrecoverable ? "（不可恢复，reflog 无法找回）" : ""}`
+            : "工作区无未提交变更",
+        ]
+      : [
+          `仓库：${repoPath.value}`,
+          `当前分支：${currentBranchName()}`,
+          `目标：${commit.shortOid}（${firstLine(commit.message)}）`,
+        ];
     const confirmed = await new Promise<boolean>((resolve) => {
       dialog.error({
         title: "Reset --hard 确认（Dangerous）",
-        content: `仓库：${repoPath.value}\n当前分支：${currentBranchName()}\n目标：${commit.shortOid}（${firstLine(commit.message)}）\n\n影响范围：HEAD、暂存区、工作区全部重置到该提交；未提交的更改将丢失，之后的提交将从分支上移除。\n保底：可先 Stash 保存现场；原 HEAD 位置会在执行结果中给出（可用 reflog 找回）。`,
+        content: `${impact.join("\n")}\n\n影响范围：HEAD、暂存区、工作区全部重置到该提交；未提交的更改将丢失，之后的提交将从分支上移除。\n保底：可先 Stash 保存现场；原 HEAD 位置会在执行结果中给出（可用 reflog 找回）。`,
         positiveText: "确认 Hard Reset",
         negativeText: "取消",
         onPositiveClick: () => resolve(true),
@@ -749,6 +854,51 @@ function openResolver() {
   display: flex;
   flex-direction: column;
   gap: var(--gw-space-2);
+}
+
+/* GF-17：结构化预演区块（Roadmap §46 Repository/Branch/Files/Potential Data Loss） */
+.reset-preview {
+  display: block;
+  margin-top: var(--gw-space-3);
+  padding-top: var(--gw-space-3);
+  border-top: 1px solid var(--gw-border);
+  min-height: 24px;
+}
+
+.reset-preview-line {
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.reset-preview-list {
+  margin: var(--gw-space-1) 0;
+  padding-left: var(--gw-space-4);
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.reset-preview-msg {
+  margin-left: var(--gw-space-2);
+  color: var(--gw-text-dim);
+}
+
+.reset-preview-error {
+  font-size: 12px;
+  color: var(--gw-warning, var(--gw-text-dim));
+}
+
+.danger-text {
+  color: var(--gw-danger);
+}
+
+.dim-text {
+  color: var(--gw-text-dim);
+}
+
+.mono {
+  font-family: var(--gw-font-mono);
 }
 
 .conflict-dialog-body p {

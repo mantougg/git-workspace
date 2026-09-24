@@ -4,8 +4,8 @@
 use crate::commands::{batch as batch_cmd, diff as diff_cmd, git_ops};
 use crate::core::{
     branch as branch_core, change_set, conflict as conflict_core, diff, graph, health as health_core,
-    history as history_core, merge as merge_core, rebase as rebase_core, reflog as reflog_core, stash as stash_core,
-    workspace_stash, worktree as worktree_core,
+    history as history_core, merge as merge_core, preview as preview_core, rebase as rebase_core, reflog as reflog_core,
+    stash as stash_core, workspace_stash, worktree as worktree_core,
 };
 use crate::models::commit;
 use serde_json::{json, Map, Value};
@@ -343,6 +343,78 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             previous_head: Some("abc123".into()),
             target: "def456".into(),
             mode: "hard".into(),
+        }),
+    );
+
+    // core/preview.rs (GF-17: destructive-op structured previews)
+    m.insert(
+        "PreviewCommit".into(),
+        json!(preview_core::PreviewCommit {
+            oid: "abc123def456".into(),
+            short_oid: "abc123d".into(),
+            summary: "feat: x".into(),
+            author: "A U Thor".into(),
+            time: "2026-01-01 00:00:00 +00:00".into(),
+        }),
+    );
+    m.insert(
+        "PreviewFileChange".into(),
+        json!(preview_core::PreviewFileChange {
+            path: "a.rs".into(),
+            status: "staged".into(),
+        }),
+    );
+    m.insert(
+        "ResetPreview".into(),
+        json!(preview_core::ResetPreview {
+            repo_path: "/ws/repo".into(),
+            branch: "main".into(),
+            detached: false,
+            head_oid: "abc123def456".into(),
+            target_oid: "0".repeat(40),
+            target_summary: "c2".into(),
+            mode: "hard".into(),
+            discarded_commits: vec![preview_core::PreviewCommit {
+                oid: "abc123def456".into(),
+                short_oid: "abc123d".into(),
+                summary: "c3".into(),
+                author: "A U Thor".into(),
+                time: "2026-01-01 00:00:00 +00:00".into(),
+            }],
+            discarded_count: 1,
+            lost_file_changes: vec![preview_core::PreviewFileChange {
+                path: "a.rs".into(),
+                status: "unstaged".into(),
+            }],
+            lost_changes_count: 1,
+            unrecoverable: true,
+        }),
+    );
+    m.insert(
+        "MergePreview".into(),
+        json!(preview_core::MergePreview {
+            repo_path: "/ws/repo".into(),
+            branch: "main".into(),
+            source: "feature".into(),
+            head_oid: "abc123def456".into(),
+            source_oid: "0".repeat(40),
+            kind: "merge".into(),
+            mode: "normal".into(),
+            incoming_commits: vec![preview_core::PreviewCommit {
+                oid: "abc123def456".into(),
+                short_oid: "abc123d".into(),
+                summary: "feature work".into(),
+                author: "A U Thor".into(),
+                time: "2026-01-01 00:00:00 +00:00".into(),
+            }],
+            incoming_count: 1,
+            affected_files: vec!["a.rs".into()],
+            affected_files_count: 1,
+            conflict_predicted: true,
+            conflict_files: vec!["a.rs".into()],
+            dirty_blocked: false,
+            dirty_files: vec![],
+            dirty_files_count: 0,
         }),
     );
 

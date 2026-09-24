@@ -1626,6 +1626,36 @@
       "status": "conflict"
     }
   ],
+  "MergePreview": {
+    "affectedFiles": [
+      "a.rs"
+    ],
+    "affectedFilesCount": 1,
+    "branch": "main",
+    "conflictFiles": [
+      "a.rs"
+    ],
+    "conflictPredicted": true,
+    "dirtyBlocked": false,
+    "dirtyFiles": [],
+    "dirtyFilesCount": 0,
+    "headOid": "abc123def456",
+    "incomingCommits": [
+      {
+        "author": "A U Thor",
+        "oid": "abc123def456",
+        "shortOid": "abc123d",
+        "summary": "feature work",
+        "time": "2026-01-01 00:00:00 +00:00"
+      }
+    ],
+    "incomingCount": 1,
+    "kind": "merge",
+    "mode": "normal",
+    "repoPath": "/ws/repo",
+    "source": "feature",
+    "sourceOid": "0000000000000000000000000000000000000000"
+  },
   "NodeCondition": [
     {
       "type": "repoClean"
@@ -1870,6 +1900,17 @@
       "pnpm build"
     ],
     "title": "Add Git Assistant scenarios"
+  },
+  "PreviewCommit": {
+    "author": "A U Thor",
+    "oid": "abc123def456",
+    "shortOid": "abc123d",
+    "summary": "feat: x",
+    "time": "2026-01-01 00:00:00 +00:00"
+  },
+  "PreviewFileChange": {
+    "path": "a.rs",
+    "status": "staged"
   },
   "PreviewTarget": {
     "processId": 12,
@@ -2121,6 +2162,33 @@
       "workspaceId": 2
     },
     "status": null
+  },
+  "ResetPreview": {
+    "branch": "main",
+    "detached": false,
+    "discardedCommits": [
+      {
+        "author": "A U Thor",
+        "oid": "abc123def456",
+        "shortOid": "abc123d",
+        "summary": "c3",
+        "time": "2026-01-01 00:00:00 +00:00"
+      }
+    ],
+    "discardedCount": 1,
+    "headOid": "abc123def456",
+    "lostChangesCount": 1,
+    "lostFileChanges": [
+      {
+        "path": "a.rs",
+        "status": "unstaged"
+      }
+    ],
+    "mode": "hard",
+    "repoPath": "/ws/repo",
+    "targetOid": "0000000000000000000000000000000000000000",
+    "targetSummary": "c2",
+    "unrecoverable": true
   },
   "ResetResult": {
     "mode": "hard",

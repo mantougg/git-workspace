@@ -13,6 +13,7 @@ pub mod manifest;
 pub mod merge;
 pub mod operation_log;
 pub mod pipeline;
+pub mod preview;
 pub mod rebase;
 pub mod reflog;
 pub mod scanner;

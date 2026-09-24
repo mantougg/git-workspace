@@ -23,6 +23,7 @@ pub mod merge_rebase;
 pub mod node;
 pub mod operation_log;
 pub mod pipeline;
+pub mod preview;
 pub mod reflog;
 pub mod remote;
 pub mod repo_tools;

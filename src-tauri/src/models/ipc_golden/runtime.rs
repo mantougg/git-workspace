@@ -1176,6 +1176,11 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("CompareResult", "types/branch.ts", "CompareResult"),
     ("PickOutcome", "types/history.ts", "PickOutcome"),
     ("ResetResult", "types/history.ts", "ResetResult"),
+    // GF-17: destructive-op structured previews
+    ("PreviewCommit", "types/preview.ts", "PreviewCommit"),
+    ("PreviewFileChange", "types/preview.ts", "PreviewFileChange"),
+    ("ResetPreview", "types/preview.ts", "ResetPreview"),
+    ("MergePreview", "types/preview.ts", "MergePreview"),
     ("ReflogEntry", "types/reflog.ts", "ReflogEntry"),
     ("StashEntry", "types/stash.ts", "StashEntry"),
     ("MergeOutcome", "types/merge.ts", "MergeOutcome"),

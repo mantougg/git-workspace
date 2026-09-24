@@ -64,18 +64,77 @@
         目标：{{ resetDialog.entry.newOid.slice(0, 7) }} {{ resetDialog.entry.commitMessage }}
         （{{ resetDialog.entry.selector }}）
       </div>
-      <n-radio-group v-model:value="resetDialog.mode" class="reset-modes">
+      <n-radio-group v-model:value="resetDialog.mode" class="reset-modes" :disabled="resetDialog.restore">
         <n-radio value="soft">soft — 仅移动 HEAD，保留暂存区与工作区</n-radio>
         <n-radio value="mixed">mixed — 移动 HEAD + 重置暂存区，保留工作区</n-radio>
         <n-radio value="hard">hard — 重置全部，丢弃未提交更改（危险）</n-radio>
       </n-radio-group>
+      <!-- GF-17：结构化预演 —— 「操作会发生什么」（Roadmap §46） -->
+      <n-spin :show="resetDialog.previewLoading" size="small" class="reset-preview">
+        <div v-if="resetDialog.previewError" class="reset-preview-error">
+          预演加载失败：{{ resetDialog.previewError }}（仍可执行，执行时会再次校验）
+        </div>
+        <template v-else-if="resetDialog.preview">
+          <div class="reset-preview-line">
+            将丢弃
+            <strong :class="{ 'danger-text': resetDialog.preview.discardedCount > 0 }">{{
+              resetDialog.preview.discardedCount
+            }}</strong>
+            个提交
+            <span
+              v-if="resetDialog.preview.discardedCommits.length < resetDialog.preview.discardedCount"
+              class="dim-text"
+            >
+              （仅显示前 {{ resetDialog.preview.discardedCommits.length }} 个）
+            </span>
+          </div>
+          <ul v-if="resetDialog.preview.discardedCommits.length" class="reset-preview-list">
+            <li v-for="c in resetDialog.preview.discardedCommits" :key="c.oid">
+              <span class="mono">{{ c.shortOid }}</span>
+              <span class="reset-preview-msg">{{ c.summary }}</span>
+            </li>
+          </ul>
+          <div class="reset-preview-line">
+            将丢弃
+            <strong :class="{ 'danger-text': resetDialog.preview.unrecoverable }">{{
+              resetDialog.preview.lostChangesCount
+            }}</strong>
+            个未提交变更
+            <span v-if="resetDialog.preview.unrecoverable" class="danger-text">
+              （不可恢复，reflog 无法找回）
+            </span>
+          </div>
+          <ul v-if="resetDialog.preview.lostFileChanges.length" class="reset-preview-list">
+            <li
+              v-for="f in resetDialog.preview.lostFileChanges"
+              :key="f.path"
+              :class="{ 'danger-text': resetDialog.preview.unrecoverable }"
+            >
+              <span class="mono">{{ f.path }}</span>
+              <span class="dim-text">（{{ f.status }}）</span>
+            </li>
+          </ul>
+          <div v-if="resetDialog.mode === 'soft'" class="dim-text">
+            soft：被丢弃提交的内容会进入暂存区，文件变更不丢失。
+          </div>
+          <div v-else-if="resetDialog.mode === 'mixed'" class="dim-text">
+            mixed：暂存区被重置，未提交内容保留在工作区。
+          </div>
+        </template>
+      </n-spin>
       <template #footer>
-        <n-button @click="resetDialog.show = false">取消</n-button>
+        <n-button
+          @click="
+            resetDialog.show = false;
+            resetDialog.restore = false;
+          "
+          >取消</n-button
+        >
         <n-button
           :type="resetDialog.mode === 'hard' ? 'error' : 'primary'"
           @click="confirmReset"
         >
-          执行 Reset
+          {{ resetDialog.restore ? "恢复到此状态" : "执行 Reset" }}
         </n-button>
       </template>
     </n-modal>
@@ -83,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
@@ -93,7 +152,9 @@ import { prompt } from "@/utils/prompt";
 import { getReflog } from "@/api/reflog";
 import { listBranches, createBranch } from "@/api/branch";
 import { resetTo } from "@/api/history";
+import { previewReset } from "@/api/preview";
 import type { ReflogEntry } from "@/types/reflog";
+import type { ResetPreview } from "@/types/preview";
 import { errMsg } from "@/utils/error";
 
 const router = useRouter();
@@ -147,7 +208,21 @@ const resetDialog = reactive<{
   show: boolean;
   entry: ReflogEntry | null;
   mode: "soft" | "mixed" | "hard";
-}>({ show: false, entry: null, mode: "mixed" });
+  /** true = Restore State 快捷入口（锁定 hard 模式，仅补结构化预演）。 */
+  restore: boolean;
+  /** GF-17：结构化预演（只读命令 preview_reset 的结果）。 */
+  preview: ResetPreview | null;
+  previewLoading: boolean;
+  previewError: string;
+}>({
+  show: false,
+  entry: null,
+  mode: "mixed",
+  restore: false,
+  preview: null,
+  previewLoading: false,
+  previewError: "",
+});
 
 onMounted(async () => {
   // F-14/F-17：query → 全局当前仓库 → 工作区首仓库兜底（SideNav 直达）。
@@ -238,10 +313,18 @@ function onAction(cmd: string, entry: ReflogEntry) {
     case "reset":
       resetDialog.entry = entry;
       resetDialog.mode = "mixed";
+      resetDialog.restore = false;
       resetDialog.show = true;
+      loadResetPreview();
       break;
     case "restore":
-      handleRestore(entry);
+      // GF-17：Restore State 仍默认 hard，但改走带结构化预演的确认框
+      // （原来是纯文案 dialog.error）。
+      resetDialog.entry = entry;
+      resetDialog.mode = "hard";
+      resetDialog.restore = true;
+      resetDialog.show = true;
+      loadResetPreview();
       break;
   }
 }
@@ -264,12 +347,53 @@ async function handleCreateBranch(entry: ReflogEntry) {
   }
 }
 
-/** Dangerous confirm content shared by Reset Here(hard) / Restore State. */
-function dangerConfirmText(entry: ReflogEntry): string {
+/** GF-17：加载 reset 结构化预演（只读；失败不阻塞确认流，执行时会再次校验）。 */
+async function loadResetPreview() {
+  const entry = resetDialog.entry;
+  if (!entry || !repoPath.value) return;
+  resetDialog.previewLoading = true;
+  resetDialog.previewError = "";
+  try {
+    resetDialog.preview = await previewReset(repoPath.value, entry.newOid, resetDialog.mode);
+  } catch (e) {
+    resetDialog.preview = null;
+    resetDialog.previewError = errMsg(e);
+  } finally {
+    resetDialog.previewLoading = false;
+  }
+}
+
+// 模式影响「不可恢复」判定（hard + 未提交变更），切换时重取预演。
+watch(
+  () => resetDialog.mode,
+  () => {
+    if (resetDialog.show) loadResetPreview();
+  },
+);
+
+/** 预演事实 + 恢复提示（Dangerous 确认正文；无预演时退回纯文案）。 */
+function dangerConfirmText(entry: ReflogEntry, preview: ResetPreview | null): string {
+  const target = `目标：${entry.newOid.slice(0, 7)} ${entry.commitMessage}（${entry.selector}）`;
+  if (!preview) {
+    return (
+      `仓库：${repoPath.value}\n` +
+      `${target}\n\n` +
+      `影响范围：HEAD、暂存区、工作区全部重置到该位置；未提交的更改将丢失。\n` +
+      `保底：当前位置会留在 reflog 中，可再次回到本视图恢复。`
+    );
+  }
   return (
     `仓库：${repoPath.value}\n` +
-    `目标：${entry.newOid.slice(0, 7)} ${entry.commitMessage}（${entry.selector}）\n\n` +
-    `影响范围：HEAD、暂存区、工作区全部重置到该位置；未提交的更改将丢失。\n` +
+    `当前分支：${preview.branch}\n` +
+    `${target}\n` +
+    `将丢弃 ${preview.discardedCount} 个提交（${preview.discardedCommits
+      .slice(0, 3)
+      .map((c) => c.shortOid)
+      .join(", ")}${preview.discardedCount > 3 ? " 等" : ""}）\n` +
+    (preview.lostChangesCount > 0
+      ? `将丢弃 ${preview.lostChangesCount} 个未提交变更${preview.unrecoverable ? "（不可恢复，reflog 无法找回）" : ""}`
+      : "工作区无未提交变更") +
+    `\n\n影响范围：HEAD、暂存区、工作区全部重置到该位置；未提交的更改将丢失。\n` +
     `保底：当前位置会留在 reflog 中，可再次回到本视图恢复。`
   );
 }
@@ -278,14 +402,16 @@ async function confirmReset() {
   const entry = resetDialog.entry;
   if (!entry) return;
   const mode = resetDialog.mode;
+  const restore = resetDialog.restore;
+  const preview = resetDialog.preview;
 
   if (mode === "hard") {
     try {
       await new Promise<void>((resolve, reject) => {
         dialog.error({
-          title: "Reset --hard 确认（Dangerous）",
-          content: dangerConfirmText(entry),
-          positiveText: "确认 Hard Reset",
+          title: restore ? "Restore State 确认（Dangerous）" : "Reset --hard 确认（Dangerous）",
+          content: dangerConfirmText(entry, preview),
+          positiveText: restore ? "恢复到此状态" : "确认 Hard Reset",
           negativeText: "取消",
           onPositiveClick: () => resolve(),
           onNegativeClick: () => reject("cancel"),
@@ -298,38 +424,13 @@ async function confirmReset() {
   }
 
   resetDialog.show = false;
+  resetDialog.restore = false;
   try {
     await resetTo(repoPath.value, entry.newOid, mode);
-    message.success(`已 Reset 到 ${entry.selector}（${mode}）`);
+    message.success(restore ? `已恢复到 ${entry.selector}` : `已 Reset 到 ${entry.selector}（${mode}）`);
     await load();
   } catch (e) {
-    message.error("Reset 失败: " + errMsg(e));
-  }
-}
-
-/** Restore State = hard reset shortcut with Dangerous confirm (§46). */
-async function handleRestore(entry: ReflogEntry) {
-  try {
-    await new Promise<void>((resolve, reject) => {
-      dialog.error({
-        title: "Restore State 确认（Dangerous）",
-        content: dangerConfirmText(entry),
-        positiveText: "恢复到此状态",
-        negativeText: "取消",
-        onPositiveClick: () => resolve(),
-        onNegativeClick: () => reject("cancel"),
-        onClose: () => reject("cancel"),
-      });
-    });
-  } catch {
-    return;
-  }
-  try {
-    await resetTo(repoPath.value, entry.newOid, "hard");
-    message.success(`已恢复到 ${entry.selector}`);
-    await load();
-  } catch (e) {
-    message.error("恢复失败: " + errMsg(e));
+    message.error(restore ? "恢复失败: " + errMsg(e) : "Reset 失败: " + errMsg(e));
   }
 }
 </script>
@@ -437,5 +538,50 @@ async function handleRestore(entry: ReflogEntry) {
   display: flex;
   flex-direction: column;
   gap: var(--gw-space-2);
+}
+
+/* GF-17：结构化预演区块（Roadmap §46 Repository/Branch/Files/Potential Data Loss） */
+.reset-preview {
+  display: block;
+  margin-top: var(--gw-space-3);
+  padding-top: var(--gw-space-3);
+  border-top: 1px solid var(--gw-border);
+  min-height: 24px;
+}
+
+.reset-preview-line {
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.reset-preview-list {
+  margin: var(--gw-space-1) 0;
+  padding-left: var(--gw-space-4);
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.reset-preview-msg {
+  margin-left: var(--gw-space-2);
+  color: var(--gw-text-dim);
+}
+
+.reset-preview-error {
+  font-size: 12px;
+  color: var(--gw-warning);
+}
+
+.danger-text {
+  color: var(--gw-danger);
+}
+
+.dim-text {
+  color: var(--gw-text-dim);
+}
+
+.mono {
+  font-family: var(--gw-font-mono);
 }
 </style>
