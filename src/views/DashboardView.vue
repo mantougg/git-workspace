@@ -172,16 +172,19 @@
           <template #icon><n-icon><AddCircleOutline /></n-icon></template>
           Create Branch
         </n-button>
+        <!-- GF-06：原 disabled 按钮 + 「批量 Stash 将随 T-21 提供」死文案——
+             T-21（Workspace Stash）已交付（变更页 Workspace Stash 面板），
+             改为跳转变更页并直接唤起该面板（RepositoryList action=ws-stash 预填）。 -->
         <n-tooltip trigger="hover">
           <template #trigger>
             <span>
-              <n-button disabled>
+              <n-button :disabled="total === 0" @click="quickAction('ws-stash')">
                 <template #icon><n-icon><ArchiveOutline /></n-icon></template>
                 Stash
               </n-button>
             </span>
           </template>
-          批量 Stash 将随 T-21（Workspace Stash & Branch）提供
+          Workspace Stash（多仓库批量暂存）：跳转变更页并打开 Workspace Stash 面板
         </n-tooltip>
       </div>
       <div class="actions-hint">

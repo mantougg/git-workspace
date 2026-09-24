@@ -21,8 +21,8 @@
 
 ## 总体进度
 
-- 任务总数：**20**
-- 已完成：**15** · 修复中：**1** · 未开始：**3** · 仅讨论：**1**
+- 任务总数：**22**
+- 已完成：**16** · 修复中：**1** · 未开始：**4** · 仅讨论：**1**
 
 ---
 
@@ -35,7 +35,7 @@
 | GF-03 | Ctrl+Shift+D 死键 + Diff/冲突解决器从命令面板消失（nav:false 路由被注册表过滤） | P1 | ✅ | [GF-03-diff-shortcut-dead-command-palette-missing.md](./GF-03-diff-shortcut-dead-command-palette-missing.md) |
 | GF-04 | Tags 只读孤岛：分支管理页能看到标签但完全不能操作（后端也无 tag 变更命令） | P1 | ✅ | [GF-04-tags-readonly.md](./GF-04-tags-readonly.md) |
 | GF-05 | git 关键路径原生控件治理：冲突解决 RESULT 编辑器裸 textarea、hunk 暂存裸 button | P1 | ✅ | [GF-05-native-controls-git-paths.md](./GF-05-native-controls-git-paths.md) |
-| GF-06 | 过期文案误导用户：GitGraph/BranchManager 仍写「三方解决器随 T-16 提供」（T-16 早已交付） | P2 | ⬜ | [GF-06-stale-t16-copy.md](./GF-06-stale-t16-copy.md) |
+| GF-06 | 过期文案误导用户：GitGraph/BranchManager 仍写「三方解决器随 T-16 提供」（T-16 早已交付） | P2 | ✅ | [GF-06-stale-t16-copy.md](./GF-06-stale-t16-copy.md) |
 | GF-07 | 单仓网络操作无进度无取消 + `push_branch` 同步命令阻塞 IPC 线程（与批次操作体验割裂） | P1 | ✅ | [GF-07-single-repo-netop-no-progress.md](./GF-07-single-repo-netop-no-progress.md) |
 | GF-08 | Git 认证失败无可行动引导：`AppError::Git` 无 details/suggestedActions，"Authentication failed" 原样透出 | P1 | ✅ | [GF-08-git-auth-failure-no-guidance.md](./GF-08-git-auth-failure-no-guidance.md) |
 | GF-09 | Ignore diff 选项静默禁掉行级暂存：已勾选的行选择无声丢失，仅一行小 tag 提示 | P1 | ✅ | [GF-09-ignore-option-kills-staging.md](./GF-09-ignore-option-kills-staging.md) |
@@ -50,6 +50,8 @@
 | GF-18 | 命令面板/快捷键未覆盖已有 git 操作：cherry-pick/merge/rebase/stash/worktree/repo-tools 均无命令注册 | P2 | ⬜ | [GF-18-command-palette-git-ops.md](./GF-18-command-palette-git-ops.md) |
 | GF-19 | StatusBar 分支槽位空占位：`currentBranch = ref(null)`，Git 视图不显示当前分支（desktop-skin-plan 已规定） | P2 | ✅ | [GF-19-statusbar-branch-slot.md](./GF-19-statusbar-branch-slot.md) |
 | GF-20 | git 功能增强规划待排期：Blame 视图 / Interactive Rebase UI / Remote 管理 / Binary diff / Git 配置 UI / 主题三档切换 | 💬 | ⬜ | [GF-20-git-feature-roadmap.md](./GF-20-git-feature-roadmap.md) |
+| GF-21 | ChangeSetView「Create PRs」disabled 死按钮（T-29 已交付，前端/后端 create_pull_request 均在） | P2 | ⬜ | [GF-21-changeset-create-prs-disabled.md](./GF-21-changeset-create-prs-disabled.md) |
+| GF-22 | ConflictResolver「AI 冲突建议」disabled 死按钮（T-26 已交付，AiConflictAssistant 正在渲染中） | P2 | ⬜ | [GF-22-conflict-ai-suggestion-disabled.md](./GF-22-conflict-ai-suggestion-disabled.md) |
 
 ---
 

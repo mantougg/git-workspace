@@ -60,7 +60,8 @@
       <n-button size="small" type="error" dashed @click="handleMergeAbort">
         中止（Abort）
       </n-button>
-      <span class="banner-hint">请先在变更视图解决冲突并暂存（三方解决器随 T-16 提供）</span>
+      <!-- GF-06：原「三方解决器随 T-16 提供」死文案——解决器早已交付，引导去用上方「打开解决器」入口。 -->
+      <span class="banner-hint">请在解决器中解决冲突并暂存后，点「已解决，继续」</span>
     </div>
     <div v-if="rebaseState" class="state-banner rebase">
       <span class="banner-text">

@@ -53,7 +53,7 @@
       </n-popover>
     </div>
 
-    <!-- In-progress conflict banner (T-13; the T-16 resolver hooks in here) -->
+    <!-- In-progress conflict banner (T-13) -->
     <div v-if="conflictFiles.length > 0" class="conflict-bar">
       <span class="conflict-text">
         存在未解决的冲突（{{ conflictFiles.length }} 个文件）：{{ conflictFiles.join("、") }}
@@ -64,7 +64,9 @@
       <n-button size="small" type="error" dashed @click="abortInProgress()">
         中止并恢复（Abort）
       </n-button>
-      <span class="conflict-hint">可手动编辑解决后提交；三方解决器随 T-16 提供</span>
+      <!-- GF-06：原「三方解决器随 T-16 提供」死文案——解决器（T-16）早已交付，
+           文案引导去用上方入口。 -->
+      <span class="conflict-hint">在解决器中编辑解决，或手动修改文件后提交</span>
     </div>
 
     <!-- Commit graph -->
@@ -183,11 +185,12 @@
           <li v-for="f in conflictDialog.files" :key="f">{{ f }}</li>
         </ul>
         <p class="conflict-note">
-          仓库当前保持冲突状态：可关闭后手动编辑解决（三方解决器随 T-16 提供），或立即中止恢复到操作前状态。
+          仓库当前保持冲突状态：可打开解决器编辑解决，或关闭后手动修改文件，也可立即中止恢复到操作前状态。
         </p>
       </div>
       <template #footer>
         <n-button @click="conflictDialog.show = false">稍后手动解决</n-button>
+        <n-button type="primary" @click="openResolverFromDialog">打开解决器</n-button>
         <n-button type="error" @click="abortFromDialog">中止并恢复（Abort）</n-button>
       </template>
     </n-modal>
@@ -728,6 +731,12 @@ function viewCommitDiff() {
 
 function openResolver() {
   router.push({ name: "conflict-resolver", query: { repo: repoPath.value } });
+}
+
+/** GF-06：冲突对话框内打开解决器（先关对话框再跳转）。 */
+function openResolverFromDialog() {
+  conflictDialog.show = false;
+  openResolver();
 }
 
 </script>

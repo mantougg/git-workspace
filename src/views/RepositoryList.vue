@@ -1744,6 +1744,10 @@ async function applyRoutePrefill() {
       case "branch-create":
         openBranchOp("create");
         break;
+      // GF-06：Dashboard「Stash」快捷入口——唤起 Workspace Stash 面板（T-21）。
+      case "ws-stash":
+        openWsStashDialog();
+        break;
       // T-31：Sync = Fetch 全部 → Pull Clean 预演（推送保持显式操作）。
       case "sync": {
         const paths = changes.value.map((c) => c.repoPath);
