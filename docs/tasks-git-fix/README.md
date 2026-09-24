@@ -22,7 +22,7 @@
 ## 总体进度
 
 - 任务总数：**20**
-- 已完成：**4** · 修复中：**0** · 未开始：**15** · 仅讨论：**1**
+- 已完成：**6** · 修复中：**0** · 未开始：**13** · 仅讨论：**1**
 
 ---
 
@@ -31,7 +31,7 @@
 | 编号 | 问题 | 优先级 | 状态 | 文档 |
 |---|---|---|---|---|
 | GF-01 | 主界面搜索框失效：绑定了 `searchQuery` 但全文无任何过滤逻辑，用户输入零响应 | P0 | ✅ | [GF-01-changes-search-box-dead.md](./GF-01-changes-search-box-dead.md) |
-| GF-02 | 批量操作失败零反馈：批量 Pull 内层 catch 静默吞失败、watcher 启停失败不提示 | P0 | ⬜ | [GF-02-batch-op-failure-silent.md](./GF-02-batch-op-failure-silent.md) |
+| GF-02 | 批量操作失败零反馈：批量 Pull 内层 catch 静默吞失败、watcher 启停失败不提示 | P0 | ✅ | [GF-02-batch-op-failure-silent.md](./GF-02-batch-op-failure-silent.md) |
 | GF-03 | Ctrl+Shift+D 死键 + Diff/冲突解决器从命令面板消失（nav:false 路由被注册表过滤） | P1 | ⬜ | [GF-03-diff-shortcut-dead-command-palette-missing.md](./GF-03-diff-shortcut-dead-command-palette-missing.md) |
 | GF-04 | Tags 只读孤岛：分支管理页能看到标签但完全不能操作（后端也无 tag 变更命令） | P1 | ✅ | [GF-04-tags-readonly.md](./GF-04-tags-readonly.md) |
 | GF-05 | git 关键路径原生控件治理：冲突解决 RESULT 编辑器裸 textarea、hunk 暂存裸 button | P1 | ⬜ | [GF-05-native-controls-git-paths.md](./GF-05-native-controls-git-paths.md) |
@@ -39,7 +39,7 @@
 | GF-07 | 单仓网络操作无进度无取消 + `push_branch` 同步命令阻塞 IPC 线程（与批次操作体验割裂） | P1 | ✅ | [GF-07-single-repo-netop-no-progress.md](./GF-07-single-repo-netop-no-progress.md) |
 | GF-08 | Git 认证失败无可行动引导：`AppError::Git` 无 details/suggestedActions，"Authentication failed" 原样透出 | P1 | ✅ | [GF-08-git-auth-failure-no-guidance.md](./GF-08-git-auth-failure-no-guidance.md) |
 | GF-09 | Ignore diff 选项静默禁掉行级暂存：已勾选的行选择无声丢失，仅一行小 tag 提示 | P1 | ⬜ | [GF-09-ignore-option-kills-staging.md](./GF-09-ignore-option-kills-staging.md) |
-| GF-10 | Workspace Stash 多仓串行执行且无进度无取消（全应用唯一「黑屏等待」的写操作） | P2 | ⬜ | [GF-10-workspace-stash-serial-no-progress.md](./GF-10-workspace-stash-serial-no-progress.md) |
+| GF-10 | Workspace Stash 多仓串行执行且无进度无取消（全应用唯一「黑屏等待」的写操作） | P2 | ✅ | [GF-10-workspace-stash-serial-no-progress.md](./GF-10-workspace-stash-serial-no-progress.md) |
 | GF-11 | git 长列表无虚拟滚动 + GitGraph「加载更多」全量重取（O(n²)），千级提交/文件卡顿 | P1 | ⬜ | [GF-11-git-lists-virtual-scroll.md](./GF-11-git-lists-virtual-scroll.md) |
 | GF-12 | SmartMergeDialog 丢失冲突语义：`baseOid` 声明未用、`conflictType` 硬编码 both-modified（deleted-by-us/them 分支永不触发） | P2 | ⬜ | [GF-12-smart-merge-dialog-semantics.md](./GF-12-smart-merge-dialog-semantics.md) |
 | GF-13 | git 小缺陷集合：Reflog 200 条上限无提示、分支条只显示 10 个、pick_continue 丢原作者（2026-09-24 核验：原「远程分支误判」子项已被 PAF-26 修复，撤销） | P2 | ⬜ | [GF-13-git-small-defects.md](./GF-13-git-small-defects.md) |
