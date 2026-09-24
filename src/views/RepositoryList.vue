@@ -90,9 +90,9 @@
         <n-spin :show="changesLoading" class="tree-spin">
           <div class="tree-container">
             <ChangeTree
-              v-if="changes.length > 0"
+              v-if="filteredChanges.length > 0"
               ref="changeTreeRef"
-              :changes="changes"
+              :changes="filteredChanges"
               :view-mode="treeViewMode"
               @selection-change="onTreeSelection"
               @file-dblclick="onFileDblClick"
@@ -105,6 +105,15 @@
             >
               <n-empty description="未发现任何 Git 仓库">
                 <n-button type="primary" @click="handleScan">重新扫描</n-button>
+              </n-empty>
+            </div>
+            <!-- GF-01：有仓库但搜索词无匹配时给出空态，勿显示树的「无数据」。 -->
+            <div
+              v-else-if="!changesLoading && changes.length > 0 && filteredChanges.length === 0"
+              class="empty-state"
+            >
+              <n-empty description="没有匹配的仓库或文件">
+                <n-button type="primary" @click="searchQuery = ''">清除搜索词</n-button>
               </n-empty>
             </div>
             <div
@@ -718,7 +727,7 @@
     <n-modal v-model:show="showPushDialog" preset="card" title="选择要 Push 的仓库" style="width: 680px">
       <n-data-table
         :columns="pushColumns"
-        :data="changes"
+        :data="filteredChanges"
         :row-key="(row: RepoChanges) => row.repoPath"
         :checked-row-keys="pushSelection"
         @update:checked-row-keys="(keys: (string | number)[]) => onPushSelectionChange(keys as string[])"
@@ -1374,6 +1383,34 @@ const dirtyRepoCount = computed(
 const totalChangedFiles = computed(() =>
   changes.value.reduce((sum, c) => sum + c.changes.length, 0),
 );
+
+// GF-01：搜索框过滤。仓库级命中（仓库名 / 工作区内路径 / 绝对路径 / 当前分支 /
+// 状态关键词）时保留该仓库全部变更文件，避免「命中了仓库却看不到文件」；
+// 仅文件路径命中时只带入命中文件。空搜索词时直接返回全量（零行为变化）。
+const filteredChanges = computed<RepoChanges[]>(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return changes.value;
+  const result: RepoChanges[] = [];
+  for (const repo of changes.value) {
+    const repoHaystacks: string[] = [
+      repo.repoName,
+      repo.relativePath,
+      repo.repoPath.replace(/\\/g, "/"),
+      repo.branch,
+    ];
+    if (repo.isDetached) repoHaystacks.push("游离", "detached");
+    if (repo.changes.length > 0) repoHaystacks.push("脏", "dirty", "有变更");
+    if (repo.ahead > 0) repoHaystacks.push(`领先 ${repo.ahead}`, `ahead ${repo.ahead}`);
+    if (repo.behind > 0) repoHaystacks.push(`落后 ${repo.behind}`, `behind ${repo.behind}`);
+    if (repoHaystacks.some((h) => h.toLowerCase().includes(q))) {
+      result.push(repo);
+      continue;
+    }
+    const files = repo.changes.filter((f) => f.path.toLowerCase().includes(q));
+    if (files.length > 0) result.push({ ...repo, changes: files });
+  }
+  return result;
+});
 
 const selectedRepoCount = computed(() => treeSelection.value.repoPaths.length);
 
