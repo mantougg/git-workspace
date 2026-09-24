@@ -441,7 +441,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
 import { EllipsisVerticalOutline, AddOutline, RefreshOutline, SwapHorizontalOutline, GitNetworkOutline, GitPullRequestOutline } from "@vicons/ionicons5";
@@ -503,6 +503,7 @@ import type { RebaseOutcome, RebaseState } from "@/types/rebase";
 import { errMsg } from "@/utils/error";
 
 const router = useRouter();
+const route = useRoute();
 const message = useMessage();
 const { resolveCurrentRepo } = useCurrentRepo();
 const dialog = useDialog();
@@ -966,6 +967,13 @@ onMounted(async () => {
   }
   repoPath.value = repo;
   await load();
+  // GF-18：命令面板 prefill（?pr=1 打开 Create PR 对话框——load 后分支选项
+  // 与远程信息就绪；?rebase=1 打开 Interactive Rebase 对话框）。
+  if (route.query.pr === "1") {
+    await openCreatePr();
+  } else if (route.query.rebase === "1") {
+    rebaseDialogVisible.value = true;
+  }
 });
 
 async function load() {

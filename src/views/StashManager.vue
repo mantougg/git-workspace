@@ -87,7 +87,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
 import { CloudUploadOutline, EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
@@ -109,6 +109,7 @@ import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import { errMsg } from "@/utils/error";
 
 const router = useRouter();
+const route = useRoute();
 const message = useMessage();
 const { resolveCurrentRepo } = useCurrentRepo();
 const dialog = useDialog();
@@ -141,6 +142,8 @@ onMounted(async () => {
   }
   repoPath.value = repo;
   await load();
+  // GF-18：命令面板 prefill（?save=1 打开「新建 stash」对话框）。
+  if (route.query.save === "1") saveDialog.show = true;
 });
 
 async function load() {

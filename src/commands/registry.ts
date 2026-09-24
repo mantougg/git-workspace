@@ -113,7 +113,16 @@ function getActionCommands(ctx: CommandContext): Command[] {
 
 /** Git 操作命令（变更页 action 通道 / 对应 Git 视图直达）。 */
 function getGitCommands(ctx: CommandContext): Command[] {
-  const { router, workspaceStore } = ctx;
+  const { router, workspaceStore, repoStore } = ctx;
+
+  /** GF-18：作用于「当前仓库」的命令共用守卫（无仓库时抛错，由命令面板展示）。 */
+  function requireCurrentRepo(): string {
+    const path = repoStore.currentRepoPath;
+    if (!path) {
+      throw new Error("当前没有选中的仓库，请先在变更页选择仓库");
+    }
+    return path;
+  }
 
   const toChanges = (
     action: string,
@@ -232,6 +241,78 @@ function getGitCommands(ctx: CommandContext): Command[] {
       group: "Git 操作",
       run: () => {
         ctx.aiStore.toggleDrawer();
+      },
+    },
+    // ── GF-18：单仓直接操作（作用于当前仓库；只编排既有 api，不写业务逻辑）──
+    // 网络操作走 GF-07 流式镜像（opId 省略时后端生成），Git Console 自动弹出
+    // 展示增量输出与取消入口。
+    {
+      id: "git:fetch-current",
+      title: "Fetch 当前仓库",
+      group: "Git 操作",
+      run: async () => {
+        const repo = requireCurrentRepo();
+        const { syncFetch } = await import("@/api/git_ops");
+        await syncFetch(repo);
+      },
+    },
+    {
+      id: "git:pull-current",
+      title: "Pull 当前仓库（Smart Pull）",
+      group: "Git 操作",
+      run: async () => {
+        const repo = requireCurrentRepo();
+        const { smartPull } = await import("@/api/git_ops");
+        const result = await smartPull(repo);
+        // smart_pull 的 Conflict 态会把仓库留在冲突状态——直接打开解决器。
+        if (result.status === "conflict") {
+          router.push({ name: "conflict-resolver", query: { repo } });
+        }
+      },
+    },
+    {
+      id: "git:push-current",
+      title: "Push 当前仓库",
+      group: "Git 操作",
+      run: async () => {
+        const repo = requireCurrentRepo();
+        const { syncPush } = await import("@/api/git_ops");
+        await syncPush(repo);
+      },
+    },
+    // ── GF-18：自包含对话框的 prefill 打开（视图保留业务逻辑与确认流）──
+    // merge / rebase / cherry-pick / revert / reset 需在视图中选择目标分支/提交，
+    // 经既有 git:branch / git:reset 导航到拥有对应 UI 的视图执行。
+    {
+      id: "git:stash-save",
+      title: "Stash 当前仓库（新建记录）",
+      group: "Git 操作",
+      run: () => {
+        router.push({ name: "stash-manager", query: { save: "1" } });
+      },
+    },
+    {
+      id: "git:create-pr",
+      title: "Create Pull Request（当前仓库）",
+      group: "Git 操作",
+      run: () => {
+        router.push({ name: "branch-manager", query: { pr: "1" } });
+      },
+    },
+    {
+      id: "git:worktree-create",
+      title: "新建 Worktree（当前仓库）",
+      group: "Git 操作",
+      run: () => {
+        router.push({ name: "worktree-manager", query: { create: "1" } });
+      },
+    },
+    {
+      id: "git:rebase",
+      title: "Rebase 当前分支（Interactive Rebase）",
+      group: "Git 操作",
+      run: () => {
+        router.push({ name: "branch-manager", query: { rebase: "1" } });
       },
     },
   ];

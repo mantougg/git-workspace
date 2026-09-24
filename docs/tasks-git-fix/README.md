@@ -22,7 +22,7 @@
 ## 总体进度
 
 - 任务总数：**22**
-- 已完成：**16** · 修复中：**1** · 未开始：**4** · 仅讨论：**1**
+- 已完成：**17** · 修复中：**1** · 未开始：**3** · 仅讨论：**1**
 
 ---
 
@@ -47,7 +47,7 @@
 | GF-15 | 批量 Pull 分叉后无策略跟进：dry-run 已能识别分叉仓库，失败后缺「批量选 merge/rebase」动作 | P1 | ✅ | [GF-15-batch-pull-fork-followup.md](./GF-15-batch-pull-fork-followup.md) |
 | GF-16 | Undo 覆盖面窄 + 冲突解决日志刷屏：stash drop/clear、merge abort、cherry-pick 等不入操作日志且不可撤销 | P1 | ✅ | [GF-16-undo-coverage-conflict-log-spam.md](./GF-16-undo-coverage-conflict-log-spam.md) |
 | GF-17 | 破坏性单仓操作无结构化预演：merge/rebase/reset 仅靠 UI 文案确认，未复用 batch_dry_run 成熟模式 | P2 | ✅ | [GF-17-destructive-op-preview.md](./GF-17-destructive-op-preview.md) |
-| GF-18 | 命令面板/快捷键未覆盖已有 git 操作：cherry-pick/merge/rebase/stash/worktree/repo-tools 均无命令注册 | P2 | ⬜ | [GF-18-command-palette-git-ops.md](./GF-18-command-palette-git-ops.md) |
+| GF-18 | 命令面板/快捷键未覆盖已有 git 操作：cherry-pick/merge/rebase/stash/worktree/repo-tools 均无命令注册 | P2 | ✅ | [GF-18-command-palette-git-ops.md](./GF-18-command-palette-git-ops.md) |
 | GF-19 | StatusBar 分支槽位空占位：`currentBranch = ref(null)`，Git 视图不显示当前分支（desktop-skin-plan 已规定） | P2 | ✅ | [GF-19-statusbar-branch-slot.md](./GF-19-statusbar-branch-slot.md) |
 | GF-20 | git 功能增强规划待排期：Blame 视图 / Interactive Rebase UI / Remote 管理 / Binary diff / Git 配置 UI / 主题三档切换 | 💬 | ⬜ | [GF-20-git-feature-roadmap.md](./GF-20-git-feature-roadmap.md) |
 | GF-21 | ChangeSetView「Create PRs」disabled 死按钮（T-29 已交付，前端/后端 create_pull_request 均在） | P2 | ⬜ | [GF-21-changeset-create-prs-disabled.md](./GF-21-changeset-create-prs-disabled.md) |

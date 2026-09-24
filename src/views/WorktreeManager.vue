@@ -68,7 +68,7 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
 import { AddOutline, RefreshOutline } from "@vicons/ionicons5";
@@ -81,6 +81,7 @@ import { useMessage, useDialog, NTag, NButton } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 
 const router = useRouter();
+const route = useRoute();
 const message = useMessage();
 const { resolveCurrentRepo } = useCurrentRepo();
 const dialog = useDialog();
@@ -183,6 +184,8 @@ onMounted(async () => {
   }
   repoPath.value = repo;
   await load();
+  // GF-18：命令面板 prefill（?create=1 打开「新建 Worktree」对话框）。
+  if (route.query.create === "1") createDialog.value.show = true;
 });
 
 async function load() {

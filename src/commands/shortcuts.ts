@@ -26,6 +26,11 @@ const SHORTCUT_MAP: Record<string, string[]> = {
   // Ctrl+Shift+C 已被 terminal:copy 占用，冲突解决器用 Ctrl+Shift+X（全表无冲突）。
   "git:diff": ["Ctrl+Shift+D"],
   "git:open-conflict-resolver": ["Ctrl+Shift+X"],
+  // GF-18：单仓高频网络操作。用 Shift+Alt 系（WebView 原生菜单/浏览器几乎不
+  // 保留该类组合；Ctrl+Shift+P 已被命令面板占用、Ctrl+Shift+O/T/W/N/R 等
+  // 为浏览器保留键）。push 刻意不绑快捷键（写操作，保持显式触发）。
+  "git:fetch-current": ["Shift+Alt+F"],
+  "git:pull-current": ["Shift+Alt+P"],
   "action:toggle-assistant": ["Ctrl+I"],
   "terminal:toggle": ["Ctrl+`"],
   "terminal:new-shell": ["Ctrl+Shift+`"],
