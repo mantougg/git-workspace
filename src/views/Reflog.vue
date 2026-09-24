@@ -36,6 +36,17 @@
       </div>
     </n-spin>
 
+    <!-- GF-13a：条数提示 + 加载更多（后端 max 已参数化，前端在此补翻页状态）。
+         后端暂不返回总数：按页大小探测，短页即到底。 -->
+    <div v-if="entries.length > 0 && (hasMore || allLoaded)" class="reflog-footer">
+      <span class="reflog-count">
+        {{ allLoaded ? `已显示全部 ${entries.length} 条` : `已显示前 ${entries.length} 条` }}
+      </span>
+      <n-button v-if="hasMore" size="small" :loading="loadingMore" @click="loadMore">
+        加载更多
+      </n-button>
+    </div>
+
     <!-- View Commit dialog -->
     <n-modal v-model:show="viewDialog.show" preset="card" title="提交详情" style="width: 520px">
       <n-descriptions v-if="viewDialog.entry" :column="1" bordered label-placement="left">
@@ -97,6 +108,16 @@ const remotes = ref<string[]>([]);
 const entries = ref<ReflogEntry[]>([]);
 const loading = ref(false);
 
+/** GF-13a：reflog 分页大小（与后端默认 200 对齐，超出部分走「加载更多」）。 */
+const PAGE_SIZE = 200;
+/** 当前请求的上限（等于已拉取的最大条数）。 */
+const requestedMax = ref(PAGE_SIZE);
+/** 可能还有更多（本次返回数打满上限）。 */
+const hasMore = ref(false);
+/** 已确认拉完全部（某次返回数小于请求上限）。 */
+const allLoaded = ref(false);
+const loadingMore = ref(false);
+
 const referenceOptions = computed(() => {
   const opts: { label: string; value: string; type?: string }[] = [{ label: "HEAD", value: "HEAD" }];
   if (locals.value.length > 0) {
@@ -152,7 +173,8 @@ async function loadBranchOptions() {
   }
 }
 
-// F-22：切换仓库后重置视图状态并重载（引用回退到 HEAD）。
+// F-22：切换仓库后重置视图状态并重载（引用回退到 HEAD）；
+// 分页状态由 load() 内的 resetPaging() 复位。
 async function onRepoSwitch(path: string) {
   repoPath.value = path;
   entries.value = [];
@@ -161,15 +183,46 @@ async function onRepoSwitch(path: string) {
   await load();
 }
 
+/** GF-13a：重置分页状态（refresh / 切引用 / 历史操作后 load() 时调用）。 */
+function resetPaging() {
+  requestedMax.value = PAGE_SIZE;
+  hasMore.value = false;
+  allLoaded.value = false;
+}
+
 async function load() {
   loading.value = true;
+  resetPaging();
   try {
-    entries.value = await getReflog(repoPath.value, reference.value, 200);
+    const list = await getReflog(repoPath.value, reference.value, requestedMax.value);
+    entries.value = list;
+    // 返回数打满上限 = 可能还有更多；短页 = 已到底。
+    hasMore.value = list.length >= requestedMax.value;
+    allLoaded.value = !hasMore.value;
   } catch (e) {
     entries.value = [];
     message.error("读取 reflog 失败: " + errMsg(e));
   } finally {
     loading.value = false;
+  }
+}
+
+/** GF-13a：加载更多——reflog 只支持从 tip 起的 max 上限，故放大 max 重取
+ *  （返回的是最新 max 条，与已展示的前缀一致，整体替换即可）。 */
+async function loadMore() {
+  if (loadingMore.value || loading.value || !hasMore.value) return;
+  loadingMore.value = true;
+  try {
+    const nextMax = entries.value.length + PAGE_SIZE;
+    const list = await getReflog(repoPath.value, reference.value, nextMax);
+    entries.value = list;
+    requestedMax.value = nextMax;
+    hasMore.value = list.length >= nextMax;
+    allLoaded.value = !hasMore.value;
+  } catch (e) {
+    message.error("加载更多失败: " + errMsg(e));
+  } finally {
+    loadingMore.value = false;
   }
 }
 
@@ -320,6 +373,22 @@ async function handleRestore(entry: ReflogEntry) {
   padding: 6px 16px;
   border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
+}
+
+/* GF-13a：条数提示 + 加载更多（页脚，不随列表滚动）。 */
+.reflog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gw-space-3);
+  padding: var(--gw-space-3);
+  border-top: 1px solid var(--gw-border);
+  background: var(--gw-bg-panel);
+}
+
+.reflog-count {
+  color: var(--gw-text-dim);
+  font-size: 12px;
 }
 
 .selector {

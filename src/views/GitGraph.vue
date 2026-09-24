@@ -16,14 +16,41 @@
     <!-- Branch bar -->
     <div v-if="branches.length > 0" class="branch-bar">
       <n-tag
-        v-for="branch in branches.slice(0, 10)"
+        v-for="branch in visibleBranches"
         :key="branch.name"
-        :type="branch.isCurrent ? 'success' : branch.isRemote ? 'warning' : 'default'"
+        :type="branchTagType(branch)"
         size="small"
         :bordered="false"
       >
         {{ branch.name }}
       </n-tag>
+      <!-- GF-13b：超出前 10 个的分支折叠为 +N（desktop-skin-plan §5.6「前 10
+           分支」规范的对齐做法），点击展开列出其余分支，不再静默截断。 -->
+      <n-popover
+        v-if="hiddenBranches.length > 0"
+        trigger="click"
+        placement="bottom-start"
+        :width="280"
+      >
+        <template #trigger>
+          <n-tag size="small" :bordered="false" type="info" class="branch-more-tag">
+            +{{ hiddenBranches.length }}
+          </n-tag>
+        </template>
+        <n-scrollbar style="max-height: 240px">
+          <div class="branch-overflow-list">
+            <n-tag
+              v-for="branch in hiddenBranches"
+              :key="branch.name"
+              :type="branchTagType(branch)"
+              size="small"
+              :bordered="false"
+            >
+              {{ branch.name }}
+            </n-tag>
+          </div>
+        </n-scrollbar>
+      </n-popover>
     </div>
 
     <!-- In-progress conflict banner (T-13; the T-16 resolver hooks in here) -->
@@ -264,6 +291,17 @@ const conflictDialog = reactive<{
 }>({ show: false, opLabel: "", files: [], current: "", done: 0, total: 0, baseOid: null });
 
 const PAGE_SIZE = 100;
+
+/** desktop-skin-plan §5.6：分支条只展示前 10 个分支，其余折叠为 +N
+ *  （GF-13b：点击展开列出，与规范对齐且消除静默截断）。 */
+const BRANCH_BAR_VISIBLE = 10;
+const visibleBranches = computed(() => branches.value.slice(0, BRANCH_BAR_VISIBLE));
+const hiddenBranches = computed(() => branches.value.slice(BRANCH_BAR_VISIBLE));
+
+/** 分支 tag 配色：当前分支 success / 远程 warning / 其余 default。 */
+function branchTagType(branch: BranchInfo): "success" | "warning" | "default" {
+  return branch.isCurrent ? "success" : branch.isRemote ? "warning" : "default";
+}
 
 /** 整页重载计数：仅 loadHistory（刷新 / 切仓库 / 历史操作后）递增，
  *  作为 CommitGraph 的 remount key 之一，复位虚拟列表滚动位置。 */
@@ -619,6 +657,18 @@ function openResolver() {
   border-bottom: 1px solid var(--gw-border);
   background: var(--gw-bg-hover);
   flex-wrap: wrap;
+}
+
+/* GF-13b：+N 折叠标签可点击展开。 */
+.branch-more-tag {
+  cursor: pointer;
+}
+
+/* GF-13b：展开的其余分支（n-popover 内，n-scrollbar 限高滚动）。 */
+.branch-overflow-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .graph-body {

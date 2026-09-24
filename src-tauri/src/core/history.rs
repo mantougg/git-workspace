@@ -261,9 +261,66 @@ pub fn conflict_files(repo_path: &Path) -> AppResult<Vec<String>> {
     conflict_paths(&index)
 }
 
+/// GF-13c：从 `.git/CHERRY_PICK_HEAD` 取回被 pick 的原提交，用其 author
+/// 作为 continue 提交的 author（committer 由调用方保持当前用户）——对齐
+/// `git cherry-pick --continue` 语义：原作者保留在当前提交上，committer
+/// 才是操作者。cherry_pick 的干净路径早已如此（`commit.author()` + 当前
+/// committer），本函数补齐冲突恢复路径（此前 `&sig, &sig` 双当前签名，
+/// 原作者丢失）。
+///
+/// CHERRY_PICK_HEAD 由 libgit2 cherrypick 冲突时写入（oid 字符串，见
+/// libgit2 `cherrypick.c::write_cherrypick_head`）。文件缺失 / 内容非法 /
+/// 提交不存在时返回 None，调用方回退当前签名（修复前行为）并记 warn：
+/// 这是数据正确性问题，但不该把用户卡死在冲突状态。
+fn cherry_pick_head_author(repo: &git2::Repository) -> Option<git2::Signature<'static>> {
+    let raw = match std::fs::read_to_string(repo.path().join("CHERRY_PICK_HEAD")) {
+        Ok(raw) => raw,
+        Err(e) => {
+            log::warn!(
+                "pick_continue: 读取 CHERRY_PICK_HEAD 失败（{}），author 回退当前签名",
+                e
+            );
+            return None;
+        }
+    };
+    let oid = match git2::Oid::from_str(raw.trim()) {
+        Ok(oid) => oid,
+        Err(e) => {
+            log::warn!(
+                "pick_continue: CHERRY_PICK_HEAD 内容不是合法 oid（{:?}: {}），author 回退当前签名",
+                raw.trim(),
+                e
+            );
+            return None;
+        }
+    };
+    let commit = match repo.find_commit(oid) {
+        Ok(commit) => commit,
+        Err(e) => {
+            log::warn!(
+                "pick_continue: CHERRY_PICK_HEAD 指向的提交 {} 不存在（{}），author 回退当前签名",
+                oid,
+                e
+            );
+            return None;
+        }
+    };
+    let author = commit.author().to_owned();
+    log::info!(
+        "pick_continue: 保留 cherry-pick 原作者 {} <{}>",
+        author.name().unwrap_or("(unnamed)"),
+        author.email().unwrap_or("(no email)")
+    );
+    Some(author)
+}
+
 /// Continue an in-progress cherry-pick / revert after the user resolved the
 /// conflicts (T-16): commits the staged resolution (message from MERGE_MSG)
 /// and clears CHERRY_PICK_HEAD / REVERT_HEAD. Returns the new commit oid.
+///
+/// GF-13c: the resulting cherry-pick commit keeps the picked commit's author
+/// (committer stays the current user); revert commits stay fully owned by
+/// the current user (no original-author concept).
 pub fn pick_continue(repo_path: &Path) -> AppResult<String> {
     let repo = git2::Repository::open(repo_path)?;
     let in_pick = repo.path().join("CHERRY_PICK_HEAD").exists();
@@ -286,7 +343,19 @@ pub fn pick_continue(repo_path: &Path) -> AppResult<String> {
         .and_then(|m| m.lines().next().map(String::from))
         .unwrap_or_else(|| if in_pick { "cherry-pick" } else { "revert" }.to_string());
 
-    let oid = repo.commit(Some("HEAD"), &sig, &sig, &default_msg, &tree, &[&parent])?;
+    // GF-13c：cherry-pick 的 continue 保留原 commit 的 author，committer
+    // 保持当前用户（`git cherry-pick --continue` 语义）；revert 的新提交
+    // author 即操作者（`git revert` 语义），无原作者概念，维持
+    // author = committer = 当前签名。
+    let pick_author = if in_pick {
+        cherry_pick_head_author(&repo)
+    } else {
+        None
+    };
+    let oid = match pick_author {
+        Some(author) => repo.commit(Some("HEAD"), &author, &sig, &default_msg, &tree, &[&parent])?,
+        None => repo.commit(Some("HEAD"), &sig, &sig, &default_msg, &tree, &[&parent])?,
+    };
     repo.cleanup_state()?;
     clear_pick_base(&repo);
     Ok(oid.to_string())
@@ -344,6 +413,33 @@ mod tests {
             .map(|oid| repo.find_commit(oid).unwrap());
         let parents: Vec<&git2::Commit> = parent.iter().collect();
         repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &parents)
+            .unwrap()
+            .to_string()
+    }
+
+    /// Same as `commit_file` but with an explicit author/committer signature.
+    /// GF-13c 用它构造一个「作者 ≠ 当前用户」的被 pick 提交。
+    fn commit_file_as(
+        repo: &git2::Repository,
+        dir: &Path,
+        name: &str,
+        content: &str,
+        msg: &str,
+        sig: &git2::Signature,
+    ) -> String {
+        std::fs::write(dir.join(name), content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(name)).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let parent = repo
+            .head()
+            .ok()
+            .and_then(|h| h.target())
+            .map(|oid| repo.find_commit(oid).unwrap());
+        let parents: Vec<&git2::Commit> = parent.iter().collect();
+        repo.commit(Some("HEAD"), sig, sig, msg, &tree, &parents)
             .unwrap()
             .to_string()
     }
@@ -536,7 +632,10 @@ mod tests {
         crate::core::branch::checkout_branch(&dir, "side").unwrap();
         {
             let repo = git2::Repository::open(&dir).unwrap();
-            side_oid = commit_file(&repo, &dir, "a.txt", "side\n", "side change");
+            // GF-13c：被 pick 的提交作者与后续 committer（当前用户）刻意区分，
+            // 才能验证 continue 后 author/committer 各自归属。
+            let original_author = git2::Signature::now("original Author", "original@example.com").unwrap();
+            side_oid = commit_file_as(&repo, &dir, "a.txt", "side\n", "side change", &original_author);
             drop(repo);
         }
         crate::core::branch::checkout_branch(&dir, "master").unwrap();
@@ -553,6 +652,11 @@ mod tests {
             let mut index = repo.index().unwrap();
             index.add_path(Path::new("a.txt")).unwrap();
             index.write().unwrap();
+            // committer = 当前用户：写本地 git config，让 signature_or_default
+            // 的取值与测试机全局配置解耦（确定性断言）。
+            let mut config = git2::Config::open(&repo.path().join("config")).unwrap();
+            config.set_str("user.name", "current-user").unwrap();
+            config.set_str("user.email", "current-user@example.com").unwrap();
             drop(repo);
         }
         let oid = pick_continue(&dir).unwrap();
@@ -562,6 +666,14 @@ mod tests {
         // CHERRY_PICK_HEAD cleared.
         let repo = git2::Repository::open(&dir).unwrap();
         assert!(!repo.path().join("CHERRY_PICK_HEAD").exists());
+
+        // GF-13c 验收（`git log --format='%an %cn'` 等价断言）：cherry-pick
+        // continue 后 author = 被 pick 提交的原作者，committer = 当前用户。
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.author().name(), Some("original Author"));
+        assert_eq!(head.author().email(), Some("original@example.com"));
+        assert_eq!(head.committer().name(), Some("current-user"));
+        assert_eq!(head.committer().email(), Some("current-user@example.com"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
