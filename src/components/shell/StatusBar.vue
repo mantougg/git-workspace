@@ -9,8 +9,13 @@
 
     <div class="statusbar-divider" />
 
-    <!-- 分支槽位（仅 Git 类视图） -->
-    <div v-if="currentBranch" class="statusbar-slot">
+    <!-- 分支槽位（仅 Git 类视图，点击复制分支名；无上下文时隐藏，desktop-skin-plan:211） -->
+    <div
+      v-if="currentBranch"
+      class="statusbar-slot clickable"
+      title="当前分支（点击复制）"
+      @click="copyCurrentBranch"
+    >
       <n-icon :size="12"><GitBranchOutline /></n-icon>
       <span>{{ currentBranch }}</span>
     </div>
@@ -141,18 +146,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { NIcon, NPopover } from "naive-ui";
+import { NIcon, NPopover, useMessage } from "naive-ui";
 import { ChevronDownOutline, CodeOutline, FolderOpenOutline, GitBranchOutline, PlayOutline, SparklesOutline, TerminalOutline, AlertCircleOutline } from "@vicons/ionicons5";
 import { WATCHER_EVENTS, watcherStatus } from "@/api/git_ops";
 import { listIntegrationTargets, openInIde, openInFileManager, openWithSystemApp, IDE_DISPLAY_NAMES, type IdeKind } from "@/api/integration";
+import { refreshRepositoryStatus } from "@/api/repository";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useRepositoryStore } from "@/stores/repository";
 import { useTaskStore } from "@/stores/task";
 import { useAiStore } from "@/stores/ai";
 import { useTerminalStore } from "@/stores/terminal";
 import type { Workspace } from "@/types/workspace";
+import type { RepoStatusUpdate } from "@/types/events";
 
 // F-07：构建期注入的全局常量
 const appVersion = __APP_VERSION__;
@@ -160,9 +168,11 @@ const appAuthor = __APP_AUTHOR__;
 
 const router = useRouter();
 const workspaceStore = useWorkspaceStore();
+const repoStore = useRepositoryStore();
 const taskStore = useTaskStore();
 const aiStore = useAiStore();
 const terminalStore = useTerminalStore();
+const message = useMessage();
 
 const showWsPopover = ref(false);
 const wsTriggerRef = ref<HTMLElement | null>(null);
@@ -220,8 +230,68 @@ const workspaces = computed(() => workspaceStore.workspaces);
 const currentWorkspace = computed(() => workspaceStore.currentWorkspace);
 const currentWorkspaceName = computed(() => currentWorkspace.value?.name ?? "未选择");
 
-// 分支（仅 Git 类视图显示，此处预留接口，D-04 接入实际数据）
-const currentBranch = ref<string | null>(null);
+// GF-19：分支槽位（原为恒 null 的空占位，D-04 预留未接）。
+// 数据源：repoStore——当前仓库（F-14 全局态）+ repositories 的 status.branch
+// （watcher 的 repo_status_changed_batch 经 useRepositories/updateStatus 持续刷新）。
+// 仅 Git 类视图显示（meta.group === "Git" + 三个 repo 上下文任务页）；
+// 无当前仓库上下文时槽位隐藏（desktop-skin-plan:211）。
+const GIT_VIEW_ROUTE_NAMES = new Set(["changes", "diff-viewer", "conflict-resolver"]);
+const isGitView = computed(() => {
+  const route = router.currentRoute.value;
+  return route.meta.group === "Git" || GIT_VIEW_ROUTE_NAMES.has(String(route.name));
+});
+
+// 路径匹配两侧归一化分隔符（Windows 混合分隔符，见 AGENTS.md 平台规范）。
+const normPath = (p: string) => p.replace(/\\/g, "/");
+
+const currentRepoEntry = computed(() => {
+  if (!isGitView.value) return null;
+  const path = repoStore.currentRepoPath;
+  if (!path) return null;
+  // 列表属于当前工作区才可信——否则 currentRepoPath 可能是切换工作区前的旧仓库。
+  const wsId = workspaceStore.currentWorkspace?.id;
+  if (wsId != null && repoStore.repositoriesWorkspaceId !== wsId) return null;
+  return (
+    repoStore.repositories.find((r) => normPath(r.repository.path) === normPath(path)) ?? null
+  );
+});
+
+// 当前仓库不在已加载列表内时（如 SideNav 直达 Git 视图、列表尚未加载）的
+// 一次性兜底查询；repoStore.repositories 命中时不发请求。
+const fallbackBranch = ref<string | null>(null);
+watch(
+  [currentRepoEntry, () => repoStore.currentRepoPath, isGitView],
+  async ([entry, path, gitView]) => {
+    fallbackBranch.value = null;
+    if (!gitView || !path || entry?.status) return;
+    try {
+      const status = await refreshRepositoryStatus(path);
+      fallbackBranch.value = status.isDetached ? "HEAD 游离" : status.branch || null;
+    } catch {
+      // 查询失败保持隐藏（不显示错误 toast：StatusBar 是常驻组件）
+    }
+  },
+  { immediate: true },
+);
+
+const currentBranch = computed(() => {
+  const status = currentRepoEntry.value?.status ?? null;
+  if (status) {
+    if (status.isDetached) return "HEAD 游离";
+    return status.branch || null;
+  }
+  return fallbackBranch.value;
+});
+
+async function copyCurrentBranch() {
+  if (!currentBranch.value) return;
+  try {
+    await navigator.clipboard.writeText(currentBranch.value);
+    message.success(`已复制分支名：${currentBranch.value}`);
+  } catch (e) {
+    console.error("Failed to copy branch name:", e);
+  }
+}
 
 // watcher 状态：从后端查询初始值，并通过启停事件保持同步。
 const watcherActive = ref(false);
@@ -229,6 +299,8 @@ const watcherTooltip = computed(() =>
   watcherActive.value ? "监听中" : "未启动"
 );
 let unlistenWatcher: UnlistenFn | null = null;
+// GF-19：repo_status_changed_batch 监听（分支槽位数据保鲜）。
+let unlistenRepoStatus: UnlistenFn | null = null;
 
 async function loadWatcherStatus() {
   try {
@@ -273,6 +345,17 @@ onMounted(async () => {
   unlistenWatcher = await listen<boolean>(WATCHER_EVENTS.statusChanged, (event) => {
     watcherActive.value = event.payload;
   });
+  // GF-19：分支槽位的数据保鲜。watcher 的 repo_status_changed_batch 只在
+  // 变更页/总览页有监听方；Git 类视图（分支切换等本地操作后）需要 StatusBar
+  // 自己消费，否则 store 里的 status.branch 会陈旧。
+  unlistenRepoStatus = await listen<RepoStatusUpdate[]>(
+    "repo_status_changed_batch",
+    (event) => {
+      for (const { repoPath, status } of event.payload) {
+        repoStore.updateStatus(repoPath, status);
+      }
+    },
+  );
   await loadWatcherStatus();
 
   // 加载可用编辑器列表
@@ -287,6 +370,8 @@ onMounted(async () => {
 onUnmounted(() => {
   unlistenWatcher?.();
   unlistenWatcher = null;
+  unlistenRepoStatus?.();
+  unlistenRepoStatus = null;
 });
 </script>
 
