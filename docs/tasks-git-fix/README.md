@@ -22,7 +22,7 @@
 ## 总体进度
 
 - 任务总数：**20**
-- 已完成：**11** · 修复中：**1** · 未开始：**7** · 仅讨论：**1**
+- 已完成：**13** · 修复中：**1** · 未开始：**5** · 仅讨论：**1**
 
 ---
 
@@ -41,12 +41,12 @@
 | GF-09 | Ignore diff 选项静默禁掉行级暂存：已勾选的行选择无声丢失，仅一行小 tag 提示 | P1 | ⬜ | [GF-09-ignore-option-kills-staging.md](./GF-09-ignore-option-kills-staging.md) |
 | GF-10 | Workspace Stash 多仓串行执行且无进度无取消（全应用唯一「黑屏等待」的写操作） | P2 | ✅ | [GF-10-workspace-stash-serial-no-progress.md](./GF-10-workspace-stash-serial-no-progress.md) |
 | GF-11 | git 长列表无虚拟滚动 + GitGraph「加载更多」全量重取（O(n²)），千级提交/文件卡顿 | P1 | 🟦 | [GF-11-git-lists-virtual-scroll.md](./GF-11-git-lists-virtual-scroll.md) |
-| GF-12 | SmartMergeDialog 丢失冲突语义：`baseOid` 声明未用、`conflictType` 硬编码 both-modified（deleted-by-us/them 分支永不触发） | P2 | ⬜ | [GF-12-smart-merge-dialog-semantics.md](./GF-12-smart-merge-dialog-semantics.md) |
+| GF-12 | SmartMergeDialog 丢失冲突语义：`baseOid` 声明未用、`conflictType` 硬编码 both-modified（deleted-by-us/them 分支永不触发） | P2 | ✅ | [GF-12-smart-merge-dialog-semantics.md](./GF-12-smart-merge-dialog-semantics.md) |
 | GF-13 | git 小缺陷集合：Reflog 200 条上限无提示、分支条只显示 10 个、pick_continue 丢原作者（2026-09-24 核验：原「远程分支误判」子项已被 PAF-26 修复，撤销） | P2 | ✅ | [GF-13-git-small-defects.md](./GF-13-git-small-defects.md) |
 | GF-14 | git 死代码清理：RepositoryList `v-if="false"` 选择器死块、sync_fetch/pull/push 死 wrapper、三个无引用仓库组件 | P2 | ⬜ | [GF-14-git-dead-code-cleanup.md](./GF-14-git-dead-code-cleanup.md) |
 | GF-15 | 批量 Pull 分叉后无策略跟进：dry-run 已能识别分叉仓库，失败后缺「批量选 merge/rebase」动作 | P1 | ✅ | [GF-15-batch-pull-fork-followup.md](./GF-15-batch-pull-fork-followup.md) |
 | GF-16 | Undo 覆盖面窄 + 冲突解决日志刷屏：stash drop/clear、merge abort、cherry-pick 等不入操作日志且不可撤销 | P1 | ✅ | [GF-16-undo-coverage-conflict-log-spam.md](./GF-16-undo-coverage-conflict-log-spam.md) |
-| GF-17 | 破坏性单仓操作无结构化预演：merge/rebase/reset 仅靠 UI 文案确认，未复用 batch_dry_run 成熟模式 | P2 | ⬜ | [GF-17-destructive-op-preview.md](./GF-17-destructive-op-preview.md) |
+| GF-17 | 破坏性单仓操作无结构化预演：merge/rebase/reset 仅靠 UI 文案确认，未复用 batch_dry_run 成熟模式 | P2 | ✅ | [GF-17-destructive-op-preview.md](./GF-17-destructive-op-preview.md) |
 | GF-18 | 命令面板/快捷键未覆盖已有 git 操作：cherry-pick/merge/rebase/stash/worktree/repo-tools 均无命令注册 | P2 | ⬜ | [GF-18-command-palette-git-ops.md](./GF-18-command-palette-git-ops.md) |
 | GF-19 | StatusBar 分支槽位空占位：`currentBranch = ref(null)`，Git 视图不显示当前分支（desktop-skin-plan 已规定） | P2 | ✅ | [GF-19-statusbar-branch-slot.md](./GF-19-statusbar-branch-slot.md) |
 | GF-20 | git 功能增强规划待排期：Blame 视图 / Interactive Rebase UI / Remote 管理 / Binary diff / Git 配置 UI / 主题三档切换 | 💬 | ⬜ | [GF-20-git-feature-roadmap.md](./GF-20-git-feature-roadmap.md) |
