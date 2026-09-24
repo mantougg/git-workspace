@@ -297,6 +297,8 @@ pub fn run() {
             commands::batch::select_repos,
             commands::batch::batch_branch_op,
             commands::batch::batch_dry_run,
+            // GF-15：批量 Pull 分叉跟进（merge / rebase / --ff-only 重试）
+            commands::batch::batch_followup_diverged,
             // Worktree commands (T-17)
             commands::worktree::list_worktrees,
             commands::worktree::create_worktree,

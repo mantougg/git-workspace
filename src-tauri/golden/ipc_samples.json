@@ -1216,6 +1216,20 @@
     ],
     "repoPath": "/ws/repo"
   },
+  "DivergedFollowupItem": {
+    "ahead": 1,
+    "baseOid": "0000000000000000000000000000000000000000",
+    "behind": 2,
+    "conflictOp": "merge",
+    "detail": "合并冲突（1 个文件），待解决后可继续或中止",
+    "files": [
+      "a.rs"
+    ],
+    "outcome": "conflict",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "rewritten": 1
+  },
   "DryRunItem": {
     "ahead": 1,
     "behind": 2,

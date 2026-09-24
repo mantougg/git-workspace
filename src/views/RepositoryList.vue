@@ -538,6 +538,28 @@
         :loading="dryRunDialog.loading"
         :max-height="400"
       />
+      <!-- GF-15：分叉仓库跟进入口（仅 Pull 预演；Push 分叉是推送被拒，需先 Pull） -->
+      <div v-if="dryRunDialog.op === 'pull' && dryRunDiverged.length > 0" class="diverged-followup">
+        <n-alert type="warning" :bordered="false">
+          检测到 {{ dryRunDiverged.length }} 个分叉仓库（本地与远程各有提交）。可选择策略批量跟进；
+          执行后产生冲突的仓库会进入冲突解决队列，其余仓库不受影响。
+        </n-alert>
+        <div class="diverged-strategy-row">
+          <span class="diverged-strategy-label">跟进策略</span>
+          <n-radio-group v-model:value="divergedFollowup.strategy" size="small">
+            <n-radio-button value="merge">Merge（合并提交）</n-radio-button>
+            <n-radio-button value="rebase">Rebase（变基本地提交）</n-radio-button>
+            <n-radio-button value="ff_only">--ff-only 重试</n-radio-button>
+          </n-radio-group>
+          <n-button
+            size="small"
+            type="primary"
+            @click="openDivergedFollowup(dryRunDiverged)"
+          >
+            对 {{ dryRunDiverged.length }} 个分叉仓库执行 {{ divergedStrategyLabel }}
+          </n-button>
+        </div>
+      </div>
       <template #footer>
         <n-button @click="dryRunDialog.show = false">关闭</n-button>
         <n-button
@@ -548,6 +570,72 @@
           对 {{ dryRunActionable.length }} 个可快进仓库执行
           {{ dryRunDialog.op === 'pull' ? 'Pull' : 'Push' }}
         </n-button>
+      </template>
+    </n-modal>
+
+
+    <!-- GF-15：分叉跟进确认（Safety First：逐仓展示影响范围，可逐仓跳过） -->
+    <n-modal
+      v-model:show="divergedFollowup.show"
+      preset="card"
+      title="分叉跟进确认（影响范围）"
+      style="width: 720px"
+      :mask-closable="false"
+    >
+      <n-alert type="warning" :bordered="false">
+        {{ divergedImpactSummary }}
+      </n-alert>
+      <n-data-table
+        :columns="divergedImpactColumns"
+        :data="divergedFollowupSelectedItems"
+        :row-key="(row: DryRunItem) => row.repoPath"
+        :checked-row-keys="divergedFollowup.selected"
+        :max-height="320"
+        @update:checked-row-keys="(keys: (string | number)[]) => (divergedFollowup.selected = keys as string[])"
+      />
+      <template #footer>
+        <n-button @click="divergedFollowup.show = false">取消</n-button>
+        <n-button
+          type="primary"
+          :loading="divergedFollowup.loading"
+          :disabled="divergedFollowup.selected.length === 0"
+          @click="executeDivergedFollowup"
+        >
+          执行（{{ divergedFollowup.selected.length }}）
+        </n-button>
+      </template>
+    </n-modal>
+
+
+    <!-- GF-15：Rebase 分叉跟进后的冲突处理（SmartMergeDialog 只驱动 merge） -->
+    <n-modal
+      v-model:show="rebaseConflictShow"
+      preset="card"
+      title="Rebase 冲突处理"
+      style="width: 640px"
+      :mask-closable="false"
+    >
+      <n-alert type="warning" :bordered="false">
+        仓库 {{ repoNameOf(rebaseConflictCurrent.repoPath) }} 的变基产生冲突。可「跳过」冲突提交或
+        「放弃」本次 Rebase；也可在冲突解决器中逐文件解决后 Continue——打开解决器后将离开本页
+        （返回时本队列不再跟踪该仓库，与分支管理页行为一致）。
+      </n-alert>
+      <div class="rebase-conflict-files">
+        <n-tag
+          v-for="f in rebaseConflictCurrent.conflicts"
+          :key="f"
+          size="small"
+          type="warning"
+          style="margin-right: var(--gw-space-2)"
+        >
+          {{ f }}
+        </n-tag>
+      </div>
+      <template #footer>
+        <n-button @click="openRebaseConflictResolver">在冲突解决器中处理</n-button>
+        <n-button @click="rebaseConflictSkip">跳过此提交（Skip）</n-button>
+        <n-button type="error" dashed @click="rebaseConflictAbort">放弃 Rebase（Abort）</n-button>
+        <n-button type="primary" @click="rebaseConflictDone">已完成，下一个</n-button>
       </template>
     </n-modal>
 
@@ -804,9 +892,11 @@ import {
   setGroupIdentity,
 } from "@/api/commit";
 import type { CommitScanFinding, CommitIdentity } from "@/types/commit";
-import { selectRepos, batchBranchOp, batchDryRun } from "@/api/batch";
+import { selectRepos, batchBranchOp, batchDryRun, batchFollowupDiverged } from "@/api/batch";
 import { guardRuntimeRunning } from "@/utils/runtimeGuard";
-import type { DryRunItem } from "@/types/batch";
+import type { DivergedFollowupItem, DivergedStrategy, DryRunItem } from "@/types/batch";
+import { getOperationState } from "@/api/conflict";
+import { rebaseAbort, rebaseSkip } from "@/api/rebase";
 import {
   saveWorkspaceStash,
   listWorkspaceStashes,
@@ -1164,6 +1254,16 @@ const dryRunDialog = ref({
   op: "pull" as "pull" | "push",
   items: [] as DryRunItem[],
 });
+// --- GF-15：批量分叉跟进（dry-run / 失败汇总 → 选策略 → 影响范围确认 → 执行）---
+const divergedFollowup = ref({
+  show: false,
+  loading: false,
+  strategy: "merge" as DivergedStrategy,
+  /** 分叉候选（dry-run 条目，含 ahead/behind 影响范围）。 */
+  items: [] as DryRunItem[],
+  /** 勾选待执行的仓库路径（逐仓确认：取消勾选 = 跳过该仓库）。 */
+  selected: [] as string[],
+});
 // --- Workspace Stash (T-21) ---
 const wsStashDialog = ref({
   show: false,
@@ -1248,6 +1348,11 @@ interface SmartMergeQueueItem {
   repoPath: string;
   conflicts: string[];
   baseOid: string | null;
+  /**
+   * GF-15：驱动冲突队列走哪套 continue/abort——"merge" 进 SmartMergeDialog，
+   * "rebase" 进 Rebase 冲突处理（skip/abort/冲突解决器）。
+   */
+  kind: "merge" | "rebase";
 }
 const smartMergeQueue = ref<SmartMergeQueueItem[]>([]);
 const smartMergeShow = ref(false);
@@ -1255,6 +1360,14 @@ const smartMergeCurrent = reactive({
   repoPath: "",
   conflicts: [] as string[],
   baseOid: null as string | null,
+});
+
+// GF-15：Rebase 分叉跟进的冲突处理（SmartMergeDialog 只驱动 merge 语义，
+// rebase 冲突的 continue/skip/abort 在此收口，通用编辑器走冲突解决器路由）。
+const rebaseConflictShow = ref(false);
+const rebaseConflictCurrent = reactive({
+  repoPath: "",
+  conflicts: [] as string[],
 });
 
 // D-16：splitter 位置按视图 key 持久化（gw-splitter:<视图>:<面板>）；
@@ -2216,6 +2329,161 @@ const dryRunActionable = computed(() =>
   dryRunDialog.value.items.filter((i) => i.category === "fast_forward"),
 );
 
+/**
+ * GF-15：预演结果里的分叉清单（本地 ahead+behind 同时非零；conflict 是
+ * dry-run 对同一分叉族的冲突预测，一并纳入跟进候选）。
+ */
+const dryRunDiverged = computed(() =>
+  dryRunDialog.value.items.filter((i) => i.category === "diverged" || i.category === "conflict"),
+);
+
+const divergedStrategyLabel = computed(
+  () =>
+    ({
+      merge: "Merge",
+      rebase: "Rebase",
+      ff_only: "--ff-only 重试",
+    } as Record<DivergedStrategy, string>)[divergedFollowup.value.strategy] ?? "",
+);
+
+/** 确认弹窗里勾选中的仓库（取消勾选 = 跳过该仓库）。 */
+const divergedFollowupSelectedItems = computed(() =>
+  divergedFollowup.value.items.filter((i) => divergedFollowup.value.selected.includes(i.repoPath)),
+);
+
+/** Safety First：影响范围摘要——策略语义 + 每个仓库将并入/变基的提交数。 */
+const divergedImpactSummary = computed(() => {
+  const items = divergedFollowupSelectedItems.value;
+  const n = items.length;
+  const incoming = items.reduce((s, i) => s + i.behind, 0);
+  const local = items.reduce((s, i) => s + i.ahead, 0);
+  switch (divergedFollowup.value.strategy) {
+    case "merge":
+      return `将对 ${n} 个分叉仓库创建合并提交（共并入远程 ${incoming} 个提交，保留本地 ${local} 个提交）。冲突仓库进入冲突解决队列。`;
+    case "rebase":
+      return `将把 ${n} 个仓库的本地提交变基到各自上游 tip（共重放 ${local} 个提交，带入远程 ${incoming} 个提交）。冲突仓库进入冲突解决队列。`;
+    default:
+      return `将对 ${n} 个分叉仓库重试 --ff-only（仅在上游未再变动时成功，共涉及远程 ${incoming} 个提交）。仍分叉的仓库会失败，不影响其他仓库。`;
+  }
+});
+
+const divergedImpactColumns = [
+  { type: "selection" as const, width: 40 },
+  { title: "仓库", key: "repoName", minWidth: 140 },
+  {
+    title: "本地 ahead",
+    key: "ahead",
+    width: 100,
+    align: "center" as const,
+    render: (row: DryRunItem) => `${row.ahead} 个提交`,
+  },
+  {
+    title: "将并入（behind）",
+    key: "behind",
+    width: 130,
+    align: "center" as const,
+    render: (row: DryRunItem) => `${row.behind} 个提交`,
+  },
+  { title: "预演说明", key: "detail", minWidth: 200 },
+];
+
+/** GF-15：打开分叉跟进确认弹窗（预演面板 / 批量 pull 失败汇总两处入口共用）。 */
+function openDivergedFollowup(items: DryRunItem[]) {
+  if (items.length === 0) return;
+  divergedFollowup.value = {
+    show: true,
+    loading: false,
+    strategy: divergedFollowup.value.strategy,
+    items,
+    selected: items.map((i) => i.repoPath),
+  };
+}
+
+async function executeDivergedFollowup() {
+  const paths = divergedFollowup.value.selected;
+  if (paths.length === 0) return;
+  divergedFollowup.value.loading = true;
+  try {
+    const items = await batchFollowupDiverged(paths, divergedFollowup.value.strategy);
+    divergedFollowup.value.show = false;
+    handleFollowupResults(items);
+  } catch (e) {
+    message.error("分叉跟进失败: " + errMsg(e));
+  } finally {
+    divergedFollowup.value.loading = false;
+    await loadChanges();
+  }
+}
+
+/**
+ * GF-15：分叉跟进结果收口——部分完成语义。
+ * - merged / rebased / up_to_date：完成
+ * - conflict：进现有 smartMergeQueue（merge 走 SmartMergeDialog，rebase 走
+ *   Rebase 冲突处理），其余仓库不受影响
+ * - failed / cancelled：GF-02 失败汇总（含原因）
+ */
+function handleFollowupResults(items: DivergedFollowupItem[]) {
+  const conflicts = items.filter((i) => i.outcome === "conflict");
+  const failures = items.filter((i) => i.outcome === "failed" || i.outcome === "cancelled");
+  const done = items.filter(
+    (i) => i.outcome === "merged" || i.outcome === "rebased" || i.outcome === "up_to_date",
+  );
+  const skipped = items.filter((i) => i.outcome === "skipped");
+
+  if (conflicts.length > 0) {
+    smartMergeQueue.value = [
+      ...smartMergeQueue.value,
+      ...conflicts.map((i) => ({
+        repoPath: i.repoPath,
+        conflicts: i.files,
+        baseOid: i.baseOid,
+        kind: (i.conflictOp === "rebase" ? "rebase" : "merge") as "merge" | "rebase",
+      })),
+    ];
+    openNextConflict();
+  }
+  if (failures.length > 0) {
+    showBatchFailureToast(
+      "分叉跟进",
+      failures.map((f) => ({ repoName: f.repoName, reason: shortFailureReason(f.detail) })),
+      done.length + conflicts.length,
+    );
+  } else if (conflicts.length === 0 && done.length > 0) {
+    message.success(`${done.length} 个分叉仓库处理完成`);
+  }
+  if (skipped.length > 0) {
+    message.info(`${skipped.length} 个仓库已非分叉状态，跳过`);
+  }
+}
+
+/**
+ * GF-15：批量 pull（--ff-only）失败后的跟进入口——对失败仓库重跑 dry-run，
+ * 有分叉则直接弹出跟进确认（失败 ≈ 分叉，但以复判结果为准）。
+ */
+async function offerDivergedFollowupAfterFailure(taskIds: string[]) {
+  const failedPaths = taskIds
+    .map((id) => taskStore.tasks.find((x) => x.id === id))
+    .filter(
+      (t) =>
+        t &&
+        (t.status.type === "failed" ||
+          t.status.type === "partialSuccess" ||
+          t.status.type === "cancelled"),
+    )
+    .map((t) => t!.repoPath);
+  if (failedPaths.length === 0) return;
+  try {
+    const items = await batchDryRun(failedPaths, "pull");
+    const diverged = items.filter((i) => i.category === "diverged" || i.category === "conflict");
+    if (diverged.length > 0) {
+      message.info(`批量 pull 失败仓库中有 ${diverged.length} 个分叉，可选择策略跟进`);
+      openDivergedFollowup(diverged);
+    }
+  } catch {
+    // 预演失败不打断批量 pull 的收口反馈（GF-02 toast 已展示）。
+  }
+}
+
 
 async function runDryRun(op: "pull" | "push") {
   const targets = batchTargetRepos();
@@ -2242,8 +2510,13 @@ async function executeDryRun() {
   try {
     const ids =
       op === "pull" ? await batchPull(paths) : await batchPush(paths);
-    if (!(await waitBatchAndReport(op === "pull" ? "批量 pull" : "批量 push", ids))) {
+    const hasFailures = await waitBatchAndReport(op === "pull" ? "批量 pull" : "批量 push", ids);
+    if (!hasFailures) {
       message.success(`已提交 ${paths.length} 个任务`);
+    }
+    // GF-15：--ff-only 失败的仓库大概率是分叉——复判后提供策略跟进入口。
+    if (op === "pull" && hasFailures) {
+      await offerDivergedFollowupAfterFailure(ids);
     }
   } catch (e) {
     message.error("执行失败: " + errMsg(e));
@@ -2630,7 +2903,12 @@ async function handlePull(paths?: string[]) {
       try {
         const result = await smartPull(p);
         if (result.status === "conflict") {
-          queue.push({ repoPath: p, conflicts: result.files, baseOid: result.baseOid });
+          queue.push({
+            repoPath: p,
+            conflicts: result.files,
+            baseOid: result.baseOid,
+            kind: "merge",
+          });
         } else {
           successCount++;
         }
@@ -2665,13 +2943,112 @@ function openNextConflict() {
     smartMergeCurrent.repoPath = "";
     smartMergeCurrent.conflicts = [];
     smartMergeCurrent.baseOid = null;
+    rebaseConflictShow.value = false;
+    rebaseConflictCurrent.repoPath = "";
+    rebaseConflictCurrent.conflicts = [];
     loadChanges();
+    return;
+  }
+  if (next.kind === "rebase") {
+    // GF-15：rebase 冲突不进 merge 语义的 SmartMergeDialog——先校验仓库仍
+    // 在 rebase 冲突状态（用户可能已在冲突解决器里处理完），否则直接出队。
+    void openRebaseConflict(next);
     return;
   }
   smartMergeCurrent.repoPath = next.repoPath;
   smartMergeCurrent.conflicts = next.conflicts;
   smartMergeCurrent.baseOid = next.baseOid;
   smartMergeShow.value = true;
+}
+
+async function openRebaseConflict(next: SmartMergeQueueItem) {
+  try {
+    const state = await getOperationState(next.repoPath);
+    if (!state.rebase && state.conflicts.length === 0) {
+      smartMergeQueue.value = smartMergeQueue.value.slice(1);
+      message.success(`仓库 ${repoNameOf(next.repoPath)} 的 Rebase 已处理完成`);
+      openNextConflict();
+      return;
+    }
+    rebaseConflictCurrent.repoPath = next.repoPath;
+    rebaseConflictCurrent.conflicts = state.conflicts.map((c) => c.path);
+    rebaseConflictShow.value = true;
+  } catch (e) {
+    message.error("读取冲突状态失败: " + errMsg(e));
+  }
+}
+
+function advanceConflictQueue() {
+  smartMergeQueue.value = smartMergeQueue.value.slice(1);
+  rebaseConflictShow.value = false;
+  if (smartMergeQueue.value.length > 0) {
+    openNextConflict();
+  } else {
+    smartMergeShow.value = false;
+    smartMergeCurrent.repoPath = "";
+    smartMergeCurrent.conflicts = [];
+    smartMergeCurrent.baseOid = null;
+    rebaseConflictCurrent.repoPath = "";
+    rebaseConflictCurrent.conflicts = [];
+    loadChanges();
+  }
+}
+
+function openRebaseConflictResolver() {
+  if (!rebaseConflictCurrent.repoPath) return;
+  router.push({
+    name: "conflict-resolver",
+    query: { repo: rebaseConflictCurrent.repoPath },
+  });
+}
+
+function rebaseConflictDone() {
+  advanceConflictQueue();
+}
+
+async function rebaseConflictSkip() {
+  const path = rebaseConflictCurrent.repoPath;
+  if (!path) return;
+  try {
+    const outcome = await rebaseSkip(path);
+    if (outcome.status === "success") {
+      message.success(`Rebase 完成（重写 ${outcome.rewritten} 个提交）`);
+    } else {
+      message.warning(
+        `第 ${outcome.position + 1}/${outcome.total} 步再次冲突：${outcome.files.join("、")}`,
+      );
+    }
+    advanceConflictQueue();
+  } catch (e) {
+    message.error("Skip 失败: " + errMsg(e));
+  }
+}
+
+async function rebaseConflictAbort() {
+  const path = rebaseConflictCurrent.repoPath;
+  if (!path) return;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      dialog.error({
+        title: "Rebase Abort 确认（Dangerous）",
+        content: `仓库：${repoNameOf(path)}\n将放弃本次 Rebase 并恢复到 rebase 前位置（hard reset），进行中的修改将丢失。`,
+        positiveText: "中止并恢复",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject(new Error("cancelled")),
+        onClose: () => reject(new Error("cancelled")),
+      });
+    });
+  } catch {
+    return;
+  }
+  try {
+    await rebaseAbort(path);
+    message.success("已中止 Rebase 并恢复");
+    advanceConflictQueue();
+  } catch (e) {
+    message.error("Abort 失败: " + errMsg(e));
+  }
 }
 
 function onSmartMergeResolved() {
@@ -3203,6 +3580,33 @@ function viewConflicts() {
   align-items: center;
   gap: var(--gw-space-3);
   margin-bottom: 10px;
+}
+
+/* GF-15：分叉跟进（预演面板入口 + 影响范围确认） */
+.diverged-followup {
+  margin-top: var(--gw-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gw-space-2);
+}
+
+.diverged-strategy-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gw-space-3);
+  flex-wrap: wrap;
+}
+
+.diverged-strategy-label {
+  font-size: 13px;
+  color: var(--gw-text-dim);
+}
+
+.rebase-conflict-files {
+  margin-top: var(--gw-space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gw-space-1);
 }
 
 .ws-stash-save-result {

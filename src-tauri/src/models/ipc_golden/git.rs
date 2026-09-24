@@ -187,6 +187,22 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             detail: "可快进 2 个提交".into(),
         }),
     );
+    // GF-15：批量分叉跟进结果（部分完成语义：一仓一结果）。
+    m.insert(
+        "DivergedFollowupItem".into(),
+        json!(batch_cmd::DivergedFollowupItem {
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            outcome: "conflict".into(),
+            conflict_op: Some("merge".into()),
+            files: vec!["a.rs".into()],
+            base_oid: Some("0".repeat(40)),
+            rewritten: 1,
+            ahead: 1,
+            behind: 2,
+            detail: "合并冲突（1 个文件），待解决后可继续或中止".into(),
+        }),
+    );
     m.insert(
         "AddRequest".into(),
         json!(git_ops::AddRequest {

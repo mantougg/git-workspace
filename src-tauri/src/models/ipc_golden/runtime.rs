@@ -1157,6 +1157,7 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
     ("CommitIdentity", "types/commit.ts", "CommitIdentity"),
     ("WorktreeInfo", "types/worktree.ts", "WorktreeInfo"),
     ("DryRunItem", "types/batch.ts", "DryRunItem"),
+    ("DivergedFollowupItem", "types/batch.ts", "DivergedFollowupItem"),
     ("Workspace", "types/workspace.ts", "Workspace"),
     ("CreateWorkspaceRequest", "types/workspace.ts", "CreateWorkspaceRequest"),
     ("UpdateWorkspaceRequest", "types/workspace.ts", "UpdateWorkspaceRequest"),
