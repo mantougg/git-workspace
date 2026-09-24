@@ -34,17 +34,30 @@ pub struct CiStatus {
     pub url: String,
 }
 
-fn http_error(platform: Platform, status: u16, body: &str) -> AppError {
-    let hint = match status {
-        401 | 403 => "令牌缺失或权限不足（仓库 push / PR 写权限）",
-        404 => "仓库不存在或令牌不可见",
-        422 => "请求被拒绝（分支已存在同目标 PR 或参数不合法）",
-        _ => "远程平台返回错误",
-    };
-    AppError::Other(format!(
-        "{platform:?} API {status}：{hint}。响应片段：{}",
-        body.chars().take(200).collect::<String>()
-    ))
+/// HTTP 非 2xx → 可行动错误。
+///
+/// GF-08：401/403 映射为 `AppError::RemoteAuth`（平台 token 缺失/失效），
+/// details 携带「去配置 token」的 suggestedActions，替代原先只有一句
+/// 「令牌缺失或权限不足」的裸文案。注意 `body` 只截取前 200 字符用于
+/// 非认证类错误的排障，token 原文严禁进入错误（401/403 分支不带 body）。
+fn http_error(platform: Platform, host: &str, status: u16, body: &str) -> AppError {
+    match status {
+        401 | 403 => AppError::RemoteAuth {
+            platform: platform.id().to_string(),
+            host: host.to_string(),
+        },
+        status => {
+            let hint = match status {
+                404 => "仓库不存在或令牌不可见",
+                422 => "请求被拒绝（分支已存在同目标 PR 或参数不合法）",
+                _ => "远程平台返回错误",
+            };
+            AppError::Other(format!(
+                "{platform:?} API {status}：{hint}。响应片段：{}",
+                body.chars().take(200).collect::<String>()
+            ))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +232,7 @@ pub async fn create_pull_request(r: &RemoteRepo, token: Option<&str>, input: &Cr
     let status = resp.status().as_u16();
     let text = resp.text().await.unwrap_or_default();
     if !(200..300).contains(&status) {
-        return Err(http_error(r.platform, status, &text));
+        return Err(http_error(r.platform, &r.host, status, &text));
     }
     parse_create_pr_response(r.platform, &text)
 }
@@ -243,7 +256,7 @@ pub async fn fetch_ci_status(r: &RemoteRepo, git_ref: &str, token: Option<&str>)
     let status = resp.status().as_u16();
     let text = resp.text().await.unwrap_or_default();
     if !(200..300).contains(&status) {
-        return Err(http_error(r.platform, status, &text));
+        return Err(http_error(r.platform, &r.host, status, &text));
     }
     parse_ci_status(r.platform, &text)
 }
@@ -334,5 +347,27 @@ mod tests {
         let gl = parse_remote_url("https://gitlab.com/g/r.git").unwrap();
         let h = auth_header(&gl, "tok");
         assert_eq!(h.0, "PRIVATE-TOKEN");
+    }
+
+    /// GF-08：401/403 → RemoteAuth（details 带「去配置 token」引导），
+    /// 且响应体（可能含服务端回显信息）不进入 RemoteAuth 错误。
+    #[test]
+    fn http_error_maps_auth_failures_to_remote_auth() {
+        let err = http_error(Platform::GitHub, "github.com", 401, "{\"message\":\"Bad credentials\"}");
+        assert_eq!(err.code(), "RemoteAuthRequired");
+        let payload = serde_json::to_value(&err).unwrap();
+        let details: serde_json::Value = serde_json::from_str(payload["details"].as_str().unwrap()).unwrap();
+        assert_eq!(details["host"], "github.com");
+        assert!(details["suggestedActions"].as_array().unwrap().len() >= 2);
+        // 响应体不得夹带进 token 错误（避免泄漏服务端回显信息）。
+        assert!(!payload["message"].as_str().unwrap().contains("Bad credentials"));
+
+        let err = http_error(Platform::GitLab, "gitlab.com", 403, "forbidden");
+        assert_eq!(err.code(), "RemoteAuthRequired");
+
+        // 非认证类状态码保持原有文案路径。
+        let err = http_error(Platform::GitHub, "github.com", 404, "not found body");
+        assert_eq!(err.code(), "Other");
+        assert!(err.to_string().contains("404"));
     }
 }

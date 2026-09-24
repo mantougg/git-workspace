@@ -6,13 +6,24 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from "vue";
+import { useMessage } from "naive-ui";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { homeDir, join } from "@tauri-apps/api/path";
 import { useTerminalStore } from "@/stores/terminal";
 import { encodeUtf8Base64 } from "@/utils/base64";
+import { errMsg } from "@/utils/error";
+import { openGitCredentialManager } from "@/api/integration";
 import TerminalTabs from "./TerminalTabs.vue";
 import XtermView from "./XtermView.vue";
 
 const terminalStore = useTerminalStore();
+const message = useMessage();
 const activeSession = computed(() => terminalStore.activeSession);
+
+// GF-08：Git Console 失败引导（最近一次失败的单仓网络操作的分类）。
+const gitOpGuidance = computed(
+  () => terminalStore.lastGitOpFailure?.guidance ?? null
+);
 
 // TM-05：Runtime tab 判断
 const isRuntimeTab = computed(() =>
@@ -259,6 +270,29 @@ onMounted(() => {
   // （此前 registry.ts 派发后全工程无人监听，命令失效）。
   window.addEventListener("terminal:toggle-search", toggleSearch);
 });
+
+// ---------------------------------------------------------------------------
+// GF-08：Git Console 失败引导动作
+// ---------------------------------------------------------------------------
+
+/** 打开系统凭据管理器（Windows 控制面板 / macOS 钥匙串 / Linux Seahorse）。 */
+async function openCredentialManager() {
+  try {
+    await openGitCredentialManager();
+  } catch (e) {
+    message.error("打开系统凭据管理器失败：" + errMsg(e));
+  }
+}
+
+/** 打开用户目录下的 SSH key 配置目录（~/.ssh）。 */
+async function openSshKeyDir() {
+  try {
+    const dir = await join(await homeDir(), ".ssh");
+    await shellOpen(dir);
+  } catch (e) {
+    message.error("打开 SSH key 目录失败：" + errMsg(e));
+  }
+}
 </script>
 
 <template>
@@ -311,6 +345,39 @@ onMounted(() => {
           >
             取消
           </n-button>
+          <div class="terminal-toolbar-divider" />
+        </template>
+        <!-- GF-08：Git Console 失败引导（认证失败等分类 → 动作入口） -->
+        <template v-if="isGitConsoleTab && gitOpGuidance">
+          <n-popover trigger="click" placement="top">
+            <template #trigger>
+              <n-button
+                size="small"
+                text
+                type="warning"
+                :title="gitOpGuidance.reason || 'Git 操作失败引导'"
+              >
+                {{ gitOpGuidance.category === "authentication" ? "认证引导" : "失败引导" }}
+              </n-button>
+            </template>
+            <div class="git-op-guidance">
+              <div v-if="gitOpGuidance.reason" class="git-op-guidance-reason">
+                {{ gitOpGuidance.reason }}
+              </div>
+              <div
+                v-if="gitOpGuidance.category === 'authentication'"
+                class="git-op-guidance-actions"
+              >
+                <n-button size="tiny" @click="openCredentialManager">
+                  打开系统凭据管理器
+                </n-button>
+                <n-button size="tiny" @click="openSshKeyDir">打开 SSH key 目录</n-button>
+              </div>
+              <ul v-if="gitOpGuidance.actions.length" class="git-op-guidance-list">
+                <li v-for="action in gitOpGuidance.actions" :key="action">{{ action }}</li>
+              </ul>
+            </div>
+          </n-popover>
           <div class="terminal-toolbar-divider" />
         </template>
         <!-- 搜索按钮 -->
@@ -572,6 +639,36 @@ onMounted(() => {
   height: 16px;
   background: var(--gw-border);
   margin: 0 var(--gw-space-1);
+}
+
+/* GF-08：Git Console 失败引导气泡 */
+.git-op-guidance {
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gw-space-2);
+}
+
+.git-op-guidance-reason {
+  font-size: var(--gw-text-sm);
+  color: var(--gw-text);
+}
+
+.git-op-guidance-actions {
+  display: flex;
+  gap: var(--gw-space-1);
+  flex-wrap: wrap;
+}
+
+.git-op-guidance-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--gw-text-xs);
+  color: var(--gw-text-dim);
+}
+
+.git-op-guidance-list li {
+  word-break: break-all;
 }
 
 /* TM-07：右键上下文菜单 */

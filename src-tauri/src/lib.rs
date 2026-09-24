@@ -591,6 +591,8 @@ pub fn run() {
             commands::integration::open_in_ide,
             commands::integration::open_in_file_manager_cmd,
             commands::integration::open_with_system_app_cmd,
+            // Git 认证失败引导（GF-08）：打开系统凭据管理器
+            commands::integration::open_git_credential_manager,
             commands::integration::list_integration_targets,
             // Symbol index commands (T-28)
             commands::symbols::build_symbol_index,

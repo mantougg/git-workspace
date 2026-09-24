@@ -54,3 +54,11 @@ export function openInFileManager(path: string): Promise<void> {
 export function openWithSystemApp(path: string): Promise<void> {
   return invoke<void>("open_with_system_app_cmd", { path });
 }
+
+/**
+ * GF-08：打开系统凭据管理器（Windows 控制面板凭据管理器 / macOS 钥匙串 /
+ * Linux Seahorse）。Git 认证失败引导的动作入口。
+ */
+export function openGitCredentialManager(): Promise<void> {
+  return invoke<void>("open_git_credential_manager");
+}

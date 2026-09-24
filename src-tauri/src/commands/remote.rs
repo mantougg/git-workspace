@@ -187,9 +187,18 @@ pub async fn create_pull_request(
             .map_err(|e| AppError::Other(format!("凭据解析任务失败：{e}")))??;
         (r, token)
     };
+    // GF-08：token 缺失（keyring 与系统 git 凭据助手均无）时直接返回
+    // 可行动错误（details 带「去配置 token」的 suggestedActions），不再
+    // 发出必然 401 的匿名请求。创建 PR 在所有平台都要求认证，行为等价。
+    let Some(token) = token else {
+        return Err(AppError::RemoteAuth {
+            platform: remote.platform.id().to_string(),
+            host: remote.host.clone(),
+        });
+    };
     api::create_pull_request(
         &remote,
-        token.as_deref(),
+        Some(&token),
         &CreatePrInput {
             source,
             target,

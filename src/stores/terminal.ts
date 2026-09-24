@@ -19,6 +19,7 @@ import type {
   ShellInfo,
 } from "@/api/terminal";
 import * as gitOpsApi from "@/api/git_ops";
+import { classifyGitErrorText, type GitErrorGuidance } from "@/utils/gitError";
 import { RUNTIME_EVENTS } from "@/api/runtime";
 import type { ProcessOutputPayload, RuntimeProcessInfo } from "@/types/runtime";
 
@@ -72,6 +73,14 @@ export interface GitOpInFlight {
   repoPath: string;
   repoName: string;
   command: string;
+}
+
+/** GF-08：最近一次失败的单仓网络操作 + 分类后的可行动引导。 */
+export interface GitOpFailure {
+  repoName: string;
+  command: string;
+  error: string;
+  guidance: GitErrorGuidance | null;
 }
 
 /** 判定「真正的终端会话」：排除 Git Console 与全部输出镜像 tab。 */
@@ -141,6 +150,13 @@ export const useTerminalStore = defineStore("terminal", () => {
 
   /** GF-07：进行中的单仓网络操作（Git Console 取消入口数据源）。 */
   const gitOpsInFlight = ref<GitOpInFlight[]>([]);
+
+  /**
+   * GF-08：最近一次失败的单仓网络操作（Git Console 失败引导数据源）。
+   * `git_op_finished(success=false)` 写入、新 `git_op_started` 清除；
+   * 携带分类后的可行动引导（reason / actions），面板据此渲染动作入口。
+   */
+  const lastGitOpFailure = ref<GitOpFailure | null>(null);
 
   /**
    * TM-08：node_install 任务 id → 应用名映射。装依赖经 N-08 两跳确认流程，
@@ -499,6 +515,8 @@ export const useTerminalStore = defineStore("terminal", () => {
         command: event.command,
       });
     }
+    // GF-08：新操作开始即清理上一次失败的引导。
+    lastGitOpFailure.value = null;
     ensureGitConsoleSession();
     showPanel({ autoOpen: false });
     switchTab(GIT_CONSOLE_SESSION_ID);
@@ -506,7 +524,19 @@ export const useTerminalStore = defineStore("terminal", () => {
 
   /** GF-07：git_op_finished —— 出列取消入口（幂等）。 */
   function onGitOpFinished(event: GitOpFinishedEvent) {
+    // 先取快照再出列（出列后找不到 op 的 repo/command）。
+    const finished = gitOpsInFlight.value.find((op) => op.opId === event.opId);
     gitOpsInFlight.value = gitOpsInFlight.value.filter((op) => op.opId !== event.opId);
+    if (!event.success && event.error) {
+      // GF-08：记录失败 + 分类（纯文本镜像后端 classify_git_error——
+      // git_op_finished 只带 error 字符串，details 不可达）。
+      lastGitOpFailure.value = {
+        repoName: finished?.repoName ?? "",
+        command: finished?.command ?? "",
+        error: event.error,
+        guidance: classifyGitErrorText(event.error),
+      };
+    }
   }
 
   /**
@@ -879,6 +909,8 @@ export const useTerminalStore = defineStore("terminal", () => {
     runtimeProcesses,
     // GF-07：进行中的单仓网络操作（Git Console 取消入口）
     gitOpsInFlight,
+    // GF-08：最近一次失败的单仓网络操作（Git Console 失败引导）
+    lastGitOpFailure,
     // Getters
     activeSession,
     aliveSessions,

@@ -432,6 +432,53 @@ pub(crate) fn open_with_system_app_chooser(path: &str) -> AppResult<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// GF-08：系统凭据管理器（Git 认证失败的可行动引导入口）
+// ---------------------------------------------------------------------------
+
+/// Windows 凭据管理器（控制面板项）：`control /name Microsoft.CredentialManager`。
+/// `control.exe` 位于 System32（恒在 PATH），与本文件既有 explorer /
+/// rundll32 直拉保持一致，不走 PATHEXT 候选。
+#[cfg(any(windows, test))]
+fn windows_credential_manager_plan() -> SpawnPlan {
+    SpawnPlan::new(
+        "control",
+        vec!["/name".to_string(), "Microsoft.CredentialManager".to_string()],
+    )
+}
+
+/// macOS 钥匙串访问：`open -b com.apple.keychainaccess`。
+#[cfg(any(target_os = "macos", test))]
+fn macos_credential_manager_plan() -> SpawnPlan {
+    SpawnPlan::new("open", vec!["-b".to_string(), "com.apple.keychainaccess".to_string()])
+}
+
+/// GF-08：打开系统凭据管理器（认证失败 suggestedActions 的动作入口）。
+///
+/// Windows 走控制面板凭据管理器；macOS 走钥匙串访问；Linux 尝试
+/// Seahorse（GNOME Keyring 前端），未安装时返回可行动错误而非静默失败。
+#[tauri::command]
+pub fn open_git_credential_manager() -> AppResult<()> {
+    #[cfg(windows)]
+    {
+        spawn_plan(&windows_credential_manager_plan())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        spawn_plan(&macos_credential_manager_plan())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if find_in_path("seahorse").is_none() {
+            return Err(AppError::NotFound(
+                "未找到 Seahorse（Passwords and Keys）。请通过包管理器安装，或改用系统密钥链工具管理 Git 凭据"
+                    .to_string(),
+            ));
+        }
+        spawn_plan(&SpawnPlan::new("seahorse", vec![]))
+    }
+}
+
 #[cfg(windows)]
 fn windows_terminal_plan(kind: TerminalKind, dir: &str) -> AppResult<SpawnPlan> {
     let plan = match kind {
@@ -683,6 +730,21 @@ mod tests {
         let plan = cmd_plan(r"C:\My Dir");
         assert_eq!(plan.program, "cmd");
         assert_eq!(plan.args, vec!["/K", "cd", "/d", r"C:\My Dir"]);
+    }
+
+    /// GF-08：凭据管理器命令行构造（纯函数，两平台 plan 均可单测）。
+    #[test]
+    fn credential_manager_plans_per_platform() {
+        let win = windows_credential_manager_plan();
+        assert_eq!(win.program, "control");
+        assert_eq!(
+            win.args,
+            vec!["/name".to_string(), "Microsoft.CredentialManager".to_string()]
+        );
+
+        let mac = macos_credential_manager_plan();
+        assert_eq!(mac.program, "open");
+        assert_eq!(mac.args, vec!["-b".to_string(), "com.apple.keychainaccess".to_string()]);
     }
 
     #[test]

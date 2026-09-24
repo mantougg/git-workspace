@@ -132,6 +132,25 @@
             class="event-error"
           >
             {{ row.status.error }}
+            <!-- GF-08：认证/网络等分类的可行动引导（原因 + 建议操作 + 重试） -->
+            <div v-if="row.guidance" class="event-guidance">
+              <n-tag size="small" :type="guidanceTagType(row.guidance)">
+                {{ guidanceLabel(row.guidance) }}
+              </n-tag>
+              <span class="guidance-reason">{{ row.guidance.reason }}</span>
+              <span v-if="row.guidance.actions.length" class="guidance-actions">
+                建议：{{ row.guidance.actions.join("；") }}
+              </span>
+              <n-button
+                v-if="isRetryable(row)"
+                size="tiny"
+                text
+                type="primary"
+                @click="retryTask(row)"
+              >
+                重试
+              </n-button>
+            </div>
           </div>
           <!-- batch 子行 -->
           <div v-if="row.isBatch && expandedBatches.has(row.taskId)" class="batch-children">
@@ -156,6 +175,9 @@
                 class="child-error"
               >
                 {{ child.status.error }}
+                <span v-if="child.guidance" class="child-guidance">
+                  {{ guidanceLabel(child.guidance) }}：{{ child.guidance.actions.join("；") }}
+                </span>
               </span>
               <n-button
                 v-else-if="child.status.type === 'failed' && child.status.error"
@@ -178,6 +200,13 @@ import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useTaskStore } from "@/stores/task";
 import type { Task, TaskType, TaskStatus } from "@/types/task";
+import { submitTasks } from "@/api/task";
+import {
+  classifyGitErrorText,
+  GIT_ERROR_LABELS,
+  type GitErrorCategoryCode,
+  type GitErrorGuidance,
+} from "@/utils/gitError";
 
 const taskStore = useTaskStore();
 const router = useRouter();const panelHeight = ref(420);
@@ -245,8 +274,48 @@ interface TimelineRow {
   durationText: string;
   isBatch: boolean;
   childCount: number;
+  /** GF-08：失败错误的可行动分类（认证/网络/锁/脏工作区/被拒绝）。 */
+  guidance: GitErrorGuidance | null;
   /** 关联的当前任务快照（queued 取消按钮用；刷新后无对应任务则为 undefined）。 */
   task?: Task;
+}
+
+/** GF-08：失败错误文本 → 可行动引导（纯函数镜像后端 classify_git_error）。 */
+function guidanceOf(status: TaskStatus): GitErrorGuidance | null {
+  if (status.type !== "failed") return null;
+  return classifyGitErrorText(status.error);
+}
+
+/** GF-08：分类 chip 文案与配色。 */
+function guidanceLabel(guidance: GitErrorGuidance): string {
+  const category = guidance.category as GitErrorCategoryCode | undefined;
+  return category && category in GIT_ERROR_LABELS
+    ? GIT_ERROR_LABELS[category]
+    : "Git 失败";
+}
+
+function guidanceTagType(guidance: GitErrorGuidance): "error" | "warning" | "default" {
+  return guidance.category === "authentication" ? "error" : "warning";
+}
+
+/** GF-08：可重试的任务类型（与后端 worker 的 retryable 集合一致）。 */
+const RETRYABLE_TASK_TYPES = new Set(["fetch", "pull", "push", "clone"]);
+
+function isRetryable(row: { taskType: TaskType }): boolean {
+  return RETRYABLE_TASK_TYPES.has(row.taskType.type);
+}
+
+/** GF-08：失败行「重试」——按同类型同仓库重新入队（修好凭据后一键再来）。 */
+async function retryTask(row: { repoPath: string; repoName: string; taskType: TaskType }) {
+  if (!isRetryable(row)) return;
+  try {
+    await submitTasks([
+      { taskType: row.taskType, repoPath: row.repoPath, repoName: row.repoName },
+    ]);
+    taskStore.showPanel();
+  } catch (e) {
+    console.error("retry task failed:", e);
+  }
 }
 
 function hhmmss(at: number): string {
@@ -298,6 +367,7 @@ const timeline = computed<TimelineRow[]>(() => {
       childCount: isBatch
         ? events.filter((c) => c.batchId === e.taskId).length
         : 0,
+      guidance: guidanceOf(e.status),
       task: tasks.value.find((t) => t.id === e.taskId),
       // insertAt 参与排序：batch 父行排在其首个子事件之前
       ...(isBatch ? {} : {}),
@@ -327,6 +397,7 @@ function childrenOf(batchTaskId: string): TimelineRow[] {
       durationText: durationText(e.durationMs),
       isBatch: false,
       childCount: 0,
+      guidance: guidanceOf(e.status),
     }));
 }
 
@@ -591,6 +662,29 @@ async function handleClear() {
   word-break: break-all;
 }
 
+/* GF-08：可行动引导块（分类 chip + 原因 + 建议操作 + 重试） */
+.event-guidance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gw-space-1);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--gw-border);
+  font-family: inherit;
+  color: var(--gw-text);
+}
+
+.guidance-reason {
+  font-size: 12px;
+}
+
+.guidance-actions {
+  font-size: 12px;
+  color: var(--gw-text-dim);
+  word-break: break-all;
+}
+
 .batch-children {
   width: 100%;
   margin-top: 4px;
@@ -651,6 +745,14 @@ async function handleClear() {
 
 .child-error {
   color: var(--gw-danger);
+  word-break: break-all;
+}
+
+/* GF-08：批量子行的紧凑引导（分类标签 + 建议操作） */
+.child-guidance {
+  display: block;
+  margin-top: 2px;
+  color: var(--gw-text-dim);
   word-break: break-all;
 }
 
