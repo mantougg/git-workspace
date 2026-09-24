@@ -358,32 +358,10 @@
             冲突
           </n-button>
         </div>
-        <!-- F-09f：中间选择器用途不明、可用性存疑，暂时隐藏（保留代码，后续决定去向）。 -->
-        <div v-if="false" class="batch-row">
-          <n-input
-            v-model:value="selectorQuery"
-            size="small"
-            class="selector-input"
-            placeholder="选择器：@group:frontend @tag:p0 @status:dirty 或名称关键字"
-            clearable
-          />
-          <n-tag
-            v-for="chip in quickChips"
-            :key="chip.token"
-            :checkable="true"
-            :checked="chip.active"
-            @update:checked="(v: boolean) => toggleChip(chip, v)"
-          >
-            {{ chip.label }}
-          </n-tag>
-          <span v-if="selectorActive" class="selector-count" :class="{ 'is-empty': selectorPaths.length === 0 }">
-            <template v-if="!currentWorkspaceId">请先选择工作区</template>
-            <template v-else>
-              匹配 {{ selectorPaths.length }} 个仓库
-              <template v-if="selectorPaths.length === 0">（无匹配：检查分组/标签/状态条件是否正确）</template>
-            </template>
-          </span>
-        </div>
+        <!-- GF-14：原 F-09f `v-if="false"` 死块（选择器输入 UI + quick chips）已删除。
+             selectorQuery/selectorPaths/selectorActive/batchTargetRepos 是活逻辑——
+             由路由 prefill（?selector=，Dashboard 快捷操作）驱动并为
+             batchTargetRepos（Workspace Stash / 批量分支操作）提供目标集合。 -->
         <div class="batch-row">
           <n-button-group>
             <n-button size="small" @click="openBranchOp('checkout')">
@@ -1230,16 +1208,12 @@ function onContextmenuClose() {
 }
 
 // --- Batch selector + repo-level ops (T-20) ---
+// GF-14：选择器输入 UI（F-09f 死块）与 quick chips 已删；selectorQuery 仍由
+// 路由 prefill（?selector=，Dashboard 快捷操作）写入，selectorPaths 经下方
+// debounce watch 计算，batchTargetRepos 消费（Workspace Stash / 批量分支操作）。
 const selectorQuery = ref("");
 const selectorPaths = ref<string[]>([]);
 const selectorActive = computed(() => selectorQuery.value.trim().length > 0);
-const quickChips = ref([
-  { label: "脏", token: "@status:dirty", active: false },
-  { label: "冲突", token: "@status:conflict", active: false },
-  { label: "Ahead", token: "@status:ahead", active: false },
-  { label: "Behind", token: "@status:behind", active: false },
-  { label: "收藏", token: "@status:favorite", active: false },
-]);
 const branchOpTargets = ref<string[]>([]);
 const branchOpDialog = ref({
   show: false,
@@ -2217,12 +2191,10 @@ async function saveIdentity() {
   }
 }
 
-/** Selector query (debounced) against the in-memory repo facets (T-20). */
+/** Selector query (debounced) against the in-memory repo facets (T-20).
+ *  GF-14：quick chips 同步已随输入 UI 一并删除；query 仅来自路由 prefill。 */
 let selectorTimer: number | undefined;
 watch(selectorQuery, (q) => {
-  for (const chip of quickChips.value) {
-    chip.active = q.split(/\s+/).includes(chip.token);
-  }
   window.clearTimeout(selectorTimer);
   selectorTimer = window.setTimeout(async () => {
     const query = q.trim();
@@ -2237,21 +2209,6 @@ watch(selectorQuery, (q) => {
     }
   }, 300);
 });
-
-
-function toggleChip(
-  chip: { token: string; active: boolean },
-  checked: boolean,
-) {
-  chip.active = checked;
-  const tokens = selectorQuery.value
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter((t) => t !== chip.token);
-  if (checked) tokens.push(chip.token);
-  selectorQuery.value = tokens.join(" ");
-}
-
 
 function batchTargetRepos(): string[] {
   if (selectorActive.value) return selectorPaths.value;
@@ -3556,19 +3513,6 @@ function viewConflicts() {
   gap: 10px;
   margin-bottom: 8px;
   flex-wrap: wrap;
-}
-
-.selector-input {
-  max-width: 420px;
-}
-
-.selector-count {
-  font-size: 12px;
-  color: var(--gw-text-dim);
-}
-
-.selector-count.is-empty {
-  color: var(--gw-warning);
 }
 
 .affected-repo-list {
