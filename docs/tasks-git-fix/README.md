@@ -22,7 +22,7 @@
 ## 总体进度
 
 - 任务总数：**20**
-- 已完成：**14** · 修复中：**1** · 未开始：**4** · 仅讨论：**1**
+- 已完成：**15** · 修复中：**1** · 未开始：**3** · 仅讨论：**1**
 
 ---
 
@@ -38,7 +38,7 @@
 | GF-06 | 过期文案误导用户：GitGraph/BranchManager 仍写「三方解决器随 T-16 提供」（T-16 早已交付） | P2 | ⬜ | [GF-06-stale-t16-copy.md](./GF-06-stale-t16-copy.md) |
 | GF-07 | 单仓网络操作无进度无取消 + `push_branch` 同步命令阻塞 IPC 线程（与批次操作体验割裂） | P1 | ✅ | [GF-07-single-repo-netop-no-progress.md](./GF-07-single-repo-netop-no-progress.md) |
 | GF-08 | Git 认证失败无可行动引导：`AppError::Git` 无 details/suggestedActions，"Authentication failed" 原样透出 | P1 | ✅ | [GF-08-git-auth-failure-no-guidance.md](./GF-08-git-auth-failure-no-guidance.md) |
-| GF-09 | Ignore diff 选项静默禁掉行级暂存：已勾选的行选择无声丢失，仅一行小 tag 提示 | P1 | ⬜ | [GF-09-ignore-option-kills-staging.md](./GF-09-ignore-option-kills-staging.md) |
+| GF-09 | Ignore diff 选项静默禁掉行级暂存：已勾选的行选择无声丢失，仅一行小 tag 提示 | P1 | ✅ | [GF-09-ignore-option-kills-staging.md](./GF-09-ignore-option-kills-staging.md) |
 | GF-10 | Workspace Stash 多仓串行执行且无进度无取消（全应用唯一「黑屏等待」的写操作） | P2 | ✅ | [GF-10-workspace-stash-serial-no-progress.md](./GF-10-workspace-stash-serial-no-progress.md) |
 | GF-11 | git 长列表无虚拟滚动 + GitGraph「加载更多」全量重取（O(n²)），千级提交/文件卡顿 | P1 | 🟦 | [GF-11-git-lists-virtual-scroll.md](./GF-11-git-lists-virtual-scroll.md) |
 | GF-12 | SmartMergeDialog 丢失冲突语义：`baseOid` 声明未用、`conflictType` 硬编码 both-modified（deleted-by-us/them 分支永不触发） | P2 | ✅ | [GF-12-smart-merge-dialog-semantics.md](./GF-12-smart-merge-dialog-semantics.md) |

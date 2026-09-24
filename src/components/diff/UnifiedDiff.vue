@@ -91,6 +91,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   op: [op: StageOp];
+  /** 当前行选择数量变化（GF-09：Ignore 切换时 DiffViewer 据此提示「已清除 N 行选择」）。 */
+  "selection-change": [count: number];
 }>();
 
 /** Fixed row height (px) required by VirtualList. */
@@ -115,7 +117,10 @@ const selection = ref<Set<string>>(new Set());
 // A reload (or file switch) invalidates hunk/line indices: drop the selection.
 watch(
   () => props.file,
-  () => selection.value.clear(),
+  () => {
+    selection.value.clear();
+    emit("selection-change", 0);
+  },
 );
 
 // Flatten hunks into a uniform row list so a single virtual window covers
@@ -177,6 +182,7 @@ function toggleLine(item: Extract<Row, { type: "line" }>) {
     next.add(key);
   }
   selection.value = next;
+  emit("selection-change", next.size);
 }
 
 function emitOp(op: StageOp) {

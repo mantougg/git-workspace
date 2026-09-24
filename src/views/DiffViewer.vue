@@ -206,13 +206,27 @@
                 >
                   暂存整个文件
                 </n-button>
-                <n-tag
+                <!-- GF-09：原一行不显眼小 tag 升级为 n-alert 显眼提示（就近 staging 区，
+                     说明 Ignore 选项为何禁掉行级/hunk 暂存——T-12 契约：ignore 会重排
+                     hunk/行号，暂存依赖原索引）。 -->
+                <n-alert
                   v-if="ignoreOptionsActive && (source === 'unstaged' || source === 'staged')"
+                  class="ignore-staging-alert"
+                  type="warning"
                   size="small"
-                  type="info"
+                  :bordered="false"
+                  :show-icon="true"
                 >
-                  Ignore 选项开启时暂存操作不可用
-                </n-tag>
+                  <template #header>
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <span>Ignore 选项开启时，行级 / hunk 暂存不可用</span>
+                      </template>
+                      Ignore 选项会重排 hunk 与行号，而暂存操作按默认 diff 的索引执行
+                      （T-12 契约）；关闭 Ignore 后行级暂存立即恢复。
+                    </n-tooltip>
+                  </template>
+                </n-alert>
               </div>
               <div class="file-diff-body">
                 <UnifiedDiff
@@ -220,6 +234,7 @@
                   :file="selectedFile"
                   :mode="interactiveMode"
                   @op="handleStageOp"
+                  @selection-change="onUnifiedSelectionChange"
                 />
                 <SideBySideDiff v-else :file="selectedFile" />
               </div>
@@ -435,6 +450,23 @@ const interactiveMode = computed<"stage" | "unstage" | null>(() => {
   if (source.value === "unstaged") return "stage";
   if (source.value === "staged") return "unstage";
   return null;
+});
+
+// GF-09：UnifiedDiff 当前行选择数量（切换 Ignore 时用于「已清除 N 行选择」反馈）。
+const unifiedSelectedCount = ref(0);
+function onUnifiedSelectionChange(count: number) {
+  unifiedSelectedCount.value = count;
+}
+
+// GF-09：Ignore 开启时行选择被清空（diff 重载使 UnifiedDiff 重置选择）——
+// 此前静默丢失，用户感知「勾选的行莫名消失」。开启瞬间若有选择，明示清除数量；
+// 关闭时无需提示（alert 消失 + 暂存按钮回归即恢复信号）。
+watch(ignoreOptionsActive, (active, was) => {
+  if (active && !was && unifiedSelectedCount.value > 0) {
+    message.info(
+      `Ignore 选项已开启：已清除 ${unifiedSelectedCount.value} 行选择，行级 / hunk 暂存暂不可用`,
+    );
+  }
 });
 
 const emptyText = computed(() => {
@@ -717,6 +749,14 @@ function statusIcon(status: string): string {
   border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
   font-weight: 500;
+}
+
+/* GF-09：Ignore 暂存禁用提示（n-alert 紧凑嵌入 header 行）。 */
+.file-diff-header .ignore-staging-alert {
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 400;
+  background: transparent;
 }
 
 .file-diff-path {
