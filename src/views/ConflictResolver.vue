@@ -109,7 +109,14 @@
               </div>
               <div class="pane">
                 <div class="pane-title">RESULT（可编辑）</div>
-                <textarea v-model="resultText" class="pane-editor" spellcheck="false" />
+                <!-- GF-05：裸 textarea → n-input type="textarea"（themeOverrides/暗色主题/密度统一管控）。
+                     填满 pane（flex:1 + 内层 textarea height:100%），等宽字体沿用 --gw-font-mono。 -->
+                <n-input
+                  v-model:value="resultText"
+                  type="textarea"
+                  class="pane-editor"
+                  spellcheck="false"
+                />
               </div>
             </div>
             <div v-if="content?.truncated" class="truncate-hint">内容过大，部分侧已截断显示</div>
@@ -638,13 +645,26 @@ async function handleAbort() {
 
 .pane-editor {
   flex: 1;
-  border: none;
-  outline: none;
+  min-height: 0;
+  display: flex;
+}
+
+/* n-input textarea 填满 pane 并保持裸 textarea 的无边框观感（边框/态边框
+   由 themeOverrides 管控的两条 overlay 隐藏；文字样式走 tokens）。 */
+.pane-editor :deep(.n-input__border),
+.pane-editor :deep(.n-input__state-border) {
+  display: none;
+}
+
+.pane-editor :deep(.n-input__textarea-el) {
+  height: 100%;
   resize: none;
+  outline: none;
   padding: 8px 10px;
   font-family: var(--gw-font-mono);
   font-size: 12px;
   background: var(--gw-bg-panel);
+  color: var(--gw-text);
 }
 
 .truncate-hint {

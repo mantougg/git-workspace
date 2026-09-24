@@ -22,7 +22,7 @@
 ## 总体进度
 
 - 任务总数：**20**
-- 已完成：**13** · 修复中：**1** · 未开始：**5** · 仅讨论：**1**
+- 已完成：**14** · 修复中：**1** · 未开始：**4** · 仅讨论：**1**
 
 ---
 
@@ -34,7 +34,7 @@
 | GF-02 | 批量操作失败零反馈：批量 Pull 内层 catch 静默吞失败、watcher 启停失败不提示 | P0 | ✅ | [GF-02-batch-op-failure-silent.md](./GF-02-batch-op-failure-silent.md) |
 | GF-03 | Ctrl+Shift+D 死键 + Diff/冲突解决器从命令面板消失（nav:false 路由被注册表过滤） | P1 | ✅ | [GF-03-diff-shortcut-dead-command-palette-missing.md](./GF-03-diff-shortcut-dead-command-palette-missing.md) |
 | GF-04 | Tags 只读孤岛：分支管理页能看到标签但完全不能操作（后端也无 tag 变更命令） | P1 | ✅ | [GF-04-tags-readonly.md](./GF-04-tags-readonly.md) |
-| GF-05 | git 关键路径原生控件治理：冲突解决 RESULT 编辑器裸 textarea、hunk 暂存裸 button | P1 | ⬜ | [GF-05-native-controls-git-paths.md](./GF-05-native-controls-git-paths.md) |
+| GF-05 | git 关键路径原生控件治理：冲突解决 RESULT 编辑器裸 textarea、hunk 暂存裸 button | P1 | ✅ | [GF-05-native-controls-git-paths.md](./GF-05-native-controls-git-paths.md) |
 | GF-06 | 过期文案误导用户：GitGraph/BranchManager 仍写「三方解决器随 T-16 提供」（T-16 早已交付） | P2 | ⬜ | [GF-06-stale-t16-copy.md](./GF-06-stale-t16-copy.md) |
 | GF-07 | 单仓网络操作无进度无取消 + `push_branch` 同步命令阻塞 IPC 线程（与批次操作体验割裂） | P1 | ✅ | [GF-07-single-repo-netop-no-progress.md](./GF-07-single-repo-netop-no-progress.md) |
 | GF-08 | Git 认证失败无可行动引导：`AppError::Git` 无 details/suggestedActions，"Authentication failed" 原样透出 | P1 | ✅ | [GF-08-git-auth-failure-no-guidance.md](./GF-08-git-auth-failure-no-guidance.md) |

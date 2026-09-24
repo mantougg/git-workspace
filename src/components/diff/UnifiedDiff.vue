@@ -11,14 +11,21 @@
       <div v-if="item.type === 'header'" class="hunk-header">
         <span class="hunk-text">{{ item.text }}</span>
         <template v-if="mode">
-          <button
+          <!-- GF-05：原生 button → n-button（size tiny，quaternary 保持弱化观感）。
+               行高 21px 为 VirtualList 固定行高，按钮压到 19px 填充（见 .hunk-btn）。 -->
+          <n-button
+            size="tiny"
+            quaternary
             class="hunk-btn"
             @click.stop="emitOp({ kind: 'hunk', hunkIndex: item.hunkIndex })"
           >
             {{ mode === "stage" ? "Stage Hunk" : "Unstage Hunk" }}
-          </button>
-          <button
+          </n-button>
+          <n-button
             v-if="item.selectedCount > 0"
+            size="tiny"
+            quaternary
+            type="primary"
             class="hunk-btn primary"
             @click.stop="
               emitOp({
@@ -33,7 +40,7 @@
                 ? `Stage ${item.selectedCount} 行`
                 : `Unstage ${item.selectedCount} 行`
             }}
-          </button>
+          </n-button>
         </template>
       </div>
       <div
@@ -217,27 +224,14 @@ function prefix(type: string): string {
   text-overflow: ellipsis;
 }
 
+/* GF-05：n-button 接管后仅保留布局约束。VirtualList 行高固定 21px——
+   naive tiny 按钮默认 22px 会溢出行，压到 19px；配色/密度/hover 全部交给
+   themeOverrides（quaternary / type=primary），响应暗色主题。 */
 .hunk-btn {
   flex-shrink: 0;
-  height: 17px;
-  line-height: 15px;
-  padding: 0 6px;
+  height: 19px;
   font-size: 11px;
-  border: 1px solid var(--gw-text-dim);
-  border-radius: 3px;
-  background: var(--gw-bg-panel);
-  color: var(--gw-text-dim);
-  cursor: pointer;
-}
-
-.hunk-btn:hover {
-  border-color: var(--gw-accent);
-  color: var(--gw-accent);
-}
-
-.hunk-btn.primary {
-  border-color: var(--gw-accent);
-  color: var(--gw-accent);
+  padding: 0 6px;
 }
 
 .diff-line {
