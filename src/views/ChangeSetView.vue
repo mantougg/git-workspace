@@ -226,6 +226,8 @@
           按选择器勾选
         </n-button>
       </div>
+      <!-- GF-11：千仓库工作区下开启虚拟滚动（max-height 已固定，定高行），
+           DOM 行数随视口恒定；勾选/选择器联动走 row key，不依赖全量渲染。 -->
       <n-data-table
         ref="addTableRef"
         :columns="addColumns"
@@ -235,6 +237,7 @@
         :row-class-name="addRowClassName"
         :loading="addDialog.loading"
         :checked-row-keys="addCheckedKeys"
+        virtual-scroll
         @update:checked-row-keys="onAddSelectionChange"
       />
       <template #footer>

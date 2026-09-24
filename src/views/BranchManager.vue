@@ -86,48 +86,60 @@
         <template v-if="overview">
           <!-- Local branches -->
           <Panel title="Local Branches（{{ overview.locals.length }}）" class="branch-section">
-            <div
-              v-for="b in overview.locals"
-              :key="b.name"
-              :class="['branch-row', { current: b.isCurrent }]"
-            >
-              <span class="branch-name">
-                {{ b.name }}
-                <n-tag v-if="b.isCurrent" size="small" type="success">当前</n-tag>
-              </span>
-              <span class="branch-track">
-                <template v-if="b.upstream">
-                  <span class="upstream">{{ b.upstream }}</span>
-                  <span v-if="b.ahead > 0" class="ahead">↑{{ b.ahead }}</span>
-                  <span v-if="b.behind > 0" class="behind">↓{{ b.behind }}</span>
+            <!-- GF-11：>100 分支仓库常见——虚拟滚动（VirtualList 定高行）。
+                 容器高度按行数封顶，短列表时高度=内容高度，无嵌套滚动条。 -->
+            <div class="branch-list" :style="{ height: branchListHeight(overview.locals.length) + 'px' }">
+              <VirtualList :items="overview.locals" :item-height="BRANCH_ROW_H">
+                <template #row="{ item: b }">
+                  <div
+                    :class="['branch-row', { current: b.isCurrent }]"
+                  >
+                    <span class="branch-name">
+                      {{ b.name }}
+                      <n-tag v-if="b.isCurrent" size="small" type="success">当前</n-tag>
+                    </span>
+                    <span class="branch-track">
+                      <template v-if="b.upstream">
+                        <span class="upstream">{{ b.upstream }}</span>
+                        <span v-if="b.ahead > 0" class="ahead">↑{{ b.ahead }}</span>
+                        <span v-if="b.behind > 0" class="behind">↓{{ b.behind }}</span>
+                      </template>
+                      <span v-else class="no-upstream">无上游</span>
+                    </span>
+                    <span class="branch-commit" :title="b.lastCommitOid">
+                      {{ shortOid(b.lastCommitOid) }} {{ b.lastCommitMessage }}
+                    </span>
+                    <n-dropdown trigger="click" :options="localBranchOptions(b)" @select="(key: string) => handleLocalCommand(key, b)">
+                      <n-button size="small" text>
+                        <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+                      </n-button>
+                    </n-dropdown>
+                  </div>
                 </template>
-                <span v-else class="no-upstream">无上游</span>
-              </span>
-              <span class="branch-commit" :title="b.lastCommitOid">
-                {{ shortOid(b.lastCommitOid) }} {{ b.lastCommitMessage }}
-              </span>
-              <n-dropdown trigger="click" :options="localBranchOptions(b)" @select="(key: string) => handleLocalCommand(key, b)">
-                <n-button size="small" text>
-                  <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
-                </n-button>
-              </n-dropdown>
+              </VirtualList>
             </div>
             <n-empty v-if="overview.locals.length === 0" description="无本地分支" />
           </Panel>
 
           <!-- Remote branches -->
           <Panel title="Remote Branches（{{ overview.remotes.length }}）" class="branch-section">
-            <div v-for="r in overview.remotes" :key="r.name" class="branch-row">
-              <span class="branch-name">{{ r.name }}</span>
-              <span class="branch-track" />
-              <span class="branch-commit" :title="r.lastCommitOid">
-                {{ shortOid(r.lastCommitOid) }} {{ r.lastCommitMessage }}
-              </span>
-              <n-dropdown trigger="click" :options="remoteBranchOptions()" @select="(key: string) => handleRemoteCommand(key, r)">
-                <n-button size="small" text>
-                  <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
-                </n-button>
-              </n-dropdown>
+            <div class="branch-list" :style="{ height: branchListHeight(overview.remotes.length) + 'px' }">
+              <VirtualList :items="overview.remotes" :item-height="BRANCH_ROW_H">
+                <template #row="{ item: r }">
+                  <div class="branch-row">
+                    <span class="branch-name">{{ r.name }}</span>
+                    <span class="branch-track" />
+                    <span class="branch-commit" :title="r.lastCommitOid">
+                      {{ shortOid(r.lastCommitOid) }} {{ r.lastCommitMessage }}
+                    </span>
+                    <n-dropdown trigger="click" :options="remoteBranchOptions()" @select="(key: string) => handleRemoteCommand(key, r)">
+                      <n-button size="small" text>
+                        <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+                      </n-button>
+                    </n-dropdown>
+                  </div>
+                </template>
+              </VirtualList>
             </div>
             <n-empty v-if="overview.remotes.length === 0" description="无远程分支" />
           </Panel>
@@ -140,15 +152,21 @@
                 新建标签
               </n-button>
             </template>
-            <div v-for="t in overview.tags" :key="t.name" class="branch-row">
-              <span class="branch-name">{{ t.name }}</span>
-              <span class="branch-track tag-message" :title="t.message ?? ''">{{ t.message ?? "" }}</span>
-              <span class="branch-commit" :title="t.targetOid">{{ shortOid(t.targetOid) }}</span>
-              <n-dropdown trigger="click" :options="tagOptions()" @select="(key: string) => handleTagCommand(key, t)">
-                <n-button size="small" text>
-                  <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
-                </n-button>
-              </n-dropdown>
+            <div class="branch-list" :style="{ height: branchListHeight(overview.tags.length) + 'px' }">
+              <VirtualList :items="overview.tags" :item-height="BRANCH_ROW_H">
+                <template #row="{ item: t }">
+                  <div class="branch-row">
+                    <span class="branch-name">{{ t.name }}</span>
+                    <span class="branch-track tag-message" :title="t.message ?? ''">{{ t.message ?? "" }}</span>
+                    <span class="branch-commit" :title="t.targetOid">{{ shortOid(t.targetOid) }}</span>
+                    <n-dropdown trigger="click" :options="tagOptions()" @select="(key: string) => handleTagCommand(key, t)">
+                      <n-button size="small" text>
+                        <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+                      </n-button>
+                    </n-dropdown>
+                  </div>
+                </template>
+              </VirtualList>
             </div>
             <n-empty v-if="overview.tags.length === 0" description="无标签" />
           </Panel>
@@ -438,6 +456,7 @@ import SmartMergeDialog from "@/components/git/SmartMergeDialog.vue";
 import UnifiedDiff from "@/components/diff/UnifiedDiff.vue";
 import RebaseDialog from "@/components/branch/RebaseDialog.vue";
 import Panel from "@/components/shell/Panel.vue";
+import VirtualList from "@/components/common/VirtualList.vue";
 import { getMergeInProgress, mergeAbort, mergeBranch, mergeContinue } from "@/api/merge";
 import { getRebaseState, rebaseAbort, rebaseContinue, rebaseSkip } from "@/api/rebase";
 import type { MergeOutcome } from "@/types/merge";
@@ -703,6 +722,18 @@ const loading = ref(false);
 // --- GF-04: tags ---
 /** 标签名与分支名同一套字符集（后端 `validate_tag_name` 同样拒绝前导 '-'）。 */
 const TAG_NAME_PATTERN = /^[^\s~^:?*[\]\\]+$/;
+
+// --- GF-11：分支/标签长列表虚拟滚动参数 ---
+/** VirtualList 固定行高（px）——.branch-row 显式撑满该高度。
+ *  34px 覆盖含 NTag（small 20px）的自然行高（~33px），不裁切。 */
+const BRANCH_ROW_H = 34;
+/** 折叠滚动条前可见的最大行数（超出后列表内部滚动，页面其他部分不动）。 */
+const BRANCH_LIST_MAX_ROWS = 11;
+
+/** 列表容器高度：内容高度与封顶值取小，短列表无嵌套滚动、无多余空白。 */
+function branchListHeight(count: number): number {
+  return Math.min(count, BRANCH_LIST_MAX_ROWS) * BRANCH_ROW_H;
+}
 const tagDialog = reactive({ show: false, name: "", message: "", loading: false });
 const tagPushDialog = reactive({
   show: false,
@@ -1459,6 +1490,8 @@ async function runCompare() {
   border-bottom: 1px solid var(--gw-border);
 }
 
+/* GF-11：VirtualList 定高行（BRANCH_ROW_H）——分支行显式撑满行包裹层，
+   内容超出省略（box-sizing:border-box 下 padding 计入高度）。 */
 .branch-row {
   display: flex;
   align-items: center;
@@ -1466,10 +1499,15 @@ async function runCompare() {
   padding: 6px 12px;
   border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
+  height: 100%;
+  overflow: hidden;
 }
 
-.branch-row:last-child {
-  border-bottom: none;
+/* 分支行是固定栅格 + ellipsis，覆盖 VirtualList 默认的 max-content 宽度，
+   否则长 message 会把行撑出横向滚动条。 */
+.branch-list :deep(.virtual-list-spacer),
+.branch-list :deep(.virtual-list-window) {
+  width: 100%;
 }
 
 .branch-row.current {

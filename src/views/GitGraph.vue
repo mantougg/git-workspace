@@ -41,9 +41,13 @@
     </div>
 
     <!-- Commit graph -->
-    <n-spin :show="loading">
+    <n-spin :show="loading" class="graph-spin">
       <div class="graph-body">
+        <!-- key=repoPath + refreshSeq：切仓库 / 整页重载（刷新、历史操作后）时
+             整体重挂载，VirtualList 滚动位置随之复位；loadMore 追加不换 key，
+             滚动位置保持不变（配合 CommitGraph 的 resetScrollOnItemsChange=false）。 -->
         <CommitGraph
+          :key="repoPath + '#' + refreshSeq"
           :commits="commits"
           :loading="loading"
           :has-more="hasMore"
@@ -261,6 +265,10 @@ const conflictDialog = reactive<{
 
 const PAGE_SIZE = 100;
 
+/** 整页重载计数：仅 loadHistory（刷新 / 切仓库 / 历史操作后）递增，
+ *  作为 CommitGraph 的 remount key 之一，复位虚拟列表滚动位置。 */
+const refreshSeq = ref(0);
+
 async function openCommitExplanation() {
   const commit = selectedCommit.value;
   if (!commit || !repoPath.value) return;
@@ -287,9 +295,13 @@ onMounted(async () => {
 });
 
 async function loadHistory() {
+  // 整页重载 → 递增 refreshSeq 让 CommitGraph 重挂载（滚动复位到顶）。
+  refreshSeq.value += 1;
   loading.value = true;
   try {
-    commits.value = await getCommitHistory(repoPath.value, PAGE_SIZE);
+    // 首页：offset=0 + limit=PAGE_SIZE（等价旧 maxCount 语义，但前端翻页
+    // 统一走 offset/limit 增量分页）。
+    commits.value = await getCommitHistory(repoPath.value, undefined, 0, PAGE_SIZE);
     hasMore.value = commits.value.length >= PAGE_SIZE;
   } catch (e) {
     message.error("加载提交历史失败: " + errMsg(e));
@@ -307,18 +319,20 @@ async function loadBranches() {
 }
 
 async function loadMore() {
+  // 翻页中重复点击 / 已到尾部时直接忽略，避免并发请求把同一页追加两次。
+  if (loading.value || !hasMore.value) return;
   loading.value = true;
   try {
-    // 先记录旧长度再拉取：若先赋值 commits.value = more，随后的
-    // hasMore 比较恒为 false，按钮只生效一次（PAF-05）。
-    const prevCount = commits.value.length;
-    const more = await getCommitHistory(repoPath.value, prevCount + PAGE_SIZE);
-    if (more.length > prevCount) {
-      commits.value = more;
-      hasMore.value = more.length >= prevCount + PAGE_SIZE;
-    } else {
-      hasMore.value = false;
+    // GF-11：增量追加——只拉 [loaded, loaded+PAGE_SIZE) 这一页并 push，
+    // 不再全量重取 (prevCount + PAGE_SIZE) 后整体替换（旧实现翻到第 k 页
+    // 累计传输 O(k²)，且 history op 后 PAF-05 的「按钮只生效一次」陷阱）。
+    const offset = commits.value.length;
+    const more = await getCommitHistory(repoPath.value, undefined, offset, PAGE_SIZE);
+    if (more.length > 0) {
+      commits.value = [...commits.value, ...more];
     }
+    // 短页（或 offset 已越过历史末端返回空）= 到顶，隐藏「加载更多」。
+    hasMore.value = more.length >= PAGE_SIZE;
   } catch (e) {
     message.error("加载更多失败: " + errMsg(e));
   } finally {
@@ -609,7 +623,22 @@ function openResolver() {
 
 .graph-body {
   flex: 1;
+  /* n-spin-content 非 flex 容器：flex:1 是死代码，显式 height:100% 才能把
+     高度链贯通到 .commit-graph → .graph-scroll → VirtualList（GF-11）。 */
+  height: 100%;
   overflow: hidden;
+}
+
+/* GF-11：高度链经 .n-spin-content 打通到 .graph-body，CommitGraph 内的
+   VirtualList 才能拿到定高容器（同 F-18/F-20 模式；否则 .commit-graph
+   的 height:100% 退化为 auto，全量直渲）。 */
+.graph-spin {
+  flex: 1;
+  min-height: 0;
+}
+
+.graph-spin :deep(.n-spin-content) {
+  height: 100%;
 }
 
 .commit-detail {

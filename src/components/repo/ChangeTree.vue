@@ -1,5 +1,9 @@
 <template>
   <div class="change-tree">
+    <!-- GF-11：千文件工作区下开启虚拟滚动（T-04 前端渲染预算）——n-tree 自身
+         成为滚动容器（.tree 定高），DOM 行数随视口恒定。
+         受控 expandedKeys / 勾选 emitSelection / 右键菜单 / 双击展开均与
+         naive-ui 的 key 级状态计算兼容，不依赖 DOM 全量渲染。 -->
     <n-tree
       ref="treeRef"
       :data="naiveTreeData"
@@ -12,6 +16,7 @@
       :render-prefix="renderPrefix"
       :render-suffix="renderSuffix"
       :node-props="nodeProps"
+      virtual-scroll
       @update:checked-keys="onCheck"
       @update:expanded-keys="onExpandedChange"
       class="tree"
@@ -527,13 +532,16 @@ defineExpose({
 </script>
 
 <style scoped>
+/* GF-11：n-tree 开启 virtual-scroll 后自身即滚动容器——外层不再负责滚动，
+   高度链 :100% 贯通到 .tree（宿主 .tree-container 已 overflow:hidden 定高）。 */
 .change-tree {
   height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 4px 0;
 }
 
 .tree {
+  height: 100%;
   background: transparent;
 }
 

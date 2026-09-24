@@ -29,6 +29,14 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 const props = defineProps<{
   items: T[];
   itemHeight: number;
+  /**
+   * Reset the scroll position to the top whenever the `items` reference
+   * changes (default `true` — correct for whole-payload swaps like switching
+   * the diffed file). Pass `false` when the list grows incrementally
+   * (e.g. "load more" appending a page): resetting would yank the user back
+   * to the top mid-pagination.
+   */
+  resetScrollOnItemsChange?: boolean;
 }>();
 
 defineSlots<{
@@ -86,9 +94,11 @@ onUnmounted(() => {
 });
 
 // New payload (e.g. another file selected): back to the top.
+// Consumers that append incrementally opt out via `resetScrollOnItemsChange`.
 watch(
   () => props.items,
   () => {
+    if (props.resetScrollOnItemsChange === false) return;
     scrollTop.value = 0;
     if (container.value) container.value.scrollTop = 0;
   },
