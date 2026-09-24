@@ -178,6 +178,67 @@ impl super::GitOps {
         run_git_streaming(repo_path, &["push", &remote_name, &refspec], cancel, timeout, on_line)
     }
 
+    /// 流式 push 指定标签（GF-04）：
+    /// `git push <remote> [--force|--force-with-lease] <tag>`。
+    ///
+    /// 标签走 CLI 而非 libgit2（网络操作，需要用户凭据管理器 / SSH）。
+    /// git 默认拒绝覆盖远程已有标签，因此 force 类参数只在调用方显式开启时
+    /// 追加（Roadmap §47：force push 默认禁用，`--force-with-lease` 为推荐方案）。
+    pub fn push_tag_streaming(
+        &self,
+        repo_path: &Path,
+        tag: &str,
+        force: bool,
+        force_with_lease: bool,
+        cancel: Option<&AtomicBool>,
+        timeout: Option<Duration>,
+        on_line: &mut dyn FnMut(OutputStream, &str),
+    ) -> AppResult<StreamingExit> {
+        let repo = git2::Repository::open(repo_path)?;
+        let remote_name = self.find_default_remote_name(&repo)?;
+        // 本地标签必须存在，否则 git 只会报难懂的 refspec 解析失败。
+        if repo.find_reference(&format!("refs/tags/{}", tag)).is_err() {
+            return Err(AppError::NotFound(format!("tag '{}' not found", tag)));
+        }
+        let mut args: Vec<&str> = vec!["push", &remote_name];
+        if force_with_lease {
+            args.push("--force-with-lease");
+        } else if force {
+            args.push("--force");
+        }
+        args.push(tag);
+        log::info!(
+            "Pushing tag '{}' to '{}' (force={}, force-with-lease={}) for {:?}",
+            tag,
+            remote_name,
+            force,
+            force_with_lease,
+            repo_path
+        );
+        run_git_streaming(repo_path, &args, cancel, timeout, on_line)
+    }
+
+    /// 流式 `git ls-remote --tags <remote>`：远程标签名单（GF-04 的「标签是否
+    /// 已推送」判定）。只读网络操作，取消 / 超时语义同其他流式命令。
+    pub fn remote_tags_streaming(
+        &self,
+        repo_path: &Path,
+        cancel: Option<&AtomicBool>,
+        timeout: Option<Duration>,
+        on_line: &mut dyn FnMut(OutputStream, &str),
+    ) -> AppResult<StreamingExit> {
+        let repo = git2::Repository::open(repo_path)?;
+        let remote_name = self.find_default_remote_name(&repo)?;
+        log::info!("Listing remote tags of '{}' for {:?}", remote_name, repo_path);
+        run_git_streaming(
+            repo_path,
+            &["ls-remote", "--tags", &remote_name],
+            cancel,
+            timeout,
+            on_line,
+        )
+    }
+
     /// 流式 clone：逐行 emit 输出到回调。
     pub fn clone_streaming(
         &self,

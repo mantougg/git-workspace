@@ -132,13 +132,23 @@
             <n-empty v-if="overview.remotes.length === 0" description="无远程分支" />
           </Panel>
 
-          <!-- Tags -->
+          <!-- Tags (GF-04: 创建 / 推送 / 删除) -->
           <Panel title="Tags（{{ overview.tags.length }}）" class="branch-section">
+            <template #actions>
+              <n-button size="tiny" @click="handleCreateTag">
+                <template #icon><n-icon><AddOutline /></n-icon></template>
+                新建标签
+              </n-button>
+            </template>
             <div v-for="t in overview.tags" :key="t.name" class="branch-row">
               <span class="branch-name">{{ t.name }}</span>
               <span class="branch-track tag-message" :title="t.message ?? ''">{{ t.message ?? "" }}</span>
               <span class="branch-commit" :title="t.targetOid">{{ shortOid(t.targetOid) }}</span>
-              <span />
+              <n-dropdown trigger="click" :options="tagOptions()" @select="(key: string) => handleTagCommand(key, t)">
+                <n-button size="small" text>
+                  <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+                </n-button>
+              </n-dropdown>
             </div>
             <n-empty v-if="overview.tags.length === 0" description="无标签" />
           </Panel>
@@ -174,6 +184,69 @@
       :default-onto="defaultOnto"
       @finished="onRebaseFinished"
     />
+
+    <!-- GF-04：新建标签（留空附注消息 = 轻量标签；目标固定当前 HEAD） -->
+    <n-modal v-model:show="tagDialog.show" preset="card" title="新建标签" style="width: 480px">
+      <div class="tag-form">
+        <div class="tag-field">
+          <span class="tag-label">标签名</span>
+          <n-input
+            v-model:value="tagDialog.name"
+            size="small"
+            placeholder="如 v1.2.0"
+            :status="tagDialog.name && !TAG_NAME_PATTERN.test(tagDialog.name) ? 'error' : undefined"
+          />
+        </div>
+        <div class="tag-field">
+          <span class="tag-label">附注消息（留空 = 轻量标签）</span>
+          <n-input
+            v-model:value="tagDialog.message"
+            type="textarea"
+            :rows="3"
+            size="small"
+            placeholder="release notes…"
+          />
+        </div>
+        <div class="tag-hint">
+          目标：当前 HEAD {{ overview?.current ?? "（HEAD 游离）" }} {{ shortOid(headOid) }}
+        </div>
+      </div>
+      <template #footer>
+        <n-button @click="tagDialog.show = false">取消</n-button>
+        <n-button
+          type="primary"
+          :loading="tagDialog.loading"
+          :disabled="!tagDialog.name.trim() || !TAG_NAME_PATTERN.test(tagDialog.name.trim())"
+          @click="runCreateTag"
+        >
+          创建
+        </n-button>
+      </template>
+    </n-modal>
+
+    <!-- GF-04：推送标签。force 默认关闭；Roadmap §47 明示覆盖风险并推荐
+         --force-with-lease（远端被他人更新时安全失败）。 -->
+    <n-modal v-model:show="tagPushDialog.show" preset="card" title="Push 标签" style="width: 480px">
+      <div class="tag-form">
+        <div class="tag-field">
+          <span class="tag-label">标签</span>
+          <span class="tag-value">{{ tagPushDialog.name }} → {{ shortOid(tagPushDialog.targetOid) }}</span>
+        </div>
+        <n-checkbox v-model:checked="tagPushDialog.force" size="small">Force push</n-checkbox>
+        <n-radio-group v-if="tagPushDialog.force" v-model:value="tagPushDialog.forceWithLease" size="small">
+          <n-radio :value="true">--force-with-lease（推荐）</n-radio>
+          <n-radio :value="false">--force</n-radio>
+        </n-radio-group>
+        <n-alert v-if="tagPushDialog.force" type="warning" :bordered="false" class="tag-force-alert">
+          This may overwrite remote history. 强制推送会用本地标签覆盖远程同名标签；
+          --force-with-lease 在远端被他人更新时会安全失败（git 默认就拒绝覆盖远程已有标签）。
+        </n-alert>
+      </div>
+      <template #footer>
+        <n-button @click="tagPushDialog.show = false">取消</n-button>
+        <n-button type="primary" :loading="tagPushDialog.loading" @click="runTagPush">推送</n-button>
+      </template>
+    </n-modal>
 
     <!-- Compare dialog -->
     <n-modal v-model:show="compare.show" preset="card" title="Branch Compare" style="width: 80%; margin-top: 5vh">
@@ -341,14 +414,24 @@ import {
   checkoutBranch,
   compareBranches,
   createBranch,
+  createTag,
   deleteBranch,
+  deleteTag,
   listBranches,
   pushBranch,
+  pushTag,
   renameBranch,
   setUpstream,
+  tagPushedToRemote,
   trackRemoteBranch,
 } from "@/api/branch";
-import type { BranchEntry, BranchOverview, CompareResult, RemoteBranchEntry } from "@/types/branch";
+import type {
+  BranchEntry,
+  BranchOverview,
+  CompareResult,
+  RemoteBranchEntry,
+  TagEntry,
+} from "@/types/branch";
 import type { FileDiff } from "@/types/git";
 import { smartPull } from "@/api/git_ops";
 import SmartMergeDialog from "@/components/git/SmartMergeDialog.vue";
@@ -617,6 +700,25 @@ async function submitPr() {
 const overview = ref<BranchOverview | null>(null);
 const loading = ref(false);
 
+// --- GF-04: tags ---
+/** 标签名与分支名同一套字符集（后端 `validate_tag_name` 同样拒绝前导 '-'）。 */
+const TAG_NAME_PATTERN = /^[^\s~^:?*[\]\\]+$/;
+const tagDialog = reactive({ show: false, name: "", message: "", loading: false });
+const tagPushDialog = reactive({
+  show: false,
+  name: "",
+  targetOid: "",
+  /** Roadmap §47：force push 默认关闭，用户显式开启。 */
+  force: false,
+  /** force 开启时的默认模式：--force-with-lease（推荐）。 */
+  forceWithLease: true,
+  loading: false,
+});
+/** 当前 HEAD 的 oid（标签面板创建入口据此展示目标）。 */
+const headOid = computed(
+  () => overview.value?.locals.find((b) => b.isCurrent)?.lastCommitOid ?? "",
+);
+
 // --- T-15 merge / rebase state ---
 const mergeDialog = reactive({ show: false, branch: "", mode: "normal", loading: false });
 const rebaseDialogVisible = ref(false);
@@ -711,6 +813,15 @@ function remoteBranchOptions() {
   return [
     { label: "Track（检出为本地分支）", key: "track" },
     { label: "Compare", key: "compare" },
+  ];
+}
+
+/** n-dropdown options for tag rows (GF-04). */
+function tagOptions() {
+  return [
+    { label: "Push…", key: "push" },
+    { type: "divider", key: "d1" } as never,
+    { label: "Delete", key: "delete", props: { style: "color: var(--gw-danger)" } },
   ];
 }
 
@@ -823,6 +934,107 @@ async function handleRemoteCommand(cmd: string, r: RemoteBranchEntry) {
       openCompare(r.name);
       break;
   }
+}
+
+// ---------------------------------------------------------------------------
+// GF-04 tag commands (§46: Delete = Dangerous 二次确认; Push = Warning 确认,
+// force 默认关闭)
+// ---------------------------------------------------------------------------
+
+async function handleTagCommand(cmd: string, t: TagEntry) {
+  if (cmd === "push") await handleTagPush(t);
+  else if (cmd === "delete") await handleTagDelete(t);
+}
+
+/** 面板级「新建标签」入口：目标固定当前 HEAD（后端支持传 target，UI 暂不暴露）。 */
+function handleCreateTag() {
+  tagDialog.name = "";
+  tagDialog.message = "";
+  tagDialog.show = true;
+}
+
+async function runCreateTag() {
+  const name = tagDialog.name.trim();
+  if (!TAG_NAME_PATTERN.test(name)) {
+    message.error("标签名不合法");
+    return;
+  }
+  tagDialog.loading = true;
+  try {
+    await runOp(`已创建标签 ${name}`, () =>
+      createTag(repoPath.value, name, tagDialog.message.trim() || undefined),
+    );
+    tagDialog.show = false;
+  } finally {
+    tagDialog.loading = false;
+  }
+}
+
+function handleTagPush(t: TagEntry) {
+  tagPushDialog.name = t.name;
+  tagPushDialog.targetOid = t.targetOid;
+  tagPushDialog.force = false;
+  tagPushDialog.forceWithLease = true;
+  tagPushDialog.show = true;
+}
+
+async function runTagPush() {
+  tagPushDialog.loading = true;
+  try {
+    await pushTag(
+      repoPath.value,
+      tagPushDialog.name,
+      tagPushDialog.force,
+      tagPushDialog.force ? tagPushDialog.forceWithLease : false,
+    );
+    tagPushDialog.show = false;
+    message.success(`已推送标签 ${tagPushDialog.name}`);
+    await load();
+  } catch (e) {
+    message.error("Push 标签失败: " + errMsg(e));
+  } finally {
+    tagPushDialog.loading = false;
+  }
+}
+
+/**
+ * Dangerous (§46)：删除本地标签二次确认。先查远程标签名单——该标签已推送时
+ * 必须在弹窗里明示「此标签已推送到远程」，避免用户误以为远程副本一并消失。
+ * 查询失败（离线 / 无远程）时用通用文案兜底（本地删除本身仍不可撤销）。
+ */
+async function handleTagDelete(t: TagEntry) {
+  let onRemote: boolean | null = null;
+  const pending = message.loading("查询远程标签…");
+  try {
+    onRemote = await tagPushedToRemote(repoPath.value, t.name);
+  } catch {
+    onRemote = null;
+  } finally {
+    pending.destroy();
+  }
+
+  const pushedNote = onRemote
+    ? "⚠ 此标签已推送到远程仓库——删除本地不会删除远程副本。"
+    : "本地删除不可撤销（远程副本不受影响）。";
+  try {
+    await new Promise<void>((resolve, reject) => {
+      dialog.error({
+        title: "删除标签确认（Dangerous）",
+        content:
+          `仓库：${repoPath.value}\n` +
+          `确认删除本地标签 ${t.name}？\n${pushedNote}\n` +
+          `目标提交 ${shortOid(t.targetOid)}。`,
+        positiveText: "删除",
+        negativeText: "取消",
+        onPositiveClick: () => resolve(),
+        onNegativeClick: () => reject("cancel"),
+        onClose: () => reject("cancel"),
+      });
+    });
+  } catch {
+    return;
+  }
+  await runOp(`已删除标签 ${t.name}`, () => deleteTag(repoPath.value, t.name));
 }
 
 /** Run an op, toast the result, reload on success. */
@@ -1320,6 +1532,41 @@ async function runCompare() {
 
 .danger-item {
   color: var(--gw-danger);
+}
+
+/* GF-04：标签创建 / 推送对话框 */
+.tag-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gw-space-3);
+}
+
+.tag-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tag-label {
+  font-size: 12px;
+  color: var(--gw-text-dim);
+}
+
+.tag-value {
+  font-family: var(--gw-font-mono);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.tag-hint {
+  font-size: 12px;
+  color: var(--gw-text-dim);
+  font-family: var(--gw-font-mono);
+}
+
+.tag-force-alert {
+  font-size: 12px;
 }
 
 .compare-form {

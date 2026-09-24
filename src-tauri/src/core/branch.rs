@@ -311,6 +311,90 @@ pub fn track_remote_branch(repo_path: &Path, remote_name: &str) -> AppResult<()>
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// GF-04: tags (create / delete). Strictly local via libgit2; pushing a tag
+// goes through the git CLI (`GitOps::push_tag_streaming`) because it is a
+// network operation (Roadmap §36: network ops never use libgit2).
+// ---------------------------------------------------------------------------
+
+/// Reject tag names the git CLI would misparse (`git push <remote> <name>`
+/// treats a leading '-' as an option) or libgit2 would refuse as a refname.
+fn validate_tag_name(name: &str) -> AppResult<()> {
+    let ok = !name.is_empty()
+        && !name.starts_with('-')
+        && !name.contains("..")
+        && !name
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '~' | '^' | ':' | '?' | '*' | '[' | '\\'));
+    if ok {
+        Ok(())
+    } else {
+        Err(AppError::Other(format!("invalid tag name '{}'", name)))
+    }
+}
+
+/// Create a tag at `target` (branch / tag / oid; defaults to HEAD). With a
+/// `message` the tag is annotated (tagger = repo/git default signature);
+/// without one it is lightweight. An existing tag name is refused
+/// (`force = false`), matching `create_branch` semantics.
+pub fn create_tag(
+    repo_path: &Path,
+    name: &str,
+    message: Option<&str>,
+    target: Option<&str>,
+) -> AppResult<()> {
+    validate_tag_name(name)?;
+    let repo = git2::Repository::open(repo_path)?;
+    let spec = target.unwrap_or("HEAD");
+    let obj = repo
+        .revparse_single(spec)
+        .map_err(|_| AppError::NotFound(format!("target '{}' not found", spec)))?;
+
+    match message.map(str::trim).filter(|m| !m.is_empty()) {
+        Some(msg) => {
+            let sig = crate::core::signature_or_default(&repo)?;
+            repo.tag(name, &obj, &sig, msg, false)?;
+        }
+        None => {
+            repo.tag_lightweight(name, &obj, false)?;
+        }
+    }
+    log::info!("Created tag '{}' at '{}' for {:?}", name, spec, repo_path);
+    Ok(())
+}
+
+/// Delete a local tag (`refs/tags/<name>`). Only the local ref is removed — a
+/// remote copy is untouched, which the UI states in the Dangerous confirmation.
+pub fn delete_tag(repo_path: &Path, name: &str) -> AppResult<()> {
+    validate_tag_name(name)?;
+    let repo = git2::Repository::open(repo_path)?;
+    let refname = format!("refs/tags/{}", name);
+    let mut reference = repo
+        .find_reference(&refname)
+        .map_err(|_| AppError::NotFound(format!("tag '{}' not found", name)))?;
+    reference.delete()?;
+    log::info!("Deleted local tag '{}' for {:?}", name, repo_path);
+    Ok(())
+}
+
+/// Whether any local remote-tracking ref holds this tag
+/// (`refs/remotes/<remote>/tags/<name>`). Offline fallback for the "is this
+/// tag on the remote?" check: it never reports a false positive, but it can
+/// miss tags pushed from this machine — a tag push does not create
+/// remote-tracking refs (verified with git 2.4x). Never does network I/O.
+pub fn tag_in_remote_tracking_refs(repo_path: &Path, name: &str) -> bool {
+    let Ok(repo) = git2::Repository::open(repo_path) else {
+        return false;
+    };
+    let Ok(remotes) = repo.remotes() else {
+        return false;
+    };
+    remotes.iter().flatten().any(|remote| {
+        repo.find_reference(&format!("refs/remotes/{}/tags/{}", remote, name))
+            .is_ok()
+    })
+}
+
 /// Compare two revisions (branch / tag / oid specs): commit差集 in both
 /// directions plus the tree diff from `base` to `other`.
 pub fn compare_branches(repo_path: &Path, base: &str, other: &str) -> AppResult<CompareResult> {
@@ -548,6 +632,79 @@ mod tests {
         assert_eq!(overview.tags.len(), 1);
         assert_eq!(overview.tags[0].name, "v1.0");
         assert!(!overview.tags[0].target_oid.is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-04 tag lifecycle: annotated creation at HEAD (message round-trips
+    /// through the list), lightweight creation at an explicit oid, duplicate
+    /// and unknown-target refusals, delete, and the remote-tracking-ref probe.
+    #[test]
+    fn tag_create_and_delete_lifecycle() {
+        let dir = tmpdir("taglife");
+        let head_oid;
+        {
+            let repo = init_repo(&dir);
+            head_oid = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+        }
+
+        // Annotated tag at HEAD: the message shows up in the listing
+        // (libgit2 trims the trailing newline of the tag message).
+        create_tag(&dir, "v1.0", Some("first release\n"), None).unwrap();
+        // Lightweight tag at an explicit target oid.
+        create_tag(&dir, "v0.9", None, Some(&head_oid)).unwrap();
+
+        let overview = list_branches(&dir).unwrap();
+        assert_eq!(overview.tags.len(), 2);
+        let annotated = overview.tags.iter().find(|t| t.name == "v1.0").unwrap();
+        assert_eq!(annotated.message.as_deref(), Some("first release"));
+        assert_eq!(annotated.target_oid, head_oid);
+        let lightweight = overview.tags.iter().find(|t| t.name == "v0.9").unwrap();
+        assert_eq!(lightweight.message, None);
+
+        // force = false: an existing name is refused; unknown target too.
+        assert!(create_tag(&dir, "v1.0", None, None).is_err());
+        assert!(create_tag(&dir, "v2.0", None, Some("does-not-exist")).is_err());
+        // Leading '-' would be parsed as a git CLI option by `git push`.
+        assert!(create_tag(&dir, "-v1", None, None).is_err());
+
+        // No remote-tracking refs yet (and none configured at all).
+        assert!(!tag_in_remote_tracking_refs(&dir, "v1.0"));
+
+        // Local delete removes the ref; deleting twice fails with NotFound.
+        delete_tag(&dir, "v0.9").unwrap();
+        assert!(delete_tag(&dir, "v0.9").is_err());
+        assert!(delete_tag(&dir, "missing-tag").is_err());
+        let overview = list_branches(&dir).unwrap();
+        let names: Vec<&str> = overview.tags.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["v1.0"]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The offline "already on the remote?" probe sees fetched remote-tracking
+    /// tag refs and ignores same-named local branches.
+    #[test]
+    fn tag_in_remote_tracking_refs_detects_fetched_tags() {
+        let dir = tmpdir("tagremote");
+        let oid;
+        {
+            let repo = init_repo(&dir);
+            repo.remote("origin", "https://example.invalid/x.git").unwrap();
+            oid = repo.head().unwrap().target().unwrap();
+            drop(repo);
+        }
+
+        assert!(!tag_in_remote_tracking_refs(&dir, "v1.0"));
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            repo.reference("refs/remotes/origin/tags/v1.0", oid, false, "test fixture")
+                .unwrap();
+            drop(repo);
+        }
+        assert!(tag_in_remote_tracking_refs(&dir, "v1.0"));
+        assert!(!tag_in_remote_tracking_refs(&dir, "v2.0"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

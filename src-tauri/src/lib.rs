@@ -316,6 +316,11 @@ pub fn run() {
             commands::branch::track_remote_branch,
             commands::branch::push_branch,
             commands::branch::compare_branches,
+            // Tag commands (GF-04)
+            commands::branch::create_tag,
+            commands::branch::delete_tag,
+            commands::branch::push_tag,
+            commands::branch::tag_pushed_to_remote,
             // History commands (T-13)
             commands::history::cherry_pick,
             commands::history::revert_commit,

@@ -85,3 +85,65 @@ export function compareBranches(
 ): Promise<CompareResult> {
   return invoke<CompareResult>("compare_branches", { repoPath, base, other });
 }
+
+/**
+ * Create a tag (GF-04). `target` defaults to HEAD; passing a `message`
+ * creates an annotated tag, omitting it a lightweight one.
+ */
+export function createTag(
+  repoPath: string,
+  name: string,
+  message?: string,
+  target?: string,
+): Promise<void> {
+  return invoke<void>("create_tag", {
+    repoPath,
+    name,
+    message: message ?? null,
+    target: target ?? null,
+  });
+}
+
+/** Delete a local tag; a remote copy (if any) is left untouched. */
+export function deleteTag(repoPath: string, name: string): Promise<void> {
+  return invoke<void>("delete_tag", { repoPath, name });
+}
+
+/**
+ * Push a tag to the default remote; returns the git command output.
+ *
+ * GF-04：`force` / `forceWithLease` 默认 false（Roadmap §47：force push 默认禁用、
+ * 用户显式开启，`--force-with-lease` 为推荐方案）——git 本身拒绝覆盖远程已有标签。
+ */
+export function pushTag(
+  repoPath: string,
+  name: string,
+  force?: boolean,
+  forceWithLease?: boolean,
+  opId?: string,
+): Promise<string> {
+  return invoke<string>("push_tag", {
+    repoPath,
+    name,
+    force: force ?? null,
+    forceWithLease: forceWithLease ?? null,
+    opId: opId ?? null,
+  });
+}
+
+/**
+ * Whether a tag already exists on the remote (GF-04). Backed by
+ * `git ls-remote --tags`; when the network is unavailable it falls back to
+ * local remote-tracking refs, which can only under-report.
+ */
+export function tagPushedToRemote(
+  repoPath: string,
+  name: string,
+  opId?: string,
+): Promise<boolean> {
+  return invoke<boolean>("tag_pushed_to_remote", {
+    repoPath,
+    name,
+    opId: opId ?? null,
+  });
+}
