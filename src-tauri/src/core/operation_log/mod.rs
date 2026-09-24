@@ -18,19 +18,24 @@
 //! write-back). This module is the facade — callers go through the
 //! re-exports below.
 
+mod conflict_session;
+mod detail_snapshots;
 mod model;
 mod query;
 mod record;
 mod undo_execute;
 mod undo_plan;
 
+pub use conflict_session::{close_conflict_sessions, record_conflict_resolution};
+pub use detail_snapshots::{encode_stash_snapshot, encode_worktree_snapshot, WorktreeSnapshot};
 pub use model::{
     NewOperationLogItem, OperationLogDetail, OperationLogItem, OperationLogPage, OperationLogSummary, UndoItemResult,
-    UndoOutcome, UndoPreviewItem, OP_AI_COMMIT, OP_RESTORE_FILES, OP_CHECKOUT_ALL, OP_CONFLICT_RESOLUTION, OP_DELETE_BRANCH_ALL,
-    OP_REBASE, OP_RESET,
+    UndoOutcome, UndoPreviewItem, OP_AI_COMMIT, OP_CHERRY_PICK, OP_CHECKOUT_ALL, OP_CONFLICT_RESOLUTION,
+    OP_CREATE_BRANCH_ALL, OP_DELETE_BRANCH_ALL, OP_MERGE_ABORT, OP_REBASE, OP_RESET, OP_RESTORE_FILES, OP_STASH_CLEAR,
+    OP_STASH_DROP, OP_WORKTREE_REMOVE,
 };
 pub(crate) use query::{get_operation_log, query_operation_logs, LogFilter};
-pub use record::{record_operation_best_effort, snapshot_branch, snapshot_head};
+pub use record::{backfill_after_oids, record_operation_best_effort, record_operation_log, snapshot_branch, snapshot_head};
 pub(crate) use undo_execute::persist_undo_results;
 pub use undo_execute::run_undo;
 pub use undo_plan::preview_undo;

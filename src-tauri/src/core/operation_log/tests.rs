@@ -10,6 +10,8 @@ use rusqlite::{params, Connection};
 
 use super::record::{insert_operation_log, resolve_workspace_id};
 use crate::core::branch;
+use crate::core::history::PickOutcome;
+use crate::core::merge::MergeOutcome;
 
 fn tmpdir(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -71,6 +73,23 @@ fn item(repo: &Path, ref_name: &str, before: &str, after: Option<&str>) -> NewOp
         after_oid: after.map(String::from),
         detail: None,
     }
+}
+
+/// Item with an explicit `detail` (op-specific snapshot).
+fn item_detail(repo: &Path, ref_name: &str, before: &str, after: Option<&str>, detail: &str) -> NewOperationLogItem {
+    NewOperationLogItem {
+        detail: Some(detail.to_string()),
+        ..item(repo, ref_name, before, after)
+    }
+}
+
+/// A repo with a git identity configured (stash_save needs a stasher
+/// signature, which falls back to repo config).
+fn init_repo_with_identity(dir: &Path) -> git2::Repository {
+    let repo = init_repo(dir);
+    repo.config().unwrap().set_str("user.name", "tester").unwrap();
+    repo.config().unwrap().set_str("user.email", "t@example.com").unwrap();
+    repo
 }
 
 /// Insert + query roundtrip with every filter dimension, workspace
@@ -409,10 +428,10 @@ fn undo_rebase_rolls_back_and_respects_in_progress() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Snapshot helpers: branch tips and HEAD (branch + detached forms).
-#[test]
-fn snapshots_capture_ref_and_oid() {
-    let dir = tmpdir("snapshot");
+    /// Snapshot helpers: branch tips and HEAD (branch + detached forms).
+    #[test]
+    fn snapshots_capture_ref_and_oid() {
+        let dir = tmpdir("snapshot");
     let tip = {
         let repo = init_repo(&dir);
         let tip = repo.head().unwrap().target().unwrap().to_string();
@@ -446,3 +465,483 @@ fn snapshots_capture_ref_and_oid() {
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&empty);
 }
+
+    /// GF-16: cherry-pick undo hard-rolls the branch back to the pre-pick oid;
+    /// an in-progress pick/revert refuses the rollback (abort_pick owns it).
+    #[test]
+    fn undo_cherry_pick_rolls_back_head() {
+        let dir = tmpdir("pick");
+        let (c1, c2) = {
+            let repo = init_repo(&dir);
+            let c1 = repo.head().unwrap().target().unwrap().to_string();
+            commit_file(&repo, &dir, "b.txt", "two\n", "c2");
+            let c2 = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+            (c1, c2)
+        };
+        branch::create_branch(&dir, "side", Some(&c1)).unwrap();
+        branch::checkout_branch(&dir, "side").unwrap();
+        let outcome = crate::core::history::cherry_pick(&dir, &[c2.clone()]).unwrap();
+        assert!(matches!(outcome, PickOutcome::Success { .. }), "{outcome:?}");
+        let after = head_tip(&dir);
+        assert_ne!(after, c1);
+        assert!(dir.join("b.txt").exists());
+
+        let mut conn = open_db();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_CHERRY_PICK,
+            "cherry-pick c2",
+            &[item_detail(&dir, "side", &c1, Some(&after), "picked:1")],
+        )
+        .unwrap();
+        let detail = get_operation_log(&conn, log_id).unwrap();
+
+        let preview = preview_undo(&detail);
+        assert!(preview[0].ok, "{}", preview[0].message);
+        assert!(preview[0].action.contains("cherry-pick"), "{}", preview[0].action);
+
+        let results = run_undo(&detail);
+        assert!(results[0].success, "{}", results[0].message);
+        assert_eq!(head_tip(&dir), c1);
+        assert!(!dir.join("b.txt").exists(), "hard rollback removes the picked file");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Safety: a cherry-pick in progress refuses the rollback.
+    #[test]
+    fn undo_cherry_pick_refuses_while_pick_in_progress() {
+        let dir = tmpdir("pick_inprogress");
+        let (c1, after) = {
+            let repo = init_repo(&dir);
+            let c1 = repo.head().unwrap().target().unwrap().to_string();
+            commit_file(&repo, &dir, "b.txt", "two\n", "c2");
+            let after = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+            (c1, after)
+        };
+        std::fs::write(dir.join(".git").join("CHERRY_PICK_HEAD"), format!("{after}\n")).unwrap();
+
+        let mut conn = open_db();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_CHERRY_PICK,
+            "cherry-pick c2",
+            &[item(&dir, "master", &c1, Some(&after))],
+        )
+        .unwrap();
+        let detail = get_operation_log(&conn, log_id).unwrap();
+        let preview = preview_undo(&detail);
+        assert!(!preview[0].ok);
+        assert!(preview[0].message.contains("cherry-pick"), "{}", preview[0].message);
+        std::fs::remove_file(dir.join(".git").join("CHERRY_PICK_HEAD")).unwrap();
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: merge-abort undo re-runs the merge and restores the exact
+    /// conflict state; a HEAD that moved on since the abort is refused.
+    #[test]
+    fn undo_merge_abort_reruns_merge_and_guards_state() {
+        let dir = tmpdir("mergeabort");
+        {
+            let repo = init_repo(&dir);
+            let head = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.branch("side", &head, false).unwrap();
+            drop(head);
+            commit_file(&repo, &dir, "a.txt", "ours\n", "master change");
+            drop(repo);
+        };
+        branch::checkout_branch(&dir, "side").unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "theirs\n", "side change");
+            drop(repo);
+        }
+        branch::checkout_branch(&dir, "master").unwrap();
+        let outcome = crate::core::merge::merge(&dir, "side", "normal").unwrap();
+        assert!(matches!(outcome, MergeOutcome::Conflict { .. }));
+        let merge_head = crate::core::merge::merge_head_oid(&dir).expect("MERGE_HEAD readable");
+        let head_oid = head_tip(&dir);
+
+        crate::core::merge::merge_abort(&dir).unwrap();
+        assert!(!dir.join(".git").join("MERGE_HEAD").exists());
+
+        let mut conn = open_db();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_MERGE_ABORT,
+            "中止 merge",
+            &[item_detail(
+                &dir,
+                "master",
+                &head_oid,
+                Some(&head_oid),
+                &format!("mergehead:{merge_head}"),
+            )],
+        )
+        .unwrap();
+        let detail = get_operation_log(&conn, log_id).unwrap();
+
+        let preview = preview_undo(&detail);
+        assert!(preview[0].ok, "{}", preview[0].message);
+        assert!(preview[0].action.contains("重新合并"), "{}", preview[0].action);
+
+        let results = run_undo(&detail);
+        assert!(results[0].success, "{}", results[0].message);
+        assert!(dir.join(".git").join("MERGE_HEAD").exists(), "merge state restored");
+        let markers = std::fs::read_to_string(dir.join("a.txt")).unwrap();
+        assert!(markers.contains("<<<<<<<") && markers.contains(">>>>>>>"), "{markers}");
+        assert_eq!(head_tip(&dir), head_oid, "HEAD stays where the abort left it");
+
+        // Move on (abort + new commit) -> the re-merge is refused.
+        crate::core::merge::merge_abort(&dir).unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "moved on\n", "c3");
+            drop(repo);
+        }
+        let detail = get_operation_log(&conn, log_id).unwrap();
+        let preview = preview_undo(&detail);
+        assert!(!preview[0].ok);
+        assert!(preview[0].message.contains("后续变更"), "{}", preview[0].message);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: stash drop / clear undo restores the recorded stack exactly.
+    #[test]
+    fn undo_stash_drop_and_clear_restore_stack() {
+        let dir = tmpdir("stashundo");
+        {
+            let repo = init_repo_with_identity(&dir);
+            drop(repo);
+        }
+        std::fs::write(dir.join("a.txt"), "one\nfirst\n").unwrap();
+        crate::core::stash::stash_save(&dir, Some("first"), false).unwrap();
+        std::fs::write(dir.join("b.txt"), "b\nsecond\n").unwrap();
+        crate::core::stash::stash_save(&dir, Some("second"), true).unwrap();
+        let stack = crate::core::stash::snapshot_stash_stack(&dir);
+        assert_eq!(stack.len(), 2);
+
+        let mut conn = open_db();
+
+        // Drop the newest entry, undo it.
+        crate::core::stash::stash_drop(&dir, 0).unwrap();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_STASH_DROP,
+            "丢弃 stash@{0}",
+            &[item_detail(
+                &dir,
+                "stash",
+                &stack[0].0,
+                None,
+                &encode_stash_snapshot(&stack),
+            )],
+        )
+        .unwrap();
+        let detail = get_operation_log(&conn, log_id).unwrap();
+        let preview = preview_undo(&detail);
+        assert!(preview[0].ok, "{}", preview[0].message);
+        assert!(preview[0].action.contains("恢复 2 条 stash 记录"), "{}", preview[0].action);
+        let results = run_undo(&detail);
+        assert!(results[0].success, "{}", results[0].message);
+        assert_eq!(
+            crate::core::stash::snapshot_stash_stack(&dir),
+            stack,
+            "drop+undo restores the exact stack"
+        );
+
+        // Clear the whole stack, undo it.
+        crate::core::stash::stash_clear(&dir).unwrap();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_STASH_CLEAR,
+            "清空 stash 栈（2 条记录）",
+            &[item_detail(
+                &dir,
+                "stash",
+                &stack[0].0,
+                None,
+                &encode_stash_snapshot(&stack),
+            )],
+        )
+        .unwrap();
+        let detail = get_operation_log(&conn, log_id).unwrap();
+        let results = run_undo(&detail);
+        assert!(results[0].success, "{}", results[0].message);
+        assert_eq!(
+            crate::core::stash::snapshot_stash_stack(&dir),
+            stack,
+            "clear+undo restores the exact stack"
+        );
+
+        // A GC-pruned entry is reported, not silently lost.
+        let gone = item_detail(
+            &dir,
+            "stash",
+            &stack[0].0,
+            None,
+            &encode_stash_snapshot(&[("1".repeat(40), "WIP: gone".to_string())]),
+        );
+        let log_id = insert_operation_log(&mut conn, None, OP_STASH_DROP, "x", &[gone]).unwrap();
+        let detail = get_operation_log(&conn, log_id).unwrap();
+        assert!(!preview_undo(&detail)[0].ok);
+        assert!(preview_undo(&detail)[0].message.contains("已不存在"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: worktree-remove undo recreates the worktree at the recorded
+    /// position; a missing branch is refused.
+    #[test]
+    fn undo_worktree_remove_recreates_worktree() {
+        let dir = tmpdir("wtundo");
+        {
+            let repo = init_repo(&dir);
+            drop(repo);
+        }
+        let wt_path = dir
+            .parent()
+            .unwrap()
+            .join(format!("{}-wtundo-wt", dir.file_name().unwrap().to_string_lossy()));
+        // new_branch creates and checks out "wt-branch" in the worktree.
+        crate::core::worktree::add_worktree(&dir, &wt_path, None, Some("wt-branch")).unwrap();
+        let wt_name = wt_path.file_name().unwrap().to_string_lossy().to_string();
+        let (snap, head_oid) = crate::core::worktree::snapshot_worktree(&dir, &wt_name).expect("snapshot");
+
+        crate::core::worktree::remove_worktree(&dir, &wt_name, true).unwrap();
+        assert!(!wt_path.exists());
+
+        let mut conn = open_db();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_WORKTREE_REMOVE,
+            "移除 worktree",
+            &[item_detail(
+                &dir,
+                "wt-branch",
+                &head_oid,
+                None,
+                &encode_worktree_snapshot(&snap),
+            )],
+        )
+        .unwrap();
+        let detail = get_operation_log(&conn, log_id).unwrap();
+        let preview = preview_undo(&detail);
+        assert!(preview[0].ok, "{}", preview[0].message);
+        assert!(preview[0].action.contains("重建 worktree"), "{}", preview[0].action);
+
+        let results = run_undo(&detail);
+        assert!(results[0].success, "{}", results[0].message);
+        assert!(wt_path.join(".git").is_file(), "worktree recreated with a .git file");
+        let list = crate::core::worktree::list_worktrees(&dir).unwrap();
+        let wt = list.iter().find(|w| !w.is_main).unwrap();
+        assert_eq!(wt.branch.as_deref(), Some("wt-branch"));
+
+        // A branch that vanished since the removal is refused (use a free
+        // path so the check reaches the branch test, not the path test).
+        let gone = item_detail(
+            &dir,
+            "wt-branch",
+            &head_oid,
+            None,
+            &encode_worktree_snapshot(&WorktreeSnapshot {
+                name: format!("{wt_name}-gone"),
+                path: dir
+                    .parent()
+                    .unwrap()
+                    .join(format!("{}-gone-wt", dir.file_name().unwrap().to_string_lossy()))
+                    .to_string_lossy()
+                    .to_string(),
+                branch: Some("deleted-branch".to_string()),
+                oid: None,
+            }),
+        );
+        let log_id = insert_operation_log(&mut conn, None, OP_WORKTREE_REMOVE, "x", &[gone]).unwrap();
+        let preview = preview_undo(&get_operation_log(&conn, log_id).unwrap());
+        assert!(!preview[0].ok);
+        assert!(preview[0].message.contains("已不存在"), "{}", preview[0].message);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: batch create undo deletes the created branch at its recorded
+    /// tip, and refuses once the branch has moved on.
+    #[test]
+    fn undo_batch_create_deletes_created_branch() {
+        let dir = tmpdir("createundo");
+        let base = {
+            let repo = init_repo(&dir);
+            let base = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+            base
+        };
+        branch::create_branch(&dir, "feature-x", None).unwrap();
+
+        let mut conn = open_db();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_CREATE_BRANCH_ALL,
+            "批量创建分支 'feature-x'",
+            &[item_detail(&dir, "feature-x", &base, Some(&base), "创建目标分支：feature-x")],
+        )
+        .unwrap();
+        let detail = get_operation_log(&conn, log_id).unwrap();
+        let preview = preview_undo(&detail);
+        assert!(preview[0].ok, "{}", preview[0].message);
+        assert!(preview[0].action.contains("删除新建分支"), "{}", preview[0].action);
+
+        let results = run_undo(&detail);
+        assert!(results[0].success, "{}", results[0].message);
+        assert!(git2::Repository::open(&dir)
+            .unwrap()
+            .find_branch("feature-x", git2::BranchType::Local)
+            .is_err());
+
+        // Recreate, commit ON TOP OF THE BRANCH, undo again -> refused.
+        branch::create_branch(&dir, "feature-x", None).unwrap();
+        branch::checkout_branch(&dir, "feature-x").unwrap();
+        {
+            let repo = git2::Repository::open(&dir).unwrap();
+            commit_file(&repo, &dir, "c.txt", "c\n", "c4");
+            drop(repo);
+        }
+        branch::checkout_branch(&dir, "master").unwrap();
+        let preview = preview_undo(&get_operation_log(&conn, log_id).unwrap());
+        assert!(!preview[0].ok);
+        assert!(preview[0].message.contains("新提交"), "{}", preview[0].message);
+
+        // Backfill still pending (after_oid NULL) -> refuse with an
+        // actionable message rather than guessing.
+        let null_after = insert_operation_log(
+            &mut conn,
+            None,
+            OP_CREATE_BRANCH_ALL,
+            "batch",
+            &[item(&dir, "feature-x", &base, None)],
+        )
+        .unwrap();
+        let preview = preview_undo(&get_operation_log(&conn, null_after).unwrap());
+        assert!(!preview[0].ok);
+        assert!(preview[0].message.contains("操作后快照"), "{}", preview[0].message);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16 (checklist 4): ops that cannot be covered by ref snapshots are
+    /// marked 不可撤销 with a reason + recovery hint, not "unsupported".
+    #[test]
+    fn undo_marks_non_recoverable_ops_explicitly() {
+        let dir = tmpdir("nonrecoverable");
+        {
+            let repo = init_repo(&dir);
+            drop(repo);
+        }
+        let mut conn = open_db();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_CONFLICT_RESOLUTION,
+            "解决 1 个文件冲突：a.txt",
+            &[item(&dir, "master", "a".repeat(40).as_str(), None)],
+        )
+        .unwrap();
+        let preview = preview_undo(&get_operation_log(&conn, log_id).unwrap());
+        assert!(!preview[0].ok);
+        assert!(preview[0].action.contains("不可自动撤销"), "{}", preview[0].action);
+        assert!(preview[0].message.contains("不可自动撤销"), "{}", preview[0].message);
+        assert!(preview[0].message.contains("Abort"), "{}", preview[0].message);
+
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_RESTORE_FILES,
+            "batch restore working-tree changes",
+            &[item(&dir, "master", "a".repeat(40).as_str(), None)],
+        )
+        .unwrap();
+        let preview = preview_undo(&get_operation_log(&conn, log_id).unwrap());
+        assert!(!preview[0].ok);
+        assert!(preview[0].message.contains("reflog / stash 保底"), "{}", preview[0].message);
+
+        // The execute path refuses the same way (no half-applied reverse op).
+        let results = run_undo(&get_operation_log(&conn, log_id).unwrap());
+        assert!(!results[0].success);
+        assert!(results[0].message.contains("不支持撤销") || results[0].message.contains("不可自动撤销"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: the async batch backfill writes only still-NULL after-oids and
+    /// never overwrites a known snapshot.
+    #[test]
+    fn backfill_after_oids_skips_known_values() {
+        let dir_a = tmpdir("backfill_a");
+        let dir_b = tmpdir("backfill_b");
+        {
+            let repo = init_repo(&dir_a);
+            drop(repo);
+        }
+        {
+            let repo = init_repo(&dir_b);
+            drop(repo);
+        }
+        let (a1, a2) = {
+            let repo = git2::Repository::open(&dir_a).unwrap();
+            let a1 = repo.head().unwrap().target().unwrap().to_string();
+            commit_file(&repo, &dir_a, "b.txt", "two\n", "c2");
+            let a2 = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+            (a1, a2)
+        };
+        let b_known = "c".repeat(40);
+
+        let mut conn = open_db();
+        let log_id = insert_operation_log(
+            &mut conn,
+            None,
+            OP_CHECKOUT_ALL,
+            "批量检出",
+            &[
+                item(&dir_a, "master", &a1, None),
+                item(&dir_b, "master", "d".repeat(40).as_str(), Some(&b_known)),
+            ],
+        )
+        .unwrap();
+        let updated = backfill_after_oids(
+            &mut conn,
+            log_id,
+            &[
+                (dir_a.to_string_lossy().to_string(), a2.clone()),
+                (dir_b.to_string_lossy().to_string(), "e".repeat(40)),
+            ],
+        )
+        .unwrap();
+        assert_eq!(updated, 1, "only the NULL row is written");
+
+        let detail = get_operation_log(&conn, log_id).unwrap();
+        assert_eq!(detail.items[0].after_oid.as_deref(), Some(a2.as_str()));
+        assert_eq!(detail.items[1].after_oid.as_deref(), Some(b_known.as_str()));
+
+        // Idempotent: a second backfill is a no-op.
+        let again = backfill_after_oids(&mut conn, log_id, &[(dir_a.to_string_lossy().to_string(), a1.clone())]).unwrap();
+        assert_eq!(again, 0);
+        assert_eq!(get_operation_log(&conn, log_id).unwrap().items[0].after_oid.as_deref(), Some(a2.as_str()));
+
+        // Unknown repo paths simply match nothing.
+        let none = backfill_after_oids(&mut conn, log_id, &[("D:/nowhere".to_string(), a1.clone())]).unwrap();
+        assert_eq!(none, 0);
+
+        let _ = std::fs::remove_dir_all(&dir_a);
+        let _ = std::fs::remove_dir_all(&dir_b);
+    }

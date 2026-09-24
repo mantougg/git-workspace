@@ -113,11 +113,20 @@ const workspaceOptions = workspaceStore.workspaces.map((ws) => ({
 }));
 
 /** op_type → display meta (all four logged kinds are reversible). */
-const OP_TYPE_META: Record<string, { label: string; tag: "warning" | "error" | "info" }> = {
+const OP_TYPE_META: Record<string, { label: string; tag: "warning" | "error" | "info" | "default"; irreversible?: boolean }> = {
   checkout_all: { label: "批量检出", tag: "warning" },
   delete_branch_all: { label: "批量删除分支", tag: "error" },
+  create_branch_all: { label: "批量创建分支", tag: "warning" },
   reset: { label: "Reset", tag: "error" },
   rebase: { label: "Rebase", tag: "warning" },
+  cherry_pick: { label: "Cherry-pick", tag: "warning" },
+  merge_abort: { label: "中止 Merge", tag: "error" },
+  worktree_remove: { label: "移除 Worktree", tag: "error" },
+  stash_drop: { label: "丢弃 Stash", tag: "warning" },
+  stash_clear: { label: "清空 Stash", tag: "error" },
+  // Logged for traceability only — the backend refuses to undo them.
+  conflict_resolution: { label: "冲突解决", tag: "info", irreversible: true },
+  restore_files: { label: "批量 Restore", tag: "info", irreversible: true },
 };
 const opTypeOptions = Object.entries(OP_TYPE_META).map(([value, m]) => ({
   value,
@@ -128,9 +137,12 @@ function opTypeMeta(opType: string) {
   return OP_TYPE_META[opType] ?? { label: opType, tag: "info" as const };
 }
 
-function statusOf(row: OperationLogSummary): { label: string; type: "info" | "warning" | "success" } {
+function statusOf(row: OperationLogSummary): { label: string; type: "info" | "warning" | "success" | "default" } {
   if (row.undoneAt) return { label: "已撤销", type: "info" };
   if (row.undoneCount > 0) return { label: "部分撤销", type: "warning" };
+  // Ops whose discarded state lives outside the ref-snapshot undo model are
+  // marked up front so the user does not chase a撤销 that cannot happen.
+  if (OP_TYPE_META[row.opType]?.irreversible) return { label: "不可撤销", type: "default" };
   return { label: "可撤销", type: "success" };
 }
 
@@ -147,7 +159,34 @@ function formatDetail(detail: string | null): string {
   if (!detail) return "—";
   if (detail.startsWith("mode:")) return `模式：${detail.slice(5)}`;
   if (detail.startsWith("onto:")) return `onto：${detail.slice(5)}`;
+  if (detail.startsWith("picked:")) return `picked ${detail.slice(7)} 个提交`;
+  if (detail.startsWith("mergehead:")) return `MERGE_HEAD：${detail.slice(10).slice(0, 7)}`;
+  if (detail.startsWith("wt:")) return formatWorktreeDetail(detail.slice(3));
+  if (detail.startsWith("stashstack:")) return formatStashDetail(detail.slice(11));
   return detail;
+}
+
+/** `wt:{json}` → human-readable worktree position. */
+function formatWorktreeDetail(raw: string): string {
+  try {
+    const snap = JSON.parse(raw) as { name?: string; path?: string; branch?: string | null; oid?: string | null };
+    const where = snap.branch ? `分支 ${snap.branch}` : `分离 HEAD ${(snap.oid ?? "").slice(0, 7)}`;
+    return `worktree '${snap.name ?? "?"}' → ${snap.path ?? "?"}（${where}）`;
+  } catch {
+    return "worktree 快照";
+  }
+}
+
+/** `stashstack:{[[oid,msg],...]}` → snapshot size + newest message. */
+function formatStashDetail(raw: string): string {
+  try {
+    const entries = JSON.parse(raw) as [string, string][];
+    if (!Array.isArray(entries) || entries.length === 0) return "stash 快照：空";
+    const newest = (entries[0]?.[1] ?? "").slice(0, 30);
+    return `stash 快照：${entries.length} 条记录（最近：${newest}）`;
+  } catch {
+    return "stash 快照";
+  }
 }
 
 async function reload() {
@@ -211,7 +250,16 @@ async function handleUndo(row: OperationLogSummary) {
     }
     const runnable = preview.filter((p) => p.ok && !p.undone);
     if (runnable.length === 0) {
-      message.warning("没有可安全撤销的仓库（全部已撤销或安全检查未通过）");
+      // Surface the backend's reasons (安全检查未通过 / 不可撤销) instead of
+      // a generic dead-end message.
+      const reasons = preview
+        .map((p) => `${p.repoName}：${p.undone ? "已撤销" : p.message || "安全检查未通过"}`)
+        .slice(0, 5)
+        .join("\n");
+      dialog.warning({
+        title: "没有可安全撤销的仓库",
+        content: reasons ? `${reasons}${preview.length > 5 ? "\n…" : ""}` : "全部已撤销或安全检查未通过。",
+      });
       return;
     }
     const lines = preview.map((p) => {

@@ -8,6 +8,11 @@ use serde::Serialize;
 pub const OP_CHECKOUT_ALL: &str = "checkout_all";
 /// op_type of a batch branch delete (T-20 Delete Branch All).
 pub const OP_DELETE_BRANCH_ALL: &str = "delete_branch_all";
+/// op_type of a batch branch create (GF-16). Its undo — deleting the created
+/// branch again at the recorded tip — is a reliable ref rollback, so the
+/// batch create is now logged with a before/after snapshot like the other
+/// reversible branch ops.
+pub const OP_CREATE_BRANCH_ALL: &str = "create_branch_all";
 /// op_type of a `reset_to` (soft/mixed/hard; the mode is kept in the item's
 /// detail so undo can mirror it).
 pub const OP_RESET: &str = "reset";
@@ -21,7 +26,30 @@ pub const OP_REBASE: &str = "rebase";
 pub const OP_CONFLICT_RESOLUTION: &str = "conflict_resolution";
 /// op_type of a commit submitted through an AI Action Proposal.
 pub const OP_AI_COMMIT: &str = "ai_commit";
+/// op_type of a batch working-tree restore (PAF-11). Logged for traceability;
+/// the ref-snapshot undo model cannot restore discarded worktree changes, so
+/// it is deliberately NOT undoable (the plan reports that verbatim).
 pub const OP_RESTORE_FILES: &str = "restore_files";
+/// op_type of a cherry-pick that completed (the conflicted, in-progress case
+/// keeps its own Abort recovery and is not logged).
+///
+/// GF-16: undo rolls the branch back (hard) to the pre-pick oid.
+pub const OP_CHERRY_PICK: &str = "cherry_pick";
+/// op_type of an aborted conflicted merge (GF-16). The item detail carries
+/// `mergehead:<oid>`; undo re-runs the merge toward that commit, restoring
+/// the conflict state the abort discarded.
+pub const OP_MERGE_ABORT: &str = "merge_abort";
+/// op_type of a removed linked worktree (GF-16). The item detail carries a
+/// JSON snapshot (`wt:{...}`) of name / path / branch-or-detached-oid; undo
+/// recreates the worktree at that position.
+pub const OP_WORKTREE_REMOVE: &str = "worktree_remove";
+/// op_type of a dropped stash entry (GF-16). The item detail carries the
+/// full pre-op stash stack snapshot (`stashstack:{...}`); undo restores the
+/// recorded entries into `refs/stash`'s reflog.
+pub const OP_STASH_DROP: &str = "stash_drop";
+/// op_type of a cleared stash stack (GF-16) — same snapshot + undo model as
+/// `stash_drop`.
+pub const OP_STASH_CLEAR: &str = "stash_clear";
 
 /// One page of operation log summaries plus the total matching count.
 #[derive(Debug, Clone, Serialize)]

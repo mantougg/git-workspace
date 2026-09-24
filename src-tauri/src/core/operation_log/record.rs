@@ -14,7 +14,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::{AppError, AppResult};
 
-use super::model::NewOperationLogItem;
+use super::conflict_session;
+use super::model::{NewOperationLogItem, OP_CONFLICT_RESOLUTION};
 
 /// Snapshot the repo's current HEAD as (branch short name, tip oid).
 /// `ref_name` is empty for a detached HEAD (undo then restores the detached
@@ -45,6 +46,9 @@ pub fn snapshot_branch(repo_path: &Path, branch_name: &str) -> Option<(String, S
 /// from any involved repo path, then writes log + items in one transaction.
 /// Failures only produce a log warning — the git operation already ran, and
 /// a logging failure must never surface as an operation failure.
+///
+/// GF-16: conflict resolutions are routed through the session-aware recorder
+/// (one log per merge/rebase session) instead of one row per resolved file.
 pub fn record_operation_best_effort(
     db: &Arc<Mutex<Connection>>,
     any_repo_path: &str,
@@ -55,15 +59,72 @@ pub fn record_operation_best_effort(
     if items.is_empty() {
         return;
     }
+    if op_type == OP_CONFLICT_RESOLUTION {
+        let repo_path = items[0].repo_path.clone();
+        let session = crate::core::conflict::session_key(std::path::Path::new(&repo_path));
+        conflict_session::record_conflict_resolution(db, &repo_path, session.as_deref(), items);
+        return;
+    }
+    record_operation_log(db, any_repo_path, op_type, summary, items);
+}
+
+/// Write log + items in one transaction and return the new log id — needed
+/// by callers that backfill state after the operation actually ran (GF-16:
+/// the async batch branch op's after-oids). Returns None on failure
+/// (best-effort semantics, same logging as `record_operation_best_effort`).
+pub fn record_operation_log(
+    db: &Arc<Mutex<Connection>>,
+    any_repo_path: &str,
+    op_type: &str,
+    summary: &str,
+    items: Vec<NewOperationLogItem>,
+) -> Option<i64> {
+    if items.is_empty() {
+        return None;
+    }
     match db.lock() {
         Ok(mut conn) => {
             let workspace_id = resolve_workspace_id(&conn, any_repo_path);
-            if let Err(e) = insert_operation_log(&mut conn, workspace_id, op_type, summary, &items) {
-                log::warn!("T-34: operation log write failed (op already ran): {}", e);
+            match insert_operation_log(&mut conn, workspace_id, op_type, summary, &items) {
+                Ok(id) => Some(id),
+                Err(e) => {
+                    log::warn!("T-34: operation log write failed (op already ran): {}", e);
+                    None
+                }
             }
         }
-        Err(e) => log::warn!("T-34: operation log DB lock failed: {}", e),
+        Err(e) => {
+            log::warn!("T-34: operation log DB lock failed: {}", e);
+            None
+        }
     }
+}
+
+/// GF-16: backfill `after_oid` on items recorded before an async batch op
+/// finished (the task queue runs the per-repo ops after the command
+/// returns). Only rows still NULL are written — a known snapshot is never
+/// overwritten. One transaction.
+pub fn backfill_after_oids(
+    conn: &mut Connection,
+    log_id: i64,
+    updates: &[(String, String)],
+) -> AppResult<usize> {
+    if updates.is_empty() {
+        return Ok(0);
+    }
+    let tx = conn.transaction()?;
+    let mut updated = 0usize;
+    {
+        let mut stmt = tx.prepare(
+            "UPDATE operation_log_items SET after_oid = ?1
+             WHERE log_id = ?2 AND repo_path = ?3 AND after_oid IS NULL",
+        )?;
+        for (repo_path, after_oid) in updates {
+            updated += stmt.execute(params![after_oid, log_id, repo_path])?;
+        }
+    }
+    tx.commit()?;
+    Ok(updated)
 }
 
 /// Resolve the workspace a repo path belongs to (None when the repo is not

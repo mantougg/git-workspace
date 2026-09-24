@@ -5,7 +5,8 @@ use std::path::Path;
 use tauri::State;
 
 use crate::core::diff::FileDiff;
-use crate::core::stash::{self, StashEntry};
+use crate::core::operation_log::{self, NewOperationLogItem};
+use crate::core::stash::{self, StashEntry, StashSnapshotEntry};
 use crate::db::dao;
 use crate::error::AppResult;
 use crate::state::AppState;
@@ -61,15 +62,84 @@ pub fn pop_stash(repo_path: String, index: usize) -> AppResult<()> {
 }
 
 /// Drop a stash entry (Warning-level op, the UI confirms first).
+///
+/// T-34 (GF-16): the whole pre-op stack (oid + reflog message per entry) is
+/// snapshotted first, so Undo can restore the dropped entry (and its exact
+/// stack position) into `refs/stash`.
 #[tauri::command]
-pub fn drop_stash(repo_path: String, index: usize) -> AppResult<()> {
-    stash::stash_drop(Path::new(&repo_path), index)
+pub fn drop_stash(repo_path: String, index: usize, state: State<'_, AppState>) -> AppResult<()> {
+    let before = stash::snapshot_stash_stack(Path::new(&repo_path));
+    stash::stash_drop(Path::new(&repo_path), index)?;
+    record_stash_op(&state.db, &repo_path, "drop", index, before);
+    Ok(())
 }
 
 /// Clear the whole stash stack (Warning-level op). Returns how many were dropped.
+///
+/// T-34 (GF-16): same snapshot model as `drop_stash` — the cleared stack is
+/// recorded so Undo can restore it.
 #[tauri::command]
-pub fn clear_stashes(repo_path: String) -> AppResult<usize> {
-    stash::stash_clear(Path::new(&repo_path))
+pub fn clear_stashes(repo_path: String, state: State<'_, AppState>) -> AppResult<usize> {
+    let before = stash::snapshot_stash_stack(Path::new(&repo_path));
+    let cleared = stash::stash_clear(Path::new(&repo_path))?;
+    record_stash_op(&state.db, &repo_path, "clear", 0, before);
+    Ok(cleared)
+}
+
+/// Best-effort operation-log write for a stash drop / clear. The stash ref
+/// itself has no before/after tip worth snapshotting (entries vanish), so the
+/// item carries the stack snapshot in `detail` and the dropped/top oid as
+/// before-oid.
+fn record_stash_op(
+    db: &std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>,
+    repo_path: &str,
+    kind: &str,
+    index: usize,
+    stack: Vec<StashSnapshotEntry>,
+) {
+    if stack.is_empty() {
+        return;
+    }
+    let (op_type, summary, before_oid) = if kind == "drop" {
+        let Some((oid, msg)) = stack.get(index) else {
+            return; // index out of range — nothing was recorded to restore
+        };
+        (
+            operation_log::OP_STASH_DROP,
+            format!("丢弃 stash@{{{}}}（{}）", index, stash_msg_excerpt(msg)),
+            oid.clone(),
+        )
+    } else {
+        (
+            operation_log::OP_STASH_CLEAR,
+            format!("清空 stash 栈（{} 条记录）", stack.len()),
+            stack[0].0.clone(),
+        )
+    };
+    operation_log::record_operation_best_effort(
+        db,
+        repo_path,
+        op_type,
+        &summary,
+        vec![NewOperationLogItem {
+            repo_path: repo_path.to_string(),
+            ref_name: "stash".to_string(),
+            before_oid,
+            // The stash ref keeps pointing at the remaining top entry; the
+            // meaningful state is the stack snapshot in `detail`.
+            after_oid: None,
+            detail: Some(operation_log::encode_stash_snapshot(&stack)),
+        }],
+    );
+}
+
+/// Char-bounded excerpt of a stash reflog message for the log summary.
+fn stash_msg_excerpt(msg: &str) -> String {
+    let mut out: String = msg.chars().take(30).collect();
+    if msg.chars().count() > 30 {
+        out.push('…');
+    }
+    out
 }
 
 /// Diff of a stash entry against its base commit (tracked changes).

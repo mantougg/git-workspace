@@ -51,6 +51,31 @@ pub struct ConflictContent {
 /// Per-side content cap for the resolver panes (IPC + render budget).
 const MAX_SIDE_CHARS: usize = 500_000;
 
+/// Stable key of the git operation currently driving this repo's conflicts
+/// (GF-16): the MERGE_HEAD / CHERRY_PICK_HEAD / REVERT_HEAD oid, or the
+/// in-progress rebase's original head. Every resolve of one operation shares
+/// the key, so the operation log can merge them into a single row instead of
+/// one row per resolved file. Returns None when no operation is in progress
+/// (e.g. conflict markers staged manually).
+pub fn session_key(repo_path: &Path) -> Option<String> {
+    let repo = git2::Repository::open(repo_path).ok()?;
+    let gitdir = repo.path();
+    for (marker, prefix) in [
+        ("MERGE_HEAD", "merge"),
+        ("CHERRY_PICK_HEAD", "pick"),
+        ("REVERT_HEAD", "revert"),
+    ] {
+        if let Ok(raw) = std::fs::read_to_string(gitdir.join(marker)) {
+            let oid = raw.trim();
+            if !oid.is_empty() {
+                return Some(format!("{prefix}:{oid}"));
+            }
+        }
+    }
+    let state = crate::core::rebase::get_rebase_state(repo_path).ok().flatten()?;
+    Some(format!("rebase:{}", state.original_head))
+}
+
 /// The repo's current operation + conflict state (CONFLICT detection).
 pub fn operation_state(repo_path: &Path) -> AppResult<OperationState> {
     let repo = git2::Repository::open(repo_path)?;

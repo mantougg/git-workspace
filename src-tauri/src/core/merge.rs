@@ -128,6 +128,20 @@ pub fn merge_in_progress(repo_path: &Path) -> AppResult<bool> {
     Ok(repo.path().join("MERGE_HEAD").exists())
 }
 
+/// The in-progress merge's target oid (MERGE_HEAD), None when no merge is in
+/// progress. GF-16: the merge-abort command snapshots it so Undo can re-run
+/// the exact same merge.
+pub fn merge_head_oid(repo_path: &Path) -> Option<String> {
+    let repo = git2::Repository::open(repo_path).ok()?;
+    let raw = std::fs::read_to_string(repo.path().join("MERGE_HEAD")).ok()?;
+    let oid = raw.trim();
+    if oid.is_empty() {
+        None
+    } else {
+        Some(oid.to_string())
+    }
+}
+
 /// Finalize a conflicted merge after the user resolved the index:
 /// creates the merge commit with [HEAD, MERGE_HEAD] as parents.
 pub fn merge_continue(repo_path: &Path, message: Option<&str>) -> AppResult<String> {
@@ -169,6 +183,43 @@ pub fn merge_abort(repo_path: &Path) -> AppResult<()> {
     history::reset_to(repo_path, None, "hard")?;
     let repo = git2::Repository::open(repo_path)?;
     repo.cleanup_state()?;
+    Ok(())
+}
+
+/// Re-run a merge toward `merge_head_oid` — the undo of `merge_abort`.
+/// Restores the in-conflict merge state (MERGE_HEAD + worktree conflict
+/// markers) exactly as the original merge produced it: the merge of a fixed
+/// commit pair is deterministic, and the caller's undo safety check has
+/// already verified HEAD still sits at the recorded post-abort oid.
+///
+/// Refused when another operation is in progress or the worktree is dirty —
+/// `merge` itself requires a clean tree.
+pub fn restart_merge_at(repo_path: &Path, merge_head_oid: &str) -> AppResult<()> {
+    if merge_in_progress(repo_path)? {
+        return Err(AppError::Conflict("已有 merge 进行中，请先继续或中止".into()));
+    }
+    if crate::core::rebase::get_rebase_state(repo_path)?.is_some() {
+        return Err(AppError::Conflict("rebase 进行中，无法重新合并".into()));
+    }
+    let repo = git2::Repository::open(repo_path)?;
+    history::ensure_clean_worktree(&repo, "重新合并")?;
+    let oid = git2::Oid::from_str(merge_head_oid)
+        .map_err(|_| AppError::Other(format!("记录的 MERGE_HEAD oid 无效：{merge_head_oid}")))?;
+    let their_commit = repo
+        .find_commit(oid)
+        .map_err(|_| AppError::NotFound(format!("原合并目标提交 {merge_head_oid} 已不存在")))?;
+    let their_annotated = repo.find_annotated_commit(their_commit.id())?;
+    // Same call shape as `merge`'s full-merge path; the analysis (up-to-date /
+    // fast-forward) is irrelevant here — the recorded state was a conflict.
+    repo.merge(&[&their_annotated], None, None)?;
+    let index = repo.index()?;
+    if !index.has_conflicts() {
+        // Should not happen for the same commit pair; if it does, leave the
+        // staged merge to be continued/aborted by the user rather than
+        // committing behind their back.
+        repo.cleanup_state()?;
+        return Err(AppError::Other("重新合并未产生冲突（仓库状态已变化）".into()));
+    }
     Ok(())
 }
 
@@ -432,6 +483,69 @@ mod tests {
 
         // 收口：abort 清理状态。
         merge_abort(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: undo of a merge abort re-runs the merge and restores the exact
+    /// conflict state (MERGE_HEAD + worktree markers).
+    #[test]
+    fn restart_merge_at_restores_conflict_state() {
+        let dir = tmpdir("undo_abort");
+        let (side_tip, head_before) = {
+            let repo = init_with_side(&dir);
+            commit_file(&repo, &dir, "a.txt", "master line\n", "master change");
+            let head = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+            checkout(&dir, "side");
+            let repo = git2::Repository::open(&dir).unwrap();
+            commit_file(&repo, &dir, "a.txt", "side line\n", "side change");
+            let tip = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+            (tip, head)
+        };
+        checkout(&dir, "master");
+
+        let outcome = merge(&dir, "side", "normal").unwrap();
+        assert!(matches!(outcome, MergeOutcome::Conflict { .. }));
+        let merge_head = std::fs::read_to_string(dir.join(".git").join("MERGE_HEAD"))
+            .unwrap()
+            .trim()
+            .to_string();
+        assert_eq!(merge_head, side_tip);
+        let markers = std::fs::read_to_string(dir.join("a.txt")).unwrap();
+        assert!(markers.contains("<<<<<<<"));
+
+        // Abort restores the pre-merge worktree.
+        merge_abort(&dir).unwrap();
+        assert!(!merge_in_progress(&dir).unwrap());
+        assert_eq!(head_summary(&dir), "master change");
+
+        // Undo of the abort: the same conflict is back, HEAD unmoved.
+        restart_merge_at(&dir, &merge_head).unwrap();
+        assert!(merge_in_progress(&dir).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(dir.join(".git").join("MERGE_HEAD"))
+                .unwrap()
+                .trim(),
+            merge_head
+        );
+        let markers = std::fs::read_to_string(dir.join("a.txt")).unwrap();
+        assert!(markers.contains("<<<<<<<") && markers.contains(">>>>>>>"), "{markers}");
+        assert_eq!(
+            git2::Repository::open(&dir).unwrap().head().unwrap().target().unwrap().to_string(),
+            head_before
+        );
+
+        // A second merge in progress refuses the restart.
+        let err = restart_merge_at(&dir, &merge_head).unwrap_err();
+        assert!(err.to_string().contains("已有 merge 进行中"), "{err}");
+        merge_abort(&dir).unwrap();
+
+        // A dirty worktree refuses the restart.
+        std::fs::write(dir.join("a.txt"), "dirty\n").unwrap();
+        let err = restart_merge_at(&dir, &merge_head).unwrap_err();
+        assert!(err.to_string().contains("未提交变更"), "{err}");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

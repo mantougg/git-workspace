@@ -79,6 +79,29 @@ pub fn list_worktrees(repo_path: &Path) -> AppResult<Vec<WorktreeInfo>> {
     Ok(out)
 }
 
+/// Snapshot a linked worktree's identity + checked-out position — the GF-16
+/// undo record for `remove_worktree` (which cannot be reconstructed from a
+/// branch ref alone). Returns the encoded-ready snapshot plus the worktree's
+/// HEAD oid (the log item's before-oid). None when the worktree is unknown or
+/// its directory is already gone.
+pub fn snapshot_worktree(repo_path: &Path, name: &str) -> Option<(crate::core::operation_log::WorktreeSnapshot, String)> {
+    let info = list_worktrees(repo_path)
+        .ok()?
+        .into_iter()
+        .find(|w| !w.is_main && w.name == name)?;
+    let repo = git2::Repository::open(&info.path).ok()?;
+    let head = repo.head().ok()?;
+    let head_oid = head.target()?.to_string();
+    let detached = repo.head_detached().unwrap_or(false);
+    let snap = crate::core::operation_log::WorktreeSnapshot {
+        name: info.name,
+        path: info.path,
+        branch: info.branch,
+        oid: if detached { Some(head_oid.clone()) } else { None },
+    };
+    Some((snap, head_oid))
+}
+
 /// Create a linked worktree (Roadmap §14: Create Worktree / Create Branch).
 ///
 /// - `new_branch`: create a branch at HEAD and check it out in the worktree.
@@ -151,6 +174,73 @@ pub fn remove_worktree(repo_path: &Path, name: &str, force: bool) -> AppResult<(
     wt.prune(Some(&mut prune_opts))?;
 
     log::info!("Worktree '{}' removed (force={})", name, force);
+    Ok(())
+}
+
+/// Recreate a removed worktree exactly as recorded (undo of `remove_worktree`).
+/// - `branch`: the branch that was checked out — it must still exist.
+/// - `detached_oid`: set for a detached-HEAD worktree — the worktree is
+///   recreated through a temporary ref at that commit, then detached inside
+///   the new worktree and the temp ref dropped.
+///
+/// Uncommitted changes of the removed worktree are NOT recoverable (they were
+/// part of the deletion); only the checked-out position is restored.
+pub fn restore_worktree(
+    repo_path: &Path,
+    name: &str,
+    path: &Path,
+    branch: Option<&str>,
+    detached_oid: Option<&str>,
+) -> AppResult<()> {
+    if path.exists() && path.read_dir()?.next().is_some() {
+        return Err(AppError::Other(format!(
+            "原 worktree 路径已存在且非空：{}",
+            path.display()
+        )));
+    }
+    let repo = git2::Repository::open(repo_path)?;
+    // The name must still be free (a re-created worktree may reuse it).
+    if repo.find_worktree(name).is_ok() {
+        return Err(AppError::Other(format!("worktree '{name}' 已存在，无法重建")));
+    }
+
+    if let Some(branch) = branch {
+        if repo.find_branch(branch, git2::BranchType::Local).is_err() {
+            return Err(AppError::Other(format!("分支 '{branch}' 已不存在，无法恢复 worktree")));
+        }
+        add_worktree(repo_path, path, Some(branch), None)?;
+        return Ok(());
+    }
+
+    let oid_str = detached_oid
+        .ok_or_else(|| AppError::Other("worktree 记录缺少分支与 detached oid，无法重建".into()))?;
+    let oid = git2::Oid::from_str(oid_str)
+        .map_err(|_| AppError::Other(format!("worktree 记录 oid 无效：{oid_str}")))?;
+    repo.find_commit(oid)
+        .map_err(|_| AppError::Other(format!("worktree 原提交 {oid_str} 已不存在（可能已被 GC）")))?;
+
+    // Detached-at-oid: libgit2 only supports detached-at-HEAD, so stage a
+    // temporary branch at the recorded commit, check the worktree out on it,
+    // detach inside the new worktree, then drop the temp branch.
+    let temp_ref = format!("refs/heads/_gw_wt_restore_{}", &oid_str[..12.min(oid_str.len())]);
+    if repo.find_reference(&temp_ref).is_ok() {
+        return Err(AppError::Other(format!("临时引用 {temp_ref} 已存在，无法重建")));
+    }
+    let reference = repo
+        .reference(&temp_ref, oid, false, "undo: restore detached worktree")
+        .map_err(|e| AppError::Other(format!("创建临时引用失败：{}", e.message())))?;
+    let restore = (|| -> AppResult<()> {
+        let mut opts = git2::WorktreeAddOptions::new();
+        opts.reference(Some(&reference));
+        repo.worktree(name, path, Some(&mut opts))?;
+        let wt_repo = git2::Repository::open(path)?;
+        wt_repo.set_head_detached(oid)?;
+        Ok(())
+    })();
+    // Always drop the temp ref, success or failure.
+    let _ = repo.find_reference(&temp_ref).map(|mut r| r.delete());
+    restore?;
+    log::info!("Worktree '{}' restored at {:?} (detached {})", name, path, oid_str);
     Ok(())
 }
 
@@ -275,6 +365,108 @@ mod tests {
         let list = list_worktrees(&dir).unwrap();
         assert_eq!(list.len(), 1);
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: undo of a worktree removal recreates it — at the same path, on
+    /// the same branch, with the `.git` file form restored.
+    #[test]
+    fn restore_worktree_recreates_branch_checkout() {
+        let dir = tmpdir("undo_branch");
+        init_repo(&dir);
+        let wt_path = dir
+            .parent()
+            .unwrap()
+            .join(format!("{}-uwb", dir.file_name().unwrap().to_string_lossy()));
+        add_worktree(&dir, &wt_path, None, Some("restore-me")).unwrap();
+        let name = wt_path.file_name().unwrap().to_string_lossy().to_string();
+
+        remove_worktree(&dir, &name, true).unwrap();
+        assert!(!wt_path.exists());
+
+        restore_worktree(&dir, &name, &wt_path, Some("restore-me"), None).unwrap();
+        assert!(wt_path.join(".git").is_file(), "linked worktree uses a .git file");
+        let list = list_worktrees(&dir).unwrap();
+        let wt = list.iter().find(|w| !w.is_main).unwrap();
+        assert_eq!(wt.branch.as_deref(), Some("restore-me"));
+
+        // Cleanup.
+        remove_worktree(&dir, &name, true).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A detached-HEAD worktree is recreated detached at the recorded commit.
+    #[test]
+    fn restore_worktree_recreates_detached_head() {
+        let dir = tmpdir("undo_detached");
+        init_repo(&dir);
+        let expected_oid = {
+            let repo = git2::Repository::open(&dir).unwrap();
+            let oid = repo.head().unwrap().target().unwrap().to_string();
+            drop(repo);
+            oid
+        };
+        let wt_path = dir
+            .parent()
+            .unwrap()
+            .join(format!("{}-uwd", dir.file_name().unwrap().to_string_lossy()));
+        add_worktree(&dir, &wt_path, None, None).unwrap();
+        let name = wt_path.file_name().unwrap().to_string_lossy().to_string();
+
+        // Record the worktree's HEAD, remove it, undo.
+        let recorded_oid = git2::Repository::open(&wt_path)
+            .unwrap()
+            .head()
+            .unwrap()
+            .target()
+            .unwrap()
+            .to_string();
+        remove_worktree(&dir, &name, true).unwrap();
+        assert!(!wt_path.exists());
+
+        restore_worktree(&dir, &name, &wt_path, None, Some(&recorded_oid)).unwrap();
+        let wt_repo = git2::Repository::open(&wt_path).unwrap();
+        assert!(wt_repo.head_detached().unwrap(), "restored worktree must be detached");
+        assert_eq!(wt_repo.head().unwrap().target().unwrap().to_string(), expected_oid);
+        // No temp branch left behind.
+        assert!(!list_stash_temp_refs(&dir));
+
+        // Cleanup.
+        remove_worktree(&dir, &name, true).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The temp ref used for detached restores must not be observable as a
+    /// branch after the restore.
+    fn list_stash_temp_refs(dir: &Path) -> bool {
+        let repo = git2::Repository::open(dir).unwrap();
+        repo.references()
+            .map(|refs| {
+                refs.filter_map(|r| r.ok())
+                    .any(|r| r.name().unwrap_or_default().starts_with("refs/heads/_gw_wt_restore_"))
+            })
+            .unwrap_or(false)
+    }
+
+    /// A missing branch / occupied path are refused with actionable errors.
+    #[test]
+    fn restore_worktree_refuses_missing_branch_and_occupied_path() {
+        let dir = tmpdir("undo_refuse");
+        init_repo(&dir);
+        let wt_path = dir
+            .parent()
+            .unwrap()
+            .join(format!("{}-uwr", dir.file_name().unwrap().to_string_lossy()));
+        let name = wt_path.file_name().unwrap().to_string_lossy().to_string();
+
+        let err = restore_worktree(&dir, &name, &wt_path, Some("nope"), None).unwrap_err();
+        assert!(err.to_string().contains("已不存在"), "{err}");
+
+        add_worktree(&dir, &wt_path, Some("feature"), None).unwrap();
+        let err = restore_worktree(&dir, &name, &wt_path, Some("feature"), None).unwrap_err();
+        assert!(err.to_string().contains("已存在且非空"), "{err}");
+
+        remove_worktree(&dir, &name, true).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

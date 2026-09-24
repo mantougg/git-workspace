@@ -6,6 +6,7 @@ use std::path::Path;
 
 use tauri::State;
 
+use crate::core::operation_log::{self, NewOperationLogItem};
 use crate::core::worktree as wt;
 use crate::core::worktree::WorktreeInfo;
 use crate::db::dao;
@@ -51,7 +52,38 @@ pub fn create_worktree(
 
 /// Remove a linked worktree (T-17). A dirty worktree is refused unless
 /// `force` is set (§46 Warning confirm flow in the UI).
+///
+/// T-34 (GF-16): the worktree's name / path / checked-out position is
+/// snapshotted beforehand, so Undo can recreate it. Uncommitted changes of a
+/// force-removed worktree are NOT recoverable — only the position is.
 #[tauri::command]
-pub fn remove_worktree(repo_path: String, name: String, force: bool) -> AppResult<()> {
-    wt::remove_worktree(Path::new(&repo_path), &name, force)
+pub fn remove_worktree(
+    repo_path: String,
+    name: String,
+    force: bool,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let snapshot = wt::snapshot_worktree(Path::new(&repo_path), &name);
+    wt::remove_worktree(Path::new(&repo_path), &name, force)?;
+    if let Some((snap, head_oid)) = snapshot {
+        let branch = snap.branch.clone();
+        let summary = match &branch {
+            Some(b) => format!("移除 worktree '{}'（分支 {}）", snap.name, b),
+            None => format!("移除 worktree '{}'（分离 HEAD）", snap.name),
+        };
+        operation_log::record_operation_best_effort(
+            &state.db,
+            &repo_path,
+            operation_log::OP_WORKTREE_REMOVE,
+            &summary,
+            vec![NewOperationLogItem {
+                repo_path: repo_path.clone(),
+                ref_name: branch.unwrap_or_default(),
+                before_oid: head_oid,
+                after_oid: None,
+                detail: Some(operation_log::encode_worktree_snapshot(&snap)),
+            }],
+        );
+    }
+    Ok(())
 }

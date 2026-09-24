@@ -15,10 +15,12 @@ use rusqlite::{params, Connection};
 use crate::core::branch;
 use crate::error::AppResult;
 
+use super::detail_snapshots::{decode_stash_snapshot, decode_worktree_snapshot};
 use super::undo_plan::{plan_item, repo_name_of, reset_mode, short_oid};
 use super::{
-    OperationLogDetail, OperationLogItem, UndoItemResult, OP_AI_COMMIT, OP_CHECKOUT_ALL, OP_DELETE_BRANCH_ALL,
-    OP_REBASE, OP_RESET,
+    OperationLogDetail, OperationLogItem, UndoItemResult, OP_AI_COMMIT, OP_CHERRY_PICK, OP_CHECKOUT_ALL,
+    OP_CREATE_BRANCH_ALL, OP_DELETE_BRANCH_ALL, OP_MERGE_ABORT, OP_REBASE, OP_RESET, OP_STASH_CLEAR, OP_STASH_DROP,
+    OP_WORKTREE_REMOVE,
 };
 
 /// Execute the undo of every pending item (parallel over repos). Items
@@ -84,9 +86,48 @@ fn execute_item(op_type: &str, item: &OperationLogItem) -> Result<String, String
     match op_type {
         OP_CHECKOUT_ALL => undo_checkout(path, item),
         OP_DELETE_BRANCH_ALL => undo_delete(path, item),
+        OP_CREATE_BRANCH_ALL => {
+            // force = false: a branch that gained commits since the create is
+            // refused by the plan check (and by git's merged-ness guard)
+            // instead of being destroyed.
+            crate::core::branch::delete_branch(path, &item.ref_name, false)
+                .map_err(|e| format!("删除新建分支失败：{}", e))?;
+            Ok(format!("已删除新建分支 '{}'", item.ref_name))
+        }
         OP_RESET => undo_ref_rollback(path, item, &reset_mode(item.detail.as_deref())),
         OP_REBASE => undo_ref_rollback(path, item, "hard"),
         OP_AI_COMMIT => undo_ref_rollback(path, item, "hard"),
+        OP_CHERRY_PICK => undo_ref_rollback(path, item, "hard"),
+        OP_MERGE_ABORT => {
+            let merge_head = item
+                .detail
+                .as_deref()
+                .and_then(|d| d.strip_prefix("mergehead:"))
+                .ok_or_else(|| "缺少 MERGE_HEAD 记录，无法重新合并".to_string())?;
+            crate::core::merge::restart_merge_at(path, merge_head).map_err(|e| e.to_string())?;
+            Ok("已重新执行合并，冲突状态已恢复".to_string())
+        }
+        OP_WORKTREE_REMOVE => {
+            let snap = decode_worktree_snapshot(item.detail.as_deref())
+                .ok_or_else(|| "缺少 worktree 快照记录，无法重建".to_string())?;
+            crate::core::worktree::restore_worktree(
+                path,
+                &snap.name,
+                Path::new(&snap.path),
+                snap.branch.as_deref(),
+                snap.oid.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(format!("已重建 worktree '{}'（{}）", snap.name, snap.path))
+        }
+        OP_STASH_DROP | OP_STASH_CLEAR => {
+            let entries = decode_stash_snapshot(item.detail.as_deref());
+            if entries.is_empty() {
+                return Err("缺少 stash 快照记录，无法恢复".to_string());
+            }
+            let restored = crate::core::stash::restore_stash_entries(path, &entries).map_err(|e| e.to_string())?;
+            Ok(format!("已恢复 {restored} 条 stash 记录"))
+        }
         other => Err(format!("操作类型 '{}' 不支持撤销", other)),
     }
 }

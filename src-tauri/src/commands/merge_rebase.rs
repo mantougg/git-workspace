@@ -18,15 +18,46 @@ pub fn merge_branch(repo_path: String, branch: String, mode: String) -> AppResul
 }
 
 /// Finalize a conflicted merge after the user resolved the index.
+///
+/// GF-16: closes the repo's open conflict-resolution log session — the
+/// driving merge is over, so a re-run must start a fresh log row.
 #[tauri::command]
 pub fn merge_continue(repo_path: String, message: Option<String>) -> AppResult<String> {
+    operation_log::close_conflict_sessions(&repo_path);
     merge::merge_continue(Path::new(&repo_path), message.as_deref())
 }
 
 /// Abort a conflicted merge, restoring the pre-merge state.
+///
+/// T-34 (GF-16): the merge target (MERGE_HEAD) and the post-abort HEAD are
+/// recorded, so Undo can re-run the exact same merge and restore the conflict
+/// state the abort discarded. HEAD does not move during an abort, so
+/// before == after; the check "HEAD has not moved on since" is what guards
+/// the re-merge.
 #[tauri::command]
-pub fn merge_abort(repo_path: String) -> AppResult<()> {
-    merge::merge_abort(Path::new(&repo_path))
+pub fn merge_abort(repo_path: String, state: State<'_, AppState>) -> AppResult<()> {
+    let path = Path::new(&repo_path);
+    let merge_head = merge::merge_head_oid(path);
+    let head = operation_log::snapshot_head(path);
+    merge::merge_abort(path)?;
+    operation_log::close_conflict_sessions(&repo_path);
+    if let (Some(merge_head), Some((ref_name, head_oid))) = (merge_head, head) {
+        let summary = format!("中止 merge（{}）", &merge_head[..7.min(merge_head.len())]);
+        operation_log::record_operation_best_effort(
+            &state.db,
+            &repo_path,
+            operation_log::OP_MERGE_ABORT,
+            &summary,
+            vec![NewOperationLogItem {
+                repo_path: repo_path.clone(),
+                ref_name,
+                before_oid: head_oid.clone(),
+                after_oid: Some(head_oid),
+                detail: Some(format!("mergehead:{merge_head}")),
+            }],
+        );
+    }
+    Ok(())
 }
 
 /// Whether a merge is in progress (MERGE_HEAD exists).
@@ -81,20 +112,29 @@ pub fn start_rebase(
 }
 
 /// Continue after the conflicted op was resolved (index must be clean).
+///
+/// GF-16: closes the repo's open conflict-resolution log session.
 #[tauri::command]
 pub fn rebase_continue(repo_path: String) -> AppResult<RebaseOutcome> {
+    operation_log::close_conflict_sessions(&repo_path);
     rebase::rebase_continue(Path::new(&repo_path))
 }
 
 /// Skip the current (conflicting) op and replay the rest.
+///
+/// GF-16: closes the repo's open conflict-resolution log session.
 #[tauri::command]
 pub fn rebase_skip(repo_path: String) -> AppResult<RebaseOutcome> {
+    operation_log::close_conflict_sessions(&repo_path);
     rebase::rebase_skip(Path::new(&repo_path))
 }
 
 /// Abort the rebase, restoring the branch to its pre-rebase HEAD.
+///
+/// GF-16: closes the repo's open conflict-resolution log session.
 #[tauri::command]
 pub fn rebase_abort(repo_path: String) -> AppResult<()> {
+    operation_log::close_conflict_sessions(&repo_path);
     rebase::rebase_abort(Path::new(&repo_path))
 }
 

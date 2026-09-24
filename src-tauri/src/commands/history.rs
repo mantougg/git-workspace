@@ -11,9 +11,42 @@ use crate::state::AppState;
 
 /// Cherry-pick one or more commits onto HEAD (applied in order).
 /// Returns Success or a Conflict payload with the files + abort base oid.
+///
+/// T-34 (GF-16): a COMPLETED pick is logged (before/after HEAD) so it can be
+/// undone by a hard rollback to the pre-pick oid. A conflicted, in-progress
+/// pick keeps its own recovery (abort_pick / pick_continue) and is not logged.
 #[tauri::command]
-pub fn cherry_pick(repo_path: String, oids: Vec<String>) -> AppResult<PickOutcome> {
-    history::cherry_pick(Path::new(&repo_path), &oids)
+pub fn cherry_pick(repo_path: String, oids: Vec<String>, state: State<'_, AppState>) -> AppResult<PickOutcome> {
+    let path = Path::new(&repo_path);
+    let before = operation_log::snapshot_head(path);
+    let outcome = history::cherry_pick(path, &oids)?;
+    if let (PickOutcome::Success { picked }, Some((ref_name, before_oid))) = (&outcome, before) {
+        let after_oid = operation_log::snapshot_head(path).map(|(_, oid)| oid);
+        let summary = if oids.len() == 1 {
+            format!("cherry-pick {}", short(&oids[0]))
+        } else {
+            format!("cherry-pick {} 个提交", picked)
+        };
+        operation_log::record_operation_best_effort(
+            &state.db,
+            &repo_path,
+            operation_log::OP_CHERRY_PICK,
+            &summary,
+            vec![NewOperationLogItem {
+                repo_path: repo_path.clone(),
+                ref_name,
+                before_oid,
+                after_oid,
+                detail: Some(format!("picked:{}", oids.len())),
+            }],
+        );
+    }
+    Ok(outcome)
+}
+
+/// First 7 chars of an oid for summaries.
+fn short(oid: &str) -> &str {
+    &oid[..7.min(oid.len())]
 }
 
 /// Revert a single commit (creates a revert commit on success).
@@ -65,8 +98,12 @@ pub fn reset_to(
 
 /// Abort an in-progress cherry-pick / revert, restoring the pre-operation
 /// state (hard reset to `base_oid` when given, else current HEAD).
+///
+/// GF-16: closes the repo's open conflict-resolution log session — the
+/// driving operation is over, so a re-run must start a fresh log row.
 #[tauri::command]
 pub fn abort_pick(repo_path: String, base_oid: Option<String>) -> AppResult<()> {
+    operation_log::close_conflict_sessions(&repo_path);
     history::abort_pick(Path::new(&repo_path), base_oid.as_deref())
 }
 
@@ -79,7 +116,10 @@ pub fn get_conflict_files(repo_path: String) -> AppResult<Vec<String>> {
 
 /// Continue an in-progress cherry-pick / revert after conflicts were resolved
 /// (T-16). Returns the new commit oid.
+///
+/// GF-16: closes the repo's open conflict-resolution log session.
 #[tauri::command]
 pub fn pick_continue(repo_path: String) -> AppResult<String> {
+    operation_log::close_conflict_sessions(&repo_path);
     history::pick_continue(Path::new(&repo_path))
 }

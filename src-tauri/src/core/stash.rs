@@ -89,6 +89,108 @@ pub fn stash_drop(repo_path: &Path, index: usize) -> AppResult<()> {
     Ok(())
 }
 
+/// `refs/stash` — the stash stack ref whose reflog IS the stash stack.
+const STASH_REF: &str = "refs/stash";
+
+/// One recorded stash-stack entry: (stash commit oid, reflog message), the
+/// exact shape `stash_foreach` yields (index 0 = newest).
+pub type StashSnapshotEntry = (String, String);
+
+/// Snapshot the current stash stack (newest first) for the undo log. An empty
+/// stack snapshots as empty — nothing was (or can be) recorded.
+pub fn snapshot_stash_stack(repo_path: &Path) -> Vec<StashSnapshotEntry> {
+    let Ok(mut repo) = git2::Repository::open(repo_path) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let _ = repo.stash_foreach(|_, msg, oid| {
+        out.push((oid.to_string(), msg.to_string()));
+        true
+    });
+    out
+}
+
+/// Merge the recorded (pre-op, newest-first) stack with the live stack:
+/// live entries stay on top (they are newer than the recorded ones), the
+/// recorded entries rejoin below them in their original relative order, and
+/// oids already present in the live stack are not duplicated. Pure function —
+/// unit-tested without touching a repository.
+pub fn merge_stash_stacks(
+    current: &[StashSnapshotEntry],
+    recorded: &[StashSnapshotEntry],
+) -> Vec<StashSnapshotEntry> {
+    let recorded_oids: std::collections::HashSet<&str> =
+        recorded.iter().map(|(o, _)| o.as_str()).collect();
+    let mut out: Vec<StashSnapshotEntry> = current
+        .iter()
+        .filter(|(o, _)| !recorded_oids.contains(o.as_str()))
+        .cloned()
+        .collect();
+    out.extend(recorded.iter().cloned());
+    out
+}
+
+/// Restore recorded stash entries into the stack (undo of stash drop / clear).
+/// The stash *commit objects* survive the drop (only the reflog entry is
+/// removed), so recovery is exact as long as GC has not pruned them — the
+/// caller's undo safety check verifies every oid first.
+///
+/// Implementation: `refs/stash` is re-pointed at the newest entry and its
+/// reflog is rebuilt from the merged (live + recorded) stack, oldest entry
+/// appended first so reflog index 0 stays the newest.
+pub fn restore_stash_entries(repo_path: &Path, entries: &[StashSnapshotEntry]) -> AppResult<usize> {
+    if entries.is_empty() {
+        return Ok(0);
+    }
+    let repo = git2::Repository::open(repo_path)?;
+
+    // Validate all recorded commits still exist (GC prune => not recoverable).
+    for (oid, _) in entries {
+        let oid = git2::Oid::from_str(oid)
+            .map_err(|_| AppError::Other(format!("stash 记录 oid 无效：{oid}")))?;
+        repo.find_commit(oid)
+            .map_err(|_| AppError::Other(format!("stash 提交 {oid} 已不存在（可能已被 GC）")))?;
+    }
+
+    let current = snapshot_stash_stack(repo_path);
+    let merged = merge_stash_stacks(&current, entries);
+    let restored = merged.len() - current.len();
+    if restored == 0 {
+        return Ok(0);
+    }
+
+    let top = git2::Oid::from_str(&merged[0].0)
+        .map_err(|_| AppError::Other("合并后的 stash 栈顶 oid 无效".into()))?;
+    // Re-point the ref first (creates refs/stash when the clear removed it);
+    // the reflog rebuild below is authoritative regardless of what this
+    // update does to the log file.
+    repo.reference(STASH_REF, top, true, "undo: restore stash stack")
+        .map_err(|e| AppError::Other(format!("恢复 refs/stash 失败：{}", e.message())))?;
+
+    let sig = crate::core::signature_or_default(&repo)?;
+    let mut reflog = repo
+        .reflog(STASH_REF)
+        .map_err(|e| AppError::Other(format!("读取 stash reflog 失败：{}", e.message())))?;
+    while reflog.len() > 0 {
+        reflog
+            .remove(0, false)
+            .map_err(|e| AppError::Other(format!("重建 stash reflog 失败：{}", e.message())))?;
+    }
+    // Append oldest-first: reflog index 0 must remain the newest entry.
+    for (oid, msg) in merged.iter().rev() {
+        let oid = git2::Oid::from_str(oid)
+            .map_err(|_| AppError::Other(format!("stash 记录 oid 无效：{oid}")))?;
+        reflog
+            .append(oid, &sig, Some(msg))
+            .map_err(|e| AppError::Other(format!("追加 stash reflog 失败：{}", e.message())))?;
+    }
+    reflog
+        .write()
+        .map_err(|e| AppError::Other(format!("写入 stash reflog 失败：{}", e.message())))?;
+
+    Ok(restored)
+}
+
 /// Clear the whole stash stack (drops from the top so indices stay valid).
 pub fn stash_clear(repo_path: &Path) -> AppResult<usize> {
     let mut repo = git2::Repository::open(repo_path)?;
@@ -311,5 +413,120 @@ mod tests {
         assert_eq!(list_stashes(&dir).unwrap().len(), 0);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: undo of a stash drop / clear restores the recorded stack
+    /// (oids + messages + order). The stash commits survive the drop — only
+    /// the reflog entry is removed — so recovery is exact.
+    #[test]
+    fn restore_stash_entries_after_drop_and_clear() {
+        let dir = tmpdir("undo_drop_clear");
+        {
+            let repo = init_repo(&dir);
+            drop(repo);
+        }
+        // Two stashes: "first" (older) and "second" (newer, index 0).
+        std::fs::write(dir.join("a.txt"), "one\nfirst\n").unwrap();
+        stash_save(&dir, Some("first"), false).unwrap();
+        std::fs::write(dir.join("b.txt"), "b\nsecond\n").unwrap();
+        stash_save(&dir, Some("second"), true).unwrap();
+        let before = snapshot_stash_stack(&dir);
+        assert_eq!(before.len(), 2);
+        assert!(before[0].1.contains("second"), "index 0 is newest: {}", before[0].1);
+        assert!(before[1].1.contains("first"));
+
+        // Drop the newest entry, then undo it.
+        stash_drop(&dir, 0).unwrap();
+        assert_eq!(list_stashes(&dir).unwrap().len(), 1);
+        let restored = restore_stash_entries(&dir, &before).unwrap();
+        assert_eq!(restored, 1);
+        let after = snapshot_stash_stack(&dir);
+        assert_eq!(after, before, "drop+undo must restore the exact stack");
+
+        // Clear the whole stack, then undo.
+        stash_clear(&dir).unwrap();
+        assert!(list_stashes(&dir).unwrap().is_empty());
+        // refs/stash is gone after clearing the last entry — restore must
+        // recreate the ref and the reflog from scratch.
+        let restored = restore_stash_entries(&dir, &before).unwrap();
+        assert_eq!(restored, 2);
+        assert_eq!(snapshot_stash_stack(&dir), before, "clear+undo must restore the exact stack");
+        // libgit2 sees the rebuilt stack (stash_apply round-trip).
+        stash_apply(&dir, 0).unwrap();
+        assert!(std::fs::read_to_string(dir.join("b.txt")).unwrap().contains("second"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A stash created after the clear is newer: the restored entries rejoin
+    /// BELOW it, newest-first order preserved.
+    #[test]
+    fn restore_stash_entries_keeps_newer_entries_on_top() {
+        let dir = tmpdir("undo_clear_then_new");
+        {
+            let repo = init_repo(&dir);
+            drop(repo);
+        }
+        std::fs::write(dir.join("a.txt"), "one\nold\n").unwrap();
+        stash_save(&dir, Some("old"), false).unwrap();
+        let recorded = snapshot_stash_stack(&dir);
+        stash_clear(&dir).unwrap();
+
+        // A fresh stash lands on the (now empty) stack.
+        std::fs::write(dir.join("a.txt"), "one\nnew\n").unwrap();
+        stash_save(&dir, Some("new"), false).unwrap();
+        let restored = restore_stash_entries(&dir, &recorded).unwrap();
+        assert_eq!(restored, 1);
+
+        let merged = snapshot_stash_stack(&dir);
+        assert_eq!(merged.len(), 2);
+        assert!(merged[0].1.contains("new"), "newest first: {}", merged[0].1);
+        assert!(merged[1].1.contains("old"), "recorded rejoins below: {}", merged[1].1);
+
+        // Restoring twice is a no-op (oid already on the stack).
+        let again = restore_stash_entries(&dir, &recorded).unwrap();
+        assert_eq!(again, 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A GC-pruned stash commit is reported, not silently lost.
+    #[test]
+    fn restore_stash_entries_rejects_missing_commit() {
+        let dir = tmpdir("undo_missing");
+        {
+            let repo = init_repo(&dir);
+            drop(repo);
+        }
+        let bogus = ("1".repeat(40), "WIP on master: gone".to_string());
+        let err = restore_stash_entries(&dir, &[bogus]).unwrap_err();
+        assert!(err.to_string().contains("已不存在"), "{err}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Pure merge semantics: live-only entries stay on top, recorded rejoin
+    /// below, duplicates collapse.
+    #[test]
+    fn merge_stash_stacks_orders_live_above_recorded() {
+        let a = ("a".repeat(40), "a".to_string());
+        let b = ("b".repeat(40), "b".to_string());
+        let f = ("f".repeat(40), "f".to_string());
+
+        // Typical drop: live is a subset of recorded.
+        assert_eq!(
+            merge_stash_stacks(&[b.clone()], &[a.clone(), b.clone()]),
+            vec![a.clone(), b.clone()]
+        );
+        // New stash after a clear: live entry on top, recorded below.
+        assert_eq!(
+            merge_stash_stacks(&[f.clone()], &[a.clone(), b.clone()]),
+            vec![f, a.clone(), b.clone()]
+        );
+        // Nothing live (cleared): recorded verbatim.
+        assert_eq!(merge_stash_stacks(&[], &[a.clone(), b.clone()]), vec![a.clone(), b.clone()]);
+        // No duplicates when the same oid is live and recorded.
+        let dup = merge_stash_stacks(&[a.clone()], &[a.clone(), b.clone()]);
+        assert_eq!(dup, vec![a, b]);
     }
 }

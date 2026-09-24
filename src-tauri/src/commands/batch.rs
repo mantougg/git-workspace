@@ -3,8 +3,11 @@
 //! queue (per-repo sub-results + Partial Success aggregation).
 
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
+use rusqlite::Connection;
 use serde::Serialize;
 use tauri::State;
 
@@ -13,8 +16,9 @@ use crate::core::operation_log::{self, NewOperationLogItem};
 use crate::core::selector::{self, RepoFacet};
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
-use crate::models::task::{BranchOpKind, TaskRequest, TaskType};
+use crate::models::task::{BranchOpKind, TaskRequest, TaskStatus, TaskType};
 use crate::state::AppState;
+use crate::task::manager::TaskManager;
 
 /// Query repositories of a workspace with the selector syntax (T-20 §52):
 /// `@group:` / `@tag:` / `@status:` tokens and plain text, ANDed. Filtering
@@ -113,11 +117,12 @@ fn resolve_git_dir(repo_path: &Path) -> Option<std::path::PathBuf> {
 /// named branch in each repo, through the task queue. `force` only applies
 /// to delete (unmerged branches).
 ///
-/// T-34: for the reversible ops (checkout / delete) a per-repo ref snapshot
-/// is captured BEFORE submission (queued tasks may start immediately), and
-/// the operation log is written after the queue accepts the batch — a
-/// rejected submission leaves no fake record. Create is not logged (its
-/// reverse — delete — stays available as a normal op).
+/// T-34: for the reversible ops (checkout / delete / create) a per-repo ref
+/// snapshot is captured BEFORE submission (queued tasks may start
+/// immediately), and the operation log is written after the queue accepts the
+/// batch — a rejected submission leaves no fake record. GF-16: the async
+/// tasks' results are unknown at submit time, so `after_oid` is backfilled
+/// per repo once its task finishes (see `backfill_batch_after_oids`).
 #[tauri::command]
 pub fn batch_branch_op(
     repo_paths: Vec<String>,
@@ -129,19 +134,29 @@ pub fn batch_branch_op(
     // T-34 ref snapshots (pure data; repos without a loggable ref — unborn
     // HEAD or missing branch — are simply not undoable and skipped).
     let snapshots: Vec<NewOperationLogItem> = match op {
-        BranchOpKind::Checkout => repo_paths
+        BranchOpKind::Checkout | BranchOpKind::Create => repo_paths
             .iter()
             .filter_map(|p| {
-                operation_log::snapshot_head(Path::new(p)).map(|(ref_name, oid)| {
-                    NewOperationLogItem {
-                        repo_path: p.clone(),
-                        ref_name,
-                        before_oid: oid,
-                        // Executed asynchronously by the task queue: the after
-                        // state is unknown at submit time and stays NULL.
-                        after_oid: None,
-                        detail: Some(format!("检出目标分支：{name}")),
-                    }
+                operation_log::snapshot_head(Path::new(p)).map(|(head_ref, oid)| NewOperationLogItem {
+                    repo_path: p.clone(),
+                    // Checkout: the pre-op branch is the undo target (switch
+                    // back). Create: the new branch is the undo target
+                    // (delete it again at the recorded tip).
+                    ref_name: if matches!(op, BranchOpKind::Create) {
+                        name.clone()
+                    } else {
+                        head_ref
+                    },
+                    before_oid: oid,
+                    // Executed asynchronously by the task queue: the after
+                    // state is unknown at submit time and stays NULL until
+                    // the backfill poller below fills it in.
+                    after_oid: None,
+                    detail: Some(if matches!(op, BranchOpKind::Create) {
+                        format!("创建目标分支：{name}")
+                    } else {
+                        format!("检出目标分支：{name}")
+                    }),
                 })
             })
             .collect(),
@@ -161,7 +176,6 @@ pub fn batch_branch_op(
                 })
             })
             .collect(),
-        BranchOpKind::Create => Vec::new(),
     };
 
     let requests: Vec<TaskRequest> = repo_paths
@@ -194,25 +208,148 @@ pub fn batch_branch_op(
     }
 
     // T-34: record the accepted batch (best-effort; a log failure must not
-    // fail the already-queued operation).
+    // fail the already-queued operation). The returned log id is needed for
+    // the after-oid backfill.
+    let mut log_id = None;
     if !snapshots.is_empty() {
         let (op_type, summary) = match op {
             BranchOpKind::Checkout => (
                 operation_log::OP_CHECKOUT_ALL,
                 format!("批量检出分支 '{name}'（{} 个仓库）", snapshots.len()),
             ),
+            BranchOpKind::Create => (
+                operation_log::OP_CREATE_BRANCH_ALL,
+                format!("批量创建分支 '{name}'（{} 个仓库）", snapshots.len()),
+            ),
             BranchOpKind::Delete => (
                 operation_log::OP_DELETE_BRANCH_ALL,
                 format!("批量删除分支 '{name}'（{} 个仓库）", snapshots.len()),
             ),
-            BranchOpKind::Create => unreachable!("create is not logged"),
         };
         if let Some(first) = repo_paths.first() {
-            operation_log::record_operation_best_effort(&state.db, first, op_type, &summary, snapshots);
+            log_id = operation_log::record_operation_log(&state.db, first, op_type, &summary, snapshots);
+        }
+    }
+
+    // GF-16: backfill after-oids once the queued tasks finish, so the undo
+    // preview shows the full before → after state. Design notes: a task
+    // completion callback is not reachable from a command without touching
+    // the GF-10 task module (off-limits), and pre-computing the after state
+    // would record a *speculative* value for tasks that may fail — so the
+    // backfill polls `TaskManager::get_status` from a detached blocking task
+    // and only writes the state of repos whose task actually succeeded.
+    // F-43: sync command => detach via `tauri::async_runtime::spawn`, never a
+    // bare `tokio::spawn`.
+    if let Some(log_id) = log_id {
+        if matches!(op, BranchOpKind::Checkout | BranchOpKind::Create) {
+            let db = Arc::clone(&state.db);
+            let task_manager = Arc::clone(&state.task_manager);
+            let pairs: Vec<(String, String)> = task_ids
+                .iter()
+                .zip(repo_paths.iter())
+                .map(|(t, p)| (t.clone(), p.clone()))
+                .collect();
+            let branch_name = name.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = tokio::task::spawn_blocking(move || {
+                    backfill_batch_after_oids(&db, &task_manager, log_id, &pairs, &branch_name, op);
+                })
+                .await;
+            });
         }
     }
 
     Ok(task_ids)
+}
+
+/// Poll interval / cap for the batch after-oid backfill. Branch ops are local
+/// and fast; the cap only bounds the poller when tasks are stuck or the
+/// manager lost track of them (the last poll's result is either way a
+/// best-effort snapshot — undo re-checks the live state).
+const BACKFILL_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const BACKFILL_MAX_WAIT: Duration = Duration::from_secs(15 * 60);
+
+/// Terminal task statuses (children never become PartialSuccess; the
+/// synthetic batch row does, so it is included for safety).
+fn is_terminal(status: &TaskStatus) -> bool {
+    matches!(
+        status,
+        TaskStatus::Success | TaskStatus::Failed { .. } | TaskStatus::Cancelled | TaskStatus::PartialSuccess { .. }
+    )
+}
+
+/// Wait for the batch's per-repo tasks to finish, then write each successful
+/// repo's current ref state into the operation log's `after_oid` (only rows
+/// still NULL — a known snapshot is never overwritten). Repos whose task
+/// failed or was cancelled keep NULL: the undo preview then refuses them,
+/// which is the honest outcome.
+fn backfill_batch_after_oids(
+    db: &Arc<Mutex<Connection>>,
+    task_manager: &TaskManager,
+    log_id: i64,
+    pairs: &[(String, String)],
+    branch_name: &str,
+    op: BranchOpKind,
+) {
+    let task_ids: Vec<String> = pairs.iter().map(|(t, _)| t.clone()).collect();
+    let deadline = Instant::now() + BACKFILL_MAX_WAIT;
+    let statuses = loop {
+        let statuses = task_manager.get_status(&task_ids);
+        // A task id the manager no longer tracks has finished (the worker
+        // drops entries ~30s after completion; its last status was terminal
+        // and the poller saw it before the drop).
+        let pending = task_ids.iter().any(|id| {
+            statuses
+                .iter()
+                .find(|t| &t.id == id)
+                .map(|t| !is_terminal(&t.status))
+                .unwrap_or(false)
+        });
+        if !pending || Instant::now() >= deadline {
+            break statuses;
+        }
+        std::thread::sleep(BACKFILL_POLL_INTERVAL);
+    };
+
+    let updates: Vec<(String, String)> = pairs
+        .iter()
+        .filter_map(|(task_id, repo_path)| {
+            // Unknown outcome (manager dropped the entry) is treated as
+            // success for the backfill: reading the live state is harmless
+            // because undo re-checks it, and a failed op leaves the repo at
+            // its before state (which the undo plan then reports as
+            // "无需撤销").
+            let succeeded = statuses
+                .iter()
+                .find(|t| &t.id == task_id)
+                .map(|t| matches!(t.status, TaskStatus::Success))
+                .unwrap_or(true);
+            if !succeeded {
+                return None;
+            }
+            let after = match op {
+                BranchOpKind::Checkout => operation_log::snapshot_head(Path::new(repo_path)).map(|(_, oid)| oid),
+                BranchOpKind::Create => operation_log::snapshot_branch(Path::new(repo_path), branch_name)
+                    .map(|(_, oid)| oid),
+                // The branch is gone after a delete — there is no after ref
+                // to record (the UI renders NULL as "已删除").
+                BranchOpKind::Delete => None,
+            }?;
+            Some((repo_path.clone(), after))
+        })
+        .collect();
+
+    if updates.is_empty() {
+        return;
+    }
+    match db.lock() {
+        Ok(mut conn) => {
+            if let Err(e) = operation_log::backfill_after_oids(&mut conn, log_id, &updates) {
+                log::warn!("T-34: batch after-oid backfill failed: {}", e);
+            }
+        }
+        Err(e) => log::warn!("T-34: batch after-oid backfill DB lock failed: {}", e),
+    }
 }
 
 /// One repo's dry-run outcome (T-20, Roadmap 评审增量: 批量预演影响报告).
@@ -451,10 +588,23 @@ mod tests {
         git(&a, &["commit", "-qam", "c2"]);
 
         let r = dry_run_repo(&a.to_string_lossy(), "push");
-        assert_eq!(r.category, "fast_forward", "{}", r.detail);
+        assert_eq!(r.category, "fast_forward");
         assert_eq!(r.ahead, 1);
         assert_eq!(r.behind, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// GF-16: the after-oid backfill poller's terminal-status classifier —
+    /// only final statuses stop the wait, so a running task keeps polling.
+    #[test]
+    fn backfill_poller_terminal_status_classification() {
+        use crate::models::task::TaskStatus;
+        assert!(is_terminal(&TaskStatus::Success));
+        assert!(is_terminal(&TaskStatus::Failed { error: "x".into() }));
+        assert!(is_terminal(&TaskStatus::Cancelled));
+        assert!(is_terminal(&TaskStatus::PartialSuccess { succeeded: 1, failed: 1 }));
+        assert!(!is_terminal(&TaskStatus::Queued));
+        assert!(!is_terminal(&TaskStatus::Running { progress: 0.5 }));
     }
 }
