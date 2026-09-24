@@ -113,7 +113,7 @@ function getActionCommands(ctx: CommandContext): Command[] {
 
 /** Git 操作命令（变更页 action 通道 / 对应 Git 视图直达）。 */
 function getGitCommands(ctx: CommandContext): Command[] {
-  const { router } = ctx;
+  const { router, workspaceStore } = ctx;
 
   const toChanges = (
     action: string,
@@ -154,6 +154,38 @@ function getGitCommands(ctx: CommandContext): Command[] {
     },
     toChanges("sync", null, "Sync 全部仓库（Fetch + Pull Clean）"),
     toChanges("branch-create", "@status:clean", "新建分支（变更页批量）"),
+    // GF-03：diff-viewer / conflict-resolver 是 nav:false 任务型路由，被
+    // getNavigationCommands 过滤掉（`nav:<name>` 命令从未注册，Ctrl+Shift+D
+    // 此前绑死在死命令上）。这里按 Route 显式注册，不进 SideNav。
+    {
+      id: "git:diff",
+      title: "打开 Diff 视图",
+      group: "Git 操作",
+      run: () => {
+        // DiffViewer onMounted 走 resolveCurrentRepo（query.repo → 全局当前
+        // 仓库 → 工作区首仓库兜底，F-14/F-17），无参直达有兜底不会警告。
+        router.push({ name: "diff-viewer" });
+      },
+    },
+    {
+      id: "git:open-conflict-resolver",
+      title: "打开冲突解决器",
+      group: "Git 操作",
+      run: () => {
+        // 与 RepositoryList「冲突」入口同参：ConflictResolver 需要
+        // workspace（队列模式扫全部冲突仓库）或 repo 参数，无参直达会
+        // warning 并回变更页。无工作区上下文时回变更页。
+        const ws = workspaceStore.currentWorkspace;
+        if (!ws) {
+          router.push({ name: "changes" });
+          return;
+        }
+        router.push({
+          name: "conflict-resolver",
+          query: { workspace: String(ws.id), name: ws.name },
+        });
+      },
+    },
     {
       id: "git:branch",
       title: "打开分支管理（checkout / merge / rebase）",

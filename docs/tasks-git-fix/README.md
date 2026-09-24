@@ -22,7 +22,7 @@
 ## 总体进度
 
 - 任务总数：**20**
-- 已完成：**9** · 修复中：**1** · 未开始：**9** · 仅讨论：**1**
+- 已完成：**10** · 修复中：**1** · 未开始：**8** · 仅讨论：**1**
 
 ---
 
@@ -32,7 +32,7 @@
 |---|---|---|---|---|
 | GF-01 | 主界面搜索框失效：绑定了 `searchQuery` 但全文无任何过滤逻辑，用户输入零响应 | P0 | ✅ | [GF-01-changes-search-box-dead.md](./GF-01-changes-search-box-dead.md) |
 | GF-02 | 批量操作失败零反馈：批量 Pull 内层 catch 静默吞失败、watcher 启停失败不提示 | P0 | ✅ | [GF-02-batch-op-failure-silent.md](./GF-02-batch-op-failure-silent.md) |
-| GF-03 | Ctrl+Shift+D 死键 + Diff/冲突解决器从命令面板消失（nav:false 路由被注册表过滤） | P1 | ⬜ | [GF-03-diff-shortcut-dead-command-palette-missing.md](./GF-03-diff-shortcut-dead-command-palette-missing.md) |
+| GF-03 | Ctrl+Shift+D 死键 + Diff/冲突解决器从命令面板消失（nav:false 路由被注册表过滤） | P1 | ✅ | [GF-03-diff-shortcut-dead-command-palette-missing.md](./GF-03-diff-shortcut-dead-command-palette-missing.md) |
 | GF-04 | Tags 只读孤岛：分支管理页能看到标签但完全不能操作（后端也无 tag 变更命令） | P1 | ✅ | [GF-04-tags-readonly.md](./GF-04-tags-readonly.md) |
 | GF-05 | git 关键路径原生控件治理：冲突解决 RESULT 编辑器裸 textarea、hunk 暂存裸 button | P1 | ⬜ | [GF-05-native-controls-git-paths.md](./GF-05-native-controls-git-paths.md) |
 | GF-06 | 过期文案误导用户：GitGraph/BranchManager 仍写「三方解决器随 T-16 提供」（T-16 早已交付） | P2 | ⬜ | [GF-06-stale-t16-copy.md](./GF-06-stale-t16-copy.md) |

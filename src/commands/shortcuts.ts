@@ -21,7 +21,11 @@ const SHORTCUT_MAP: Record<string, string[]> = {
   "nav:pipeline": ["Ctrl+7"],
   "nav:runtime-dashboard": ["Ctrl+8"],
   "nav:workspaces": ["Ctrl+9"],
-  "nav:diff-viewer": ["Ctrl+Shift+D"],
+  // GF-03：diff-viewer / conflict-resolver 是 nav:false 路由，命令改为
+  // registry.ts 显式注册的 git:diff / git:open-conflict-resolver。
+  // Ctrl+Shift+C 已被 terminal:copy 占用，冲突解决器用 Ctrl+Shift+X（全表无冲突）。
+  "git:diff": ["Ctrl+Shift+D"],
+  "git:open-conflict-resolver": ["Ctrl+Shift+X"],
   "action:toggle-assistant": ["Ctrl+I"],
   "terminal:toggle": ["Ctrl+`"],
   "terminal:new-shell": ["Ctrl+Shift+`"],
