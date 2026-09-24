@@ -108,8 +108,21 @@
             >
               {{ expandedBatches.has(row.taskId) ? '收起' : `明细 ${row.childCount}` }}
             </n-button>
+            <!-- GF-10：Workspace Stash 整笔运行的逐仓明细入口 -->
             <n-button
-              v-if="row.task && row.task.status.type === 'queued'"
+              v-if="row.wsStash && row.wsStash.rows.length > 0"
+              size="small"
+              text
+              @click="toggleWsStash(row.taskId)"
+            >
+              {{
+                expandedWsStash.has(row.taskId)
+                  ? '收起'
+                  : `逐仓明细 ${row.wsStash.rows.length}/${row.wsStash.total}`
+              }}
+            </n-button>
+            <n-button
+              v-if="row.task && canCancel(row.task)"
               size="small"
               text
               type="error"
@@ -150,6 +163,34 @@
               >
                 重试
               </n-button>
+            </div>
+          </div>
+          <!-- GF-10：Workspace Stash 逐仓明细（含取消后的后续处理提示） -->
+          <div
+            v-if="row.wsStash && expandedWsStash.has(row.taskId)"
+            class="ws-stash-children"
+          >
+            <div v-if="wsStashHint(row)" class="ws-stash-hint">
+              {{ wsStashHint(row) }}
+            </div>
+            <div
+              v-for="child in row.wsStash.rows"
+              :key="child.repoPath"
+              class="ws-stash-child"
+              :class="child.status"
+            >
+              <span :class="['child-mark', wsStashMarkType(child.status)]">
+                {{ wsStashMark(child.status) }}
+              </span>
+              <span class="child-repo" @click="openRepo(child.repoPath)">
+                {{ child.repoName }}
+              </span>
+              <n-tag size="tiny" :type="wsStashTagType(child.status)">
+                {{ wsStashStatusLabel(child.status) }}
+              </n-tag>
+              <span v-if="child.detail" class="ws-stash-detail">
+                {{ child.detail }}
+              </span>
             </div>
           </div>
           <!-- batch 子行 -->
@@ -198,7 +239,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
-import { useTaskStore } from "@/stores/task";
+import { useTaskStore, type WsStashRun } from "@/stores/task";
 import type { Task, TaskType, TaskStatus } from "@/types/task";
 import { submitTasks } from "@/api/task";
 import {
@@ -276,6 +317,8 @@ interface TimelineRow {
   childCount: number;
   /** GF-08：失败错误的可行动分类（认证/网络/锁/脏工作区/被拒绝）。 */
   guidance: GitErrorGuidance | null;
+  /** GF-10：Workspace Stash 整笔运行的逐仓明细（仅该任务类型有）。 */
+  wsStash?: WsStashRun;
   /** 关联的当前任务快照（queued 取消按钮用；刷新后无对应任务则为 undefined）。 */
   task?: Task;
 }
@@ -368,6 +411,7 @@ const timeline = computed<TimelineRow[]>(() => {
         ? events.filter((c) => c.batchId === e.taskId).length
         : 0,
       guidance: guidanceOf(e.status),
+      wsStash: taskStore.wsStashRunOf(e.taskId),
       task: tasks.value.find((t) => t.id === e.taskId),
       // insertAt 参与排序：batch 父行排在其首个子事件之前
       ...(isBatch ? {} : {}),
@@ -403,6 +447,8 @@ function childrenOf(batchTaskId: string): TimelineRow[] {
 
 const expandedBatches = ref<Set<string>>(new Set());
 const expandedErrors = ref<Set<number>>(new Set());
+/** GF-10：展开了逐仓明细的 Workspace Stash 任务。 */
+const expandedWsStash = ref<Set<string>>(new Set());
 
 function toggleBatch(taskId: string) {
   const next = new Set(expandedBatches.value);
@@ -412,6 +458,90 @@ function toggleBatch(taskId: string) {
     next.add(taskId);
   }
   expandedBatches.value = next;
+}
+
+function toggleWsStash(taskId: string) {
+  const next = new Set(expandedWsStash.value);
+  if (next.has(taskId)) {
+    next.delete(taskId);
+  } else {
+    next.add(taskId);
+  }
+  expandedWsStash.value = next;
+}
+
+// ---------------------------------------------------------------------------
+// GF-10：Workspace Stash 整笔运行（逐仓明细 / 取消入口 / 后续处理提示）
+// ---------------------------------------------------------------------------
+
+/** 取消入口：queued 一律可取消；running 仅 Workspace Stash（其执行体逐仓
+ * 检查 cancel flag，取消语义明确；其余写操作的运行中取消另立任务评估）。 */
+function canCancel(task: Task): boolean {
+  if (task.status.type === "queued") return true;
+  if (task.status.type !== "running") return false;
+  return isWsStashTaskType(task.taskType);
+}
+
+function isWsStashTaskType(taskType: TaskType): boolean {
+  return taskType.type === "workspaceStashSave" || taskType.type === "workspaceStashRestore";
+}
+
+const WS_STASH_STATUS_LABELS: Record<string, string> = {
+  stashed: "已 stash",
+  skipped_clean: "干净跳过",
+  applied: "已恢复",
+  skipped: "跳过",
+  failed: "失败",
+  cancelled: "未处理",
+};
+
+function wsStashStatusLabel(status: string): string {
+  return WS_STASH_STATUS_LABELS[status] ?? status;
+}
+
+function wsStashTagType(
+  status: string
+): "success" | "warning" | "error" | "default" {
+  if (status === "stashed" || status === "applied") return "success";
+  if (status === "failed") return "error";
+  if (status === "cancelled") return "warning";
+  return "default";
+}
+
+function wsStashMarkType(status: string): string {
+  if (status === "stashed" || status === "applied") return "success";
+  if (status === "failed") return "failed";
+  if (status === "cancelled") return "cancelled";
+  return "default";
+}
+
+function wsStashMark(status: string): string {
+  switch (status) {
+    case "stashed":
+    case "applied":
+      return "✓";
+    case "failed":
+      return "✗";
+    case "cancelled":
+      return "⊘";
+    default:
+      return "·";
+  }
+}
+
+/** 取消运行的后续处理提示：哪些仓已完成（可恢复）、哪些未动（重跑即可）。 */
+function wsStashHint(row: TimelineRow): string {
+  const run = row.wsStash;
+  if (!run || row.status.type !== "cancelled") return "";
+  const done = run.rows.filter((r) => r.status !== "cancelled").length;
+  const untouched = run.rows.length - done;
+  if (untouched === 0) return "已取消：所有仓库均已完成处理。";
+  const doneLabel = run.kind === "save" ? "已 stash" : "已恢复";
+  const next =
+    run.kind === "save"
+      ? "重新执行保存即可（已 stash 的仓库会被识别为干净而跳过，不会重复暂存）"
+      : "重新执行恢复即可（未处理仓库的 stash 仍在各自栈中，恢复预检会再次把关）";
+  return `已取消：${done} 个仓库${doneLabel}，${untouched} 个仓库未处理——${next}。`;
 }
 
 function toggleError(seq: number) {
@@ -465,6 +595,10 @@ function taskTypeLabel(taskType: TaskType): string {
       return "Runtime 配置更新";
     case "nodeInstall":
       return "Node Install";
+    case "workspaceStashSave":
+      return "Workspace Stash 保存";
+    case "workspaceStashRestore":
+      return "Workspace Stash 恢复";
   }
 }
 
@@ -619,6 +753,12 @@ async function handleClear() {
   color: var(--gw-accent);
 }
 
+.task-type-workspaceStashSave,
+.task-type-workspaceStashRestore {
+  background: var(--gw-bg-hover);
+  color: var(--gw-accent);
+}
+
 .event-repo {
   font-weight: 500;
   cursor: pointer;
@@ -754,6 +894,41 @@ async function handleClear() {
   margin-top: 2px;
   color: var(--gw-text-dim);
   word-break: break-all;
+}
+
+/* GF-10：Workspace Stash 逐仓明细 */
+.ws-stash-children {
+  width: 100%;
+  margin-top: 4px;
+  border-top: 1px dashed var(--gw-border);
+  padding-top: 4px;
+}
+
+.ws-stash-hint {
+  font-size: 12px;
+  color: var(--gw-text);
+  background: color-mix(in srgb, var(--gw-warning) 12%, transparent);
+  border-radius: var(--gw-radius-sm);
+  padding: 4px 6px;
+  margin-bottom: 4px;
+}
+
+.ws-stash-child {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gw-space-2);
+  font-size: 12px;
+  font-weight: 400;
+  padding: 1px 0;
+}
+
+.ws-stash-detail {
+  color: var(--gw-text-dim);
+  word-break: break-all;
+}
+
+.child-mark.default {
+  color: var(--gw-text-dim);
 }
 
 .empty-tasks {

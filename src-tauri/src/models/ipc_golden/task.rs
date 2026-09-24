@@ -70,6 +70,19 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
                 project_dir: "/home/user/web".into(),
                 package_manager: crate::node::PackageManager::Pnpm,
             },
+            // GF-10: whole-workspace stash runs (one task, serial per repo).
+            task::TaskType::WorkspaceStashSave {
+                workspace_id: 2,
+                record_name: "Workspace Stash #1".into(),
+                message: Some("sprint work".into()),
+                include_untracked: true,
+                repo_paths: vec!["/ws/a".into(), "/ws/b".into()],
+            },
+            task::TaskType::WorkspaceStashRestore {
+                workspace_stash_id: 1,
+                record_name: "Workspace Stash #1".into(),
+                allow_branch_mismatch: false,
+            },
         ]),
     );
     m.insert(

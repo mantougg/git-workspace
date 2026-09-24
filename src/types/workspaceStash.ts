@@ -51,3 +51,25 @@ export interface WorkspaceStashCheckItem {
   status: string;
   detail: string;
 }
+
+/** Which half of the lifecycle a queued workspace stash run performs (GF-10). */
+export type WorkspaceStashKind = "save" | "restore";
+
+/**
+ * GF-10：排队运行的逐仓进度事件（`workspace_stash_progress`）。整笔入队、
+ * 逐仓串行执行——每个仓库处理完发一条，TaskPanel 据此渲染逐仓进度与结果；
+ * `status` 含 save 的 stashed/skipped_clean/failed/cancelled 与 restore 的
+ * applied/skipped/failed/cancelled。
+ */
+export interface WorkspaceStashProgress {
+  taskId: string;
+  kind: WorkspaceStashKind;
+  recordName: string;
+  /** 1-based 序号 */
+  index: number;
+  total: number;
+  repoPath: string;
+  repoName: string;
+  status: string;
+  detail: string;
+}

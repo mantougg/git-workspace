@@ -418,6 +418,23 @@ pub(super) fn samples(m: &mut Map<String, Value>) {
             detail: String::new(),
         }),
     );
+    // GF-10: per-repo progress event of a queued workspace stash run (the
+    // run result/summary types stay server-side: the commands map them onto
+    // SaveWorkspaceStashResult / Vec<WorkspaceStashRepoOutcome>).
+    m.insert(
+        "WorkspaceStashProgress".into(),
+        json!(workspace_stash::WorkspaceStashProgress {
+            task_id: "t-1".into(),
+            kind: workspace_stash::WorkspaceStashKind::Save,
+            record_name: "Workspace Stash #1".into(),
+            index: 1,
+            total: 12,
+            repo_path: "/ws/repo".into(),
+            repo_name: "repo".into(),
+            status: "stashed".into(),
+            detail: String::new(),
+        }),
+    );
 
     // core/change_set.rs (T-22)
     m.insert(
@@ -555,6 +572,12 @@ pub(super) const TS_TYPE_MAP: &[(&str, &str, &str)] = &[
         "WorkspaceStashCheckItem",
         "types/workspaceStash.ts",
         "WorkspaceStashCheckItem",
+    ),
+    // GF-10: per-repo progress event of a queued workspace stash run.
+    (
+        "WorkspaceStashProgress",
+        "types/workspaceStash.ts",
+        "WorkspaceStashProgress",
     ),
     // T-22 change set
     ("ChangeSet", "types/changeSet.ts", "ChangeSet"),

@@ -2804,6 +2804,23 @@
       "packageManager": "pnpm",
       "projectDir": "/home/user/web",
       "type": "nodeInstall"
+    },
+    {
+      "includeUntracked": true,
+      "message": "sprint work",
+      "recordName": "Workspace Stash #1",
+      "repoPaths": [
+        "/ws/a",
+        "/ws/b"
+      ],
+      "type": "workspaceStashSave",
+      "workspaceId": 2
+    },
+    {
+      "allowBranchMismatch": false,
+      "recordName": "Workspace Stash #1",
+      "type": "workspaceStashRestore",
+      "workspaceStashId": 1
     }
   ],
   "ToolCallRequest": {
@@ -2997,6 +3014,17 @@
     "repoPath": "/ws/repo",
     "stashIndex": 0,
     "stashOid": "abc123"
+  },
+  "WorkspaceStashProgress": {
+    "detail": "",
+    "index": 1,
+    "kind": "save",
+    "recordName": "Workspace Stash #1",
+    "repoName": "repo",
+    "repoPath": "/ws/repo",
+    "status": "stashed",
+    "taskId": "t-1",
+    "total": 12
   },
   "WorkspaceStashRepoOutcome": {
     "detail": "",

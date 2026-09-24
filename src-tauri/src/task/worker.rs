@@ -8,8 +8,9 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::core::git_ops::GitOps;
+use crate::core::workspace_stash::{self, WorkspaceStashKind, WorkspaceStashRunResult};
 use crate::db::dao;
-use crate::error::AppError;
+use crate::error::{AppError, AppResult};
 use crate::models::task::{BatchState, GitCommandResult, Task, TaskProgress, TaskStatus, TaskType};
 use crate::task::console::{
     emit_git_op_output, finish_streaming, network_console_command, ConsoleStreamer,
@@ -27,6 +28,29 @@ const TASK_TIMEOUT: Duration = Duration::from_secs(300);
 /// so `TASK_TIMEOUT` (5 min, git-oriented) cannot be reused.
 const RUNTIME_TASK_TIMEOUT: Duration = Duration::from_secs(3600);
 
+/// Task types that legitimately outlive the 5-minute git-oriented bound and
+/// whose cancellation must also reach a blocking body that cannot be killed
+/// (Runtime builds / launches; GF-10 whole-workspace stash runs over many
+/// repos).
+fn uses_long_timeout(task_type: &TaskType) -> bool {
+    matches!(
+        task_type,
+        TaskType::Runtime { .. }
+            | TaskType::RuntimeUpdateConfig { .. }
+            | TaskType::NodeInstall { .. }
+            | TaskType::WorkspaceStashSave { .. }
+            | TaskType::WorkspaceStashRestore { .. }
+    )
+}
+
+/// GF-10: workspace stash runs (whole-workspace task, serial per-repo body).
+fn is_ws_stash_run(task_type: &TaskType) -> bool {
+    matches!(
+        task_type,
+        TaskType::WorkspaceStashSave { .. } | TaskType::WorkspaceStashRestore { .. }
+    )
+}
+
 /// Spawn the worker pool that processes tasks from the shared receiver.
 ///
 /// Each worker pulls tasks from the channel, executes them using GitOps
@@ -34,6 +58,8 @@ const RUNTIME_TASK_TIMEOUT: Duration = Duration::from_secs(3600);
 /// to the frontend. `dag_sender` is the queue's own sender, handed to the
 /// DAG scheduler (T-24) so it can dispatch newly-unblocked nodes. Runtime
 /// tasks (R-12) go to `runtime_handler` with the task's cancel flag wired in.
+/// `ws_stash_runs` (GF-10) is where whole-workspace stash runs publish their
+/// per-repo result for the pending IPC command.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_worker_pool(
     worker_count: usize,
@@ -47,6 +73,7 @@ pub fn spawn_worker_pool(
     db: Arc<std::sync::Mutex<Connection>>,
     batches: Arc<DashMap<String, BatchState>>,
     dags: Arc<DashMap<String, DagState>>,
+    ws_stash_runs: Arc<DashMap<String, WorkspaceStashRunResult>>,
 ) {
     let receiver = Arc::new(Mutex::new(receiver));
 
@@ -64,6 +91,7 @@ pub fn spawn_worker_pool(
             let db = Arc::clone(&db);
             let batch_map = Arc::clone(&batches);
             let dag_map = Arc::clone(&dags);
+            let runs = Arc::clone(&ws_stash_runs);
 
             workers.push(tauri::async_runtime::spawn(async move {
                 log::debug!("Task worker {} started", worker_id);
@@ -85,6 +113,7 @@ pub fn spawn_worker_pool(
                                 &db,
                                 &batch_map,
                                 &dag_map,
+                                &runs,
                                 &tx,
                                 msg.task,
                             )
@@ -131,6 +160,140 @@ fn shorten_message(message: &str) -> String {
     }
 }
 
+/// GF-10: emit one `workspace_stash_progress` event (called from a blocking
+/// worker thread after each repo; Tauri event emission is synchronous and
+/// thread-safe, same as the Console streamer).
+fn emit_ws_stash_progress(
+    app: &AppHandle,
+    progress: &workspace_stash::WorkspaceStashProgress,
+) {
+    if let Err(e) = app.emit("workspace_stash_progress", progress) {
+        log::warn!("Failed to emit workspace_stash_progress: {}", e);
+    }
+}
+
+/// GF-10: body of a `WorkspaceStashSave` task — stash every repo serially
+/// (execution model unchanged), emitting progress after each repo and
+/// persisting the record for whatever was stashed (including a cancelled
+/// run's completed subset, so those repos stay restorable).
+///
+/// Split out of the worker's blocking closure so the whole path is
+/// unit-testable without a Tauri `AppHandle` (the progress emitter is
+/// injected). Returns the console summary line; the structured per-repo
+/// result lands in `runs` for the pending IPC command.
+#[allow(clippy::too_many_arguments)]
+fn run_ws_stash_save(
+    db: &Arc<std::sync::Mutex<Connection>>,
+    runs: &Arc<DashMap<String, WorkspaceStashRunResult>>,
+    task_id: &str,
+    workspace_id: i64,
+    record_name: &str,
+    message: Option<&str>,
+    include_untracked: bool,
+    repo_paths: &[String],
+    cancel: &AtomicBool,
+    mut emit: impl FnMut(&workspace_stash::WorkspaceStashProgress),
+) -> AppResult<String> {
+    let total = repo_paths.len();
+    let mut done = 0usize;
+    let (outcomes, stashed) = workspace_stash::stash_repos_cancellable(
+        repo_paths,
+        record_name,
+        message,
+        include_untracked,
+        Some(cancel),
+        |o| {
+            done += 1;
+            emit(&workspace_stash::WorkspaceStashProgress {
+                task_id: task_id.to_string(),
+                kind: WorkspaceStashKind::Save,
+                record_name: record_name.to_string(),
+                index: done,
+                total,
+                repo_path: o.repo_path.clone(),
+                repo_name: o.repo_name.clone(),
+                status: o.status.clone(),
+                detail: o.detail.clone(),
+            });
+        },
+    );
+
+    let record_id = if stashed.is_empty() {
+        None
+    } else {
+        // Git phase finished without the DB lock held; the record is one
+        // short transaction (single-writer model).
+        let mut conn = db.lock().map_err(|e| AppError::Other(format!("DB lock error: {e}")))?;
+        match workspace_stash::insert_workspace_stash(
+            &mut conn,
+            workspace_id,
+            record_name,
+            message.map(str::trim).filter(|m| !m.is_empty()),
+            &stashed,
+        ) {
+            Ok(id) => Some(id),
+            Err(e) => {
+                // The per-repo stashes already happened; losing only the
+                // association record must not fail the whole run — the repos
+                // stay recoverable through each repo's single-repo Stash view.
+                log::warn!("workspace stash record insert failed ({record_name}): {e}");
+                None
+            }
+        }
+    };
+    let run = WorkspaceStashRunResult::save(record_name, record_id, outcomes);
+    runs.insert(task_id.to_string(), run.clone());
+    Ok(run.summary.summary_line())
+}
+
+/// GF-10: body of a `WorkspaceStashRestore` task — re-load the record's items,
+/// re-check every one (the §46 pre-check already ran before submission; this
+/// is the stale-window safety net) and apply it (kept on the stack, so a
+/// partial run can simply be restored again).
+#[allow(clippy::too_many_arguments)]
+fn run_ws_stash_restore(
+    db: &Arc<std::sync::Mutex<Connection>>,
+    runs: &Arc<DashMap<String, WorkspaceStashRunResult>>,
+    task_id: &str,
+    workspace_stash_id: i64,
+    record_name: &str,
+    allow_branch_mismatch: bool,
+    cancel: &AtomicBool,
+    mut emit: impl FnMut(&workspace_stash::WorkspaceStashProgress),
+) -> AppResult<String> {
+    let items = {
+        let conn = db.lock().map_err(|e| AppError::Other(format!("DB lock error: {e}")))?;
+        workspace_stash::list_workspace_stash_items(&conn, workspace_stash_id)?
+    };
+    if items.is_empty() {
+        return Err(AppError::NotFound("该 Workspace Stash 没有仓库项".into()));
+    }
+    let total = items.len();
+    let mut done = 0usize;
+    let outcomes = workspace_stash::restore_items_cancellable(
+        &items,
+        allow_branch_mismatch,
+        Some(cancel),
+        |o| {
+            done += 1;
+            emit(&workspace_stash::WorkspaceStashProgress {
+                task_id: task_id.to_string(),
+                kind: WorkspaceStashKind::Restore,
+                record_name: record_name.to_string(),
+                index: done,
+                total,
+                repo_path: o.repo_path.clone(),
+                repo_name: o.repo_name.clone(),
+                status: o.status.clone(),
+                detail: o.detail.clone(),
+            });
+        },
+    );
+    let run = WorkspaceStashRunResult::restore(record_name, outcomes);
+    runs.insert(task_id.to_string(), run.clone());
+    Ok(run.summary.summary_line())
+}
+
 /// Execute a single task: update status, run the Git operation (with timeout +
 /// retries), honour cancellation, and emit progress.
 #[allow(clippy::too_many_arguments)]
@@ -143,6 +306,7 @@ async fn execute_task(
     db: &Arc<std::sync::Mutex<Connection>>,
     batches: &Arc<DashMap<String, BatchState>>,
     dags: &Arc<DashMap<String, DagState>>,
+    ws_stash_runs: &Arc<DashMap<String, WorkspaceStashRunResult>>,
     dag_sender: &mpsc::Sender<super::queue::TaskMessage>,
     mut task: Task,
 ) {
@@ -154,6 +318,15 @@ async fn execute_task(
             entry.status = TaskStatus::Cancelled;
         }
         persist_final_status(db, &task);
+        // GF-10: a workspace stash run cancelled before it started still gets
+        // a result (every selected repo reported untouched) so the pending
+        // IPC command resolves instead of waiting for its timeout.
+        if let Some((kind, record_name, repo_paths)) = workspace_stash::ws_stash_task_info(&task.task_type) {
+            ws_stash_runs.insert(
+                task.id.clone(),
+                WorkspaceStashRunResult::cancelled_before_start(kind, record_name, repo_paths),
+            );
+        }
         emit_progress(app, &task);
         finish_dag_node(dags, dag_sender, tasks, cancel_flags, db, app, batches, &task, None);
         update_batch(batches, db, app, &task);
@@ -196,19 +369,19 @@ async fn execute_task(
         let ops = Arc::clone(ops);
         let repo_path = task.repo_path.clone();
         let task_type_for_exec = task_type.clone();
-        // R-12: Runtime 任务拿到自己的 cancel flag（构建/启动可中途终止），
-        // 并使用更长的硬超时（git 的 5 分钟上限对构建不适用）。
-        let is_runtime = matches!(
-            task_type_for_exec,
-            TaskType::Runtime { .. } | TaskType::RuntimeUpdateConfig { .. } | TaskType::NodeInstall { .. }
-        );
+        // R-12 / GF-10: long-bound tasks (Runtime builds, whole-workspace
+        // stash runs) get a longer hard timeout and — on timeout — have their
+        // cancel flag set so a blocking body that cannot be killed still
+        // stops at its next checkpoint.
+        let long_timeout = uses_long_timeout(&task_type_for_exec);
         let runtime_handler = runtime_handler.clone();
         let cancel_flag = cancel_flags.get(&task.id).map(|f| Arc::clone(&f));
         let db_for_exec = Arc::clone(db);
         let app_for_exec = app.clone();
         let task_id_for_exec = task.id.clone();
         let repo_name_for_exec = task.repo_name.clone();
-        let hard_timeout = if is_runtime { RUNTIME_TASK_TIMEOUT } else { TASK_TIMEOUT };
+        let runs_for_exec = Arc::clone(ws_stash_runs);
+        let hard_timeout = if long_timeout { RUNTIME_TASK_TIMEOUT } else { TASK_TIMEOUT };
 
         let result = tokio::time::timeout(
             hard_timeout,
@@ -378,6 +551,58 @@ async fn execute_task(
                         Err(e) => Err(e),
                     }
                 }
+                TaskType::WorkspaceStashSave {
+                    workspace_id,
+                    record_name,
+                    message,
+                    include_untracked,
+                    repo_paths,
+                } => {
+                    // GF-10: whole-workspace save — ONE task for the whole
+                    // run (the worker pool would otherwise run per-repo tasks
+                    // in parallel), repos stashed one by one (serial model
+                    // unchanged), progress after each repo, cancel polled
+                    // between repos.
+                    let cancel = cancel_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+                    let app = app_for_exec.clone();
+                    let task_id = task_id_for_exec.clone();
+                    run_ws_stash_save(
+                        &db_for_exec,
+                        &runs_for_exec,
+                        &task_id,
+                        *workspace_id,
+                        record_name,
+                        message.as_deref(),
+                        *include_untracked,
+                        repo_paths,
+                        cancel.as_ref(),
+                        |p| emit_ws_stash_progress(&app, p),
+                    )
+                    .map(Some)
+                }
+                TaskType::WorkspaceStashRestore {
+                    workspace_stash_id,
+                    record_name,
+                    allow_branch_mismatch,
+                } => {
+                    // GF-10: whole-workspace restore — per-item re-check is
+                    // the stale-window safety net of the pre-submission §46
+                    // pre-check; apply keeps the stash on the stack.
+                    let cancel = cancel_flag.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+                    let app = app_for_exec.clone();
+                    let task_id = task_id_for_exec.clone();
+                    run_ws_stash_restore(
+                        &db_for_exec,
+                        &runs_for_exec,
+                        &task_id,
+                        *workspace_stash_id,
+                        record_name,
+                        *allow_branch_mismatch,
+                        cancel.as_ref(),
+                        |p| emit_ws_stash_progress(&app, p),
+                    )
+                    .map(Some)
+                }
                 _ => ops.execute(&task_type_for_exec, std::path::Path::new(&repo_path)),
             }),
         )
@@ -394,10 +619,11 @@ async fn execute_task(
                 None,
             ),
             Err(_) => {
-                // 超时硬上限触发：阻塞线程仍在跑。Runtime 任务置 cancel flag
-                // 让执行体协作中止（杀掉 Maven 进程树 / 停止启动中的应用），
-                // 避免超时后遗留构建进程。
-                if is_runtime {
+                // 超时硬上限触发：阻塞线程仍在跑。长时任务（Runtime / GF-10
+                // workspace stash）置 cancel flag 让执行体协作中止（杀掉
+                // Maven 进程树 / 停止启动中的应用 / 逐仓循环就近停止），避免
+                // 超时后遗留构建进程或继续改仓库。
+                if long_timeout {
                     if let Some(flag) = cancel_flags.get(&task.id) {
                         flag.store(true, Ordering::Relaxed);
                     }
@@ -440,6 +666,16 @@ async fn execute_task(
 
         final_status = status;
         output = out;
+
+        // GF-10: a workspace stash run reports its per-repo rollup, not a flat
+        // Success — mixed failures become PartialSuccess and a mid-run cancel
+        // becomes Cancelled (the completed subset stays recoverable through
+        // the run result the blocking body published).
+        if is_ws_stash_run(&task_type) {
+            if let Some(run) = ws_stash_runs.get(&task.id).map(|r| r.clone()) {
+                final_status = run.summary.to_task_status();
+            }
+        }
         break;
     }
 
@@ -482,6 +718,13 @@ async fn execute_task(
         }
         TaskType::ConflictApply { path, strategy, .. } => {
             Some(format!("git conflict resolve {} ({})", path, strategy))
+        }
+        // GF-10: whole-workspace stash runs (one task, N repos inside).
+        TaskType::WorkspaceStashSave { repo_paths, .. } => {
+            Some(format!("git stash save × {} 个仓库", repo_paths.len()))
+        }
+        TaskType::WorkspaceStashRestore { record_name, .. } => {
+            Some(format!("git stash apply × {record_name}"))
         }
         _ => None,
     };
@@ -710,7 +953,47 @@ pub(crate) fn update_batch(
 
 #[cfg(test)]
 mod tests {
-    use super::shorten_message;
+    use super::*;
+    use crate::core::workspace_stash::{self, WorkspaceStashItemEntry};
+    use std::path::Path;
+
+    fn tmpdir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gw_wsstash_worker_{}_{}",
+            tag,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn init_repo(dir: &Path) {
+        let repo = git2::Repository::init(dir).unwrap();
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("a.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let sig = git2::Signature::now("tester", "t@example.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+        repo.config().unwrap().set_str("user.name", "tester").unwrap();
+        repo.config().unwrap().set_str("user.email", "t@example.com").unwrap();
+    }
+
+    fn mem_db() -> Arc<std::sync::Mutex<Connection>> {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::db::init_db(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO workspaces (name, path, created_at, updated_at) VALUES ('w', 'D:/w', 't', 't')",
+            [],
+        )
+        .unwrap();
+        Arc::new(std::sync::Mutex::new(conn))
+    }
 
     #[test]
     fn short_message_unchanged() {
@@ -756,5 +1039,230 @@ mod tests {
     fn exactly_at_limit_unchanged() {
         let msg = "中".repeat(50);
         assert_eq!(shorten_message(&msg), msg);
+    }
+
+    // -----------------------------------------------------------------------
+    // GF-10: workspace stash run bodies (queue path, no AppHandle needed)
+    // -----------------------------------------------------------------------
+
+    /// Full save run through the worker body: progress event per repo, record
+    /// persisted (with only the stashed repo as a member), rollup Success and
+    /// the structured result parked for the pending command.
+    #[test]
+    fn ws_stash_save_run_persists_record_and_reports_progress() {
+        let dir = tmpdir("save");
+        let a = dir.join("a");
+        let b = dir.join("b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        init_repo(&a);
+        init_repo(&b);
+        std::fs::write(a.join("a.txt"), "one\nwork\n").unwrap();
+        let paths: Vec<String> = [&a, &b]
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+
+        let db = mem_db();
+        let runs: Arc<DashMap<String, WorkspaceStashRunResult>> = Arc::new(DashMap::new());
+        let mut events: Vec<(usize, usize, String, String)> = Vec::new();
+        let cancel = AtomicBool::new(false);
+        let line = run_ws_stash_save(
+            &db,
+            &runs,
+            "task-1",
+            1,
+            "Workspace Stash #1",
+            Some("sprint"),
+            true,
+            &paths,
+            &cancel,
+            |p| {
+                events.push((p.index, p.total, p.repo_name.clone(), p.status.clone()));
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            events,
+            vec![
+                (1, 2, "a".to_string(), "stashed".to_string()),
+                (2, 2, "b".to_string(), "skipped_clean".to_string()),
+            ]
+        );
+        assert!(line.contains("完成 1 个仓库"), "{line}");
+
+        let run = runs.get("task-1").expect("run result must be parked");
+        assert_eq!(run.record_id, Some(1));
+        assert!(!run.cancelled);
+        assert_eq!(run.items.len(), 2);
+        assert!(matches!(run.summary.to_task_status(), TaskStatus::Success));
+        drop(run);
+
+        // The record row + its single member were persisted.
+        let conn = db.lock().unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspace_stashes", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspace_stash_items", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Mid-run cancel: the untouched repos are reported as cancelled, their
+    /// working-tree change is untouched, and the completed subset is still
+    /// written as a record (restorable through the normal restore flow).
+    #[test]
+    fn ws_stash_save_run_cancel_after_first_repo_keeps_partial_record() {
+        let dir = tmpdir("save_cancel");
+        let repos: Vec<std::path::PathBuf> = (0..3).map(|i| dir.join(format!("r{i}"))).collect();
+        for r in &repos {
+            std::fs::create_dir_all(r).unwrap();
+            init_repo(r);
+            std::fs::write(r.join("a.txt"), "one\nwork\n").unwrap();
+        }
+        let paths: Vec<String> = repos.iter().map(|p| p.to_string_lossy().to_string()).collect();
+
+        let db = mem_db();
+        let runs: Arc<DashMap<String, WorkspaceStashRunResult>> = Arc::new(DashMap::new());
+        let cancel = AtomicBool::new(false);
+        let mut events: Vec<(usize, String)> = Vec::new();
+        let _ = run_ws_stash_save(&db, &runs, "task-1", 1, "Workspace Stash #1", None, true, &paths, &cancel, |p| {
+            events.push((p.index, p.status.clone()));
+            // Cancel right after the first repo is processed.
+            if p.index == 1 {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        })
+        .unwrap();
+
+        assert_eq!(
+            events,
+            vec![
+                (1, "stashed".to_string()),
+                (2, "cancelled".to_string()),
+                (3, "cancelled".to_string()),
+            ]
+        );
+        let run = runs.get("task-1").unwrap();
+        assert!(run.cancelled);
+        assert_eq!(run.summary, workspace_stash::WorkspaceStashRunSummary {
+            total: 3,
+            stashed: 1,
+            skipped: 0,
+            failed: 0,
+            cancelled: 2,
+        });
+        assert!(matches!(run.summary.to_task_status(), TaskStatus::Cancelled));
+        // Partial record persisted -> restorable later.
+        assert_eq!(run.record_id, Some(1));
+        drop(run);
+        let conn = db.lock().unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM workspace_stash_items", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+
+        // Untouched repos keep their change; the processed one does not.
+        assert!(std::fs::read_to_string(repos[1].join("a.txt")).unwrap().contains("work"));
+        assert!(std::fs::read_to_string(repos[2].join("a.txt")).unwrap().contains("work"));
+        assert!(!std::fs::read_to_string(repos[0].join("a.txt")).unwrap().contains("work"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Restore run through the worker body: items re-checked and applied, the
+    /// stash kept on the stack, one progress event per item.
+    #[test]
+    fn ws_stash_restore_run_applies_and_reports() {
+        let dir = tmpdir("restore");
+        let repo = dir.join("r");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+        std::fs::write(repo.join("a.txt"), "one\nwork\n").unwrap();
+
+        let paths = vec![repo.to_string_lossy().to_string()];
+        let (_outcomes, stashed) =
+            workspace_stash::stash_repos_cancellable(&paths, "Workspace Stash #1", None, true, None, |_| {});
+        assert_eq!(stashed.len(), 1);
+
+        let db = mem_db();
+        let record_id = {
+            let mut conn = db.lock().unwrap();
+            workspace_stash::insert_workspace_stash(&mut conn, 1, "Workspace Stash #1", None, &stashed).unwrap()
+        };
+        assert_eq!(std::fs::read_to_string(repo.join("a.txt")).unwrap().trim_end(), "one");
+
+        let runs: Arc<DashMap<String, WorkspaceStashRunResult>> = Arc::new(DashMap::new());
+        let mut events: Vec<(String, String)> = Vec::new();
+        let cancel = AtomicBool::new(false);
+        let line = run_ws_stash_restore(
+            &db,
+            &runs,
+            "task-1",
+            record_id,
+            "Workspace Stash #1",
+            false,
+            &cancel,
+            |p| events.push((p.repo_name.clone(), p.status.clone())),
+        )
+        .unwrap();
+
+        assert_eq!(events, vec![("r".to_string(), "applied".to_string())]);
+        assert!(line.contains("完成 1 个仓库"), "{line}");
+        let run = runs.get("task-1").unwrap();
+        assert!(run.record_id.is_none(), "restore results carry no record id");
+        assert!(!run.cancelled);
+        assert_eq!(run.items[0].status, "applied");
+        // Apply keeps the stash on the stack (T-10 semantics).
+        drop(run);
+        assert_eq!(crate::core::stash::list_stashes(&repo).unwrap().len(), 1);
+        assert!(std::fs::read_to_string(repo.join("a.txt")).unwrap().contains("work"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A record with no items (or an unknown id) fails fast instead of
+    /// queueing a no-op run.
+    #[test]
+    fn ws_stash_restore_run_without_items_errors() {
+        let db = mem_db();
+        let runs: Arc<DashMap<String, WorkspaceStashRunResult>> = Arc::new(DashMap::new());
+        let cancel = AtomicBool::new(false);
+        let err = run_ws_stash_restore(&db, &runs, "task-1", 999, "Workspace Stash #999", false, &cancel, |_| {})
+            .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err}");
+        assert!(runs.is_empty(), "no result must be parked for a failed run");
+    }
+
+    /// The record name / workspace id plumbing: seeding via `insert_workspace_stash`
+    /// with an `WorkspaceStashItemEntry` shape round-trips through the run.
+    #[test]
+    fn ws_stash_restore_run_reads_items_from_db() {
+        let db = mem_db();
+        let item = WorkspaceStashItemEntry {
+            repo_path: "D:/w/a".into(),
+            stash_oid: "abc123".into(),
+            stash_index: 0,
+            branch: "main".into(),
+        };
+        let record_id = {
+            let mut conn = db.lock().unwrap();
+            workspace_stash::insert_workspace_stash(&mut conn, 1, "Workspace Stash #1", None, &[item]).unwrap()
+        };
+        let conn = db.lock().unwrap();
+        let items = workspace_stash::list_workspace_stash_items(&conn, record_id).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].stash_oid, "abc123");
     }
 }

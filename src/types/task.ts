@@ -42,6 +42,23 @@ export type TaskType =
       type: "nodeInstall";
       projectDir: string;
       packageManager: string;
+    }
+  | {
+      /** GF-10：Workspace Stash 全量保存——整笔一个任务，worker 体内逐仓
+       * 串行执行（可取消、逐仓进度事件）。 */
+      type: "workspaceStashSave";
+      workspaceId: number;
+      recordName: string;
+      message?: string | null;
+      includeUntracked?: boolean;
+      repoPaths: string[];
+    }
+  | {
+      /** GF-10：Workspace Stash 恢复——入队前已过 §46 预检，执行时逐仓复检。 */
+      type: "workspaceStashRestore";
+      workspaceStashId: number;
+      recordName: string;
+      allowBranchMismatch?: boolean;
     };
 
 /** Runtime 任务的用户可调选项（R-12）；未指定项由后端跟随

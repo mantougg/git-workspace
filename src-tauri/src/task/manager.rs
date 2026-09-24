@@ -8,6 +8,7 @@ use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::core::git_ops::GitOps;
+use crate::core::workspace_stash::WorkspaceStashRunResult;
 use crate::db::dao;
 use crate::error::{AppError, AppResult};
 use crate::models::task::{BatchState, DagGraph, DagSubmitRequest, Task, TaskRequest, TaskStatus, TaskType};
@@ -32,6 +33,12 @@ pub struct TaskManager {
     batches: Arc<DashMap<String, BatchState>>,
     /// Live DAG states (T-24), keyed by DAG id (= nodes' batch_id).
     dags: Arc<DashMap<String, DagState>>,
+    /// GF-10: workspace stash run results, keyed by task id. The worker
+    /// inserts one on **every** completion path (including cancels, so the
+    /// pending IPC command never waits blind); the command takes it. An entry
+    /// whose webview died mid-run stays until app exit (bounded by the runs
+    /// of one session; a re-run always uses a fresh task id).
+    ws_stash_runs: Arc<DashMap<String, WorkspaceStashRunResult>>,
     /// Kept to emit progress events for synthetic batch tasks.
     app_handle: AppHandle,
 }
@@ -56,6 +63,7 @@ impl TaskManager {
         let cancel_flags = Arc::new(DashMap::<String, Arc<AtomicBool>>::new());
         let batches = Arc::new(DashMap::<String, BatchState>::new());
         let dags = Arc::new(DashMap::<String, DagState>::new());
+        let ws_stash_runs = Arc::new(DashMap::<String, WorkspaceStashRunResult>::new());
 
         // Spawn the worker pool using the worker module
         worker::spawn_worker_pool(
@@ -70,6 +78,7 @@ impl TaskManager {
             Arc::clone(&db),
             Arc::clone(&batches),
             Arc::clone(&dags),
+            Arc::clone(&ws_stash_runs),
         );
 
         log::info!("TaskManager started with {} workers", worker_count);
@@ -81,6 +90,7 @@ impl TaskManager {
             db,
             batches,
             dags,
+            ws_stash_runs,
             app_handle,
         }
     }
@@ -477,6 +487,14 @@ impl TaskManager {
             self.active_tasks.remove(&id);
         }
     }
+
+    /// GF-10: take a finished workspace stash run's result (command side).
+    /// Returns `None` while the run is still in flight. The worker inserts
+    /// the entry directly into the shared map (every completion path,
+    /// including cancels, so a pending command never waits blind).
+    pub fn take_ws_stash_run(&self, task_id: &str) -> Option<WorkspaceStashRunResult> {
+        self.ws_stash_runs.remove(task_id).map(|(_, run)| run)
+    }
 }
 
 /// Default node label for the DAG view: "<kind> · <repo>".
@@ -507,6 +525,10 @@ fn label_for(req: &TaskRequest) -> String {
         }
         TaskType::RuntimeUpdateConfig { .. } => "Runtime Update Config",
         TaskType::NodeInstall { .. } => "Node Install",
+        // GF-10: whole-workspace stash runs carry the record name in
+        // `repo_name` (e.g. "Workspace Stash #3（保存 12 个仓库）").
+        TaskType::WorkspaceStashSave { .. } => "Workspace Stash 保存",
+        TaskType::WorkspaceStashRestore { .. } => "Workspace Stash 恢复",
     };
     format!("{} · {}", kind, req.repo_name)
 }

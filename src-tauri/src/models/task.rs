@@ -113,6 +113,35 @@ pub enum TaskType {
         project_dir: String,
         package_manager: crate::node::PackageManager,
     },
+    /// Workspace Stash whole-workspace save (GF-10): **one** task carries the
+    /// repo set and the worker stashes the repos one by one (the serial
+    /// execution model is unchanged — the worker pool would otherwise run
+    /// per-repo tasks in parallel). The record name is allocated when the
+    /// task is submitted (numbering stays monotonic; the per-repo stash
+    /// message also carries it). Per-repo progress arrives on the
+    /// `workspace_stash_progress` event; cancellation stops the loop between
+    /// repos and the completed subset is still persisted as a record.
+    WorkspaceStashSave {
+        workspace_id: i64,
+        record_name: String,
+        #[serde(default)]
+        message: Option<String>,
+        #[serde(default)]
+        include_untracked: bool,
+        repo_paths: Vec<String>,
+    },
+    /// Workspace Stash restore (GF-10): same whole-run task shape as
+    /// [`TaskType::WorkspaceStashSave`]. The §46 pre-check runs **before**
+    /// submission (the command fails fast when nothing is applicable); the
+    /// worker re-checks every item at execution time (stale-window safety
+    /// net) and applies the stash (kept on the stack, so a cancelled or
+    /// failed run can be restored again).
+    WorkspaceStashRestore {
+        workspace_stash_id: i64,
+        record_name: String,
+        #[serde(default)]
+        allow_branch_mismatch: bool,
+    },
 }
 
 /// Runtime task operations (R-12, §63/§65). Plain camelCase string union.

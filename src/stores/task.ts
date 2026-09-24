@@ -2,7 +2,26 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { Task, TaskEventEntry, TaskProgress } from "@/types/task";
 import { TASK_EVENT_LOG_MAX } from "@/types/task";
+import type { WorkspaceStashProgress } from "@/types/workspaceStash";
 import * as taskApi from "@/api/task";
+
+/** GF-10：Workspace Stash 运行的逐仓结果行（进度事件累积）。 */
+export interface WsStashRepoRow {
+  repoPath: string;
+  repoName: string;
+  /** save: stashed/skipped_clean/failed/cancelled；restore: applied/skipped/failed/cancelled */
+  status: string;
+  detail: string;
+}
+
+/** GF-10：一次 Workspace Stash 排队运行（整笔任务 + 逐仓明细）。 */
+export interface WsStashRun {
+  taskId: string;
+  kind: "save" | "restore";
+  recordName: string;
+  total: number;
+  rows: WsStashRepoRow[];
+}
 
 export const useTaskStore = defineStore("task", () => {
   /** 当前状态索引：供计数 / 取消 / waitForTasks / clearFinished 使用。 */
@@ -13,6 +32,11 @@ export const useTaskStore = defineStore("task", () => {
    */
   const events = ref<TaskEventEntry[]>([]);
   const panelVisible = ref(false);
+  /**
+   * GF-10：Workspace Stash 逐仓进度（`workspace_stash_progress` 事件累积）。
+   * 与 `events` 同生命周期：随 clearFinished 一起清理。
+   */
+  const wsStashRuns = ref<WsStashRun[]>([]);
 
   /** 事件序列号（单调递增；同一条 progress 重放不会产生新 seq）。 */
   let eventSeq = 0;
@@ -130,6 +154,42 @@ export const useTaskStore = defineStore("task", () => {
     }
   }
 
+  /**
+   * GF-10：累积一条 Workspace Stash 逐仓进度。同一 run 内同一仓库只更新
+   * （取消补发的未处理行也会落到同一行），保持选择顺序。
+   */
+  function applyWorkspaceStashProgress(p: WorkspaceStashProgress) {
+    let run = wsStashRuns.value.find((r) => r.taskId === p.taskId);
+    if (!run) {
+      run = {
+        taskId: p.taskId,
+        kind: p.kind,
+        recordName: p.recordName,
+        total: p.total,
+        rows: [],
+      };
+      wsStashRuns.value.push(run);
+    }
+    run.total = p.total;
+    const row = run.rows.find((r) => r.repoPath === p.repoPath);
+    if (row) {
+      row.status = p.status;
+      row.detail = p.detail;
+    } else {
+      run.rows.push({
+        repoPath: p.repoPath,
+        repoName: p.repoName,
+        status: p.status,
+        detail: p.detail,
+      });
+    }
+  }
+
+  /** GF-10：某个任务的 Workspace Stash 运行明细（无则 undefined）。 */
+  function wsStashRunOf(taskId: string): WsStashRun | undefined {
+    return wsStashRuns.value.find((r) => r.taskId === taskId);
+  }
+
   async function cancelTask(taskId: string) {
     try {
       await taskApi.cancelTask(taskId);
@@ -162,6 +222,8 @@ export const useTaskStore = defineStore("task", () => {
       for (const id of [...lastEventSeqByTask.keys()]) {
         if (!liveIds.has(id)) lastEventSeqByTask.delete(id);
       }
+      // GF-10：Workspace Stash 逐仓明细与事件日志同生命周期撤离。
+      wsStashRuns.value = wsStashRuns.value.filter((r) => liveIds.has(r.taskId));
     } catch (e) {
       console.error("Failed to clear finished tasks:", e);
     }
@@ -183,9 +245,12 @@ export const useTaskStore = defineStore("task", () => {
     tasks,
     events,
     panelVisible,
+    wsStashRuns,
     loadActiveTasks,
     waitForTasks,
     updateTaskProgress,
+    applyWorkspaceStashProgress,
+    wsStashRunOf,
     cancelTask,
     clearFinished,
     togglePanel,

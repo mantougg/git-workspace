@@ -193,6 +193,11 @@ impl GitOps {
                     "AI Action Proposal 任务应由 worker 专用执行路径处理".into(),
                 ))
             }
+            // GF-10: whole-workspace stash runs are ONE task with a serial
+            // per-repo body, handled directly by the worker.
+            TaskType::WorkspaceStashSave { .. } | TaskType::WorkspaceStashRestore { .. } => Err(AppError::Task(
+                "Workspace Stash 运行应由 worker 专用执行路径处理".into(),
+            )),
         }
     }
 }
