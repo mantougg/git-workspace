@@ -19,19 +19,25 @@
     <!-- Entry list -->
     <n-spin :show="loading">
       <div class="reflog-body">
-        <div v-for="entry in entries" :key="entry.selector" class="reflog-row">
-          <span class="selector">{{ entry.selector }}</span>
-          <span class="summary" :title="entry.summary">{{ entry.summary }}</span>
-          <span class="commit-message" :title="entry.newOid">
-            {{ entry.newOid.slice(0, 7) }} {{ entry.commitMessage }}
-          </span>
-          <span class="time">{{ entry.time }}</span>
-          <n-dropdown trigger="click" :options="dropdownOptions" @select="(cmd: string) => onAction(cmd, entry)">
-            <n-button size="small" text @click.stop>
-              <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
-            </n-button>
-          </n-dropdown>
-        </div>
+        <!-- GF-11 收口：虚拟滚动（固定行高 34px，与 BranchManager 分支列表同模式；
+             短列表容器按行数封顶，不出现嵌套滚动条）。 -->
+        <VirtualList v-if="entries.length > 0" :items="entries" :item-height="ROW_H">
+          <template #row="{ item: entry }">
+            <div class="reflog-row">
+              <span class="selector">{{ entry.selector }}</span>
+              <span class="summary" :title="entry.summary">{{ entry.summary }}</span>
+              <span class="commit-message" :title="entry.newOid">
+                {{ entry.newOid.slice(0, 7) }} {{ entry.commitMessage }}
+              </span>
+              <span class="time">{{ entry.time }}</span>
+              <n-dropdown trigger="click" :options="dropdownOptions" @select="(cmd: string) => onAction(cmd, entry)">
+                <n-button size="small" text @click.stop>
+                  <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+                </n-button>
+              </n-dropdown>
+            </div>
+          </template>
+        </VirtualList>
         <n-empty v-if="!loading && entries.length === 0" description="暂无 reflog 记录" />
       </div>
     </n-spin>
@@ -146,6 +152,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
+import VirtualList from "@/components/common/VirtualList.vue";
 import { EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
@@ -168,6 +175,8 @@ const locals = ref<string[]>([]);
 const remotes = ref<string[]>([]);
 const entries = ref<ReflogEntry[]>([]);
 const loading = ref(false);
+/** GF-11 收口：VirtualList 固定行高（与 .reflog-row 的 height 一致）。 */
+const ROW_H = 34;
 
 /** GF-13a：reflog 分页大小（与后端默认 200 对齐，超出部分走「加载更多」）。 */
 const PAGE_SIZE = 200;
@@ -474,6 +483,10 @@ async function confirmReset() {
   padding: 6px 16px;
   border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
+  /* GF-11 收口：定高行（VirtualList itemHeight=34）。 */
+  height: 34px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* GF-13a：条数提示 + 加载更多（页脚，不随列表滚动）。 */

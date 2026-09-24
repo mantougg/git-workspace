@@ -60,16 +60,20 @@
         <div class="resolver-body">
           <!-- Conflict file list -->
           <div class="conflict-list">
-            <div
-              v-for="c in conflicts"
-              :key="c.path"
-              :class="['conflict-item', { active: selectedPath === c.path, resolved: isResolved(c.path) }]"
-              @click="selectFile(c.path)"
-            >
-              <span class="conflict-path">{{ c.path }}</span>
-              <n-tag size="small">{{ typeLabel(c.conflictType) }}</n-tag>
-              <n-icon v-if="isResolved(c.path)" class="resolved-icon"><CheckmarkOutline /></n-icon>
-            </div>
+            <!-- GF-11 收口：虚拟滚动（大 rebase/merge 可有数百冲突文件，定高行 40px）。
+                 queue 模式的工作区冲突仓库列表保持 v-for（数量受「冲突中的仓库」约束，通常个位数）。 -->
+            <VirtualList v-if="conflicts.length > 0" :items="conflicts" :item-height="ROW_H">
+              <template #row="{ item: c }">
+                <div
+                  :class="['conflict-item', { active: selectedPath === c.path, resolved: isResolved(c.path) }]"
+                  @click="selectFile(c.path)"
+                >
+                  <span class="conflict-path">{{ c.path }}</span>
+                  <n-tag size="small">{{ typeLabel(c.conflictType) }}</n-tag>
+                  <n-icon v-if="isResolved(c.path)" class="resolved-icon"><CheckmarkOutline /></n-icon>
+                </div>
+              </template>
+            </VirtualList>
             <n-empty
               v-if="!loading && conflicts.length === 0"
               description="没有冲突文件"
@@ -163,6 +167,7 @@ import { listRepositories } from "@/api/repository";
 import type { ConflictContent, ConflictFile, OperationState } from "@/types/conflict";
 import { errMsg } from "@/utils/error";
 import AiConflictAssistant from "@/components/ai/AiConflictAssistant.vue";
+import VirtualList from "@/components/common/VirtualList.vue";
 import { useAiAssistant } from "@/composables/useAiAssistant";
 
 const route = useRoute();
@@ -190,6 +195,8 @@ const resolvedPaths = ref<Set<string>>(new Set());
 
 const conflicts = computed<ConflictFile[]>(() => state.value?.conflicts ?? []);
 const resolvedCount = computed(() => resolvedPaths.value.size);
+/** GF-11 收口：VirtualList 固定行高（与 .conflict-item 的 height 一致）。 */
+const ROW_H = 40;
 
 const opLabel = computed(() => {
   const s = state.value;
@@ -536,6 +543,9 @@ async function handleAbort() {
   border-right: 1px solid var(--gw-border);
   overflow-y: auto;
   background: var(--gw-bg-hover);
+  /* GF-11 收口：VirtualList 需要确定高度的滚动容器。 */
+  display: flex;
+  flex-direction: column;
 }
 
 .conflict-item {
@@ -546,6 +556,10 @@ async function handleAbort() {
   cursor: pointer;
   border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
+  /* GF-11 收口：定高行（VirtualList itemHeight 一致）。 */
+  height: 40px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .conflict-item:hover {

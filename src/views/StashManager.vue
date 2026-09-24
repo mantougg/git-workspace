@@ -24,21 +24,27 @@
     <!-- Stash list -->
     <n-spin :show="loading">
       <div class="stash-body">
-        <div v-for="entry in entries" :key="entry.oid" class="stash-row">
-          <span class="stash-ref">stash@{{ "{" + entry.index + "}" }}</span>
-          <span class="stash-message" :title="entry.message">{{ entry.message }}</span>
-          <span class="stash-time">{{ entry.time }}</span>
-          <div class="stash-actions">
-            <n-button size="small" @click="handleApply(entry)">Apply</n-button>
-            <n-button size="small" @click="handlePop(entry)">Pop</n-button>
-            <n-button size="small" @click="openDiff(entry)">Show Diff</n-button>
-            <n-dropdown trigger="click" :options="moreDropdownOptions" @select="(key: string) => onMore(key, entry)">
-              <n-button size="small" text>
-                <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
-              </n-button>
-            </n-dropdown>
-          </div>
-        </div>
+        <!-- GF-11 收口：虚拟滚动（固定行高 38px，按钮组高度 28px + padding 8×2 + 边 1 ≈ 37）。
+             "load more" 不涉及（stash 列表全量拉取）。 -->
+        <VirtualList v-if="entries.length > 0" :items="entries" :item-height="ROW_H">
+          <template #row="{ item: entry }">
+            <div class="stash-row">
+              <span class="stash-ref">stash@{{ "{" + entry.index + "}" }}</span>
+              <span class="stash-message" :title="entry.message">{{ entry.message }}</span>
+              <span class="stash-time">{{ entry.time }}</span>
+              <div class="stash-actions">
+                <n-button size="small" @click="handleApply(entry)">Apply</n-button>
+                <n-button size="small" @click="handlePop(entry)">Pop</n-button>
+                <n-button size="small" @click="openDiff(entry)">Show Diff</n-button>
+                <n-dropdown trigger="click" :options="moreDropdownOptions" @select="(key: string) => onMore(key, entry)">
+                  <n-button size="small" text>
+                    <template #icon><n-icon><EllipsisVerticalOutline /></n-icon></template>
+                  </n-button>
+                </n-dropdown>
+              </div>
+            </div>
+          </template>
+        </VirtualList>
         <n-empty v-if="!loading && entries.length === 0" description="暂无 stash" />
       </div>
     </n-spin>
@@ -90,6 +96,7 @@ import { onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCurrentRepo } from "@/composables/useCurrentRepo";
 import RepoSwitcher from "@/components/shell/RepoSwitcher.vue";
+import VirtualList from "@/components/common/VirtualList.vue";
 import { CloudUploadOutline, EllipsisVerticalOutline, RefreshOutline } from "@vicons/ionicons5";
 import { useMessage, useDialog } from "naive-ui";
 import { prompt } from "@/utils/prompt";
@@ -117,6 +124,8 @@ const dialog = useDialog();
 const repoPath = ref("");
 const entries = ref<StashEntry[]>([]);
 const loading = ref(false);
+/** GF-11 收口：VirtualList 固定行高（与 .stash-row 的 height 一致）。 */
+const ROW_H = 38;
 
 const saveDialog = reactive({ show: false, message: "", includeUntracked: false, loading: false });
 const diffDialog = reactive<{
@@ -337,6 +346,10 @@ async function openDiff(entry: StashEntry) {
   padding: 8px 16px;
   border-bottom: 1px solid var(--gw-border);
   font-size: 13px;
+  /* GF-11 收口：定高行（VirtualList itemHeight 一致）。 */
+  height: 38px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .stash-ref {

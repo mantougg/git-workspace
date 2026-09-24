@@ -1,8 +1,6 @@
 # GF-11 git 长列表无虚拟滚动 + GitGraph「加载更多」全量重取（O(n²)）
 
-> 状态：🟦 部分完成（核心范围 1/2/3 已修完并验证；任务 4 的分支列表 + ChangeSet 已修，
-> 冲突/Reflog/Stash 列表所在文件（ConflictResolver/Reflog/StashManager.vue）属本轮
-> 职责边界「不要动」清单，移交后续批次，见进度 2026-09-24 第二条）
+> 状态：✅ 已完成（2026-09-24 收口：4b 冲突/Reflog/Stash 列表已虚拟化，checklist 全勾）
 > 优先级：P1
 > 来源：2026-09-24 Git 使用体验全景盘点。
 
@@ -45,9 +43,8 @@
 - [x] 3. ChangeTree `n-tree` 开 `virtual-scroll`。
 - [x] 4a. 分支列表（BranchManager 本地/远程/Tags 三组）接 VirtualList；ChangeSetView
       「添加仓库」n-data-table 开 `virtual-scroll`（千仓库工作区）。
-- [ ] 4b. 冲突列表（ConflictResolver.vue）/ Reflog / StashManager 长列表虚拟化——
-      **不在本轮职责边界**（三个文件在 GF-11 任务「不要动」清单内，另有并行任务在改），
-      建议由后续批次处理；排序与理由见进度。
+- [x] 4b. 冲突列表（ConflictResolver.vue）/ Reflog / StashManager 长列表虚拟化——
+      2026-09-24 收口（GF-05/GF-13/GF-14/GF-18 等任务触及这些文件后，边界解除）。
 
 ## 不做（范围控制）
 
@@ -86,6 +83,9 @@
 | `src/components/repo/ChangeTree.vue` | `n-tree` 开 `virtual-scroll`；`.tree` 定高、外层 `overflow:hidden`（树自身成滚动容器） |
 | `src/views/BranchManager.vue` | 本地/远程/Tags 三组列表接 `VirtualList`（34px 定高行，容器高度按行数封顶，短列表无嵌套滚动） |
 | `src/views/ChangeSetView.vue` | 添加仓库 `n-data-table` 开 `virtual-scroll` |
+| `src/views/Reflog.vue` | 条目列表接 `VirtualList`（ROW_H=34 定高；`.reflog-row` height:34 box-sizing:border-box；加载更多按钮在列表外 footer，不受虚拟化影响） |
+| `src/views/StashManager.vue` | 条目列表接 `VirtualList`（ROW_H=38 定高：按钮组 28px + padding 16px + border 1px 内落下） |
+| `src/views/ConflictResolver.vue` | 冲突文件列表接 `VirtualList`（ROW_H=40 定高；`.conflict-list` 改 flex 列布局给 VirtualList 确定高度——`.conflict-resolver height:100% → .resolver-body flex:1 → .conflict-list` 高度链闭合；queue 模式的仓库冲突列表保持 v-for：数量受「冲突中的仓库」约束通常个位数） |
 
 ## 进度
 
@@ -94,3 +94,4 @@
 | 2026-09-24 | 建任务：体验盘点发现（`:315` 全量重拉 + 全路径零虚拟滚动）。待复现与修复。 |
 | 2026-09-24 | 修复完成（核心范围）。根因：① GitGraph 翻页 `getCommitHistory(repoPath, prevCount + PAGE_SIZE)` 全量重取+整体替换，第 k 页累计传输 O(k²)；② CommitGraph/ChangeTree/分支列表全量 v-for 直渲，千级数据 DOM 行数线性膨胀。修法：① 后端 `get_commit_history` 增 `offset/limit`（`maxCount` 保留为兼容别名，`limit` 优先；默认行为不变），命令体拆为 `load_commit_history_page(conn, repo, offset, limit)`，`load_commit_history_cached` 原签名委托 offset=0（T-07 benchmark 零改动，缓存命中路径不变）；前端 GitGraph `loadMore` 改增量追加（`[...old, ...page]`），`loadHistory` 走 offset=0 首页。② CommitGraph 接 `VirtualList`（ROW_H=30 定高；VirtualList 加可选 prop `resetScrollOnItemsChange`，默认 true，diff 组件零回归；GitGraph 高度链经 `.graph-spin :deep(.n-spin-content)` 贯通，整页重载用 `key=repoPath#refreshSeq` 重挂载复位滚动）；ChangeTree `n-tree` 开 `virtual-scroll`（F-09 受控 expandedKeys / 勾选 emitSelection / 右键 / 双击展开均为 key 级状态，与虚拟化兼容）；BranchManager 三组分支/Tags 列表接 VirtualList（32px 定高行、容器高度按行数封顶，短列表无嵌套滚动）；ChangeSetView 添加仓库 n-data-table 开 `virtual-scroll`。验证：`GW_TEST_MANIFEST=1 cargo test --lib` = 992 passed / 15 failed / 3 ignored，15 个失败全部命中既有环境依赖失败清单（real_maven×10、real_node_vite×1、pty smoke×1、node workspace×2、pathutil 大小写×1，均为未触及模块 + 环境原因），无新增失败；新增 4 个 graph 分页单测全绿（含 offset/limit 边界、缓存命中一致性、legacy 参数映射）；`pnpm build`（vue-tsc --noEmit + vite build）通过。剩余缺口见 checklist 4b。 |
 | 2026-09-24 | 任务 4 优先级排序与理由（本轮执行到 4a）：分支列表（>100 分支仓库常见，且操作密集——每行 dropdown，直渲卡顿最可感知）→ 冲突列表 → ChangeSet（本轮附带：添加仓库表在千仓库工作区可达千行）→ Reflog/Stash（数据量通常最小）。冲突/Reflog/Stash 三处所在文件（ConflictResolver.vue / Reflog.vue / StashManager.vue）在 GF-11 职责边界「不要动」清单内，交由后续批次；另发现 RepositoryList 侧栏提交图预览面板（`.graph-pane-spin`）缺 `:deep(.n-spin-content){height:100%}` 高度链修复（同 F-18/F-20 模式已用于 tree/diff 面板），预览面板内提交图为内容高度+overflow:hidden 裁切、不可滚动——属既有问题，本次按边界未动 RepositoryList.vue，建议另立 GF 任务。 |
+| 2026-09-24 | **收口（checklist 全勾，状态 → ✅）**：GF-05/GF-13/GF-14/GF-18 等任务落完后边界解除，4b 完成——Reflog 条目列表（ROW_H=34）、StashManager 条目列表（ROW_H=38，按钮组高度内落）、ConflictResolver 冲突文件列表（ROW_H=40；`.conflict-list` 改 flex 列布局闭合高度链）三处接 `VirtualList`；ConflictResolver queue 模式的仓库冲突列表保持 v-for（数量受冲突中仓库数约束）。验证：`pnpm build`（vue-tsc --noEmit + vite build）通过。审核牵出的 RepositoryList 预览面板高度链问题另立 GF-23。 |

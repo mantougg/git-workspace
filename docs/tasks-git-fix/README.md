@@ -21,8 +21,8 @@
 
 ## 总体进度
 
-- 任务总数：**22**
-- 已完成：**18** · 修复中：**1** · 未开始：**2** · 仅讨论：**1**
+- 任务总数：**23**
+- 已完成：**19** · 修复中：**0** · 未开始：**3** · 仅讨论：**1**
 
 ---
 
@@ -40,7 +40,7 @@
 | GF-08 | Git 认证失败无可行动引导：`AppError::Git` 无 details/suggestedActions，"Authentication failed" 原样透出 | P1 | ✅ | [GF-08-git-auth-failure-no-guidance.md](./GF-08-git-auth-failure-no-guidance.md) |
 | GF-09 | Ignore diff 选项静默禁掉行级暂存：已勾选的行选择无声丢失，仅一行小 tag 提示 | P1 | ✅ | [GF-09-ignore-option-kills-staging.md](./GF-09-ignore-option-kills-staging.md) |
 | GF-10 | Workspace Stash 多仓串行执行且无进度无取消（全应用唯一「黑屏等待」的写操作） | P2 | ✅ | [GF-10-workspace-stash-serial-no-progress.md](./GF-10-workspace-stash-serial-no-progress.md) |
-| GF-11 | git 长列表无虚拟滚动 + GitGraph「加载更多」全量重取（O(n²)），千级提交/文件卡顿 | P1 | 🟦 | [GF-11-git-lists-virtual-scroll.md](./GF-11-git-lists-virtual-scroll.md) |
+| GF-11 | git 长列表无虚拟滚动 + GitGraph「加载更多」全量重取（O(n²)），千级提交/文件卡顿 | P1 | ✅ | [GF-11-git-lists-virtual-scroll.md](./GF-11-git-lists-virtual-scroll.md) |
 | GF-12 | SmartMergeDialog 丢失冲突语义：`baseOid` 声明未用、`conflictType` 硬编码 both-modified（deleted-by-us/them 分支永不触发） | P2 | ✅ | [GF-12-smart-merge-dialog-semantics.md](./GF-12-smart-merge-dialog-semantics.md) |
 | GF-13 | git 小缺陷集合：Reflog 200 条上限无提示、分支条只显示 10 个、pick_continue 丢原作者（2026-09-24 核验：原「远程分支误判」子项已被 PAF-26 修复，撤销） | P2 | ✅ | [GF-13-git-small-defects.md](./GF-13-git-small-defects.md) |
 | GF-14 | git 死代码清理：RepositoryList `v-if="false"` 选择器死块、sync_fetch/pull/push 死 wrapper、三个无引用仓库组件 | P2 | ✅ | [GF-14-git-dead-code-cleanup.md](./GF-14-git-dead-code-cleanup.md) |
@@ -52,6 +52,7 @@
 | GF-20 | git 功能增强规划待排期：Blame 视图 / Interactive Rebase UI / Remote 管理 / Binary diff / Git 配置 UI / 主题三档切换 | 💬 | ⬜ | [GF-20-git-feature-roadmap.md](./GF-20-git-feature-roadmap.md) |
 | GF-21 | ChangeSetView「Create PRs」disabled 死按钮（T-29 已交付，前端/后端 create_pull_request 均在） | P2 | ⬜ | [GF-21-changeset-create-prs-disabled.md](./GF-21-changeset-create-prs-disabled.md) |
 | GF-22 | ConflictResolver「AI 冲突建议」disabled 死按钮（T-26 已交付，AiConflictAssistant 正在渲染中） | P2 | ⬜ | [GF-22-conflict-ai-suggestion-disabled.md](./GF-22-conflict-ai-suggestion-disabled.md) |
+| GF-23 | RepositoryList 侧栏提交图预览面板高度链断裂（`.graph-pane-spin` 缺 `:deep(.n-spin-content)`，裁切不可滚动） | P2 | ⬜ | [GF-23-repositorylist-graph-pane-height-chain.md](./GF-23-repositorylist-graph-pane-height-chain.md) |
 
 ---
 
